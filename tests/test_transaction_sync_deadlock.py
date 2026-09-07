@@ -85,14 +85,73 @@ class TransactionSyncDeadlockTests(unittest.TestCase):
             "not_general_lodging",
         )
 
-    def test_unit_trade_keeps_legacy_first_master_behavior(self):
-        matches = [{"lodging_type": "생활"}, {"lodging_type": "일반"}]
-        first_match = matches[0] if matches else None
-        self.assertEqual(first_match["lodging_type"], "생활")
-        self.assertEqual(
-            sync_batch.whole_building_match_reason(matches),
-            "ambiguous_exact_master",
-        )
+    def test_unit_trade_matches_one_named_master_on_shared_parcel(self):
+        matches = [
+            {"id": 1, "building_name": "생활 숙박 A"},
+            {"id": 2, "building_name": "생활숙박B"},
+        ]
+        matched = sync_batch.exact_master_for_unit_trade(matches, " 생활 숙박 B ")
+        self.assertEqual(matched["id"], 2)
+
+    def test_unit_trade_does_not_guess_on_shared_parcel_without_identifier(self):
+        matches = [
+            {"id": 1, "building_name": "생활숙박A"},
+            {"id": 2, "building_name": "생활숙박B"},
+        ]
+        self.assertIsNone(sync_batch.exact_master_for_unit_trade(matches, None))
+        self.assertIsNone(sync_batch.exact_master_for_unit_trade(matches, "없는 건물"))
+
+    def test_ambiguous_unit_trade_is_stored_unassigned_without_hub_discovery(self):
+        class Cursor:
+            def __init__(self):
+                self.queries = []
+                self._fetchone = None
+
+            def execute(self, query, params=None):
+                self.queries.append((query, params))
+                if "INSERT INTO transactions" in query:
+                    self._fetchone = {"id": 77, "was_inserted": True}
+
+            def fetchall(self):
+                return [
+                    {
+                        "id": 1, "building_name": "생활숙박A", "sgg_text": "서울특별시 종로구",
+                        "lodging_type": "생활", "lodging_type_detail": "생활숙박시설",
+                    },
+                    {
+                        "id": 2, "building_name": "생활숙박B", "sgg_text": "서울특별시 종로구",
+                        "lodging_type": "생활", "lodging_type_detail": "생활숙박시설",
+                    },
+                ]
+
+            def fetchone(self):
+                return self._fetchone
+
+        class BuildingHub:
+            def find_bjdong_cd(self, *_args):
+                raise AssertionError("모호한 기존 지번은 건축HUB 신규 발견으로 보내면 안 됩니다")
+
+        cur = Cursor()
+        stats = {
+            "inserted": 0, "matched_master": 0, "matched_bld": 0, "unmatched": 0,
+            "unit_inserted": 0, "whole_inserted": 0, "whole_seen": 0,
+            "whole_ambiguous": 0, "whole_unmatched": 0, "whole_non_general": 0,
+        }
+        trade = {
+            "umdNm": "청운동", "jibun": "1", "dealYear": "2026", "dealMonth": "09",
+            "dealDay": "01", "dealAmount": "10,000", "buildingType": "집합",
+            "buildingAr": "40", "floor": "3",
+        }
+        with patch.object(sync_batch, "_notify_subscribers"):
+            sync_batch._process_trades(
+                cur, "11110", "202609", [trade], BuildingHub(), stats,
+            )
+
+        self.assertFalse(any("INSERT INTO master_buildings" in q for q, _ in cur.queries))
+        tx_params = next(params for q, params in cur.queries if "INSERT INTO transactions" in q)
+        self.assertIsNone(tx_params[0])
+        self.assertIsNone(tx_params[1])
+        self.assertEqual(stats["unmatched"], 1)
 
     def test_schema_init_retries_deadlock_with_backoff(self):
         with (

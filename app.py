@@ -2844,14 +2844,20 @@ def get_rental_market_price():
                 "area_sqm": area_sqm,
                 "reason": "자료 부족: 선택 건물과 실거래를 정확히 연결할 지번 정보가 없습니다.",
             })
-        match_sql = "sgg_cd = %s AND umd_nm = %s AND jibun = %s"
-        match_params = [building["sgg_cd"], building["umd_nm"], building["jibun"]]
         if int(building["parcel_building_count"] or 0) > 1:
-            return jsonify({
-                "ok": False,
-                "area_sqm": area_sqm,
-                "reason": "자료 부족: 같은 지번의 여러 건물 중 실거래 대상 건물을 구분할 수 없습니다.",
-            })
+            match_sql = "master_building_id = %s"
+            match_params = [int(building_id)]
+        else:
+            match_sql = """(
+                master_building_id = %s
+                OR (
+                    master_building_id IS NULL
+                    AND sgg_cd = %s AND umd_nm = %s AND jibun = %s
+                )
+            )"""
+            match_params = [
+                int(building_id), building["sgg_cd"], building["umd_nm"], building["jibun"],
+            ]
 
         def market_summary(tolerance):
             cur.execute(f"""

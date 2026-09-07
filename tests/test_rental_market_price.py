@@ -103,6 +103,8 @@ class RentalMarketPriceTest(unittest.TestCase):
     def test_same_parcel_multiple_buildings_fail_closed(self):
         connection = _Connection([
             {"building_name": "선택 건물", "sgg_cd": "11110", "umd_nm": "청운동", "jibun": "1", "parcel_building_count": 2},
+            {"median_price": None, "latest_deal_date": None, "sample_count": 0, "min_area": None, "max_area": None},
+            {"median_price": None, "latest_deal_date": None, "sample_count": 0, "min_area": None, "max_area": None},
         ])
         with patch.object(application, "get_conn", return_value=connection):
             response = application.app.test_client().get(
@@ -110,8 +112,27 @@ class RentalMarketPriceTest(unittest.TestCase):
             )
         payload = response.get_json()
         self.assertFalse(payload["ok"])
-        self.assertIn("여러 건물", payload["reason"])
-        self.assertEqual(len(connection.cursor_instance.executions), 1)
+        self.assertIn("2건 미만", payload["reason"])
+        self.assertEqual(len(connection.cursor_instance.executions), 3)
+        for query, params in connection.cursor_instance.executions[1:]:
+            self.assertIn("master_building_id = %s", query)
+            self.assertNotIn("sgg_cd = %s", query)
+            self.assertEqual(params[0], 101)
+
+    def test_same_parcel_uses_only_selected_building_transactions(self):
+        connection = _Connection([
+            {"building_name": "선택 건물", "sgg_cd": "11110", "umd_nm": "청운동", "jibun": "1", "parcel_building_count": 2},
+            {"median_price": 7200, "latest_deal_date": "2026-08-20", "sample_count": 2, "min_area": 40, "max_area": 40},
+        ])
+        with patch.object(application, "get_conn", return_value=connection):
+            response = application.app.test_client().get(
+                "/api/analysis/rental-market-price?building_id=101&area_sqm=40"
+            )
+        self.assertTrue(response.get_json()["ok"])
+        query, params = connection.cursor_instance.executions[1]
+        self.assertIn("master_building_id = %s", query)
+        self.assertNotIn("sgg_cd = %s", query)
+        self.assertEqual(params[0], 101)
 
     def test_one_transaction_is_reported_as_insufficient(self):
         connection = _Connection([

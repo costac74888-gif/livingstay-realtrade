@@ -324,6 +324,35 @@ def whole_building_match_reason(matches):
     return None
 
 
+def source_building_name_for_trade(trade):
+    """원천별 건물명 필드 차이를 흡수하되 빈 식별자는 사용하지 않는다."""
+    for key in ("buildingName", "buildingNm", "bldNm", "aptNm"):
+        value = (trade.get(key) or "").strip()
+        if value and value != "-":
+            return value
+    return None
+
+
+def _normalized_building_name(value):
+    return "".join((value or "").split()).casefold()
+
+
+def exact_master_for_unit_trade(matches, source_building_name):
+    """호실 거래를 한 마스터에 확정 연결한다. 모호하면 임의 배정하지 않는다."""
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    source_key = _normalized_building_name(source_building_name)
+    if not source_key:
+        return None
+    named = [
+        row for row in matches
+        if _normalized_building_name(row.get("building_name")) == source_key
+    ]
+    return named[0] if len(named) == 1 else None
+
+
 def _process_trades(
     cur, sgg_cd, deal_ymd, trades, bjdong, stats, pending_emails=None,
 ):
@@ -346,6 +375,7 @@ def _process_trades(
         deal_date = f"{t.get('dealYear','')}-{t.get('dealMonth','').zfill(2)}-{t.get('dealDay','').zfill(2)}"
         price = t.get("dealAmount", "0").replace(",", "")
         building_type = (t.get("buildingType") or "").strip()
+        source_building_name = source_building_name_for_trade(t)
         transaction_scope = transaction_scope_for_trade(t)
         area = t.get("buildingAr", t.get("totalFloorAr", "0"))
         total_floor_area = t.get("totalFloorAr") or None
@@ -365,17 +395,17 @@ def _process_trades(
 
         # 1) 마스터파일과 매칭 시도 (건물명 확정)
         cur.execute("""
-            SELECT building_name, sgg_text, lodging_type, lodging_type_detail
+            SELECT id, building_name, sgg_text, lodging_type, lodging_type_detail
             FROM master_buildings
             WHERE sgg_cd=%s AND umd_nm=%s AND jibun=%s
             ORDER BY id
-            LIMIT 2
         """, (sgg_cd, umd_key, jibun))
         matches = cur.fetchall()
-        # 호실 거래는 기존 동작대로 첫 일치 마스터를 사용한다. 주소키가 중복된
-        # 기존 마스터까지 단일성 검사를 강제하면 정상 호실 거래가 누락될 수 있다.
-        # 정확히 한 마스터만 허용하는 규칙은 아래 통건물 분기에만 적용한다.
-        m_row = matches[0] if matches else None
+        m_row = (
+            exact_master_for_unit_trade(matches, source_building_name)
+            if transaction_scope == "unit"
+            else (matches[0] if matches else None)
+        )
 
         building_name = None
         match_source = "unmatched"
@@ -409,6 +439,11 @@ def _process_trades(
                 parts = m_row["sgg_text"].split(" ", 1)
                 si_do_val = parts[0] if len(parts) > 0 else None
                 sgg_nm_val = parts[1] if len(parts) > 1 else None
+        elif matches:
+            # 같은 지번 후보는 있으나 원천 건물명으로 하나를 확정하지 못한 호실 거래.
+            # 건축HUB 신규 발견 경로로 보내면 같은 지번에 중복 마스터를 만들 수 있으므로
+            # 거래만 미배정 상태로 보존한다.
+            stats["unmatched"] += 1
         elif bjdong is None:
             # 법정동코드 CSV 미제공 → 건축HUB 보완 생략, 미매칭으로 처리
             stats["unmatched"] += 1
@@ -449,8 +484,10 @@ def _process_trades(
                     (building_name, road_address, sgg_text, sgg_cd, umd_nm, jibun, units,
                      source, verified_at, lodging_type, lodging_type_detail)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, 'sync_verified', NOW(), %s, %s)
+                RETURNING id
             """, (building_name, road_addr, sgg_text_val, sgg_cd, umd_key, jibun, title["ho_cnt"],
                   label, detail))
+            m_row = {"id": cur.fetchone()["id"]}
 
             if sgg_text_val:
                 parts = sgg_text_val.split(" ", 1)
@@ -461,28 +498,44 @@ def _process_trades(
         try:
             cur.execute("""
                 INSERT INTO transactions
-                 (building_name, address, si_do, sgg_nm, area, price, deal_date, deal_type,
+                 (master_building_id, building_name, source_building_name,
+                  address, si_do, sgg_nm, area, price, deal_date, deal_type,
                   floor, sgg_cd, umd_nm, jibun, lodging_type, lodging_type_detail, match_source,
                   transaction_scope, source_api, source_building_type, total_floor_area,
                   land_area, match_confidence, raw_key)
-                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                         %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (raw_key) DO NOTHING
-                RETURNING id
-            """, (building_name, tx_address, si_do_val, sgg_nm_val,
+                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                          %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (raw_key) DO UPDATE SET
+                    master_building_id = COALESCE(
+                        EXCLUDED.master_building_id,
+                        transactions.master_building_id
+                    ),
+                    source_building_name = COALESCE(
+                        EXCLUDED.source_building_name,
+                        transactions.source_building_name
+                    ),
+                    updated_at = CASE
+                        WHEN EXCLUDED.master_building_id IS NOT NULL
+                          OR EXCLUDED.source_building_name IS NOT NULL
+                        THEN NOW()
+                        ELSE transactions.updated_at
+                    END
+                RETURNING id, (xmax = 0) AS was_inserted
+            """, (m_row["id"] if m_row else None, building_name, source_building_name,
+                  tx_address, si_do_val, sgg_nm_val,
                   float(area or 0), int(price or 0),
                   deal_date, deal_type, floor_val,
                    sgg_cd, umd_key, jibun, lodging_type_val, lodging_type_detail_val, match_source,
                    transaction_scope, "RTMSDataSvcNrgTrade", building_type,
                    float(total_floor_area) if total_floor_area else None,
                    float(land_area) if land_area else None, "exact", raw_key))
-            new_row = cur.fetchone()  # ON CONFLICT 로 스킵되면 None (기존 거래 → 알림 없음)
-            if new_row:
+            saved_row = cur.fetchone()
+            if saved_row and saved_row["was_inserted"]:
                 stats["inserted"] += 1
                 stats[f"{'whole' if transaction_scope == 'whole_building' else 'unit'}_inserted"] += 1
                 # 방금 삽입된 신규 실거래 → 이 (건물명, 주소)를 구독한 회원에게 알림 생성.
                 if transaction_scope == "unit":
-                    _notify_subscribers(cur, new_row["id"], building_name, tx_address,
+                    _notify_subscribers(cur, saved_row["id"], building_name, tx_address,
                                         int(price or 0), deal_date, floor_val,
                                         deal_type=deal_type, area=area,
                                         pending_emails=pending_emails)
