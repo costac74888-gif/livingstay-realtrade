@@ -122,13 +122,21 @@ async function run() {
         wrap: { w: wrap.width, h: wrap.height },
         canvas: { left: canvas.left - wrap.left, top: canvas.top - wrap.top, right: canvas.right - wrap.left, bottom: canvas.bottom - wrap.top },
         baselineText: [document.getElementById("tourismBaseline").textContent, document.getElementById("priceBaseline").textContent],
+         quadrantText: Array.from(document.querySelectorAll(".chart-wrap .quad")).map((node) => node.textContent.trim()),
+         detailButtons: Array.from(document.querySelectorAll("#detailCard .detail-actions .am-btn")).map((node) => node.textContent.trim()),
+         detailSections: Array.from(document.querySelectorAll("#detailCard .detail-analysis, #detailCard .quadrant-guide, #detailCard .detail-disclaimer, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
         loggedInWorkspace: !document.getElementById("workspace").classList.contains("hidden"),
       };
       });
 
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
     expect(result.baselineText[0] === "53" && result.baselineText[1] === "+12%", "기본 관광수요 지수 기준선이 응답 중앙값과 다릅니다.");
-    const { baseline, points, labels, quadrantText } = result.layout;
+    const { baseline, points, labels } = result.layout;
+    expect(result.quadrantText.length === 4 && result.quadrantText.every((text) => text === ""),
+      "사분면 설명문구가 좌측 그래프 안에 남아 있습니다.");
+    expect(result.detailSections.some((text) => text.includes("해당 사분면 설명"))
+      && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
+      "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,
@@ -166,10 +174,6 @@ async function run() {
       expect(label.x >= result.canvas.left && label.y >= result.canvas.top
         && label.x + label.w <= result.canvas.right && label.y + label.h <= result.canvas.bottom,
       `대표 라벨 ${label.id}가 차트 화면 밖으로 벗어났습니다.`);
-      quadrantText.forEach((text) => expect(
-        !overlaps(label, text),
-        `대표 라벨 ${label.id}가 사분면 설명과 겹칩니다: ${JSON.stringify({ label, text })}`,
-      ));
       });
       for (let i = 0; i < labels.length; i += 1) {
       for (let j = i + 1; j < labels.length; j += 1) {
@@ -248,7 +252,7 @@ async function run() {
         selected: layout.points.find((point) => point.selected),
         pointIds: layout.points.map((point) => point.id),
         baseline: layout.baseline,
-        detail: document.querySelector(".detail-quadrant").textContent,
+        detail: document.querySelector(".quadrant-guide").textContent,
         transactionCount: document.querySelector(".detail-metrics").textContent,
       };
     });

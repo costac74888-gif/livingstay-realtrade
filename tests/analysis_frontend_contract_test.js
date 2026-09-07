@@ -11,9 +11,10 @@ expect(
   "자료 읽는 법이 분석 화면 맨 위에 배치되지 않았습니다.",
 );
 expect(
-  html.includes("슈퍼 에셋") && html.includes("가격 선행과열")
-    && html.includes("침체·약세") && html.includes("저평가 알짜"),
-  "사분면별 평가와 설명이 없습니다.",
+  js.includes("슈퍼 에셋") && js.includes("가격 선행과열")
+    && js.includes("침체·약세") && js.includes("저평가 알짜")
+    && js.includes("해당 사분면 설명"),
+  "우측 패널의 사분면별 평가와 설명이 없습니다.",
 );
 expect(
   css.includes(".q-top-left") && css.includes(".q-top-right")
@@ -48,11 +49,7 @@ expect(
     && css.includes(".legend-nearby") && css.includes(".legend-other"),
   "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
 );
-expect(
-  css.includes(".q-top-left{padding-left:82px")
-    && css.includes(".q-bottom-left{padding-left:82px"),
-  "왼쪽 사분면 설명이 Y축 눈금 밖의 그래프 안쪽에 배치되지 않았습니다.",
-);
+expect(!html.includes('id="quadTopLeft"') && js.includes("quadrantGuide"), "사분면 설명이 차트 안에서 우측 패널로 이동하지 않았습니다.");
 expect(
   js.includes("place(quadrants[0],0,0,xp,yp)")
     && js.includes("place(quadrants[1],xp,0,c.width-xp,yp)")
@@ -78,7 +75,7 @@ expect(
   "관심단지 또는 최근 조회 건물 바로가기가 없습니다.",
 );
 expect(
-  html.includes("가격 선행과열") && html.includes("전체 비교 건물")
+  js.includes("가격 선행과열") && html.includes("전체 비교 건물")
     && js.includes('sameRegion(i)?"#168f91"')
     && js.includes("i.is_representative?8:4")
     && js.includes("representativeLabelsPlugin"),
@@ -86,14 +83,19 @@ expect(
 );
 expect(
   js.includes("loadSeq") && js.includes("if(seq!==loadSeq)return")
-    && html.includes('id="quadTopLeft"')
-    && js.includes("관광수요 지수는 기준보다 낮고 가격변동은 높은 구간"),
+    && js.includes("quadrantGuide")
+    && js.includes("가격변동은 비교 기준보다 높지만 관광수요 지수는 낮은 구간"),
   "연속 선택의 오래된 응답 차단 또는 비교축별 사분면 설명이 없습니다.",
 );
 expect(
   js.includes("baselineX=growth?0") && js.includes('textContent=growth?"0%"')
     && js.includes("__analysisChartLayout") && js.includes("candidates.find"),
   "모바일 실렌더링 검증용 0% 기준선 또는 대표 라벨 충돌 회피 계약이 없습니다.",
+);
+expect(
+  js.includes('id="transactionsBtn"') && js.includes("#txTableWrap")
+    && js.includes("실거래 전부보기") && css.includes("repeat(4,minmax(0,1fr))"),
+  "상세·실거래·인쇄·공유 4개 버튼이 나란히 배치되지 않았습니다.",
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
