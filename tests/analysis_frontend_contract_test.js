@@ -49,7 +49,12 @@ expect(
     && css.includes(".legend-nearby") && css.includes(".legend-other"),
   "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
 );
-expect(!html.includes('id="quadTopLeft"') && js.includes("quadrantGuide"), "사분면 설명이 차트 안에서 우측 패널로 이동하지 않았습니다.");
+expect(
+  html.includes('id="quadTopLeft"') && html.includes('id="quadBottomLeft"')
+    && css.includes(".q-top-right{padding-left:52%")
+    && css.includes(".q-bottom-right{padding-left:52%"),
+  "②·③ 설명 유지 또는 ①·④의 그래프 우측 빈 공간 이동이 반영되지 않았습니다.",
+);
 expect(
   js.includes("place(quadrants[0],0,0,xp,yp)")
     && js.includes("place(quadrants[1],xp,0,c.width-xp,yp)")
@@ -83,7 +88,7 @@ expect(
 );
 expect(
   js.includes("loadSeq") && js.includes("if(seq!==loadSeq)return")
-    && js.includes("quadrantGuide")
+    && html.includes('id="quadTopLeft"') && js.includes("quadrantGuide")
     && js.includes("가격변동은 비교 기준보다 높지만 관광수요 지수는 낮은 구간"),
   "연속 선택의 오래된 응답 차단 또는 비교축별 사분면 설명이 없습니다.",
 );

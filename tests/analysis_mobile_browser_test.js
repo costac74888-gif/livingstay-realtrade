@@ -122,7 +122,11 @@ async function run() {
         wrap: { w: wrap.width, h: wrap.height },
         canvas: { left: canvas.left - wrap.left, top: canvas.top - wrap.top, right: canvas.right - wrap.left, bottom: canvas.bottom - wrap.top },
         baselineText: [document.getElementById("tourismBaseline").textContent, document.getElementById("priceBaseline").textContent],
-         quadrantText: Array.from(document.querySelectorAll(".chart-wrap .quad")).map((node) => node.textContent.trim()),
+         quadrants: Array.from(document.querySelectorAll(".chart-wrap .quad")).map((node) => {
+           const rect = node.getBoundingClientRect();
+           const label = node.querySelector("b").getBoundingClientRect();
+           return { text: node.textContent.trim(), left: rect.left - wrap.left, width: rect.width, labelLeft: label.left - wrap.left };
+         }),
          detailButtons: Array.from(document.querySelectorAll("#detailCard .detail-actions .am-btn")).map((node) => node.textContent.trim()),
          detailSections: Array.from(document.querySelectorAll("#detailCard .detail-analysis, #detailCard .quadrant-guide, #detailCard .detail-disclaimer, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
         loggedInWorkspace: !document.getElementById("workspace").classList.contains("hidden"),
@@ -132,8 +136,11 @@ async function run() {
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
     expect(result.baselineText[0] === "53" && result.baselineText[1] === "+12%", "기본 관광수요 지수 기준선이 응답 중앙값과 다릅니다.");
     const { baseline, points, labels } = result.layout;
-    expect(result.quadrantText.length === 4 && result.quadrantText.every((text) => text === ""),
-      "사분면 설명문구가 좌측 그래프 안에 남아 있습니다.");
+    expect(result.quadrants.length === 4 && result.quadrants.every((quad) => quad.text !== ""),
+      "그래프의 ①~④ 사분면 설명문구가 누락됐습니다.");
+    expect(result.quadrants[1].labelLeft > result.quadrants[1].left + result.quadrants[1].width * 0.4
+      && result.quadrants[3].labelLeft > result.quadrants[3].left + result.quadrants[3].width * 0.4,
+      "①·④ 설명문구가 그래프 우측 빈 공간으로 이동하지 않았습니다.");
     expect(result.detailSections.some((text) => text.includes("해당 사분면 설명"))
       && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");

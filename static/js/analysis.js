@@ -17,6 +17,7 @@
     var trajectoryMode=state.chartMode==="trajectory"&&state.selected,trajectory=(b.trajectory||[]),trajectoryMethod=b.trajectory_methodology||{};
     if(trajectoryMode&&String(state.selected)!==String(state.targetBuildingId))trajectory=[];
     $("chartTitle").textContent=(growth?"실제 관광수요 증감률":"관광수요 지수")+" × 가격변동 포지셔닝";
+    var quadCopy=growth?["관광수요보다 실거래 가격이 먼저 상승한 구간","관광수요와 실거래 가격이 함께 상승한 구간","관광수요와 실거래 가격이 함께 하락한 구간","관광수요는 상승했지만 가격은 상대적으로 낮은 구간"]:["관광수요 지수는 기준보다 낮고 가격변동은 높은 구간","관광수요 지수와 가격변동이 모두 기준보다 높은 구간","관광수요 지수와 가격변동이 모두 기준보다 낮은 구간","관광수요 지수는 기준보다 높고 가격변동은 낮은 구간"];$("quadTopLeft").textContent=quadCopy[0];$("quadTopRight").textContent=quadCopy[1];$("quadBottomLeft").textContent=quadCopy[2];$("quadBottomRight").textContent=quadCopy[3];
     var baselineX=growth?0:n(x.tourism_demand_index),baselineY=growth?0:symlog(x.price_change);
     $("tourismBaseline").textContent=growth?"0%":fmt(x.tourism_demand_index,1);$("priceBaseline").textContent=growth?"0%":pct(x.price_change);$("sampleBaseline").textContent=fmt((b.items||[]).length,0)+"개";
     var selectedItem=(b.items||[]).find(function(i){return String(i.building_id)===String(state.selected)}),sameRegion=function(i){return selectedItem&&i.sido===selectedItem.sido&&i.sgg===selectedItem.sgg};
