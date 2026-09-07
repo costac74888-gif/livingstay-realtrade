@@ -1,5 +1,57 @@
 import pathlib
 import unittest
+from unittest import mock
+
+import app as application
+
+
+class FakeAnalysisCursor:
+    def __init__(self, rows):
+        self.rows = rows
+        self.result = []
+
+    def execute(self, sql, params=None):
+        normalized = " ".join(sql.split())
+        if normalized.startswith("SELECT DISTINCT regexp_replace"):
+            self.result = [
+                {"sido": row["sido"], "sgg": row["sgg"], "lodging_type": row["lodging_type"]}
+                for row in self.rows
+            ]
+        elif normalized.startswith("SELECT COUNT(*) AS count FROM master_buildings"):
+            self.result = [{"count": len(self.rows)}]
+        elif normalized.startswith("SELECT COUNT(*) AS count, MIN(deal_date)"):
+            self.result = [{"count": len(self.rows), "start_date": "2025-01-01"}]
+        elif normalized == "SELECT CURRENT_DATE::text AS cache_date":
+            self.result = [{"cache_date": "2026-09-07"}]
+        elif normalized.startswith("WITH recent_tx AS MATERIALIZED"):
+            if len(params or []) != 7:
+                raise AssertionError("Regional filters must not narrow the nationwide peer cohort query")
+            self.result = self.rows
+        else:
+            raise AssertionError(f"Unexpected SQL in analysis integration test: {normalized}")
+
+    def fetchall(self):
+        return self.result
+
+    def fetchone(self):
+        return self.result[0]
+
+    def close(self):
+        pass
+
+
+class FakeAnalysisConnection:
+    def __init__(self, rows):
+        self.cursor_instance = FakeAnalysisCursor(rows)
+
+    def cursor(self):
+        return self.cursor_instance
+
+    def commit(self):
+        pass
+
+    def close(self):
+        pass
 
 
 class AnalysisAssetsContractTests(unittest.TestCase):
@@ -111,6 +163,79 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn('"transactions": [{', self.source)
         self.assertIn("if all(value in tourism for value in current_months + previous_months)", self.source)
         self.assertIn('"tourism_value": tourism_value', self.source)
+
+
+class AnalysisAssetsRegionIntegrationTests(unittest.TestCase):
+    @staticmethod
+    def _row(building_id, sido, sgg, price):
+        return {
+            "id": building_id,
+            "building_name": f"건물 {building_id}",
+            "road_address": f"{sido} {sgg} 테스트로 {building_id}",
+            "jibun_address": None,
+            "sgg_cd": str(building_id).zfill(5),
+            "umd_nm": "테스트동",
+            "jibun": str(building_id),
+            "lodging_type": "생활숙박시설",
+            "lat": 37.0,
+            "lng": 127.0,
+            "current_median": price,
+            "previous_median": price,
+            "current_count": 3,
+            "previous_count": 1,
+            "historical_peak": price,
+            "latest_price": price * 10,
+            "price_per_sqm": price,
+            "last_deal_date": "2026-08-01",
+            "sido": sido,
+            "sgg": sgg,
+        }
+
+    def setUp(self):
+        rows = [self._row(1, "경기", "가평군", 100)]
+        rows.extend(self._row(i, "경기", "가평군", 110) for i in range(2, 6))
+        rows.extend(self._row(i, "경기", "수원시", 120) for i in range(6, 12))
+        rows.append(self._row(12, "강원", "양양군", 200))
+        rows.extend(self._row(i, "충북", "제천시", 300) for i in range(13, 24))
+        self.rows = rows
+        self.client = application.app.test_client()
+        with self.client.session_transaction() as session:
+            session["user_id"] = 1
+
+    def _get_items(self, query=""):
+        connection = FakeAnalysisConnection(self.rows)
+        patches = (
+            mock.patch.object(application, "get_conn", return_value=connection),
+            mock.patch.object(application, "_analysis_source_version", return_value="test-version"),
+            mock.patch.object(application, "_analysis_cached_payload", return_value=None),
+            mock.patch.object(application, "_analysis_store_payload"),
+            mock.patch.object(application, "_analysis_tourism_demand_by_sgg", return_value={}),
+        )
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            response = self.client.get(f"/api/analysis/assets?{query}")
+        self.assertEqual(response.status_code, 200, response.get_json())
+        return response.get_json()["items"]
+
+    def test_region_filter_only_limits_display_and_preserves_fallback_comparisons(self):
+        unfiltered = {item["building_id"]: item for item in self._get_items()}
+
+        filtered_sgg = self._get_items("sido=경기&sgg=가평군")
+        self.assertTrue(filtered_sgg)
+        self.assertEqual({item["sido"] for item in filtered_sgg}, {"경기"})
+        self.assertEqual({item["sgg"] for item in filtered_sgg}, {"가평군"})
+        target = next(item for item in filtered_sgg if item["building_id"] == 1)
+        self.assertEqual(target["peer_scope"], "시도·동일유형")
+        self.assertEqual(target["peer_building_count"], 10)
+        for field in ("peer_scope", "peer_building_count", "peer_price_gap"):
+            self.assertEqual(target[field], unfiltered[1][field])
+
+        filtered_nationwide = self._get_items("sido=강원&sgg=양양군")
+        self.assertEqual([item["building_id"] for item in filtered_nationwide], [12])
+        sparse_target = filtered_nationwide[0]
+        self.assertEqual(sparse_target["peer_scope"], "전국·동일유형")
+        self.assertEqual(sparse_target["peer_building_count"], 22)
+        for field in ("peer_scope", "peer_building_count", "peer_price_gap"):
+            self.assertEqual(sparse_target[field], unfiltered[12][field])
 
 
 if __name__ == "__main__":
