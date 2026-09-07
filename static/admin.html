@@ -1676,6 +1676,23 @@
             </div>
             <div id="annualTourismRosterSummary" class="annual-roster-summary" role="status">파일을 선택하고 적용 버튼을 누르면 형식·연도·건물 연결을 검사한 뒤 원장을 저장하고 홈페이지에 자동 적용합니다. 충돌·미연결은 건물에 연결하지 않습니다.</div>
           </section>
+          <section class="annual-roster ${ADMIN_IS_PRODUCTION_ENV ? "" : "is-disabled"}" aria-labelledby="hotelOperationArchiveTitle">
+            <h4 id="hotelOperationArchiveTitle">연간 호텔업 운영현황 ZIP · 운영분석 비교자료</h4>
+            <p>지역별·성급별 XLSX가 들어 있는 ZIP을 그대로 올리세요. 서버가 자동으로 압축을 풀고 16개 시도, 시군구 전체행, ADR·OCC·RevPAR를 검사한 뒤 최신 연도를 운영분석에 적용합니다.</p>
+            <div id="hotelOperationCurrent" class="annual-roster-summary" role="status"><b>현재 운영분석 적용 현황</b><div>불러오는 중…</div></div>
+            <div class="annual-roster-fields" aria-label="호텔업 운영현황 자료 정보">
+              <div class="annual-roster-field">
+                <label for="hotelOperationReferenceYear">자료 기준연도</label>
+                <input id="hotelOperationReferenceYear" type="number" min="2000" max="2100" value="2024" required>
+                <small>ZIP 내부 XLSX 파일명의 연도와 같아야 합니다</small>
+              </div>
+            </div>
+            <div class="annual-roster-actions">
+              <input id="hotelOperationArchiveFile" type="file" accept=".zip,application/zip" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>
+              <button type="button" class="admin-btn" id="hotelOperationArchiveApply" ${ADMIN_IS_PRODUCTION_ENV ? "" : "disabled"}>${ADMIN_IS_PRODUCTION_ENV ? "ZIP 검사·자동 해제·서비스 적용" : "운영 관리자 전용"}</button>
+            </div>
+            <div id="hotelOperationArchiveSummary" class="annual-roster-summary" role="status">ZIP 파일을 선택하면 내부 XLSX를 자동으로 풀어 검사합니다. 기존 연도 자료는 보존하고, 가장 최신 기준연도를 서비스에서 사용합니다.</div>
+          </section>
         </section>
         <section class="stats-card stats-card-wide" id="featureTipsCard" style="margin-top:14px;">
           <h3 class="stats-card-title">주간 이메일 기능 소개</h3>
@@ -1753,6 +1770,7 @@
         } catch (e) { result.textContent = `적용 실패: ${e.message}`; }
       };
       setupAnnualTourismRoster();
+      setupHotelOperationArchive();
     }
 
     function annualRosterCount(d, keys) {
@@ -1863,6 +1881,69 @@
         } catch (error) {
           summary.textContent = `저장·홈페이지 적용 실패: ${error.message}`;
         } finally { preview.disabled = false; apply.disabled = true; }
+      };
+    }
+
+    function renderHotelOperationCurrent(d) {
+      if (!d.applied || !d.current) {
+        return `<b>현재 운영분석 적용 현황</b><div style="margin-top:6px;">${escapeText(d.message || "DB 저장 자료 없이 기본 승인 원본으로 서비스 중입니다.")}</div>`;
+      }
+      const current = d.current;
+      const rows = [
+        ["적용 자료 기준연도", current.reference_year || "-"],
+        ["시군구 전체 비교행", `${Number(current.region_rows || 0).toLocaleString("ko-KR")}개`],
+        ["전체 운영지표 행", `${Number(current.total_rows || 0).toLocaleString("ko-KR")}개`],
+        ["원본 파일", current.source_file || "-"],
+        ["적용 시각", current.imported_at || "-"],
+      ];
+      return `<b>현재 운영분석 적용 현황</b><table><tbody>${rows.map(([label, value]) => `<tr><th>${escapeText(label)}</th><td>${escapeText(value)}</td></tr>`).join("")}</tbody></table>`;
+    }
+
+    async function loadHotelOperationCurrent() {
+      const current = document.getElementById("hotelOperationCurrent");
+      if (!current) return;
+      try {
+        const response = await fetch("/api/admin/hotel-operation/status");
+        if (response.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await response.json().catch(() => ({}));
+        if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
+        current.innerHTML = renderHotelOperationCurrent(d);
+      } catch (error) {
+        current.textContent = `적용 현황을 불러오지 못했습니다: ${error.message}`;
+      }
+    }
+
+    function setupHotelOperationArchive() {
+      const file = document.getElementById("hotelOperationArchiveFile");
+      const year = document.getElementById("hotelOperationReferenceYear");
+      const apply = document.getElementById("hotelOperationArchiveApply");
+      const summary = document.getElementById("hotelOperationArchiveSummary");
+      if (!file || !year || !apply || !summary) return;
+      loadHotelOperationCurrent();
+      file.onchange = () => {
+        const match = (file.files[0]?.name || "").match(/(20\d{2})/);
+        if (match) year.value = match[1];
+      };
+      apply.onclick = async () => {
+        if (!file.files.length) { summary.textContent = "호텔업 운영현황 ZIP 파일을 선택하세요."; return; }
+        if (!year.reportValidity()) { summary.textContent = "자료 기준연도를 입력하세요."; return; }
+        const body = new FormData();
+        body.append("file", file.files[0]);
+        body.append("reference_year", year.value);
+        apply.disabled = true;
+        summary.textContent = "ZIP을 자동 해제하고 16개 시도 운영지표를 검사하는 중…";
+        try {
+          const response = await fetch("/api/admin/hotel-operation/apply", {method: "POST", body});
+          if (response.status === 401) { window.location.href = "/admin/login"; return; }
+          const d = await response.json().catch(() => ({}));
+          if (!response.ok || !d.ok) throw new Error(d.message || `response status ${response.status}`);
+          summary.innerHTML = `<b>${escapeText(d.message)}</b><div style="margin-top:6px;">기준연도 ${escapeText(d.reference_year)}년 · 시군구 비교행 ${Number(d.region_rows || 0).toLocaleString("ko-KR")}개 · 전체 운영지표 ${Number(d.total_rows || d.uploaded_rows || 0).toLocaleString("ko-KR")}개</div>`;
+          loadHotelOperationCurrent();
+        } catch (error) {
+          summary.textContent = `적용 실패: ${error.message}`;
+        } finally {
+          apply.disabled = !ADMIN_IS_PRODUCTION_ENV;
+        }
       };
     }
 

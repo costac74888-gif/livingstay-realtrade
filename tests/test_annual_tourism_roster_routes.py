@@ -118,6 +118,41 @@ class AnnualTourismRosterRouteTests(unittest.TestCase):
         self.assertEqual(public_tourism["sub_rows"][0]["building_count"], 2)
         self.assertEqual(public_tourism["sub_rows"][1]["type"], "수상관광호텔업")
 
+    def test_hotel_operation_zip_apply_uses_production_guard(self):
+        conn = MagicMock()
+        result = {
+            "inserted": True, "reference_year": 2024,
+            "region_rows": 149, "total_rows": 633,
+        }
+        with patch.object(application, "get_conn", return_value=conn), \
+             patch.object(application.annual_tourism_roster,
+                          "assert_production_connection") as guard, \
+             patch.object(application.import_hotel_operation,
+                          "import_uploaded_operation_zip",
+                          return_value=result) as importer:
+            response = self.client.post("/api/admin/hotel-operation/apply", data={
+                "file": (io.BytesIO(b"PK\x03\x04"), "2024_운영현황.zip"),
+                "reference_year": "2024",
+            })
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(149, response.get_json()["region_rows"])
+        guard.assert_called_once_with(conn)
+        self.assertEqual("2024", importer.call_args.args[1])
+
+    def test_hotel_operation_status_reports_current_archive(self):
+        conn = MagicMock()
+        current = {
+            "reference_year": 2024, "source_file": "2024_운영현황.zip",
+            "region_rows": 149, "total_rows": 633,
+        }
+        with patch.object(application, "get_conn", return_value=conn), \
+             patch.object(application.import_hotel_operation,
+                          "latest_operation_status", return_value=current):
+            response = self.client.get("/api/admin/hotel-operation/status")
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(response.get_json()["applied"])
+        self.assertEqual(current, response.get_json()["current"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -97,6 +97,7 @@ import lodging_staging
 import lodging_promotion
 import tourism_datalab_admin
 import annual_tourism_roster
+import import_hotel_operation
 import import_tourism_stats as tourism_stats_importer
 from utils.photo_validate import validate_photo
 from lodging_matching import (
@@ -33467,6 +33468,59 @@ def annual_tourism_roster_apply():
     except Exception:
         app.logger.exception("annual tourism roster apply failed")
         return jsonify({"ok": False, "message": "승인 명부 적용에 실패했습니다. 원본은 반영되지 않았습니다."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/hotel-operation/status")
+@require_admin
+@limiter.limit("20 per minute")
+def hotel_operation_status():
+    conn = None
+    try:
+        conn = get_conn()
+        current = import_hotel_operation.latest_operation_status(conn)
+        return jsonify({
+            "ok": True,
+            "applied": bool(current),
+            "current": current,
+            "message": (
+                "현재 서비스에 적용된 호텔업 운영현황입니다."
+                if current else
+                "운영 DB에는 아직 저장된 운영현황이 없습니다. 기본 승인 원본으로 서비스 중입니다."
+            ),
+        })
+    except Exception:
+        app.logger.exception("hotel operation status lookup failed")
+        return jsonify({"ok": False, "message": "운영현황 적용 상태를 불러오지 못했습니다."}), 500
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.route("/api/admin/hotel-operation/apply", methods=["POST"])
+@require_admin
+@limiter.limit("2 per minute")
+def hotel_operation_apply():
+    conn = None
+    try:
+        conn = get_conn()
+        annual_tourism_roster.assert_production_connection(conn)
+        result = import_hotel_operation.import_uploaded_operation_zip(
+            request.files.get("file"),
+            request.form.get("reference_year"),
+            conn,
+        )
+        return jsonify({"ok": True, **result})
+    except (ValueError, RuntimeError) as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.exception("hotel operation archive apply failed")
+        return jsonify({
+            "ok": False,
+            "message": "운영현황 ZIP 적용에 실패했습니다. 기존 자료는 그대로 유지됩니다.",
+        }), 500
     finally:
         if conn:
             conn.close()

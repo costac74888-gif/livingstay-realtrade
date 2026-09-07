@@ -7,6 +7,7 @@ from openpyxl import Workbook
 
 from import_hotel_operation import (
     EXPECTED_SIDOS,
+    _decoded_member_name,
     parse_operation_zip,
     validate_operation_records,
 )
@@ -57,6 +58,26 @@ class HotelOperationImportTests(unittest.TestCase):
         fake.append(("root/가짜도/지역 원데이터.xlsx", 2, "가짜", "가짜시", "전체"))
         with self.assertRaisesRegex(ValueError, "누락 \\['서울'\\].*예상 외 \\['가짜'\\]"):
             validate_operation_records(fake)
+
+    def test_legacy_korean_zip_member_name_is_restored(self):
+        original = "경기도/2024년 호텔업 운영현황 경기지역 원데이터.xlsx"
+        mojibake = original.encode("euc-kr").decode("cp437")
+        self.assertEqual(original, _decoded_member_name(mojibake))
+
+    def test_uploaded_2024_archive_is_automatically_unpacked(self):
+        path = (
+            "attached_assets/"
+            "2024_호텔업_운영현황(지역별,성급별_데이터)_1788789695472.zip"
+        )
+        if not os.path.isfile(path):
+            self.skipTest("첨부 운영현황 ZIP이 없습니다.")
+        _, rows = parse_operation_zip(path)
+        validate_operation_records(rows)
+        self.assertEqual(EXPECTED_SIDOS, {row[2] for row in rows})
+        self.assertGreaterEqual(
+            len([row for row in rows if row[3] and row[4] == "전체"]),
+            100,
+        )
 
 
 if __name__ == "__main__":
