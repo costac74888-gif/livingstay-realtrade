@@ -55,6 +55,9 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
       item(204, "관광상승저평가대표자산", "제주특별자치도", "제주시", 23, -22, "저평가 알짜", true),
     ],
   };
+  for (let id = 401; id <= 408; id += 1) {
+    payload.items.push(item(id, `추가 비교 자산 ${id}`, "경기도", "가평군", id - 400, (id - 404) * 2, "비교 자산"));
+  }
   if (incompleteSelected) {
     payload.items[0].tourism_growth = null;
     payload.items[0].price_change = 0.8;
@@ -435,6 +438,40 @@ async function run() {
       await page.waitForFunction(() =>
         document.getElementById("buildingSelectionStatus").textContent.includes("선택 건물 · 선택 테스트 자산"));
     }
+    await page.click("#propertyTab");
+    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 10);
+    expect(await page.locator("#tableMoreBtn").isVisible(),
+      "건물 비교 목록의 10개 이후 더보기 버튼이 보이지 않습니다.");
+    await page.click("#tableMoreBtn");
+    expect(await page.locator("#assetRows tr").count() > 10,
+      "건물 더보기 후 나머지 건물이 표시되지 않았습니다.");
+
+    await page.click("#buildingSelectionClear");
+    await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id"));
+    expect((await page.textContent("#buildingSelectionStatus")).includes("검색 결과에서 건물을 선택"),
+      "건물명 × 버튼으로 공통 선택 건물이 지워지지 않았습니다.");
+    await page.click("#rentalTab");
+    await page.waitForFunction(() =>
+      document.getElementById("rentalBuildingName").textContent === "분석할 건물을 선택해 주세요");
+    expect(await page.inputValue("#rentalMarketPrice") === "",
+      "공통 건물 삭제 후 임대분석의 자동 실거래가가 남아 있습니다.");
+
+    await page.fill("#rentalMonthlyRent", "77");
+    await page.click("#operationTab");
+    await page.fill("#operationOcc", "71");
+    await page.fill("#buildingSearch", "선택 테스트");
+    await page.waitForSelector("#searchResults .search-result");
+    await page.click("#searchResults .search-result");
+    await page.click("#buildingSelectionApply");
+    await page.click("#analysisResetAll");
+    await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id"));
+    expect(await page.inputValue("#buildingSearch") === ""
+      && await page.inputValue("#operationOcc") === "",
+      "전체 초기화가 검색어·선택 건물·숙박운영 입력을 지우지 못했습니다.");
+    await page.click("#rentalTab");
+    expect(await page.inputValue("#rentalMonthlyRent") === ""
+      && await page.inputValue("#rentalVacancyRate") === "5",
+      "전체 초기화가 임대수익 입력을 기본값으로 되돌리지 못했습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {

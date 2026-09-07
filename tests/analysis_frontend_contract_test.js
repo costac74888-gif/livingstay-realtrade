@@ -158,6 +158,7 @@ expect(
     && html.includes('id="operationLodging"') && html.includes('id="operationRoomCountInput"')
     && html.includes('id="operationBusinessName"')
     && html.includes('id="buildingSelectionApply"') && html.includes('id="buildingSelectionStatus"')
+    && html.includes('id="buildingSelectionClear"') && html.includes('id="analysisResetAll"')
     && js.includes("applyBuildingSelection") && js.includes("pendingBuilding")
     && html.includes('id="operationSelectedPulse"')
     && operationJs.includes("regionalBaseline()") && operationJs.includes("officialRooms")
@@ -166,6 +167,14 @@ expect(
     && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
+);
+expect(
+  html.includes('id="tableMoreBtn"')
+    && js.includes("tableLimit:10")
+    && js.includes("list.slice(0,state.tableLimit)")
+    && html.indexOf('id="methodology"') < html.indexOf('id="summaryGrid"')
+    && !html.includes('id="rentalBuildingAddress"'),
+  "건물 목록 10개·더보기, 하단 산출 숫자 또는 임대분석 주소 제거가 반영되지 않았습니다.",
 );
 expect(
   html.includes("<h1>홈앤스테이 숙박자산 분석</h1>")

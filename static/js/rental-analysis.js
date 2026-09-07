@@ -116,9 +116,12 @@
     var seq = ++buildingSequence;
     if (!id) {
       loadedBuildingId = "";
+      marketPriceManuallyEdited = false;
       $("rentalBuildingName").textContent = "분석할 건물을 선택해 주세요";
-      $("rentalBuildingAddress").textContent = "생활숙박시설·장기임대 호실의 보증금과 월세 수익을 계산합니다.";
+      $("rentalMarketPrice").value = "";
+      $("rentalMarketPrice").placeholder = "최근 실거래 조회 중";
       $("rentalMarketPriceHint").textContent = "건물을 선택하면 최근 호실 실거래를 자동으로 불러옵니다.";
+      calculate();
       return;
     }
     if (loadedBuildingId !== String(id)) {
@@ -139,7 +142,6 @@
       if (seq !== buildingSequence) return;
       if (data) {
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
-        $("rentalBuildingAddress").textContent = data.road_address || data.jibun_address || "주소 미확인";
         if (window.setAnalysisBuildingStatus) {
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
         }
@@ -197,6 +199,9 @@
     $("rentalLoanYears").value = "20";
     $("rentalLoanMethod").value = "interest";
     $("rentalResults").innerHTML = '<article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>';
+  });
+  window.addEventListener("livingstay:analysis-reset", function () {
+    $("rentalReset").click();
   });
   window.loadRentalAnalysis = loadBuilding;
   loadBuilding();

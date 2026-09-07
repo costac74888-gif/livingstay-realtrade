@@ -315,6 +315,16 @@
   $("analysisTabs").addEventListener("click", function () {
     setTimeout(function () { setModeClass(); if ($("operationTab").getAttribute("aria-selected") === "true") load(); }, 0);
   });
+  window.addEventListener("livingstay:analysis-reset", function () {
+    $("operationOcc").value = "";
+    $("operationAdr").value = "";
+    $("operationBusinessName").value = "";
+    $("operationRoomCountInput").value = "";
+    $("operationFiles").value = "";
+    $("operationFileStatus").textContent = "파일을 끌어놓거나 눌러서 선택";
+    load();
+  });
+  window.addEventListener("livingstay:analysis-building-clear", load);
   window.addEventListener("popstate", load);
   load();
 }());
