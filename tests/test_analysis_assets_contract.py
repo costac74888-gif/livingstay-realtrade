@@ -3,7 +3,7 @@ import unittest
 
 
 class AnalysisAssetsContractTests(unittest.TestCase):
-    """Guard the public analysis endpoint's conservative data contract."""
+    """Guard the authenticated analysis endpoint's conservative data contract."""
 
     @classmethod
     def setUpClass(cls):
@@ -16,6 +16,24 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("_ANALYSIS_PERIODS = (6, 12, 24)", self.source)
         self.assertIn("period_months는 6, 12, 24 중 하나여야 합니다.", self.endpoint)
         self.assertIn('"period_options"', self.endpoint)
+
+    def test_analysis_requires_login_and_reports_total_transaction_population(self):
+        self.assertIn('"requires_login": True', self.endpoint)
+        self.assertIn('"agent_id", "operator_id", "loan_consultant_id"', self.endpoint)
+        self.assertIn("total_transaction_count", self.endpoint)
+        self.assertIn('"analysis_sample_transaction_count"', self.endpoint)
+        self.assertIn("cohort.id = %s", self.endpoint)
+        self.assertIn("building_id가 올바르지 않습니다.", self.endpoint)
+        self.assertNotIn('where.append("mb.id = %s")', self.endpoint)
+
+    def test_building_search_is_authenticated_and_name_first(self):
+        search_start = self.source.index('@app.route("/api/analysis/building-search")')
+        search_end = self.source.index('@app.route("/api/analysis/assets")', search_start)
+        search = self.source[search_start:search_end]
+        self.assertIn('"requires_login": True', search)
+        self.assertIn("building_name", search)
+        self.assertIn("road_address", search)
+        self.assertIn("WHEN trim(COALESCE(building_name", search)
 
     def test_price_linkage_is_exact_and_unit_only(self):
         self.assertIn("NOT EXISTS (", self.endpoint)
@@ -46,6 +64,15 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn('"tourism_growth": demand.get("growth")', self.endpoint)
         self.assertIn('"tourism_comparison_complete"', self.endpoint)
 
+    def test_quadrants_use_the_exact_plotted_comparison_population(self):
+        self.assertIn("comparable_items = [", self.endpoint)
+        self.assertIn(
+            'item[tourism_key] is not None and item["price_change"] is not None',
+            self.endpoint,
+        )
+        self.assertIn("tourism_baseline = median(valid_tourism)", self.endpoint)
+        self.assertIn("price_baseline = median(valid_price)", self.endpoint)
+
     def test_public_population_excludes_mixed_use_and_is_capped(self):
         self.assertIn("lodging_type IS DISTINCT FROM 'mixed_use_excluded'", self.endpoint)
         self.assertIn("LIMIT %s", self.endpoint)
@@ -60,7 +87,8 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("_analysis_source_version(", self.source)
         self.assertIn("_analysis_store_payload(", self.source)
         self.assertIn("SELECT CURRENT_DATE::text AS cache_date", self.endpoint)
-        self.assertIn("[transaction_cache_date, period_months", self.endpoint)
+        self.assertIn("transaction_cache_date, period_months, sido, sgg", self.endpoint)
+        self.assertIn('"comparison-cohort-v2"', self.endpoint)
 
 
 if __name__ == "__main__":

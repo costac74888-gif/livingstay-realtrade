@@ -30587,12 +30587,12 @@ def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_
     if tourism_demand is None or price_change is None:
         return "비교 표본 부족"
     if tourism_demand >= tourism_baseline and price_change >= price_baseline:
-        return "수요·가격 동반 강세"
+        return "슈퍼 에셋"
     if tourism_demand < tourism_baseline and price_change >= price_baseline:
-        return "가격 선행"
+        return "가격 선행 지역"
     if tourism_demand >= tourism_baseline and price_change < price_baseline:
-        return "관광수요 대비 가격 낮음"
-    return "수요·가격 관망"
+        return "저평가 알짜"
+    return "침체·약세"
 
 
 def _analysis_source_version(cur, *source_names):
@@ -30761,10 +30761,72 @@ def _analysis_tourism_demand_by_sgg(cur, period_months):
     return result
 
 
+@app.route("/api/analysis/building-search")
+@limiter.limit("60 per minute")
+def analysis_building_search():
+    """로그인 사용자가 분석할 건물을 이름 우선으로 찾는다."""
+    if not any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    )):
+        return jsonify({
+            "ok": False,
+            "requires_login": True,
+            "message": "로그인이 필요합니다.",
+        }), 401
+    query = request.args.get("q", "").strip()
+    if len(query) < 2:
+        return jsonify({"ok": True, "items": []})
+    if len(query) > 80:
+        return jsonify({"ok": False, "message": "검색어가 너무 깁니다."}), 400
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        pattern = f"%{query}%"
+        prefix = f"{query}%"
+        cur.execute("""
+            SELECT id AS building_id,
+                   COALESCE(NULLIF(trim(building_name), ''), '건물명 미확인') AS name,
+                   COALESCE(NULLIF(trim(road_address), ''),
+                            NULLIF(trim(jibun_address), ''), '') AS address,
+                   lodging_type
+            FROM master_buildings
+            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+              AND (
+                COALESCE(building_name, '') ILIKE %s
+                OR COALESCE(road_address, '') ILIKE %s
+                OR COALESCE(jibun_address, '') ILIKE %s
+              )
+            ORDER BY
+              CASE
+                WHEN trim(COALESCE(building_name, '')) = %s THEN 0
+                WHEN COALESCE(building_name, '') ILIKE %s THEN 1
+                WHEN COALESCE(building_name, '') ILIKE %s THEN 2
+                ELSE 3
+              END,
+              building_name NULLS LAST, id
+            LIMIT 20
+        """, [pattern, pattern, pattern, query, prefix, pattern])
+        return jsonify({"ok": True, "items": [dict(row) for row in cur.fetchall()]})
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
 @app.route("/api/analysis/assets")
 @limiter.limit("30 per minute")
 def analysis_assets():
-    """Public, conservative building-level tourism × transaction comparison."""
+    """Authenticated, conservative building-level tourism × transaction comparison."""
+    if not any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    )):
+        return jsonify({
+            "ok": False,
+            "requires_login": True,
+            "message": "로그인이 필요합니다.",
+        }), 401
     raw_period = request.args.get("period_months", "").strip()
     if raw_period:
         try:
@@ -30779,6 +30841,15 @@ def analysis_assets():
     sido = sido_core(request.args.get("sido", "").strip())
     sgg = "".join(request.args.get("sgg", "").strip().split())
     lodging_type = request.args.get("lodging_type", "").strip()
+    raw_building_id = request.args.get("building_id", "").strip()
+    building_id = None
+    if raw_building_id:
+        try:
+            building_id = int(raw_building_id)
+        except ValueError:
+            return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+        if building_id <= 0:
+            return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
     tourism_axis = request.args.get("tourism_axis", "index").strip()
     if tourism_axis not in {"index", "growth"}:
         return jsonify({"ok": False, "message": "tourism_axis는 index 또는 growth여야 합니다."}), 400
@@ -30823,13 +30894,26 @@ def analysis_assets():
             WHERE {where_sql}
         """, params)
         registered_buildings = int(cur.fetchone()["count"] or 0)
+        cur.execute("""
+            SELECT COUNT(*) AS count, MIN(deal_date) AS start_date
+            FROM transactions
+            WHERE transaction_scope = 'unit'
+              AND match_confidence = 'exact'
+              AND price > 0 AND area > 0
+        """)
+        transaction_population = cur.fetchone()
+        total_transaction_count = int(transaction_population["count"] or 0)
+        transaction_start_date = transaction_population["start_date"]
 
         # 거래 기간은 PostgreSQL CURRENT_DATE 기준의 rolling window다. 원장
         # 변경이 없어도 자정에 경계 거래가 달라질 수 있으므로 날짜도 키에 넣는다.
         cur.execute("SELECT CURRENT_DATE::text AS cache_date")
         transaction_cache_date = cur.fetchone()["cache_date"]
         transaction_cache_key = hashlib.sha256(json.dumps(
-            [transaction_cache_date, period_months, sido, sgg, lodging_type],
+            [
+                transaction_cache_date, period_months, sido, sgg,
+                lodging_type, building_id, "comparison-cohort-v2",
+            ],
             ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")).hexdigest()
         transaction_source_version = _analysis_source_version(
@@ -30889,17 +30973,25 @@ def analysis_assets():
                     (ARRAY_AGG(deal_date ORDER BY deal_date DESC, transaction_id DESC))[1] AS last_deal_date
                 FROM matched GROUP BY id
             )
-            SELECT DISTINCT ON (m.id)
-                   m.id, m.building_name, m.road_address, m.jibun_address,
-                   m.sgg_cd, m.umd_nm, m.jibun, m.lodging_type, m.lat, m.lng,
-                   m.sido, m.sgg, a.*
-            FROM aggregates a JOIN matched m USING (id)
-            WHERE a.current_count > 0
-            ORDER BY m.id, a.current_count DESC
+            SELECT *
+            FROM (
+                SELECT DISTINCT ON (m.id)
+                       m.id, m.building_name, m.road_address, m.jibun_address,
+                       m.sgg_cd, m.umd_nm, m.jibun, m.lodging_type, m.lat, m.lng,
+                       m.sido, m.sgg, a.current_median, a.previous_median,
+                       a.current_count, a.previous_count, a.historical_peak,
+                       a.latest_price, a.price_per_sqm, a.last_deal_date
+                FROM aggregates a JOIN matched m USING (id)
+                WHERE a.current_count > 0
+                ORDER BY m.id, a.current_count DESC
+            ) cohort
+            ORDER BY CASE WHEN cohort.id = %s THEN 0 ELSE 1 END,
+                     cohort.current_count DESC, cohort.id
             LIMIT %s
             """, [
                 period_months, *params,
                 period_months, period_months, period_months, period_months,
+                building_id,
                 _ANALYSIS_MAX_ITEMS,
             ])
             rows = [dict(row) for row in cur.fetchall()]
@@ -30944,9 +31036,13 @@ def analysis_assets():
                                  if direct else "동기간 가격 표본 부족"),
             })
 
-        valid_price = [item["price_change"] for item in items if item["price_change"] is not None]
         tourism_key = "tourism_growth" if tourism_axis == "growth" else "tourism_demand_index"
-        valid_tourism = [item[tourism_key] for item in items if item[tourism_key] is not None]
+        comparable_items = [
+            item for item in items
+            if item[tourism_key] is not None and item["price_change"] is not None
+        ]
+        valid_price = [item["price_change"] for item in comparable_items]
+        valid_tourism = [item[tourism_key] for item in comparable_items]
         def median(values):
             return sorted(values)[len(values) // 2] if len(values) % 2 else (
                 sorted(values)[len(values) // 2 - 1] + sorted(values)[len(values) // 2]) / 2 if values else None
@@ -30981,7 +31077,11 @@ def analysis_assets():
             },
             "summary": {
                 "registered_buildings": registered_buildings,
-                "transaction_count": sum(item["transaction_count"] for item in items),
+                "transaction_count": total_transaction_count,
+                "transaction_start_date": transaction_start_date,
+                "analysis_sample_transaction_count": sum(
+                    item["transaction_count"] for item in items
+                ),
                 "analyzed_buildings": sum(1 for item in items if item["price_change"] is not None),
                 "direct_sample_buildings": sum(1 for item in items if item["sample_level"] == "direct"),
             },
