@@ -3,6 +3,7 @@ const fs = require("fs");
 const html = fs.readFileSync("static/analysis.html", "utf8");
 const js = fs.readFileSync("static/js/analysis.js", "utf8");
 const operationJs = fs.readFileSync("static/js/operation-analysis.js", "utf8");
+const rentalJs = fs.readFileSync("static/js/rental-analysis.js", "utf8");
 const css = fs.readFileSync("static/css/analysis.css", "utf8");
 const mobileCss = fs.readFileSync("static/css/analysis-mobile.css", "utf8");
 const chartCss = fs.readFileSync("static/css/analysis-chart-fixes.css", "utf8");
@@ -187,6 +188,8 @@ expect(
 );
 expect(
   html.includes('id="rentalPurchasePrice"')
+    && html.includes('id="rentalUnitArea"')
+    && html.includes('id="rentalUnitAreaOptions"')
     && html.includes('id="rentalDeposit"')
     && html.includes('id="rentalMonthlyRent"')
     && html.includes('id="rentalMarketPriceHint"')
@@ -199,6 +202,14 @@ expect(
     && html.includes('id="rentalLoanMethod"')
     && html.includes('id="rentalResults"'),
   "임대수익분석의 매입·임대·보유세·대출 입력란 또는 결과 영역이 없습니다.",
+);
+expect(
+  rentalJs.includes("/api/analysis/rental-market-price")
+    && rentalJs.includes("/area-types")
+    && rentalJs.includes("표본 ")
+    && rentalJs.includes("사용자 수정값 사용 중")
+    && rentalJs.includes("result.match_type"),
+  "선택 면적의 최근 실거래 중앙값·표본 근거 또는 자동값/수정값 구분이 없습니다.",
 );
 expect(
   html.includes("별도 승인 없이 바로 분석")

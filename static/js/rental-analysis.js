@@ -4,9 +4,11 @@
   var buildingSequence = 0;
   var loadedBuildingId = "";
   var marketPriceManuallyEdited = false;
+  var automaticMarketPrice = null;
+  var areaLookupTimer = null;
   var taxManuallyEdited = false;
   var ids = [
-    "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
+    "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
     "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
     "rentalManagementCost", "rentalOtherCost", "rentalLoanAmount",
     "rentalLoanRate", "rentalLoanYears",
@@ -111,34 +113,97 @@
     $("rentalBrokerFee").value = purchasePrice
       ? String(Math.round(purchasePrice * 0.009 * 10) / 10) : "";
   }
+  function setMarketStatus(message, mode) {
+    $("rentalMarketPriceHint").textContent = message;
+    $("rentalMarketPrice").dataset.valueSource = mode || "";
+  }
+  async function loadMarketPrice(id, seq) {
+    var area = n("rentalUnitArea");
+    if (!id || !area) {
+      automaticMarketPrice = null;
+      if (!marketPriceManuallyEdited) $("rentalMarketPrice").value = "";
+      $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
+      setMarketStatus("호실 전용면적을 선택하거나 입력하면 최근 실거래 중앙값을 조회합니다.", "");
+      calculate();
+      return;
+    }
+    $("rentalMarketPrice").placeholder = "최근 실거래 조회 중";
+    setMarketStatus("선택 면적의 최근 36개월 매매 실거래를 확인하고 있습니다.", "loading");
+    try {
+      var response = await fetch("/api/analysis/rental-market-price?building_id="
+        + encodeURIComponent(id) + "&area_sqm=" + encodeURIComponent(area), { credentials: "same-origin" });
+      var result = await response.json();
+      if (seq !== buildingSequence || String(area) !== String(n("rentalUnitArea"))) return;
+      if (!response.ok || !result.ok) {
+        automaticMarketPrice = null;
+        if (!marketPriceManuallyEdited) $("rentalMarketPrice").value = "";
+        $("rentalMarketPrice").placeholder = "직접 입력";
+        setMarketStatus(result.reason || "실거래 자료가 부족해 자동 기준가를 계산할 수 없습니다.", "unavailable");
+        calculate();
+        return;
+      }
+      automaticMarketPrice = Number(result.median_price);
+      if (!marketPriceManuallyEdited) {
+        $("rentalMarketPrice").value = String(automaticMarketPrice);
+        calculate();
+      }
+      var range = result.area_range || {};
+      var details = [
+        result.match_type === "exact" ? "동일 면적" : "유사 면적",
+        "중앙값 " + money(automaticMarketPrice),
+        String(result.latest_deal_date || "").replace(/-/g, ".") + " 기준",
+        "표본 " + result.sample_count + "건",
+      ];
+      if (result.match_type === "similar" && Number(range.min) > 0 && Number(range.max) > 0) {
+        details.push(Number(range.min).toLocaleString("ko-KR") + "~"
+          + Number(range.max).toLocaleString("ko-KR") + "㎡");
+      }
+      setMarketStatus(details.join(" · ")
+        + (marketPriceManuallyEdited ? " · 사용자 수정값 사용 중" : " · 자동값 사용 중"),
+        marketPriceManuallyEdited ? "manual" : "automatic");
+    } catch (ignore) {
+      if (seq === buildingSequence) {
+        automaticMarketPrice = null;
+        if (!marketPriceManuallyEdited) $("rentalMarketPrice").value = "";
+        $("rentalMarketPrice").placeholder = "직접 입력";
+        setMarketStatus("최근 실거래를 불러오지 못했습니다. 직접 입력할 수 있습니다.", "error");
+        calculate();
+      }
+    }
+  }
   async function loadBuilding() {
     var id = new URLSearchParams(location.search).get("building_id");
     var seq = ++buildingSequence;
     if (!id) {
       loadedBuildingId = "";
       marketPriceManuallyEdited = false;
+      automaticMarketPrice = null;
       $("rentalBuildingName").textContent = "분석할 건물을 선택해 주세요";
+      $("rentalUnitArea").value = "";
+      $("rentalUnitAreaOptions").innerHTML = "";
       $("rentalMarketPrice").value = "";
-      $("rentalMarketPrice").placeholder = "최근 실거래 조회 중";
-      $("rentalMarketPriceHint").textContent = "건물을 선택하면 최근 호실 실거래를 자동으로 불러옵니다.";
+      $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
+      $("rentalUnitAreaHint").textContent = "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
+      setMarketStatus("건물과 호실 면적을 선택하면 최근 실거래 중앙값을 불러옵니다.", "");
       calculate();
       return;
     }
     if (loadedBuildingId !== String(id)) {
       loadedBuildingId = String(id);
       marketPriceManuallyEdited = false;
+      automaticMarketPrice = null;
+      $("rentalUnitArea").value = "";
       $("rentalMarketPrice").value = "";
-      $("rentalMarketPrice").placeholder = "최근 실거래 조회 중";
-      $("rentalMarketPriceHint").textContent = "선택 건물의 최근 호실 실거래를 확인하고 있습니다.";
+      $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
+      setMarketStatus("호실 면적 목록을 확인하고 있습니다.", "loading");
     }
     try {
       var responses = await Promise.all([
         fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }),
-        fetch("/api/transactions?building_id=" + encodeURIComponent(id)
-          + "&transaction_scope=unit&page=1&size=1", { credentials: "same-origin" }),
+        fetch("/api/building/" + encodeURIComponent(id) + "/area-types", { credentials: "same-origin" }),
       ]);
       var data = responses[0].ok ? await responses[0].json() : null;
-      var transactions = responses[1].ok ? await responses[1].json() : null;
+      var areas = responses[1].ok ? await responses[1].json() : null;
       if (seq !== buildingSequence) return;
       if (data) {
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
@@ -146,23 +211,20 @@
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
         }
       }
-      var latest = transactions && Array.isArray(transactions.items) ? transactions.items[0] : null;
-      var latestPrice = latest && Number(latest.price);
-      if (latest && Number.isFinite(latestPrice) && latestPrice > 0) {
-        if (!marketPriceManuallyEdited) {
-          $("rentalMarketPrice").value = String(latestPrice);
-          calculate();
-        }
-        var details = [];
-        if (latest.deal_date) details.push(String(latest.deal_date).replace(/-/g, "."));
-        if (Number(latest.area) > 0) details.push("전용 " + Number(latest.area).toLocaleString("ko-KR") + "㎡");
-        if (latest.floor != null && latest.floor !== "") details.push(latest.floor + "층");
-        $("rentalMarketPriceHint").textContent = "최근 호실 실거래"
-          + (details.length ? " · " + details.join(" · ") : "")
-          + (marketPriceManuallyEdited ? " · 직접 수정값 사용 중" : " · 자동 반영");
+      var items = areas && Array.isArray(areas.items) ? areas.items : [];
+      $("rentalUnitAreaOptions").innerHTML = items.map(function (item) {
+        var sqm = Number(item.sqm);
+        var label = sqm.toLocaleString("ko-KR") + "㎡"
+          + (Number(item.ho_cnt) > 0 ? " · " + item.ho_cnt + "호" : "");
+        return '<option value="' + sqm + '" label="' + label + '"></option>';
+      }).join("");
+      if (items.length) {
+        $("rentalUnitAreaHint").textContent = "확인된 면적 " + items.length + "개 중 선택하거나 직접 입력할 수 있습니다.";
+        if (!$("rentalUnitArea").value) $("rentalUnitArea").value = String(items[0].sqm);
+        await loadMarketPrice(id, seq);
       } else {
-        $("rentalMarketPrice").placeholder = "직접 입력";
-        $("rentalMarketPriceHint").textContent = "연결된 최근 호실 실거래가 없어 직접 입력해 주세요.";
+        $("rentalUnitAreaHint").textContent = "확인된 호실 면적이 없어 직접 입력해 주세요.";
+        setMarketStatus("호실 전용면적을 직접 입력하면 최근 실거래를 조회합니다.", "unavailable");
       }
     } catch (ignore) {
       if (seq === buildingSequence) {
@@ -176,7 +238,19 @@
       if (id === "rentalPropertyTax") taxManuallyEdited = true;
       if (id === "rentalMarketPrice") {
         marketPriceManuallyEdited = true;
-        if ($(id).value) $("rentalMarketPriceHint").textContent = "사용자가 직접 입력한 실거래 기준가입니다.";
+        if ($(id).value) {
+          setMarketStatus(automaticMarketPrice
+            ? "사용자 수정값 사용 중 · 자동 중앙값 " + money(automaticMarketPrice)
+            : "사용자가 직접 입력한 실거래 기준가입니다.", "manual");
+        }
+      }
+      if (id === "rentalUnitArea") {
+        marketPriceManuallyEdited = false;
+        automaticMarketPrice = null;
+        clearTimeout(areaLookupTimer);
+        areaLookupTimer = setTimeout(function () {
+          loadMarketPrice(loadedBuildingId, buildingSequence);
+        }, 250);
       }
       if (id === "rentalPurchasePrice") {
         updateAcquisitionCosts();
@@ -190,6 +264,8 @@
   $("rentalReset").addEventListener("click", function () {
     taxManuallyEdited = false;
     marketPriceManuallyEdited = false;
+    automaticMarketPrice = null;
+    clearTimeout(areaLookupTimer);
     ids.forEach(function (id) { $(id).value = ""; });
     $("rentalVacancyRate").value = "5";
     $("rentalManagementCost").value = "0";
@@ -198,6 +274,9 @@
     $("rentalLoanRate").value = "4.5";
     $("rentalLoanYears").value = "20";
     $("rentalLoanMethod").value = "interest";
+    $("rentalUnitAreaHint").textContent = loadedBuildingId
+      ? "면적을 다시 선택하거나 입력해 주세요." : "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
+    setMarketStatus("호실 전용면적을 선택하거나 입력하면 최근 실거래 중앙값을 조회합니다.", "");
     $("rentalResults").innerHTML = '<article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>';
   });
   window.addEventListener("livingstay:analysis-reset", function () {

@@ -95,7 +95,7 @@ async function run() {
   let incompleteSelected = false;
   let incompleteFinalTrajectory = false;
   let comparisonItemCount = 6;
-  let rentalTransactionRequest = "";
+  let rentalMarketRequest = "";
   let uploadHasOccupancyBasis = true;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
@@ -124,12 +124,22 @@ async function run() {
       }
       return json(route, payload);
     }
-    if (url.pathname === "/api/transactions") {
-      rentalTransactionRequest = url.search;
-      return json(route, { total: 1, page: 1, size: 1, transaction_scope: "unit", items: [{
-        price: 9876, area: 32.45, floor: 8, deal_date: "2026-08-19",
-        transaction_scope: "unit", match_confidence: "exact",
-      }] });
+    if (url.pathname === `/api/building/${SELECTED_ID}/area-types`) {
+      return json(route, { ok: true, items: [{ sqm: 32.5, ho_cnt: 12 }], sqms: [32.5] });
+    }
+    if (url.pathname === "/api/analysis/rental-market-price") {
+      rentalMarketRequest = url.search;
+      if (url.searchParams.get("area_sqm") === "99") {
+        return json(route, {
+          ok: false, area_sqm: 99, sample_count: 0,
+          reason: "자료 부족: 최근 36개월 내 동일·유사 면적의 매매 실거래가 2건 미만입니다.",
+        });
+      }
+      return json(route, {
+        ok: true, area_sqm: 32.5, median_price: 9876,
+        latest_deal_date: "2026-08-19", sample_count: 3, match_type: "exact",
+        area_range: { min: 32.45, max: 32.51 }, period_months: 36,
+      });
     }
     if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
       ok: true, sido: "강원", sgg: "속초시",
@@ -430,15 +440,27 @@ async function run() {
     await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
     const automaticMarketPrice = await page.evaluate(() => ({
+      area: document.getElementById("rentalUnitArea").value,
       price: document.getElementById("rentalMarketPrice").value,
       hint: document.getElementById("rentalMarketPriceHint").textContent,
+      source: document.getElementById("rentalMarketPrice").dataset.valueSource,
     }));
-    expect(automaticMarketPrice.price === "9876"
+    expect(automaticMarketPrice.area === "32.5"
+      && automaticMarketPrice.price === "9876"
       && automaticMarketPrice.hint.includes("2026.08.19")
-      && automaticMarketPrice.hint.includes("전용 32.45㎡")
-      && rentalTransactionRequest.includes("transaction_scope=unit")
-      && rentalTransactionRequest.includes("size=1"),
-      "선택 건물의 최근 호실 실거래가가 자동 반영되지 않았습니다.");
+      && automaticMarketPrice.hint.includes("표본 3건")
+      && automaticMarketPrice.hint.includes("중앙값")
+      && automaticMarketPrice.source === "automatic"
+      && rentalMarketRequest.includes("area_sqm=32.5"),
+      "선택 면적의 최근 호실 실거래 중앙값과 근거가 자동 반영되지 않았습니다.");
+    await page.fill("#rentalUnitArea", "99");
+    await page.waitForFunction(() =>
+      document.getElementById("rentalMarketPriceHint").textContent.includes("자료 부족"));
+    expect(await page.inputValue("#rentalMarketPrice") === ""
+      && (await page.getAttribute("#rentalMarketPrice", "data-value-source")) === "unavailable",
+      "실거래 표본이 부족할 때 임의 자동값 대신 자료 부족 사유가 표시되지 않았습니다.");
+    await page.fill("#rentalUnitArea", "32.5");
+    await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
     await page.fill("#rentalPurchasePrice", "10000");
     const acquisitionCosts = await page.evaluate(() => ({
       acquisitionTax: document.getElementById("rentalAcquisitionTax").value,
@@ -447,6 +469,8 @@ async function run() {
     expect(acquisitionCosts.acquisitionTax === "460" && acquisitionCosts.brokerFee === "90",
       "매입가 기준 취득세 4.6%와 중개보수 0.9%가 자동 계산되지 않았습니다.");
     await page.fill("#rentalMarketPrice", "11000");
+    expect((await page.textContent("#rentalMarketPriceHint")).includes("사용자 수정값 사용 중"),
+      "자동 실거래 기준가를 수정했을 때 사용자 수정값으로 구분되지 않습니다.");
     await page.fill("#rentalDeposit", "300");
     await page.fill("#rentalMonthlyRent", "50");
     await page.fill("#rentalLoanAmount", "6000");

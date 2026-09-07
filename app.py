@@ -2807,6 +2807,105 @@ def get_building_area_types(building_id):
         cur.close(); conn.close()
 
 
+@app.route("/api/analysis/rental-market-price")
+def get_rental_market_price():
+    """선택 건물·호실 면적의 최근 36개월 매매 실거래 중앙값."""
+    building_id = (request.args.get("building_id") or "").strip()
+    area_raw = (request.args.get("area_sqm") or "").strip()
+    if not building_id.isdigit():
+        return jsonify({"ok": False, "reason": "분석할 건물을 먼저 선택해 주세요."}), 400
+    try:
+        area_sqm = float(area_raw)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "reason": "호실 전용면적을 선택하거나 입력해 주세요."}), 400
+    if not 0 < area_sqm <= 10000:
+        return jsonify({"ok": False, "reason": "올바른 호실 전용면적을 입력해 주세요."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT mb.building_name, mb.sgg_cd, mb.umd_nm, mb.jibun,
+                   CASE WHEN mb.sgg_cd IS NOT NULL AND mb.umd_nm IS NOT NULL AND mb.jibun IS NOT NULL
+                        THEN (SELECT COUNT(*) FROM master_buildings same_parcel
+                              WHERE same_parcel.sgg_cd = mb.sgg_cd
+                                AND same_parcel.umd_nm = mb.umd_nm
+                                AND same_parcel.jibun = mb.jibun)
+                        ELSE 0 END AS parcel_building_count
+            FROM master_buildings mb WHERE mb.id = %s
+        """, [int(building_id)])
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"ok": False, "reason": "선택한 건물을 찾을 수 없습니다."}), 404
+
+        if not (building["sgg_cd"] and building["umd_nm"] and building["jibun"]):
+            return jsonify({
+                "ok": False,
+                "area_sqm": area_sqm,
+                "reason": "자료 부족: 선택 건물과 실거래를 정확히 연결할 지번 정보가 없습니다.",
+            })
+        match_sql = "sgg_cd = %s AND umd_nm = %s AND jibun = %s"
+        match_params = [building["sgg_cd"], building["umd_nm"], building["jibun"]]
+        if int(building["parcel_building_count"] or 0) > 1:
+            return jsonify({
+                "ok": False,
+                "area_sqm": area_sqm,
+                "reason": "자료 부족: 같은 지번의 여러 건물 중 실거래 대상 건물을 구분할 수 없습니다.",
+            })
+
+        def market_summary(tolerance):
+            cur.execute(f"""
+                SELECT
+                    percentile_cont(0.5) WITHIN GROUP (ORDER BY price) AS median_price,
+                    MAX(deal_date) AS latest_deal_date,
+                    COUNT(*) AS sample_count,
+                    MIN(area) AS min_area,
+                    MAX(area) AS max_area
+                FROM transactions
+                WHERE {match_sql}
+                  AND transaction_scope = 'unit'
+                  AND price IS NOT NULL AND price > 0
+                  AND area IS NOT NULL AND area > 0
+                  AND deal_date >= TO_CHAR(CURRENT_DATE - INTERVAL '36 months', 'YYYY-MM-DD')
+                  AND deal_date <= TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD')
+                  AND area BETWEEN %s AND %s
+            """, match_params + [area_sqm - tolerance, area_sqm + tolerance])
+            return cur.fetchone()
+
+        tolerance = 0.5
+        match_type = "exact"
+        summary = market_summary(tolerance)
+        if not summary or int(summary["sample_count"] or 0) < 2:
+            tolerance = max(2.0, area_sqm * 0.1)
+            match_type = "similar"
+            summary = market_summary(tolerance)
+
+        if not summary or int(summary["sample_count"] or 0) < 2:
+            observed_count = int(summary["sample_count"] or 0) if summary else 0
+            return jsonify({
+                "ok": False,
+                "area_sqm": area_sqm,
+                "sample_count": observed_count,
+                "reason": "자료 부족: 최근 36개월 내 동일·유사 면적의 매매 실거래가 2건 미만입니다.",
+            })
+        return jsonify({
+            "ok": True,
+            "area_sqm": area_sqm,
+            "median_price": float(summary["median_price"]),
+            "latest_deal_date": summary["latest_deal_date"],
+            "sample_count": int(summary["sample_count"]),
+            "match_type": match_type,
+            "area_range": {
+                "min": float(summary["min_area"]),
+                "max": float(summary["max_area"]),
+            },
+            "period_months": 36,
+        })
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/building/<int:building_id>/lodging-summary")
 @limiter.limit("60 per minute")
 def get_building_lodging_summary(building_id):
