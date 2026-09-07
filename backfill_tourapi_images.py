@@ -35,7 +35,7 @@ from sync_building_photos import (
 
 PROGRESS_KEY = "building_photos_tourapi_images_progress"
 CALLS_KEY = "building_photos_tourapi_calls"
-MAX_PHOTOS = 100
+MAX_PHOTOS = 20
 
 
 class ProviderReferenceChanged(RuntimeError):
@@ -161,7 +161,7 @@ def _tour_detail_images(session, content_id, api_key):
 
 
 def _photo_rows(first_image, image_items, existing_urls=(), max_new=MAX_PHOTOS):
-    """대표사진과 detailImage2 원본을 최대 100장까지 중복 없이 정리한다."""
+    """대표사진과 detailImage2 원본을 최대 20장까지 중복 없이 정리한다."""
     photos = []
     seen = {str(value) for value in existing_urls if value}
     max_new = max(0, min(int(max_new), MAX_PHOTOS))

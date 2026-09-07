@@ -22,6 +22,7 @@ LIST_URL = f"{BASE_URL}/bsite/camp/info/list.do"
 DETAIL_URL = f"{BASE_URL}/bsite/camp/info/read.do"
 HEADERS = {"User-Agent": "HomeAndStay/1.0 (+https://homenstay.com)"}
 PARSER_VERSION = 2
+MAX_PHOTOS = 20
 
 
 def _text(value):
@@ -139,6 +140,8 @@ def parse_web_detail(page_html, content_id, first_image_url=None):
         urls.append(first_image_url)
     full_prefix = f"/upload/camp/{content_id}/"
     for image_tag in _tags(page_html, "img"):
+        if len(urls) >= MAX_PHOTOS:
+            break
         raw = _tag_attrs(image_tag).get("src", "")
         if not raw.startswith(full_prefix) or "/thumb/" in raw:
             continue
@@ -344,13 +347,15 @@ def run(
                     existing = current.get("camping_image_urls") or []
                     if isinstance(existing, str):
                         existing = json.loads(existing)
-                    image_sources = (
-                        detail["image_urls"]
-                        if refresh_existing
-                        else list(existing) + detail["image_urls"]
-                    )
                     images = []
-                    for url in image_sources:
+                    # 기존에 20장을 넘겨 저장한 행은 삭제하지 않고 보존한다.
+                    # 새 URL만 총 20장 미만일 때 추가한다.
+                    for url in list(existing):
+                        if _public_url(url) and url not in images:
+                            images.append(url)
+                    for url in detail["image_urls"]:
+                        if len(images) >= MAX_PHOTOS:
+                            break
                         if _public_url(url) and url not in images:
                             images.append(url)
                     reservation = (

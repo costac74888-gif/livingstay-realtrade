@@ -30,10 +30,10 @@ class TourApiImageBackfillTests(unittest.TestCase):
                     "originimgurl":
                         f"https://tong.visitkorea.or.kr/{index}.jpg"
                 }
-                for index in range(120)
+                for index in range(40)
             ],
         )
-        self.assertEqual(len(many), 100)
+        self.assertEqual(len(many), 20)
 
     def test_untrusted_or_insecure_image_hosts_are_rejected(self):
         result = images._photo_rows(
@@ -51,12 +51,12 @@ class TourApiImageBackfillTests(unittest.TestCase):
                     "originimgurl":
                         f"https://tong.visitkorea.or.kr/new-{index}.jpg"
                 }
-                for index in range(120)
+                for index in range(40)
             ],
             existing_urls=existing,
             max_new=images.MAX_PHOTOS - len(existing),
         )
-        self.assertEqual(len(result), 99)
+        self.assertEqual(len(result), 19)
         self.assertNotIn(existing[0], [row["url"] for row in result])
 
     def test_each_http_attempt_claims_one_shared_quota_slot(self):

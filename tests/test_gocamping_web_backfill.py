@@ -77,10 +77,10 @@ class GoCampingWebBackfillTests(unittest.TestCase):
         self.assertEqual(len(result["image_urls"]), 3)
         self.assertNotIn("/thumb/thumb.jpg", result["image_urls"])
 
-    def test_parses_all_detail_fields_and_does_not_cap_photos(self):
+    def test_parses_all_detail_fields_and_caps_photos_at_twenty(self):
         photos = "".join(
             f'<img src="/upload/camp/77/{index}.jpg" alt="시설 {index}">'
-            for index in range(15)
+            for index in range(25)
         )
         page = f"""
         <dl>
@@ -92,7 +92,7 @@ class GoCampingWebBackfillTests(unittest.TestCase):
         {photos}
         """
         result = web.parse_web_detail(page, "77")
-        self.assertEqual(len(result["image_urls"]), 15)
+        self.assertEqual(len(result["image_urls"]), 20)
         self.assertEqual(result["content_id"], "77")
         self.assertEqual(result["phone"], "055-123-4567")
         self.assertEqual(result["address"], "경상남도 테스트로 1")

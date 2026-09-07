@@ -1368,7 +1368,7 @@ def save_tourapi_building_photos(building_id):
         if not building:
             return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
 
-        # 관리자 다중사진 백필과 같은 잠금으로 건물당 100장 상한을 보장한다.
+        # 관리자 다중사진 백필과 같은 잠금으로 건물당 20장 상한을 보장한다.
         cur.execute(
             "SELECT pg_advisory_xact_lock(%s, %s)",
             (7421, building_id),
@@ -1383,7 +1383,7 @@ def save_tourapi_building_photos(building_id):
         existing_urls = {row["photo_url"] for row in cur.fetchall()}
         photos = [
             photo for photo in photos if photo[0] not in existing_urls
-        ][:max(0, 100 - len(existing_urls))]
+        ][:max(0, 20 - len(existing_urls))]
         inserted = 0
         for display_order, (url, photo_type) in enumerate(photos):
             cur.execute("""
