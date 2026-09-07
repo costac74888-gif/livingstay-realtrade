@@ -63,7 +63,7 @@ class OperationBenchmarksIntegrationTests(unittest.TestCase):
                 "source_file": "2024_호텔업운영현황_1788781907828.zip",
             },
         ]
-        cursor = FakeCursor(building={"sido": "경기"}, rows=rows)
+        cursor = FakeCursor(building={"sido": "경기", "sgg": "평택시"}, rows=rows)
         with patch("app.get_conn", return_value=FakeConnection(cursor)):
             with app.test_client() as client:
                 with client.session_transaction() as session:
@@ -74,13 +74,14 @@ class OperationBenchmarksIntegrationTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(200, response.status_code)
         self.assertEqual("경기", payload["sido"])
+        self.assertEqual("평택시", payload["sgg"])
         self.assertEqual(["성남시", "양평군"], [
             item["region"] for item in payload["items"]
         ])
         self.assertEqual(2024, payload["source"]["reference_year"])
 
     def test_endpoint_uses_approved_archive_when_production_tables_are_empty(self):
-        cursor = FakeCursor(building={"sido": "경기"}, rows=[])
+        cursor = FakeCursor(building={"sido": "경기", "sgg": "용인시"}, rows=[])
         fallback = ([{
             "region": "용인시", "adr": 150000.0, "occ": 60.0,
             "revpar": 90000.0, "foreign": 2.0,

@@ -105,7 +105,7 @@ async function run() {
     });
     if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
     if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
-      ok: true, sido: "강원",
+      ok: true, sido: "강원", sgg: "속초시",
       source: { name: "한국호텔업협회 호텔업 운영현황", reference_year: 2024 },
       items: [
         { region: "속초시", adr: 210000, occ: 80, revpar: 168000, foreign: 12 },
@@ -312,6 +312,8 @@ async function run() {
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("200실"));
     await page.fill("#operationRoomCountInput", "180");
+    const defaultOperationName = await page.inputValue("#operationBusinessName");
+    await page.fill("#operationBusinessName", "사용자 수정 상호");
     await page.fill("#operationOcc", "74");
     await page.fill("#operationAdr", "162000");
     await page.click("#operationRun");
@@ -328,6 +330,7 @@ async function run() {
       adrBaseline: document.getElementById("operationAdrBaseline").textContent,
       hiddenFilters: getComputedStyle(document.getElementById("analysisFilter")).display === "none",
       operationLayout: window.__operationChartLayout,
+      operationName: document.getElementById("operationBusinessName").value,
     }));
     expect(operationResult.operationVisible && operationResult.propertyHidden && operationResult.selectedTab === "true",
       "운영분석 탭 전환 상태가 올바르지 않습니다.");
@@ -340,12 +343,23 @@ async function run() {
       "한 건물의 영업신고 업소 선택과 업소별 객실 수 자동 적용이 올바르지 않습니다.");
     expect(operationResult.appliedRoomCount === "180",
       "자동 입력된 신고 객실 수를 사용자가 임의 수정할 수 없습니다.");
+    expect(defaultOperationName === "선택 테스트 자산"
+      && operationResult.operationName === "사용자 수정 상호"
+      && operationResult.detail.includes("사용자 수정 상호"),
+      "분석 상호가 건물명을 기본값으로 사용하거나 사용자 수정값을 반영하지 않습니다.");
     expect(operationResult.adrBaseline.includes("원") && operationResult.hiddenFilters,
       "지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다.");
     expect(operationResult.operationLayout.comparisonPoints === 6
       && operationResult.operationLayout.comparisonColor === "#8798a8"
       && operationResult.operationLayout.selectedRadius === 11
-      && operationResult.operationLayout.pulseVisible,
+      && operationResult.operationLayout.pulseVisible
+      && operationResult.operationLayout.baselineRegion === "속초시"
+      && operationResult.operationLayout.baselineAdr === 210000
+      && operationResult.operationLayout.baselineOcc === 80
+      && Math.abs(operationResult.operationLayout.baselinePixelX
+        - operationResult.operationLayout.chartCenterX) < 0.6
+      && Math.abs(operationResult.operationLayout.baselinePixelY
+        - operationResult.operationLayout.chartCenterY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
     await page.fill("#buildingSearch", "선택 테스트");
     await page.waitForSelector("#searchResults .search-result");

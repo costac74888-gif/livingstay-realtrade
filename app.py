@@ -30823,13 +30823,17 @@ def analysis_operation_benchmarks():
             SELECT regexp_replace(split_part(trim(COALESCE(
                        NULLIF(road_address, ''), NULLIF(jibun_address, ''), sgg_text, ''
                      )), ' ', 1),
-                     '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido
+                     '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                   split_part(trim(COALESCE(
+                       NULLIF(road_address, ''), NULLIF(jibun_address, ''), sgg_text, ''
+                   )), ' ', 2) AS sgg
             FROM master_buildings WHERE id=%s
         """, (building_id,))
         building = cur.fetchone()
         if not building:
             return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
         sido = building["sido"]
+        sgg = building.get("sgg") or ""
         cur.execute("""
             WITH latest AS (
                 SELECT id, reference_year, source_name, source_file
@@ -30859,7 +30863,10 @@ def analysis_operation_benchmarks():
             row.pop("source_name", None)
             row.pop("source_file", None)
             row.pop("reference_year", None)
-        return jsonify({"ok": True, "sido": sido, "items": rows, "source": source})
+        return jsonify({
+            "ok": True, "sido": sido, "sgg": sgg,
+            "items": rows, "source": source,
+        })
     finally:
         if cur is not None:
             cur.close()

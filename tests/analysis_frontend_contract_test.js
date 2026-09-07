@@ -154,8 +154,10 @@ expect(
     && html.includes('id="operationInputs"') && html.includes('id="operationChart"')
     && js.includes("lodging_room_total") && js.includes("operationBenchmarks")
     && html.includes('id="operationLodging"') && html.includes('id="operationRoomCountInput"')
+    && html.includes('id="operationBusinessName"')
     && html.includes('id="operationBuildingApply"') && html.includes('id="operationSelectedPulse"')
-    && operationJs.includes('average("adr")') && operationJs.includes("officialRooms")
+    && operationJs.includes("regionalBaseline()") && operationJs.includes("officialRooms")
+    && operationJs.includes("building.display_building_name || building.building_name")
     && operationJs.includes("comparisonPoints: benchmarks.length")
     && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),

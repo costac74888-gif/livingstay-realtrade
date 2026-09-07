@@ -4,6 +4,7 @@
   var building = null;
   var benchmarks = [];
   var region = "";
+  var subregion = "";
   var loadSequence = 0;
   var pendingBuildingResult = null;
 
@@ -31,6 +32,22 @@
     return values.length
       ? values.reduce(function (sum, value) { return sum + value; }, 0) / values.length
       : null;
+  }
+  function regionalBaseline() {
+    var exact = benchmarks.find(function (item) {
+      return String(item.region || "").replace(/\s+/g, "") === String(subregion || "").replace(/\s+/g, "");
+    });
+    return {
+      adr: exact ? number(exact.adr) : average("adr"),
+      occ: exact ? number(exact.occ) : average("occ"),
+      exact: !!exact,
+    };
+  }
+  function operationName() {
+    var input = $("operationBusinessName");
+    var value = input && input.value.trim();
+    return value || building && (building.display_building_name || building.building_name)
+      || "선택 숙박시설";
   }
   function selectedLodging() {
     var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
@@ -76,8 +93,9 @@
     $("operationRoomCountInput").value = rooms == null ? "" : String(rooms);
   }
   function grade(adr, occ) {
-    var baseAdr = average("adr");
-    var baseOcc = average("occ");
+    var baseline = regionalBaseline();
+    var baseAdr = baseline.adr;
+    var baseOcc = baseline.occ;
     if (baseAdr == null || baseOcc == null) return "비교자료 부족";
     return adr >= baseAdr
       ? (occ >= baseOcc ? "프리미엄 우수운영" : "가격조정 필요")
@@ -97,20 +115,25 @@
     }).join("") : '<tr><td colspan="7">해당 시도의 공개 운영지표가 없습니다.</td></tr>';
   }
   function renderEvidence(baseAdr, baseOcc) {
-    $("operationRegionBaseline").textContent = region ? region + " 시군구" : "—";
+    $("operationRegionBaseline").textContent = subregion || (region ? region + " 시군구" : "—");
     $("operationAdrBaseline").textContent = baseAdr == null ? "—" : format(baseAdr, 0) + "원";
     $("operationOccBaseline").textContent = baseOcc == null ? "—" : format(baseOcc, 1) + "%";
     $("operationSampleBaseline").textContent = format(benchmarks.length, 0) + "개 시군구";
-    $("operationMethodRegion").textContent = region
-      ? region + " 내 " + benchmarks.length
-        + "개 시군구의 2024년 전체등급 운영지표 산술평균을 사분면 기준선으로 사용합니다."
+    var baseline = regionalBaseline();
+    $("operationMethodRegion").textContent = subregion
+      ? subregion + "의 2024년 전체등급 운영지표 ADR·OCC를 사분면 중앙 기준선으로 사용합니다."
+      : region
+        ? region + " 내 " + benchmarks.length
+          + "개 시군구의 운영지표 평균을 사분면 기준선으로 사용합니다."
       : "선택 건물의 주소로 비교지역을 자동 산정합니다.";
     var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
     var cards = [
       ["연결 영업신고", lodgings.length + "곳", "선택 건물의 정상 영업 업소"],
-      ["비교지역", region || "—", "건물 주소에서 자동 산정"],
-      ["지역 평균 ADR", baseAdr == null ? "—" : format(baseAdr, 0) + "원", "시군구 전체등급 평균"],
-      ["지역 평균 OCC", baseOcc == null ? "—" : format(baseOcc, 1) + "%", "시군구 전체등급 평균"],
+      ["비교지역", subregion || region || "—", "건물 주소에서 자동 산정"],
+      ["지역 평균 ADR", baseAdr == null ? "—" : format(baseAdr, 0) + "원",
+        baseline.exact ? subregion + " 전체등급" : "시군구 평균"],
+      ["지역 평균 OCC", baseOcc == null ? "—" : format(baseOcc, 1) + "%",
+        baseline.exact ? subregion + " 전체등급" : "시군구 평균"],
     ];
     $("operationSummary").innerHTML = cards.map(function (card) {
       return '<article class="analysis-card summary-tile"><div class="summary-label">'
@@ -121,7 +144,7 @@
   function renderDetail(selected) {
     if (!selected) return;
     var lodging = selectedLodging();
-    var name = lodging && lodging.biz_name || building && building.building_name || "선택 숙박시설";
+    var name = operationName();
     var address = building && (building.road_address || building.jibun_address) || "주소 미확인";
     var rooms = selectedRooms();
     $("operationDetail").innerHTML = '<div class="detail-building-head"><div><h2 class="detail-name">'
@@ -141,13 +164,13 @@
   function renderChart() {
     var occ = number($("operationOcc").value);
     var adr = number($("operationAdr").value);
-    var lodging = selectedLodging();
     var selected = occ != null && adr != null ? {
-      region: lodging && lodging.biz_name || building && building.building_name || "선택 숙박시설",
+      region: operationName(),
       adr: adr, occ: occ, revpar: Math.round(adr * occ / 100), selected: true,
     } : null;
-    var baseAdr = average("adr");
-    var baseOcc = average("occ");
+    var baseline = regionalBaseline();
+    var baseAdr = baseline.adr;
+    var baseOcc = baseline.occ;
     renderTop();
     renderEvidence(baseAdr, baseOcc);
     renderDetail(selected);
@@ -184,7 +207,7 @@
         scales: {
           x: { min: baseAdr - xDeviation * 1.08, max: baseAdr + xDeviation * 1.08,
             title: { display: true, text: "판매객실 평균요금 ADR (원)" } },
-          y: { min: Math.max(0, baseOcc - yDeviation * 1.08), max: Math.min(100, baseOcc + yDeviation * 1.08),
+          y: { min: baseOcc - yDeviation * 1.08, max: baseOcc + yDeviation * 1.08,
             title: { display: true, text: "객실 이용률 OCC (%)" } },
         },
       },
@@ -227,6 +250,13 @@
             comparisonPoints: benchmarks.length,
             comparisonColor: "#8798a8",
             pulseVisible: true,
+            baselineAdr: baseAdr,
+            baselineOcc: baseOcc,
+            baselineRegion: subregion,
+            baselinePixelX: chart.scales.x.getPixelForValue(baseAdr),
+            baselinePixelY: chart.scales.y.getPixelForValue(baseOcc),
+            chartCenterX: (chart.chartArea.left + chart.chartArea.right) / 2,
+            chartCenterY: (chart.chartArea.top + chart.chartArea.bottom) / 2,
           };
         },
       }],
@@ -237,8 +267,9 @@
     var id = buildingId();
     var sequence = ++loadSequence;
     if (!id) {
-      building = null; benchmarks = []; region = "";
+      building = null; benchmarks = []; region = ""; subregion = "";
       $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
+      $("operationBusinessName").value = "";
       $("operationRoomCountInput").value = "";
       renderRoomCount();
       renderChart();
@@ -255,6 +286,8 @@
       building = results[0];
       benchmarks = results[1] && Array.isArray(results[1].items) ? results[1].items : [];
       region = results[1] && results[1].sido || "";
+      subregion = results[1] && results[1].sgg || "";
+      $("operationBusinessName").value = building.display_building_name || building.building_name || "";
       setBuildingStatus(building.display_building_name || building.building_name || "선택 건물", true);
       renderLodgingOptions();
       renderChart();
@@ -303,6 +336,9 @@
     $(id).addEventListener("input", function () { setTimeout(renderChart, 0); });
   });
   $("operationRoomCountInput").addEventListener("input", function () {
+    setTimeout(renderChart, 0);
+  });
+  $("operationBusinessName").addEventListener("input", function () {
     setTimeout(renderChart, 0);
   });
   $("operationRun").addEventListener("click", function () { setTimeout(renderChart, 0); });

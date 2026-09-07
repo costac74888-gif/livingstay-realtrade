@@ -90,6 +90,36 @@
   font-size: 11px;
 }
 
+.operation-name-edit {
+  display: block;
+  margin-top: 7px;
+}
+
+.operation-name-edit > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.operation-name-edit input {
+  width: 100%;
+  height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.operation-name-edit input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(38, 115, 207, .14);
+}
+
 .operation-room strong {
   margin-top: 5px;
 }
