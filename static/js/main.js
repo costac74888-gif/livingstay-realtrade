@@ -2467,18 +2467,20 @@ async function loadMapMarkers(filters = {}, opts = {}){
         overlay.__contentEl = el;
         overlay.setMap(kakaoMap);
         mapOverlays.push(overlay);
-      // 합계 0건은 기존 점 마커를 유지하고, 1건 이상은 원형 숫자 배지만 표시한다.
+      // 거래·매물이 0건이어도 숙박 건물 자체는 분명히 보이게 한다.
+      // 도심에서는 Kakao POI와 도로 표기가 조밀해 기존 14px 점이 묻혔으므로,
+      // 외곽 링과 중심점을 가진 DOM 마커를 쓰고 hover/focus에 건물명을 표시한다.
       } else if (totalCount === 0){
         const color = markerColor(b.lodging_type, b.building_status);
-        // 점도 CustomOverlay로 만들어 다른 배지·클러스터와 동일하게 페이드아웃한다.
         const el = document.createElement("button");
         el.type = "button";
+        el.className = "map-building-dot" +
+          ((filters.q || filters.building_id) ? " is-emphasized" : "");
         el.title = b.building_name || "건물";
         el.setAttribute("aria-label", el.title);
-        el.style.cssText =
-          `width:14px;height:14px;padding:0;border:2px solid #fff;border-radius:50%;background:${color};` +
-          "box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.24);cursor:pointer;" +
-          "pointer-events:auto;transition:opacity .18s ease;";
+        el.dataset.label = b.building_name || "건물";
+        el.style.setProperty("--marker-color", color);
+        el.innerHTML = '<span aria-hidden="true"></span>';
         syncMapLocationTargetElement(el, b.id);
         el.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -2486,7 +2488,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
         });
         const overlay = new kakao.maps.CustomOverlay({
           position: pos, content: el, xAnchor: 0.5, yAnchor: 0.5,
-          clickable: true, zIndex: 5,
+          clickable: true, zIndex: (filters.q || filters.building_id) ? 25 : 12,
         });
         overlay.__buildingId = b.id;
         overlay.__contentEl = el;
