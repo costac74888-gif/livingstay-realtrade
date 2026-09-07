@@ -21,7 +21,8 @@ class OperationBenchmarkContractTests(unittest.TestCase):
             "ORDER BY m.revpar DESC, m.occupancy_rate DESC, m.adr DESC",
             self.endpoint,
         )
-        self.assertIn("LIMIT 5", self.endpoint)
+        self.assertNotIn("LIMIT 5\n        \"\"\", (sido,))", self.endpoint)
+        self.assertIn("실제 시군구 전체 운영지표", self.endpoint)
         self.assertIn('"source": source', self.endpoint)
 
     def test_schema_and_importer_deduplicate_the_same_source_archive(self):

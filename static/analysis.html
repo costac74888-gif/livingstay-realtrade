@@ -21,11 +21,11 @@
       <div class="generated" id="generatedAt">데이터 준비 중</div>
     </div>
   </div>
-  <section class="analysis-card building-search" aria-label="건물 선택">
+  <section class="analysis-card building-search" id="buildingSearchCard" aria-label="건물 선택">
     <div class="search-copy"><span class="eyebrow">BUILDING-FIRST SEARCH</span><h2>먼저, 분석할 건물을 찾아보세요</h2><p>건물명을 우선으로 검색하고 주소로 결과를 좁힐 수 있습니다.</p></div>
     <div class="search-control"><label for="buildingSearch">건물명 또는 주소</label><div class="search-input-wrap"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 5 5"></path></svg><input id="buildingSearch" type="search" placeholder="예: 체스터톤스, 속초시..." autocomplete="off"><button id="clearSearch" type="button" aria-label="검색어 지우기">×</button></div><div id="searchResults" class="search-results" role="listbox"></div><div id="quickBuildings" class="quick-buildings" aria-label="관심단지와 최근 조회 건물"></div></div>
   </section>
-  <section class="analysis-card analysis-filter" aria-label="분석 조건">
+  <section class="analysis-card analysis-filter" id="analysisFilter" aria-label="분석 조건">
     <div class="am-field"><label for="selSido">시·도</label><select id="selSido"><option value="">전체 시·도</option></select></div>
     <div class="am-field"><label for="selSgg">시·군·구</label><select id="selSgg"><option value="">전체 시·군·구</option></select></div>
     <div class="am-field"><label for="selType">숙박 유형</label><select id="selType"><option value="">전체 유형</option></select></div>
@@ -44,9 +44,10 @@
   <section id="operationInputs" class="analysis-card operation-inputs hidden" aria-label="숙박 운영자료 입력">
     <div class="operation-room">
       <span class="eyebrow">OFFICIAL ROOM COUNT</span>
-      <h2>신고 객실 수</h2>
+      <h2>영업신고 숙박업소</h2>
+      <label class="operation-lodging-choice" for="operationLodging"><select id="operationLodging" aria-label="분석할 영업신고 숙박업소"><option value="">건물을 먼저 선택해 주세요</option></select></label>
       <strong id="operationRoomCount">건물을 먼저 선택해 주세요</strong>
-      <p>영업신고에 기재된 객실 수를 자동 적용합니다.</p>
+      <p>한 건물에 여러 영업신고가 있으면 분석할 업소를 선택할 수 있습니다.</p>
     </div>
     <label class="operation-field" for="operationOcc"><span>객실 이용률(OCC)</span><div><input id="operationOcc" type="number" min="0" max="100" step="0.01" placeholder="예: 74"><b>%</b></div><small>자료에서 확인되면 자동 입력됩니다.</small></label>
     <label class="operation-field" for="operationAdr"><span>판매객실 평균요금(ADR)</span><div><input id="operationAdr" type="number" min="0" step="1" placeholder="예: 162000"><b>원</b></div><small>객실매출과 판매객실 수가 있으면 자동 계산됩니다.</small></label>
@@ -76,15 +77,17 @@
       <article class="analysis-card chart-card">
         <div class="card-head"><div><h2>ADR × OCC 운영 포지셔닝 맵</h2><p>선택 숙박시설의 자기자료와 2024년 지역별 호텔업 운영현황을 비교합니다.</p></div></div>
         <div class="operation-chart-wrap"><div class="operation-quadrant oq-tl"><b>② 고가동·저단가형</b><span>수요는 충분하지만 단가 개선 여지가 있습니다.</span></div><div class="operation-quadrant oq-tr"><b>① 프리미엄 우수운영</b><span>가격과 객실 판매가 모두 우수합니다.</span></div><div class="operation-quadrant oq-bl"><b>③ 운영개선 필요</b><span>판매채널과 가격전략을 함께 점검합니다.</span></div><div class="operation-quadrant oq-br"><b>④ 가격조정 필요</b><span>객실가격 또는 판매전략 점검이 필요합니다.</span></div><canvas id="operationChart" aria-label="ADR과 OCC 숙박 운영 포지셔닝 맵"></canvas></div>
-        <div class="legend operation-legend"><span><i class="legend-selected"></i>선택 숙박시설</span><span><i class="legend-nearby"></i>해당 지역</span><span><i class="legend-other"></i>2024 지역 평균</span><span><i class="legend-line"></i>비교 중앙값</span></div>
+         <div class="legend operation-legend"><span><i class="legend-selected"></i>선택 숙박시설</span><span><i class="legend-other"></i>같은 시도 시군구</span><span><i class="legend-line"></i>지역 평균 ADR</span><span><i class="legend-line"></i>지역 평균 OCC</span></div>
+         <div class="baseline-strip operation-baselines"><div class="baseline region-baseline">비교지역<b id="operationRegionBaseline">—</b></div><div class="baseline">평균 ADR<b id="operationAdrBaseline">—</b></div><div class="baseline">평균 OCC<b id="operationOccBaseline">—</b></div><div class="baseline">비교 표본<b id="operationSampleBaseline">—</b></div></div>
       </article>
       <aside class="analysis-card detail-card" id="operationDetail"><div class="detail-empty"><div><strong>건물과 운영자료를 입력해 주세요</strong>신고 객실 수와 자기 운영자료를 결합해<br>OCC·ADR·RevPAR를 바로 분석합니다.</div></div></aside>
     </div>
     <section class="analysis-card recommendation-card"><div class="recommendation-head"><h2 id="operationTopTitle">해당 지역 우수 숙박 운영지표 TOP 5</h2><span>RevPAR 우선 순위</span></div><div class="recommendation-scroll"><table><thead><tr><th>순위</th><th>지역</th><th>ADR</th><th>OCC</th><th>RevPAR</th><th>외국인 비율</th><th>운영평가</th></tr></thead><tbody id="operationTopRows"></tbody></table></div></section>
-    <section class="methodology"><strong>운영분석 계산 기준과 한계</strong><div class="formula">OCC = 판매 객실 수 ÷ (영업신고 객실 수 × 영업일 수) × 100<br>ADR = 객실매출 ÷ 판매 객실 수<br>RevPAR = ADR × OCC</div><div>공공 비교점은 2024년 호텔업 운영현황의 지역·등급 집계이며 개별 호텔 실적이 아닙니다. 선택 숙박시설 수치는 사용자가 올린 자기자료를 자동 분석한 참고값입니다.</div></section>
+    <section class="methodology"><strong>운영분석 산정근거</strong><div id="operationMethodRegion">선택 건물의 주소로 비교지역을 자동 산정합니다.</div><div class="formula">OCC = 판매 객실 수 ÷ (영업신고 객실 수 × 영업일 수) × 100<br>ADR = 객실매출 ÷ 판매 객실 수<br>RevPAR = ADR × OCC<br>사분면 기준선 = 선택 건물이 속한 시도의 시군구 운영지표 평균 ADR · 평균 OCC</div><div>공공 비교점은 2024년 호텔업 운영현황의 지역·등급 집계이며 개별 호텔 실적이 아닙니다. 선택 숙박시설 수치는 사용자가 올린 자기자료를 자동 분석한 참고값입니다.</div></section>
+    <section class="summary-grid operation-summary" id="operationSummary"></section>
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
-<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script>
+<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script>
 </body>
 </html>

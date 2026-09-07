@@ -41,6 +41,40 @@
   padding-left: 17px;
 }
 
+.analysis-shell.operation-mode #analysisFilter,
+.analysis-shell.operation-mode #summaryGrid,
+.analysis-shell.operation-mode .analysis-mode-bar {
+  display: none;
+}
+
+.analysis-shell.operation-mode #buildingSearchCard {
+  margin-bottom: 16px;
+}
+
+.operation-lodging-choice select {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.operation-room strong {
+  margin-top: 5px;
+}
+
+.operation-baselines {
+  justify-content: center;
+}
+
+.operation-summary {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
 @media (max-width: 650px) {
   .analysis-heading-actions {
     align-items: stretch;

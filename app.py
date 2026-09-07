@@ -30795,7 +30795,6 @@ def analysis_operation_benchmarks():
             WHERE m.sido_name=%s AND m.sgg_name IS NOT NULL AND m.grade='전체'
               AND m.revpar IS NOT NULL AND m.occupancy_rate IS NOT NULL AND m.adr IS NOT NULL
             ORDER BY m.revpar DESC, m.occupancy_rate DESC, m.adr DESC, m.sgg_name
-            LIMIT 5
         """, (sido,))
         rows = [dict(row) for row in cur.fetchall()]
         for row in rows:

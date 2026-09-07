@@ -1,0 +1,252 @@
+(function () {
+  "use strict";
+
+  var building = null;
+  var benchmarks = [];
+  var region = "";
+  var loadSequence = 0;
+
+  function $(id) { return document.getElementById(id); }
+  function number(value) {
+    return value == null || value === "" || isNaN(Number(value)) ? null : Number(value);
+  }
+  function format(value, digits) {
+    var parsed = number(value);
+    return parsed == null ? "—" : parsed.toLocaleString("ko-KR", {
+      maximumFractionDigits: digits == null ? 1 : digits,
+    });
+  }
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
+    });
+  }
+  function buildingId() {
+    return new URLSearchParams(location.search).get("building_id") || "";
+  }
+  function average(key) {
+    var values = benchmarks.map(function (item) { return number(item[key]); })
+      .filter(function (value) { return value != null; });
+    return values.length
+      ? values.reduce(function (sum, value) { return sum + value; }, 0) / values.length
+      : null;
+  }
+  function selectedLodging() {
+    var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
+    var index = Number($("operationLodging").value);
+    return Number.isInteger(index) && index >= 0 ? lodgings[index] : null;
+  }
+  function selectedRooms() {
+    var lodging = selectedLodging();
+    return lodging
+      ? number(lodging.room_count)
+      : building && (number(building.lodging_room_total)
+        || number(building.building_name_representative_room_count));
+  }
+  function setModeClass() {
+    var operation = new URLSearchParams(location.search).get("mode") === "operation"
+      || $("operationTab").getAttribute("aria-selected") === "true";
+    document.querySelector(".analysis-shell").classList.toggle("operation-mode", operation);
+  }
+  function renderLodgingOptions() {
+    var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
+    if (!lodgings.length) {
+      $("operationLodging").innerHTML = '<option value="">영업신고 업소 확인 불가</option>';
+    } else {
+      $("operationLodging").innerHTML = lodgings.map(function (item, index) {
+        var rooms = number(item.room_count);
+        return '<option value="' + index + '">' + escapeHtml(item.biz_name || "업소명 미확인")
+          + " · " + (rooms == null ? "객실 수 미상" : format(rooms, 0) + "실") + "</option>";
+      }).join("");
+      $("operationLodging").value = "0";
+    }
+    renderRoomCount();
+  }
+  function renderRoomCount() {
+    var rooms = selectedRooms();
+    $("operationRoomCount").textContent = rooms == null ? "신고 객실 수 확인 불가" : format(rooms, 0) + "실";
+  }
+  function grade(adr, occ) {
+    var baseAdr = average("adr");
+    var baseOcc = average("occ");
+    if (baseAdr == null || baseOcc == null) return "비교자료 부족";
+    return adr >= baseAdr
+      ? (occ >= baseOcc ? "프리미엄 우수운영" : "가격조정 필요")
+      : (occ >= baseOcc ? "고가동·저단가형" : "운영개선 필요");
+  }
+  function renderTop() {
+    var list = benchmarks.slice().sort(function (a, b) {
+      return (number(b.revpar) || 0) - (number(a.revpar) || 0);
+    }).slice(0, 5);
+    $("operationTopTitle").textContent = (region ? region + " " : "") + "시군구 숙박 운영지표 TOP 5";
+    $("operationTopRows").innerHTML = list.length ? list.map(function (item, index) {
+      return "<tr><td>" + (index + 1) + "</td><td><b>" + escapeHtml(item.region) + "</b></td><td>"
+        + format(item.adr, 0) + "원</td><td>" + format(item.occ, 1) + "%</td><td>"
+        + format(item.revpar, 0) + "원</td><td>" + format(item.foreign, 1)
+        + '%</td><td><span class="recommendation-status">' + escapeHtml(grade(item.adr, item.occ))
+        + "</span></td></tr>";
+    }).join("") : '<tr><td colspan="7">해당 시도의 공개 운영지표가 없습니다.</td></tr>';
+  }
+  function renderEvidence(baseAdr, baseOcc) {
+    $("operationRegionBaseline").textContent = region ? region + " 시군구" : "—";
+    $("operationAdrBaseline").textContent = baseAdr == null ? "—" : format(baseAdr, 0) + "원";
+    $("operationOccBaseline").textContent = baseOcc == null ? "—" : format(baseOcc, 1) + "%";
+    $("operationSampleBaseline").textContent = format(benchmarks.length, 0) + "개 시군구";
+    $("operationMethodRegion").textContent = region
+      ? region + " 내 " + benchmarks.length
+        + "개 시군구의 2024년 전체등급 운영지표 산술평균을 사분면 기준선으로 사용합니다."
+      : "선택 건물의 주소로 비교지역을 자동 산정합니다.";
+    var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
+    var cards = [
+      ["연결 영업신고", lodgings.length + "곳", "선택 건물의 정상 영업 업소"],
+      ["비교지역", region || "—", "건물 주소에서 자동 산정"],
+      ["지역 평균 ADR", baseAdr == null ? "—" : format(baseAdr, 0) + "원", "시군구 전체등급 평균"],
+      ["지역 평균 OCC", baseOcc == null ? "—" : format(baseOcc, 1) + "%", "시군구 전체등급 평균"],
+    ];
+    $("operationSummary").innerHTML = cards.map(function (card) {
+      return '<article class="analysis-card summary-tile"><div class="summary-label">'
+        + escapeHtml(card[0]) + '</div><div class="summary-value">' + escapeHtml(card[1])
+        + '</div><div class="summary-note">' + escapeHtml(card[2]) + "</div></article>";
+    }).join("");
+  }
+  function renderDetail(selected) {
+    if (!selected) return;
+    var lodging = selectedLodging();
+    var name = lodging && lodging.biz_name || building && building.building_name || "선택 숙박시설";
+    var address = building && (building.road_address || building.jibun_address) || "주소 미확인";
+    var rooms = selectedRooms();
+    $("operationDetail").innerHTML = '<div class="detail-building-head"><div><h2 class="detail-name">'
+      + escapeHtml(name) + '</h2><div class="detail-address">' + escapeHtml(address)
+      + '</div></div><span class="detail-status">' + escapeHtml(building && building.lodging_type || "숙박시설")
+      + '</span></div><div class="detail-tags"><span class="pill">신고 객실 '
+      + (rooms == null ? "확인 불가" : format(rooms, 0) + "실")
+      + '</span><span class="pill sample">2024 공공통계 비교</span></div>'
+      + '<section class="detail-analysis"><small>선택 숙박시설 운영 진단</small><b>'
+      + escapeHtml(grade(selected.adr, selected.occ)) + '</b></section><div class="detail-metrics">'
+      + '<div class="detail-metric"><small>ADR</small><strong>' + format(selected.adr, 0) + '원</strong></div>'
+      + '<div class="detail-metric"><small>OCC</small><strong>' + format(selected.occ, 1) + '%</strong></div>'
+      + '<div class="detail-metric"><small>RevPAR</small><strong>' + format(selected.revpar, 0) + '원</strong></div>'
+      + '<div class="detail-metric"><small>자료 처리</small><strong>자동분석</strong></div></div>'
+      + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>';
+  }
+  function renderChart() {
+    var occ = number($("operationOcc").value);
+    var adr = number($("operationAdr").value);
+    var lodging = selectedLodging();
+    var selected = occ != null && adr != null ? {
+      region: lodging && lodging.biz_name || building && building.building_name || "선택 숙박시설",
+      adr: adr, occ: occ, revpar: Math.round(adr * occ / 100), selected: true,
+    } : null;
+    var baseAdr = average("adr");
+    var baseOcc = average("occ");
+    renderTop();
+    renderEvidence(baseAdr, baseOcc);
+    renderDetail(selected);
+    var canvas = $("operationChart");
+    var existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+    var points = benchmarks.concat(selected ? [selected] : []);
+    if (!points.length) return;
+    var xDeviation = Math.max.apply(null, points.map(function (item) {
+      return Math.abs(number(item.adr) - baseAdr);
+    }).concat([Math.max(baseAdr * 0.25, 20000)]));
+    var yDeviation = Math.max.apply(null, points.map(function (item) {
+      return Math.abs(number(item.occ) - baseOcc);
+    }).concat([15]));
+    new Chart(canvas, {
+      type: "scatter",
+      data: { datasets: [{
+        data: points.map(function (item) { return { x: item.adr, y: item.occ, item: item }; }),
+        pointRadius: function (context) { return context.raw.item.selected ? 10 : 6; },
+        pointBackgroundColor: function (context) { return context.raw.item.selected ? "#102a43" : "#9badbd"; },
+        pointBorderColor: "#fff", pointBorderWidth: 2,
+      }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (context) {
+          var item = context.raw.item;
+          return " " + item.region + " · ADR " + format(item.adr, 0) + "원 · OCC "
+            + format(item.occ, 1) + "% · RevPAR " + format(item.revpar, 0) + "원";
+        } } } },
+        scales: {
+          x: { min: baseAdr - xDeviation * 1.08, max: baseAdr + xDeviation * 1.08,
+            title: { display: true, text: "판매객실 평균요금 ADR (원)" } },
+          y: { min: Math.max(0, baseOcc - yDeviation * 1.08), max: Math.min(100, baseOcc + yDeviation * 1.08),
+            title: { display: true, text: "객실 이용률 OCC (%)" } },
+        },
+      },
+      plugins: [{
+        id: "regionalAverageBaselines",
+        beforeDatasetsDraw: function (chart) {
+          if (baseAdr == null || baseOcc == null) return;
+          var context = chart.ctx;
+          var x = chart.scales.x.getPixelForValue(baseAdr);
+          var y = chart.scales.y.getPixelForValue(baseOcc);
+          context.save();
+          context.strokeStyle = "#526a7d";
+          context.fillStyle = "#526a7d";
+          context.font = "700 10px 'Noto Sans KR'";
+          context.setLineDash([5, 5]);
+          context.beginPath();
+          context.moveTo(x, chart.chartArea.top);
+          context.lineTo(x, chart.chartArea.bottom);
+          context.moveTo(chart.chartArea.left, y);
+          context.lineTo(chart.chartArea.right, y);
+          context.stroke();
+          context.setLineDash([]);
+          context.fillText("지역 평균 ADR " + format(baseAdr, 0) + "원", x + 6, chart.chartArea.bottom - 8);
+          context.fillText("지역 평균 OCC " + format(baseOcc, 1) + "%", chart.chartArea.left + 6, y - 7);
+          context.restore();
+        },
+      }],
+    });
+  }
+  function load() {
+    setModeClass();
+    var id = buildingId();
+    var sequence = ++loadSequence;
+    if (!id) {
+      building = null; benchmarks = []; region = "";
+      $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
+      renderRoomCount();
+      renderChart();
+      return;
+    }
+    Promise.all([
+      fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }).then(function (response) {
+        return response.ok ? response.json() : null;
+      }),
+      fetch("/api/analysis/operation-benchmarks?building_id=" + encodeURIComponent(id),
+        { credentials: "same-origin" }).then(function (response) { return response.ok ? response.json() : null; }),
+    ]).then(function (results) {
+      if (sequence !== loadSequence || !results[0]) return;
+      building = results[0];
+      benchmarks = results[1] && Array.isArray(results[1].items) ? results[1].items : [];
+      region = results[1] && results[1].sido || "";
+      renderLodgingOptions();
+      renderChart();
+    }).catch(function () {});
+  }
+
+  $("operationLodging").addEventListener("change", function () {
+    renderRoomCount();
+    setTimeout(renderChart, 0);
+  });
+  new MutationObserver(function () {
+    if (!building || !selectedLodging()) return;
+    var rooms = selectedRooms();
+    var expected = rooms == null ? "신고 객실 수 확인 불가" : format(rooms, 0) + "실";
+    if ($("operationRoomCount").textContent !== expected) {
+      $("operationRoomCount").textContent = expected;
+    }
+  }).observe($("operationRoomCount"), { childList: true, characterData: true, subtree: true });
+  ["operationOcc", "operationAdr"].forEach(function (id) {
+    $(id).addEventListener("input", function () { setTimeout(renderChart, 0); });
+  });
+  $("operationRun").addEventListener("click", function () { setTimeout(renderChart, 0); });
+  $("analysisTabs").addEventListener("click", function () {
+    setTimeout(function () { setModeClass(); if ($("operationTab").getAttribute("aria-selected") === "true") load(); }, 0);
+  });
+  window.addEventListener("popstate", load);
+  load();
+}());

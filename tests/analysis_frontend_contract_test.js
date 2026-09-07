@@ -2,6 +2,7 @@ const fs = require("fs");
 
 const html = fs.readFileSync("static/analysis.html", "utf8");
 const js = fs.readFileSync("static/js/analysis.js", "utf8");
+const operationJs = fs.readFileSync("static/js/operation-analysis.js", "utf8");
 const css = fs.readFileSync("static/css/analysis.css", "utf8");
 const mobileCss = fs.readFileSync("static/css/analysis-mobile.css", "utf8");
 const chartCss = fs.readFileSync("static/css/analysis-chart-fixes.css", "utf8");
@@ -148,12 +149,14 @@ expect(
     && html.indexOf("부동산분석") < html.indexOf("운영분석")
     && html.includes('id="operationInputs"') && html.includes('id="operationChart"')
     && js.includes("lodging_room_total") && js.includes("operationBenchmarks")
+    && html.includes('id="operationLodging"') && operationJs.includes('average("adr")')
+    && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
 );
 expect(
   html.includes("별도 승인 없이 바로 분석")
-    && html.includes("영업신고에 기재된 객실 수를 자동 적용")
+    && html.includes("한 건물에 여러 영업신고가 있으면")
     && !html.includes("식음 매출액")
     && js.includes("analyzeOperationFiles"),
   "신고 객실 자동 적용 또는 자기자료 즉시 분석 원칙이 반영되지 않았습니다.",

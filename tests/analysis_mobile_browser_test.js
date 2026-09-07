@@ -105,6 +105,7 @@ async function run() {
         { region: "평창군", adr: 190000, occ: 60, revpar: 114000, foreign: 5 },
         { region: "양양군", adr: 170000, occ: 61, revpar: 103700, foreign: 4 },
         { region: "고성군", adr: 135489, occ: 59.46, revpar: 80562, foreign: 8 },
+        { region: "춘천시", adr: 113000, occ: 55, revpar: 62150, foreign: 2 },
       ],
     });
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
@@ -113,6 +114,10 @@ async function run() {
       building_name: "선택 테스트 자산", road_address: "강원특별자치도 속초시 테스트로 1",
       sido: "강원특별자치도", lodging_type: "생활숙박시설",
       lodging_room_total: 348,
+      lodgings: [
+        { biz_name: "테스트 호텔", room_count: 200 },
+        { biz_name: "테스트 레지던스", room_count: 148 },
+      ],
     });
     return json(route, { ok: true, items: [] });
   });
@@ -297,7 +302,7 @@ async function run() {
     expect(incompleteResult.transactionCount.includes("229건"),
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("348실"));
+    await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("200실"));
     await page.fill("#operationOcc", "74");
     await page.fill("#operationAdr", "162000");
     await page.click("#operationRun");
@@ -309,14 +314,21 @@ async function run() {
       detail: document.getElementById("operationDetail").textContent,
       topRows: document.querySelectorAll("#operationTopRows tr").length,
       chart: !!Chart.getChart("operationChart"),
+      lodgingOptions: document.querySelectorAll("#operationLodging option").length,
+      adrBaseline: document.getElementById("operationAdrBaseline").textContent,
+      hiddenFilters: getComputedStyle(document.getElementById("analysisFilter")).display === "none",
     }));
     expect(operationResult.operationVisible && operationResult.propertyHidden && operationResult.selectedTab === "true",
       "운영분석 탭 전환 상태가 올바르지 않습니다.");
-    expect(operationResult.roomCount.includes("348실"), "영업신고 객실 수가 운영분석에 자동 적용되지 않았습니다.");
+    expect(operationResult.roomCount.includes("200실"), "선택 영업신고 업소의 객실 수가 운영분석에 자동 적용되지 않았습니다.");
     expect(operationResult.detail.includes("119,880원") && operationResult.detail.includes("자동분석"),
       `OCC·ADR 입력으로 RevPAR 운영분석 결과가 표시되지 않았습니다: ${operationResult.detail}`);
     expect(operationResult.topRows === 5 && operationResult.chart,
       "운영 포지셔닝 차트 또는 지역 TOP 5가 표시되지 않았습니다.");
+    expect(operationResult.lodgingOptions === 2 && operationResult.roomCount.includes("200실"),
+      "한 건물의 영업신고 업소 선택과 업소별 객실 수 자동 적용이 올바르지 않습니다.");
+    expect(operationResult.adrBaseline.includes("원") && operationResult.hiddenFilters,
+      "지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {
