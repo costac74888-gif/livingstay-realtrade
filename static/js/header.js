@@ -77,7 +77,7 @@
           '<button type="button" class="hnav-btn" id="myPriceBtnMenu">🏨 <span class="hnav-label">내건물시세</span></button>' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
-          '<a class="hnav-btn" href="/analysis"><span class="hnav-label">투자분석</span></a>' +
+          '<a class="hnav-btn" href="/analysis"><span class="hnav-label">📊 자산분석</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
         '</nav>' +

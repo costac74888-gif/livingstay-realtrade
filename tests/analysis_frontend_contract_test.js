@@ -80,7 +80,11 @@ expect(
     && html.includes("사분면 기준선 ="),
   "건물 사진 또는 보고서 산정 근거가 없습니다.",
 );
-expect(menu.includes('href="/analysis"'), "모바일 전체 메뉴에 투자분석 링크가 없습니다.");
+expect(menu.includes('href="/analysis">📊 자산분석</a>'), "모바일 전체 메뉴에 📊 자산분석 링크가 없습니다.");
+expect(
+  fs.readFileSync("static/js/header.js", "utf8").includes('<span class="hnav-label">📊 자산분석</span>'),
+  "PC 상단 메뉴에 📊 자산분석 링크가 없습니다.",
+);
 expect(
   html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")
     && js.includes('"hs_recent_buildings"'),
