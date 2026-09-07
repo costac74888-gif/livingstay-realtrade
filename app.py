@@ -30605,7 +30605,7 @@ def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_
     if tourism_demand >= tourism_baseline and price_change >= price_baseline:
         return "슈퍼 에셋"
     if tourism_demand < tourism_baseline and price_change >= price_baseline:
-        return "가격 선행 지역"
+        return "가격 선행과열"
     if tourism_demand >= tourism_baseline and price_change < price_baseline:
         return "저평가 알짜"
     return "침체·약세"
@@ -30859,6 +30859,7 @@ def analysis_assets():
     lodging_type = request.args.get("lodging_type", "").strip()
     raw_building_id = request.args.get("building_id", "").strip()
     building_id = None
+    tourism_axis = request.args.get("tourism_axis", "growth").strip()
     if raw_building_id:
         try:
             building_id = int(raw_building_id)
@@ -30866,7 +30867,6 @@ def analysis_assets():
             return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
         if building_id <= 0:
             return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
-    tourism_axis = request.args.get("tourism_axis", "index").strip()
     if tourism_axis not in {"index", "growth"}:
         return jsonify({"ok": False, "message": "tourism_axis는 index 또는 growth여야 합니다."}), 400
     if len(lodging_type) > 40:
@@ -31065,8 +31065,12 @@ def analysis_assets():
         selected_sidos = sorted({r["sido"] for r in option_rows if r["sido"]})
         selected_sggs = sorted({r["sgg"] for r in option_rows if r["sgg"] and (not sido or r["sido"] == sido)})
         selected_types = sorted({r["lodging_type"] for r in option_rows if r["lodging_type"]})
-        tourism_baseline = median(valid_tourism)
-        price_baseline = median(valid_price)
+        tourism_baseline = (
+            0 if tourism_axis == "growth" else median(valid_tourism)
+        )
+        price_baseline = (
+            0 if tourism_axis == "growth" else median(valid_price)
+        )
         for item in items:
             item["quadrant"] = _analysis_quadrant(
                 item[tourism_key], item["price_change"],
@@ -31075,6 +31079,38 @@ def analysis_assets():
                 ),
                 price_baseline if price_baseline is not None else 0,
             )
+            item["is_representative"] = False
+        selected_item = next(
+            (item for item in items if item["building_id"] == building_id),
+            None,
+        )
+        tourism_span = max(
+            [abs(value - tourism_baseline) for value in valid_tourism] or [1]
+        ) or 1
+        price_span = max(
+            [abs(value - price_baseline) for value in valid_price] or [1]
+        ) or 1
+        for quadrant in ("슈퍼 에셋", "가격 선행과열", "침체·약세", "저평가 알짜"):
+            candidates = [
+                item for item in comparable_items
+                if item["quadrant"] == quadrant
+                and item["building_id"] != building_id
+                and item["transaction_count"] >= 2
+                and item["previous_transaction_count"] >= 2
+                and (
+                    not selected_item
+                    or (item["sido"], item["sgg"])
+                    != (selected_item["sido"], selected_item["sgg"])
+                )
+            ]
+            if selected_item and candidates:
+                representative = min(candidates, key=lambda item: (
+                    abs(item[tourism_key] - tourism_baseline) / tourism_span
+                    + abs(item["price_change"] - price_baseline) / price_span,
+                    -item["transaction_count"],
+                    item["building_id"],
+                ))
+                representative["is_representative"] = True
         # Cache writes are part of this read transaction. Commit only those
         # derived rows before the pooled connection is released.
         conn.commit()

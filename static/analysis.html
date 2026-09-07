@@ -17,14 +17,14 @@
   </div>
   <section class="analysis-card building-search" aria-label="건물 선택">
     <div class="search-copy"><span class="eyebrow">BUILDING-FIRST SEARCH</span><h2>먼저, 분석할 건물을 찾아보세요</h2><p>건물명을 우선으로 검색하고 주소로 결과를 좁힐 수 있습니다.</p></div>
-    <div class="search-control"><label for="buildingSearch">건물명 또는 주소</label><div class="search-input-wrap"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 5 5"></path></svg><input id="buildingSearch" type="search" placeholder="예: 체스터톤스, 속초시..." autocomplete="off"><button id="clearSearch" type="button" aria-label="검색어 지우기">×</button></div><div id="searchResults" class="search-results" role="listbox"></div></div>
+    <div class="search-control"><label for="buildingSearch">건물명 또는 주소</label><div class="search-input-wrap"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 5 5"></path></svg><input id="buildingSearch" type="search" placeholder="예: 체스터톤스, 속초시..." autocomplete="off"><button id="clearSearch" type="button" aria-label="검색어 지우기">×</button></div><div id="searchResults" class="search-results" role="listbox"></div><div id="quickBuildings" class="quick-buildings" aria-label="관심단지와 최근 조회 건물"></div></div>
   </section>
   <section class="analysis-card analysis-filter" aria-label="분석 조건">
     <div class="am-field"><label for="selSido">시·도</label><select id="selSido"><option value="">전체 시·도</option></select></div>
     <div class="am-field"><label for="selSgg">시·군·구</label><select id="selSgg"><option value="">전체 시·군·구</option></select></div>
     <div class="am-field"><label for="selType">숙박 유형</label><select id="selType"><option value="">전체 유형</option></select></div>
     <div class="am-field"><label for="selPeriod">분석 기간</label><select id="selPeriod"><option value="">선택</option></select></div>
-    <div class="am-field"><label for="selTourismAxis">관광 비교축</label><select id="selTourismAxis"><option value="index">관광수요 지수</option><option value="growth">실제 동기간 증감률</option></select></div>
+    <div class="am-field"><label for="selTourismAxis">관광 비교축</label><select id="selTourismAxis"><option value="growth" selected>실제 동기간 증감률</option><option value="index">관광수요 지수</option></select></div>
     <div class="am-actions"><button class="am-btn" id="resetBtn" type="button">조건 초기화</button><button class="am-btn primary" id="applyBtn" type="button">분석 갱신</button></div>
   </section>
   <section class="summary-grid" id="summaryGrid">
@@ -36,9 +36,9 @@
   <div id="state" class="analysis-card state-box hidden"></div>
   <section class="workspace" id="workspace">
     <article class="analysis-card chart-card">
-       <div class="card-head"><div><h2 id="chartTitle">관광수요 지수 × 가격변동 포지셔닝</h2><p>선택 건물과 같은 시군구는 사분면 색으로, 그 외 지역은 회색으로 표시합니다.</p></div><div class="legend"><span><i class="legend-selected"></i>선택 건물</span><span><i class="legend-nearby"></i>같은 시군구</span><span><i class="legend-other"></i>그 외 지역</span></div></div>
-       <div class="chart-wrap"><div class="quad q-top-left"><b>② 가격 선행 지역</b><span>관광수요는 낮지만 가격이 높은 지역</span></div><div class="quad q-top-right"><b>① 슈퍼 에셋</b><span>관광과 가격이 함께 강한 지역</span></div><div class="quad q-bottom-left"><b>③ 침체·약세</b><span>관광수요와 가격이 모두 약한 지역</span></div><div class="quad q-bottom-right"><b>④ 저평가 알짜</b><span>관광은 강하고 가격은 상대적으로 낮은 지역</span></div><canvas id="scatterChart" aria-label="관광수요와 가격변동 산점도"></canvas><div id="selectedPulse" class="selected-pulse" aria-hidden="true"></div></div>
-       <div class="baseline-strip"><div class="baseline region-baseline">지역 비교<b id="regionBaseline">건물을 선택해 주세요</b></div><div class="baseline">관광수요 지수 기준<b id="tourismBaseline">—</b></div><div class="baseline">가격변동 기준<b id="priceBaseline">—</b></div><div class="baseline">분석 표본<b id="sampleBaseline">—</b></div></div>
+       <div class="card-head"><div><h2 id="chartTitle">관광수요 증감 × 가격변동 포지셔닝</h2><p>내 건물, 같은 시군구 비교군, 각 사분면의 다른 지역 대표 사례를 함께 비교합니다.</p></div><div class="legend"><span><i class="legend-selected"></i>선택 건물</span><span><i class="legend-nearby"></i>같은 시군구</span><span><i class="legend-other"></i>다른 지역 대표</span></div></div>
+       <div class="chart-wrap"><div class="quad q-top-left"><b>② 가격 선행과열</b><span id="quadTopLeft">관광수요보다 실거래 가격이 먼저 상승한 구간</span></div><div class="quad q-top-right"><b>① 슈퍼 에셋</b><span id="quadTopRight">관광수요와 실거래 가격이 함께 상승한 구간</span></div><div class="quad q-bottom-left"><b>③ 침체·약세</b><span id="quadBottomLeft">관광수요와 실거래 가격이 함께 하락한 구간</span></div><div class="quad q-bottom-right"><b>④ 저평가 알짜</b><span id="quadBottomRight">관광수요는 상승했지만 가격은 상대적으로 낮은 구간</span></div><canvas id="scatterChart" aria-label="관광수요와 가격변동 산점도"></canvas><div id="selectedPulse" class="selected-pulse" aria-hidden="true"></div></div>
+       <div class="baseline-strip"><div class="baseline region-baseline">지역 비교<b id="regionBaseline">건물을 선택해 주세요</b></div><div class="baseline">관광수요 기준<b id="tourismBaseline">—</b></div><div class="baseline">가격변동 기준<b id="priceBaseline">—</b></div><div class="baseline">분석 표본<b id="sampleBaseline">—</b></div></div>
     </article>
    <aside class="analysis-card detail-card" id="detailCard"><div class="detail-empty"><div><strong>건물을 선택해 주세요</strong>산점도의 점 또는 아래 표의 행을 선택하면<br>주소·거래·자료 출처를 자세히 보여드립니다.</div></div></aside>
   </section>
@@ -47,7 +47,7 @@
     <div class="table-scroll"><table><thead><tr><th data-sort="name">건물명 ↕</th><th data-sort="address">위치 ↕</th><th data-sort="lodging_type">유형 ↕</th><th data-sort="tourism_demand_index">관광수요지수 ↕</th><th data-sort="tourism_growth">관광증감 ↕</th><th data-sort="price_change">가격변동 ↕</th><th data-sort="transaction_count">거래건수 ↕</th><th data-sort="latest_price">최근 거래가 ↕</th><th data-sort="peak_gap">고점 대비 ↕</th><th data-sort="last_deal_date">최근 거래일 ↕</th><th>판정</th></tr></thead><tbody id="assetRows"></tbody></table></div>
     <div class="table-footer"><span>열 제목을 누르면 정렬됩니다. 분석값은 선택한 기간·지역 조건에 따라 달라집니다.</span><span id="tableSortLabel"></span></div>
   </section>
-    <section class="methodology" id="methodology"><strong>계산 기준과 한계</strong><div>관광수요는 <span id="methodTourism">—</span>, 가격은 <span id="methodPrice">—</span> 기준으로 산출됩니다. <span id="methodWarning">자료의 표본 수준과 한계를 확인한 뒤 참고용으로 이용하세요.</span></div><div class="formula">관광수요 지수 = 지역 방문자 수의 전국 백분위 × 100<br>관광 증감률 = (현재기간 방문자 − 직전 동기간 방문자) ÷ 직전 동기간 방문자 × 100<br>가격변동률 = (현재기간 ㎡당 거래가 중앙값 − 직전기간 중앙값) ÷ 직전기간 중앙값 × 100<br>사분면 기준선 = 화면에 포함된 비교 표본의 각 축 중앙값</div><div>사분면은 상대적 시장 신호를 분류한 것이며 투자 결과를 보장하지 않습니다. 이 화면은 투자 권유·수익률 예측·거래 보증을 제공하지 않습니다.</div></section>
+    <section class="methodology" id="methodology"><strong>계산 기준과 한계</strong><div>관광수요는 <span id="methodTourism">—</span>, 가격은 <span id="methodPrice">—</span> 기준으로 산출됩니다. <span id="methodWarning">자료의 표본 수준과 한계를 확인한 뒤 참고용으로 이용하세요.</span></div><div class="formula">관광수요 지수 = 지역 방문자 수의 전국 백분위 × 100<br>관광 증감률 = (현재기간 방문자 − 직전 동기간 방문자) ÷ 직전 동기간 방문자 × 100<br>가격변동률 = (현재기간 ㎡당 거래가 중앙값 − 직전기간 중앙값) ÷ 직전기간 중앙값 × 100<br>증감률 사분면 기준선 = 관광수요 0% · 가격변동 0%<br>관광수요 지수 사분면 기준선 = 화면 비교 표본의 각 축 중앙값</div><div>사분면은 상대적 시장 신호를 분류한 것이며 투자 결과를 보장하지 않습니다. 이 화면은 투자 권유·수익률 예측·거래 보증을 제공하지 않습니다.</div></section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
 <script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script>

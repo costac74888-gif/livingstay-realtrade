@@ -11,7 +11,7 @@ expect(
   "자료 읽는 법이 분석 화면 맨 위에 배치되지 않았습니다.",
 );
 expect(
-  html.includes("슈퍼 에셋") && html.includes("가격 선행 지역")
+  html.includes("슈퍼 에셋") && html.includes("가격 선행과열")
     && html.includes("침체·약세") && html.includes("저평가 알짜"),
   "사분면별 평가와 설명이 없습니다.",
 );
@@ -38,13 +38,13 @@ expect(
   "전체 실거래와 분석 표본 거래가 분리되지 않았습니다.",
 );
 expect(
-  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?6:4.5")
+  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?5.5:i.is_representative?8:0")
     && css.includes(".selected-pulse") && css.includes("@keyframes selectedAssetPulse"),
   "선택 건물 점의 두 배 강조와 점멸 효과가 없습니다.",
 );
 expect(
   html.includes("같은 시군구") && html.includes('id="regionBaseline"')
-    && js.includes("sameRegion") && js.includes('"#b9c2cc"')
+    && js.includes("sameRegion") && js.includes('sameRegion(i)?"#168f91"')
     && css.includes(".legend-nearby") && css.includes(".legend-other"),
   "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
 );
@@ -72,5 +72,23 @@ expect(
   "건물 사진 또는 보고서 산정 근거가 없습니다.",
 );
 expect(menu.includes('href="/analysis"'), "모바일 전체 메뉴에 투자분석 링크가 없습니다.");
+expect(
+  html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")
+    && js.includes('"hs_recent_buildings"'),
+  "관심단지 또는 최근 조회 건물 바로가기가 없습니다.",
+);
+expect(
+  html.includes("가격 선행과열") && html.includes("다른 지역 대표")
+    && js.includes('sameRegion(i)?"#168f91"')
+    && js.includes("i.is_representative?8:0")
+    && js.includes("representativeLabelsPlugin"),
+  "사분면 설명 또는 지역·대표 표본 색상 구분이 없습니다.",
+);
+expect(
+  js.includes("loadSeq") && js.includes("if(seq!==loadSeq)return")
+    && html.includes('id="quadTopLeft"')
+    && js.includes("관광수요 지수는 기준보다 낮고 가격변동은 높은 구간"),
+  "연속 선택의 오래된 응답 차단 또는 비교축별 사분면 설명이 없습니다.",
+);
 
 console.log("analysis frontend contract checks passed");

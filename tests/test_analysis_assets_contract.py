@@ -63,6 +63,7 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn('tourism_axis not in {"index", "growth"}', self.endpoint)
         self.assertIn('"tourism_growth": demand.get("growth")', self.endpoint)
         self.assertIn('"tourism_comparison_complete"', self.endpoint)
+        self.assertIn('request.args.get("tourism_axis", "growth")', self.endpoint)
 
     def test_quadrants_use_the_exact_plotted_comparison_population(self):
         self.assertIn("comparable_items = [", self.endpoint)
@@ -70,8 +71,11 @@ class AnalysisAssetsContractTests(unittest.TestCase):
             'item[tourism_key] is not None and item["price_change"] is not None',
             self.endpoint,
         )
-        self.assertIn("tourism_baseline = median(valid_tourism)", self.endpoint)
-        self.assertIn("price_baseline = median(valid_price)", self.endpoint)
+        self.assertIn('0 if tourism_axis == "growth" else median(valid_tourism)', self.endpoint)
+        self.assertIn('0 if tourism_axis == "growth" else median(valid_price)', self.endpoint)
+        self.assertIn('"is_representative"', self.endpoint)
+        self.assertIn('item["transaction_count"] >= 2', self.endpoint)
+        self.assertIn('item["previous_transaction_count"] >= 2', self.endpoint)
 
     def test_public_population_excludes_mixed_use_and_is_capped(self):
         self.assertIn("lodging_type IS DISTINCT FROM 'mixed_use_excluded'", self.endpoint)
