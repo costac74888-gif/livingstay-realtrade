@@ -6150,9 +6150,9 @@ function _setupBuildingPanels(type){
   const isB = STRUCTURE_B_TYPES.includes(type);
   const ids = {
     operations: [
-      "bApprovedRosterOperatingCard", "bCampCard", "bNonCampingOperationsCard",
+      "bCampCard", "bNonCampingOperationsCard",
       "bReservationCard", "bTourismDataCard", "bLodgingOperatorCard",
-      "bOperatorInfoDisclaimer",
+      "bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard",
     ],
     property: [
       "bRequestCard", "bSignalCard", "bAdminCard",

@@ -22,9 +22,9 @@ expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizRepor
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
 expect(
   main.includes('"bReservationCard", "bTourismDataCard", "bLodgingOperatorCard"') &&
-  main.includes('"bOperatorInfoDisclaimer"') &&
+  main.includes('"bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard"') &&
   !main.includes('"bStoresCard", "bPartnerBannerCard"'),
-  "운영정보의 예약·관광통계·시설운영파트너 순서 또는 마지막 파트너 배너 배치가 올바르지 않습니다.",
+  "운영정보의 예약·관광통계·시설운영파트너·공식영업정보 순서 또는 마지막 파트너 배너 배치가 올바르지 않습니다.",
 );
 expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
