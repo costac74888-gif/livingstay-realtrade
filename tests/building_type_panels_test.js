@@ -5,8 +5,8 @@ const css = fs.readFileSync("static/css/main.css", "utf8");
 const manage = fs.readFileSync("static/lodging_operator_manage.html", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
-expect(main.includes('const STRUCTURE_A_TYPES = ["생활"]'), "Structure A 유형 목록이 없습니다.");
-expect(main.includes('const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"]'), "Structure B 유형 목록이 없습니다.");
+expect(main.includes("const STRUCTURE_A_TYPES = [];"), "탭 없는 숙박시설 예외가 제거되지 않았습니다.");
+expect(main.includes('const STRUCTURE_B_TYPES = ["생활", "에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"]'), "모든 숙박 유형의 탭 적용 목록이 없습니다.");
 expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("airbnb_url")') && main.includes("campingReservationUrl"), "운영자 우선·캠핑 예약 URL 보조 우선순위가 없습니다.");
 expect(!main.includes('|| firstValid("gocamping_url")'), "고캠핑 정보 링크가 예약 URL 우선순위에 남아 있습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
@@ -26,7 +26,7 @@ expect(
   !main.includes('"bStoresCard", "bPartnerBannerCard"'),
   "운영정보의 예약·관광통계·시설운영파트너·공식영업정보 순서 또는 마지막 파트너 배너 배치가 올바르지 않습니다.",
 );
-expect(main.includes("_reservationBar(b, false)"), "생활·관광·일반숙박의 미연결 예약 안내가 숨겨지지 않았습니다.");
+expect(!main.includes("_reservationBar(b, false)"), "생활숙박시설의 예약 안내가 탭 밖에 중복 표시됩니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
 expect(

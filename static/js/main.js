@@ -6060,8 +6060,8 @@ function _renderApprovedRosterOperatingInfo(b){
   card.style.display = "";
 }
 
-const STRUCTURE_A_TYPES = ["생활"];
-const STRUCTURE_B_TYPES = ["에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
+const STRUCTURE_A_TYPES = [];
+const STRUCTURE_B_TYPES = ["생활", "에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
 let _buildingDetailRequestToken = 0;
 let _buildingTrendRequestSeq = 0;
 let _buildingTxRequestSeq = 0;
@@ -6723,9 +6723,6 @@ async function loadBuildingHeader(id){
 
   headerCard.innerHTML = `
     ${buildingPhotoSliderHtml()}
-    ${STRUCTURE_A_TYPES.includes(b.lodging_type)
-      ? _reservationBar(b, false)
-      : ""}
     <div id="bBuildingTitleRow" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
       <h1 id="bBuildingTitle" data-property-name="${escapeHtml(bName)}" data-operating-name="${escapeHtml(operatingName)}" style="font-size:17px; font-weight:700; color:var(--ink); margin:0;">${escapeHtml(operatingName)}</h1>
       ${namePendingNeedsReview ? '<span style="font-size:11px; font-weight:600; color:#8a6d1f; background:#fdf6e3; border:1px solid #e8d9a0; border-radius:10px; padding:2px 8px; white-space:nowrap;">정식명칭 확인중</span>' : ""}
