@@ -69,6 +69,16 @@ expect(
   main.includes("전년 대비"),
   "방문객 급등동네 표·지도·호버 상세가 연결되지 않았습니다."
 );
+expect(
+  index.includes("<span>국내 관광</span>") &&
+  index.includes("<span>외국인 관광</span>") &&
+  !index.includes("<span>외래 관광</span>") &&
+  main.includes('bubble.dataset.palette = dataLabSurgeMode === "foreign" ? "foreign" : "domestic"') &&
+  css.includes('.datalab-surge-map-bubble[data-palette="foreign"]') &&
+  css.includes('.datalab-surge[data-surge-mode="domestic"]') &&
+  css.includes('.datalab-surge[data-surge-mode="foreign"]'),
+  "국내·외국인 관광 명칭과 모드별 파랑·보라 색상이 일치하지 않습니다."
+);
 expect(index.includes("<span>영업신고현황</span>") && !index.includes("위탁현황"),
   "데이터랩 ⑤ 탭 명칭이 영업신고현황으로 교체되지 않았습니다.");
 expect(

@@ -3736,6 +3736,7 @@ function paintDataLabSurgeMap(data){
     const diameter = 38 + Math.sqrt(Math.max(0, item.current) / maxVisitors) * 58;
     const bubble = document.createElement("button");
     bubble.type = "button"; bubble.className = "datalab-surge-map-bubble";
+    bubble.dataset.palette = dataLabSurgeMode === "foreign" ? "foreign" : "domestic";
     bubble.style.setProperty("--surge-diameter", `${diameter}px`);
     bubble.style.setProperty("--surge-opacity", `${(.58 + .32 * Math.max(0, item.growth) / maxGrowth).toFixed(2)}`);
     bubble.innerHTML = `<span>${escapeHtml(item.dong || "동네")}</span><strong>+${Math.max(0, item.growth).toFixed(1)}%</strong>`;
@@ -3747,6 +3748,7 @@ function paintDataLabSurgeMap(data){
       if (select) { document.querySelectorAll(".datalab-surge-map-bubble.is-selected").forEach(el => el.classList.remove("is-selected")); bubble.classList.add("is-selected"); overlay.setZIndex(60); }
       if (dataLabSurgeInfoOverlay) dataLabSurgeInfoOverlay.setMap(null);
       const info = document.createElement("div"); info.className = "datalab-surge-info";
+      info.dataset.palette = dataLabSurgeMode === "foreign" ? "foreign" : "domestic";
       info.innerHTML = `<strong>${escapeHtml([item.sido, item.sgg, name].filter(Boolean).join(" "))}</strong><span>${dataLabNum(item.rank || index + 1)}위 · ${dataLabSurgeMode === "foreign" ? "외국인" : "내국인"} 방문객</span><span>현재 방문객 ${dataLabNum(item.current)}명</span><span>전년 동기 ${dataLabNum(item.previous)}명</span><span>전년 대비 +${item.growth.toFixed(1)}%</span><span>집계 기간 ${escapeHtml(item.query_period || dataLabTourismPeriod(sourceData))}</span>`;
       dataLabSurgeInfoOverlay = new kakao.maps.CustomOverlay({position, content:info, yAnchor:1.06, zIndex:40}); dataLabSurgeInfoOverlay.setMap(kakaoMap);
     };
