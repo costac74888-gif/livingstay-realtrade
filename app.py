@@ -5922,7 +5922,6 @@ def lodging_operator_me():
         conn.close()
 
 
-
 @app.route("/api/lodging-operator/photo", methods=["POST", "DELETE"])
 def lodging_operator_photo():
     """승인 대표자 본인만 공개 카드 사진을 올리거나 지운다."""
@@ -17501,6 +17500,10 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
         return False, 409, {"ok": False, "message": "이미 실행 중입니다. 완료 후 다시 시도해 주세요."}
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    resolved_args = [
+        status["run_id"] if arg == "__RUN_ID__" else arg
+        for arg in script_args
+    ]
     try:
         resolved_args = [
             status["run_id"] if value == "__RUN_ID__" else value
@@ -21600,14 +21603,21 @@ def _lodging_full_stats_payload():
                 and lodging_type_for_hygiene(permit.get("hygiene_type"))
                 == REPORT_RATE_EXCLUDED_LODGING_TYPE
             ])
-            coverage_counts = [
-                _report_building_counts(type_buildings, label)
+            coverage_reported_buildings = sum(
+                (
+                    active_camping_stats["camping_matched_facility_count"]
+                    if label == "캠핑"
+                    else _report_building_counts(type_buildings, label)[0]
+                )
                 for label, type_buildings in coverage_blds_by_type.items()
-            ]
-            coverage_reported_buildings = sum(active for active, _ in coverage_counts)
+            )
             coverage_building_count = sum(
-                len(type_buildings)
-                for type_buildings in coverage_blds_by_type.values()
+                (
+                    active_camping_stats["camping_facility_count"]
+                    if label == "캠핑"
+                    else len(type_buildings)
+                )
+                for label, type_buildings in coverage_blds_by_type.items()
             )
             rate_numerator = legacy_rate_rc + len(general_active_permits) + coverage_reported_buildings
             rate_denominator = legacy_rate_tu + len(general_blds) + coverage_building_count
@@ -22535,7 +22545,7 @@ def admin_buildings_export():
         for jk_norm, bld_list in jibun_key_map_x.items():
             lr_list = lr_jibun_grp_x.get(jk_norm, [])
             for it in bld_list:
-                if "_xlr" not in it:
+                if not it.get("_xlr"):
                     it["_xlr"] = lr_list
     for r in rows:
         lr_list = sorted(r.pop("_xlr", []),

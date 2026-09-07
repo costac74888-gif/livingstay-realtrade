@@ -10,3 +10,5 @@ npm ci --no-audit
 # 기존 앱 워크플로가 아직 실행 중이므로 스키마 초기화를 건너뛰어 DDL lock 충돌을
 # 피한다. 후처리 성공 뒤 워크플로 reconciliation이 앱을 재시작하며 새 스키마를 적용한다.
 SKIP_STARTUP_SCHEMA_INIT=1 npm run test:frontend
+# 실행 중인 앱에 인증·분석 API 응답을 고정 주입해 실제 모바일 Chart.js 배치를 확인한다.
+npm run test:analysis-mobile

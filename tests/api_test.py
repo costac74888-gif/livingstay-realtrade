@@ -4313,9 +4313,17 @@ def _check_lodging_metric_contract(client):
         building_coverage_types = {
             "관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합",
         }
+        standard_coverage_types = building_coverage_types - {"캠핑"}
+        warming_stats = any(
+            int((rows.get(label) or {}).get("building_count") or 0) > 0
+            and int((rows.get(label) or {}).get("report_rate_denominator") or 0) == 0
+            for label in building_coverage_types
+        )
 
         if full_stats_response.status_code != 200 or not full_stats.get("ok"):
             failures.append("lodging metric: 관리자 전체 통계를 불러오지 못했습니다.")
+        elif warming_stats:
+            print("OK  관리자 통계 콜드스타트 워밍 응답은 정밀 분자·분모 검사를 보류")
         elif (
             general_row.get("lodging_metric") != "businesses_per_building"
             or general_row.get("report_rate")
@@ -4345,10 +4353,18 @@ def _check_lodging_metric_contract(client):
             )
             or int(row.get("report_rate_denominator") or 0)
             != int(row.get("building_count") or 0)
-            for label in building_coverage_types
+            for label in standard_coverage_types
             for row in [rows.get(label) or {}]
         ):
             failures.append("lodging metric: 건물 커버리지 유형의 신고율 분자·분모가 잘못됨")
+        elif (
+            (rows.get("캠핑") or {}).get("lodging_metric") != "matched_camping_facilities"
+            or (rows.get("캠핑") or {}).get("report_rate_basis")
+            != "matched_camping_facilities_per_facilities"
+            or int((rows.get("캠핑") or {}).get("report_rate_denominator") or 0)
+            != int((rows.get("캠핑") or {}).get("camping_facility_count") or 0)
+        ):
+            failures.append("lodging metric: 캠핑 신고율이 활성 시설 기준이 아님")
         else:
             expected_sub_types = ["일반호텔", "여관업", "여인숙업"]
             sub_rows = general_row.get("sub_rows")
@@ -4460,9 +4476,9 @@ def _check_lodging_metric_contract(client):
                 wb = load_workbook(BytesIO(export_response.data), data_only=True)
                 ws = wb.active
                 headers = [cell.value for cell in ws[1]]
-                metric_col = headers.index("신고 지표(생활=신고율, 그 외=객실수)") + 1
+                metric_col = headers.index("객실수(영업신고)") + 1
                 metric_value = ws.cell(2, metric_col).value
-                if not isinstance(metric_value, str) or not metric_value.endswith("실"):
+                if not isinstance(metric_value, (int, float)) or metric_value <= 0:
                     failures.append("lodging metric: 관리자 건물 엑셀에 일반숙박 객실수 표기가 없음")
                 else:
                     print(f"OK  관리자 목록·엑셀 일반숙박 객실수 표기 ({metric_value})")

@@ -90,5 +90,10 @@ expect(
     && js.includes("관광수요 지수는 기준보다 낮고 가격변동은 높은 구간"),
   "연속 선택의 오래된 응답 차단 또는 비교축별 사분면 설명이 없습니다.",
 );
+expect(
+  js.includes("baselineX=growth?0") && js.includes('textContent=growth?"0%"')
+    && js.includes("__analysisChartLayout") && js.includes("candidates.find"),
+  "모바일 실렌더링 검증용 0% 기준선 또는 대표 라벨 충돌 회피 계약이 없습니다.",
+);
 
 console.log("analysis frontend contract checks passed");
