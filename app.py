@@ -31149,7 +31149,7 @@ def analysis_assets():
     lodging_type = request.args.get("lodging_type", "").strip()
     raw_building_id = request.args.get("building_id", "").strip()
     building_id = None
-    tourism_axis = request.args.get("tourism_axis", "index").strip()
+    tourism_axis = request.args.get("tourism_axis", "growth").strip()
     if raw_building_id:
         try:
             building_id = int(raw_building_id)

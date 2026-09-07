@@ -44,7 +44,7 @@ expect(
   "선택 건물 점의 두 배 강조와 점멸 효과가 없습니다.",
 );
 expect(
-  html.includes("같은 시군구") && html.includes('id="regionBaseline"')
+  html.includes("주요 단지") && html.includes('id="regionBaseline"')
     && js.includes("sameRegion") && js.includes('sameRegion(i)?"#168f91"')
     && css.includes(".legend-nearby") && css.includes(".legend-other"),
   "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
@@ -80,7 +80,7 @@ expect(
   "관심단지 또는 최근 조회 건물 바로가기가 없습니다.",
 );
 expect(
-  js.includes("가격 선행과열") && html.includes("전체 비교 건물")
+  html.includes("가격 선행 지역") && html.includes("기타 단지")
     && js.includes('sameRegion(i)?"#168f91"')
     && js.includes("i.is_representative?8:4")
     && js.includes("representativeLabelsPlugin"),
@@ -101,6 +101,20 @@ expect(
   js.includes('id="transactionsBtn"') && js.includes("#txTableWrap")
     && js.includes("실거래 전부보기") && css.includes("repeat(4,minmax(0,1fr))"),
   "상세·실거래·인쇄·공유 4개 버튼이 나란히 배치되지 않았습니다.",
+);
+expect(
+  html.includes("② 가격 선행 지역") && html.includes("(관광 감소 / 가격 상승)")
+    && html.includes("관광 수요는 줄지만 가격이 높은 지역")
+    && html.includes("① 슈퍼 에셋 지역") && html.includes("관광과 시세가 함께 상승하는 우수 지역")
+    && html.includes("③ 침체 구역") && html.includes("관광 수요와 가격이 모두 하락한 지역")
+    && html.includes("④ 저평가 알짜 지역") && html.includes("관광객은 늘지만 가격이 아직 저렴한 지역"),
+  "첨부 기준의 사분면 문구가 그대로 반영되지 않았습니다.",
+);
+expect(
+  html.includes("추천 단지 TOP 5") && html.includes("④</i> 저평가 알짜 지역 중심")
+    && html.includes('id="recommendationRows"') && js.includes("renderRecommendations")
+    && js.includes('i.quadrant==="저평가 알짜"'),
+  "저평가 알짜 중심 추천 단지 TOP 5가 없습니다.",
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")

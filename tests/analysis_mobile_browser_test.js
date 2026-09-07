@@ -108,7 +108,7 @@ async function run() {
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       await page.waitForFunction(() => {
         const layout = window.__analysisChartLayout;
-        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 53
+        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 0
           && layout.labels && layout.labels.length === 4
           && layout.points && layout.points.some((point) => point.selected);
       });
@@ -134,7 +134,7 @@ async function run() {
       });
 
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
-    expect(result.baselineText[0] === "53" && result.baselineText[1] === "+12%", "기본 관광수요 지수 기준선이 응답 중앙값과 다릅니다.");
+    expect(result.baselineText[0] === "0%" && result.baselineText[1] === "0%", "기본 외지인 방문객 증가율 기준선이 0%가 아닙니다.");
     const { baseline, points, labels } = result.layout;
     expect(result.quadrants.length === 4 && result.quadrants.every((quad) => quad.text !== ""),
       "그래프의 ①~④ 사분면 설명문구가 누락됐습니다.");
@@ -148,8 +148,8 @@ async function run() {
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,
       "가로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
-    expect(baseline.valueX === 53 && Math.abs(baseline.valueY - Math.log10(13)) < 0.0001,
-      "기본 관광수요 지수 차트의 점선이 실제 응답 기준값을 사용하지 않습니다.");
+    expect(baseline.valueX === 0 && baseline.valueY === 0,
+      "기본 외지인 방문객 증가율 차트의 점선이 실제 0% 좌표를 사용하지 않습니다.");
 
     const selected = points.find((point) => point.selected);
     const nearby = points.find((point) => point.sameRegion && !point.selected);
