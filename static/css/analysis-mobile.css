@@ -1,0 +1,25 @@
+@media (max-width: 650px) {
+  .analysis-filter {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px 10px;
+  }
+
+  .analysis-filter .am-field {
+    min-width: 0;
+  }
+
+  .analysis-filter .am-field select {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+
+  .analysis-filter .am-actions {
+    grid-column: 1 / -1;
+  }
+
+  .analysis-filter .am-actions .am-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 0 8px;
+  }
+}

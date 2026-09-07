@@ -3,6 +3,7 @@ const fs = require("fs");
 const html = fs.readFileSync("static/analysis.html", "utf8");
 const js = fs.readFileSync("static/js/analysis.js", "utf8");
 const css = fs.readFileSync("static/css/analysis.css", "utf8");
+const mobileCss = fs.readFileSync("static/css/analysis-mobile.css", "utf8");
 const menu = fs.readFileSync("static/menu.html", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
@@ -20,6 +21,10 @@ expect(
   css.includes(".q-top-left") && css.includes(".q-top-right")
     && css.includes(".q-bottom-left") && css.includes(".q-bottom-right"),
   "사분면별 컬러 배경이 없습니다.",
+);
+expect(
+  mobileCss.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"),
+  "모바일 분석 조건이 2열로 배치되지 않았습니다.",
 );
 expect(
   js.includes("/api/analysis/building-search?q=")
