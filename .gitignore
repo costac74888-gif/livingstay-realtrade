@@ -1,6 +1,7 @@
 static/js/*.min.js
 static/generated/
 static/dist/
+static/vendor/
 static/.frontend-stage-*/
 # Attached assets (uploaded during development, not needed at runtime)
 attached_assets/
