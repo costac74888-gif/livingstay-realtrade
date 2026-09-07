@@ -361,6 +361,33 @@ async function run() {
       && Math.abs(operationResult.operationLayout.baselinePixelY
         - operationResult.operationLayout.chartCenterY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
+    await page.fill("#rentalPurchasePrice", "10000");
+    await page.fill("#rentalMarketPrice", "11000");
+    await page.fill("#rentalDeposit", "300");
+    await page.fill("#rentalMonthlyRent", "50");
+    await page.fill("#rentalLoanAmount", "6000");
+    await page.fill("#rentalLoanRate", "4.5");
+    await page.selectOption("#rentalLoanMethod", "interest");
+    await page.click("#rentalCalculate");
+    const rentalResult = await page.evaluate(() => ({
+      visible: !document.getElementById("rentalAnalysis").classList.contains("hidden"),
+      selectedTab: document.getElementById("rentalTab").getAttribute("aria-selected"),
+      tax: document.getElementById("rentalPropertyTax").value,
+      text: document.getElementById("rentalResults").textContent,
+      calculation: window.__rentalAnalysisResult,
+    }));
+    expect(rentalResult.visible && rentalResult.selectedTab === "true",
+      "임대수익분석 탭이 선택 상태로 표시되지 않았습니다.");
+    expect(Number(rentalResult.tax) > 0 && rentalResult.text.includes("자기자본 수익률")
+      && rentalResult.text.includes("DSCR") && rentalResult.text.includes("현재 실거래 기준 수익률"),
+      "재산세·대출·현재 실거래를 반영한 임대수익 결과가 없습니다.");
+    expect(Math.abs(rentalResult.calculation.annualRent - 600) < 0.01
+      && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
+      && Math.abs(rentalResult.calculation.invested - 3700) < 0.01,
+      "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
+    await page.click("#operationTab");
     await page.fill("#buildingSearch", "선택 테스트");
     await page.waitForSelector("#searchResults .search-result");
     await page.click("#searchResults .search-result");

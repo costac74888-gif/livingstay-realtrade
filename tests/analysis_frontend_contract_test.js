@@ -150,7 +150,9 @@ expect(
 );
 expect(
   html.includes('id="propertyTab"') && html.includes('id="operationTab"')
-    && html.indexOf("부동산분석") < html.indexOf("운영분석")
+    && html.includes('id="rentalTab"')
+    && html.indexOf("부동산투자분석") < html.indexOf("임대수익분석")
+    && html.indexOf("임대수익분석") < html.indexOf("숙박운영분석")
     && html.includes('id="operationInputs"') && html.includes('id="operationChart"')
     && js.includes("lodging_room_total") && js.includes("operationBenchmarks")
     && html.includes('id="operationLodging"') && html.includes('id="operationRoomCountInput"')
@@ -162,6 +164,16 @@ expect(
     && html.includes('id="operationAdrBaseline"') && html.includes("운영분석 산정근거")
     && html.includes("해당 지역 우수 숙박 운영지표 TOP 5"),
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
+);
+expect(
+  html.includes('id="rentalPurchasePrice"')
+    && html.includes('id="rentalDeposit"')
+    && html.includes('id="rentalMonthlyRent"')
+    && html.includes('id="rentalPropertyTax"')
+    && html.includes('id="rentalLoanAmount"')
+    && html.includes('id="rentalLoanMethod"')
+    && html.includes('id="rentalResults"'),
+  "임대수익분석의 매입·임대·보유세·대출 입력란 또는 결과 영역이 없습니다.",
 );
 expect(
   html.includes("별도 승인 없이 바로 분석")

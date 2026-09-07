@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>홈앤스테이 숙박자산 지도 | 관광수요·실거래 투자분석</title>
 <meta name="description" content="관광수요 수준과 검증된 숙박시설 실거래 움직임을 함께 비교하는 홈앤스테이 숙박자산 지도">
-<link rel="icon" href="/static/img/favicon.ico"><link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/analysis.css"><link rel="stylesheet" href="/static/css/analysis-mobile.css"><link rel="stylesheet" href="/static/css/analysis-chart-fixes.css">
+<link rel="icon" href="/static/img/favicon.ico"><link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/analysis.css"><link rel="stylesheet" href="/static/css/analysis-mobile.css"><link rel="stylesheet" href="/static/css/analysis-chart-fixes.css"><link rel="stylesheet" href="/static/css/rental-analysis.css">
 <script src="/vendor/chart.umd.js?v=4.4.4"></script>
 </head>
 <body>
@@ -15,8 +15,9 @@
     <div><div class="analysis-kicker">Home &amp; Stay / Asset intelligence</div><h1>홈앤스테이 숙박자산 지도</h1><p>최근 관광수요 수준과 숙박시설 실거래 가격 흐름을 함께 비교합니다.<br>값을 예측하거나 수익을 약속하지 않고, 확인 가능한 시장 신호와 표본 수준을 함께 보여드립니다.</p></div>
     <div class="analysis-heading-actions">
       <div class="analysis-tabs" id="analysisTabs" role="tablist">
-        <button type="button" class="active" id="propertyTab" data-analysis-mode="property" role="tab" aria-selected="true">부동산분석</button>
-        <button type="button" id="operationTab" data-analysis-mode="operation" role="tab" aria-selected="false">운영분석</button>
+        <button type="button" class="active" id="propertyTab" data-analysis-mode="property" role="tab" aria-selected="true">부동산투자분석</button>
+        <button type="button" id="rentalTab" data-analysis-mode="rental" role="tab" aria-selected="false">임대수익분석</button>
+        <button type="button" id="operationTab" data-analysis-mode="operation" role="tab" aria-selected="false">숙박운영분석</button>
       </div>
       <div class="generated" id="generatedAt">데이터 준비 중</div>
     </div>
@@ -74,6 +75,47 @@
   </section>
     <section class="methodology" id="methodology"><strong>계산 기준과 한계</strong><div>관광수요는 <span id="methodTourism">—</span>, 가격은 <span id="methodPrice">—</span> 기준으로 산출됩니다. <span id="methodWarning">자료의 표본 수준과 한계를 확인한 뒤 참고용으로 이용하세요.</span></div><div class="formula">관광수요 지수 = 지역 방문자 수의 전국 백분위 × 100<br>관광 증감률 = (현재기간 방문자 − 직전 동기간 방문자) ÷ 직전 동기간 방문자 × 100<br>가격변동률 = (현재기간 ㎡당 거래가 중앙값 − 직전기간 중앙값) ÷ 직전기간 중앙값 × 100<br>증감률 사분면 기준선 = 관광수요 0% · 가격변동 0%<br>관광수요 지수 사분면 기준선 = 화면 비교 표본의 각 축 중앙값</div><div>사분면은 상대적 시장 신호를 분류한 것이며 투자 결과를 보장하지 않습니다. 이 화면은 투자 권유·수익률 예측·거래 보증을 제공하지 않습니다.</div></section>
   </div>
+  <section id="rentalAnalysis" class="hidden rental-analysis" aria-label="임대수익분석">
+    <div class="rental-heading analysis-card">
+      <div><span class="eyebrow">UNIT RENTAL RETURN</span><h2 id="rentalBuildingName">분석할 건물을 선택해 주세요</h2><p id="rentalBuildingAddress">생활숙박시설·장기임대 호실의 보증금과 월세 수익을 계산합니다.</p></div>
+      <span class="rental-badge">호실 단위 분석</span>
+    </div>
+    <section class="analysis-card rental-form">
+      <div class="rental-group">
+        <h3>매입·임대 조건</h3>
+        <div class="rental-fields">
+          <label><span>본인 매입가</span><div><input id="rentalPurchasePrice" type="number" min="0" step="100" placeholder="예: 10000"><b>만원</b></div></label>
+          <label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="100" placeholder="최근 실거래가"><b>만원</b></div><small>자동값이 없으면 직접 입력</small></label>
+          <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
+          <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
+          <label><span>예상 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" value="5"><b>%</b></div></label>
+          <label><span>취득 부대비용</span><div><input id="rentalAcquisitionCost" type="number" min="0" step="10" placeholder="취득세·중개비"><b>만원</b></div></label>
+        </div>
+      </div>
+      <div class="rental-group">
+        <h3>연간 보유비용</h3>
+        <div class="rental-fields">
+          <label><span>재산세 등 보유세</span><div><input id="rentalPropertyTax" type="number" min="0" step="1" placeholder="매입가 입력 시 추정"><b>만원/년</b></div><small id="rentalTaxHint">자동 추정값은 직접 수정할 수 있습니다.</small></label>
+          <label><span>소유자 부담 관리비</span><div><input id="rentalManagementCost" type="number" min="0" step="1" value="0"><b>만원/년</b></div></label>
+          <label><span>수선·보험·기타비용</span><div><input id="rentalOtherCost" type="number" min="0" step="1" value="0"><b>만원/년</b></div></label>
+        </div>
+      </div>
+      <div class="rental-group">
+        <h3>대출 조건 <small>대출이 없으면 대출금을 0으로 입력</small></h3>
+        <div class="rental-fields">
+          <label><span>대출금</span><div><input id="rentalLoanAmount" type="number" min="0" step="100" value="0"><b>만원</b></div></label>
+          <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" min="0" step="0.01" value="4.5"><b>%</b></div></label>
+          <label><span>대출기간</span><div><input id="rentalLoanYears" type="number" min="1" max="50" step="1" value="20"><b>년</b></div></label>
+          <label><span>상환방식</span><select id="rentalLoanMethod"><option value="interest">만기일시상환</option><option value="equal">원리금균등상환</option><option value="principal">원금균등상환</option></select></label>
+        </div>
+      </div>
+      <div class="rental-actions"><button class="am-btn" id="rentalReset" type="button">입력 초기화</button><button class="am-btn primary" id="rentalCalculate" type="button">임대수익 계산</button></div>
+    </section>
+    <section class="rental-results" id="rentalResults" aria-live="polite">
+      <article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>
+    </section>
+    <section class="methodology"><strong>임대수익 계산 기준</strong><div class="formula">순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>자기자본 수익률 = 대출 원리금 차감 후 현금흐름 ÷ 실투자금<br>DSCR = 순영업소득 ÷ 연간 대출 원리금</div><div>재산세 자동값은 비주거용 자산의 매입가를 이용한 투자 참고 추정치이며 실제 과세표준·토지지분·공부상 용도에 따라 달라집니다. 세무 신고나 대출심사를 대신하지 않습니다.</div></section>
+  </section>
   <section id="operationAnalysis" class="hidden">
     <div class="workspace">
       <article class="analysis-card chart-card">
@@ -90,6 +132,6 @@
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
-<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script>
+<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script>
 </body>
 </html>
