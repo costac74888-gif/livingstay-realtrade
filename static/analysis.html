@@ -85,7 +85,7 @@
         <h3>매입·임대 조건</h3>
         <div class="rental-fields">
           <label><span>본인 매입가</span><div><input id="rentalPurchasePrice" type="number" min="0" step="100" placeholder="예: 10000"><b>만원</b></div></label>
-          <label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="100" placeholder="최근 실거래가"><b>만원</b></div><small>자동값이 없으면 직접 입력</small></label>
+          <label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="1" placeholder="최근 실거래 조회 중"><b>만원</b></div><small id="rentalMarketPriceHint">선택 건물의 최근 호실 실거래를 자동으로 불러옵니다.</small></label>
           <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
           <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
           <label><span>예상 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" value="5"><b>%</b></div></label>

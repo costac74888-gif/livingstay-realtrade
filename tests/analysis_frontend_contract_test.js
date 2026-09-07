@@ -169,6 +169,7 @@ expect(
   html.includes('id="rentalPurchasePrice"')
     && html.includes('id="rentalDeposit"')
     && html.includes('id="rentalMonthlyRent"')
+    && html.includes('id="rentalMarketPriceHint"')
     && html.includes('id="rentalPropertyTax"')
     && html.includes('id="rentalLoanAmount"')
     && html.includes('id="rentalLoanMethod"')

@@ -89,6 +89,7 @@ async function run() {
   const errors = [];
   let incompleteSelected = false;
   let incompleteFinalTrajectory = false;
+  let rentalTransactionRequest = "";
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
@@ -104,6 +105,13 @@ async function run() {
       }],
     });
     if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
+    if (url.pathname === "/api/transactions") {
+      rentalTransactionRequest = url.search;
+      return json(route, { total: 1, page: 1, size: 1, transaction_scope: "unit", items: [{
+        price: 9876, area: 32.45, floor: 8, deal_date: "2026-08-19",
+        transaction_scope: "unit", match_confidence: "exact",
+      }] });
+    }
     if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
       ok: true, sido: "강원", sgg: "속초시",
       source: { name: "한국호텔업협회 호텔업 운영현황", reference_year: 2024 },
@@ -363,6 +371,17 @@ async function run() {
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
+    await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
+    const automaticMarketPrice = await page.evaluate(() => ({
+      price: document.getElementById("rentalMarketPrice").value,
+      hint: document.getElementById("rentalMarketPriceHint").textContent,
+    }));
+    expect(automaticMarketPrice.price === "9876"
+      && automaticMarketPrice.hint.includes("2026.08.19")
+      && automaticMarketPrice.hint.includes("전용 32.45㎡")
+      && rentalTransactionRequest.includes("transaction_scope=unit")
+      && rentalTransactionRequest.includes("size=1"),
+      "선택 건물의 최근 호실 실거래가가 자동 반영되지 않았습니다.");
     await page.fill("#rentalPurchasePrice", "10000");
     await page.fill("#rentalMarketPrice", "11000");
     await page.fill("#rentalDeposit", "300");

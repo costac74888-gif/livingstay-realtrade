@@ -2,6 +2,8 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var buildingSequence = 0;
+  var loadedBuildingId = "";
+  var marketPriceManuallyEdited = false;
   var taxManuallyEdited = false;
   var ids = [
     "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
@@ -104,21 +106,64 @@
     var id = new URLSearchParams(location.search).get("building_id");
     var seq = ++buildingSequence;
     if (!id) {
+      loadedBuildingId = "";
       $("rentalBuildingName").textContent = "분석할 건물을 선택해 주세요";
       $("rentalBuildingAddress").textContent = "생활숙박시설·장기임대 호실의 보증금과 월세 수익을 계산합니다.";
+      $("rentalMarketPriceHint").textContent = "건물을 선택하면 최근 호실 실거래를 자동으로 불러옵니다.";
       return;
     }
+    if (loadedBuildingId !== String(id)) {
+      loadedBuildingId = String(id);
+      marketPriceManuallyEdited = false;
+      $("rentalMarketPrice").value = "";
+      $("rentalMarketPrice").placeholder = "최근 실거래 조회 중";
+      $("rentalMarketPriceHint").textContent = "선택 건물의 최근 호실 실거래를 확인하고 있습니다.";
+    }
     try {
-      var response = await fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" });
-      var data = response.ok ? await response.json() : null;
-      if (seq !== buildingSequence || !data) return;
-      $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
-      $("rentalBuildingAddress").textContent = data.road_address || data.jibun_address || "주소 미확인";
-    } catch (ignore) {}
+      var responses = await Promise.all([
+        fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }),
+        fetch("/api/transactions?building_id=" + encodeURIComponent(id)
+          + "&transaction_scope=unit&page=1&size=1", { credentials: "same-origin" }),
+      ]);
+      var data = responses[0].ok ? await responses[0].json() : null;
+      var transactions = responses[1].ok ? await responses[1].json() : null;
+      if (seq !== buildingSequence) return;
+      if (data) {
+        $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
+        $("rentalBuildingAddress").textContent = data.road_address || data.jibun_address || "주소 미확인";
+      }
+      var latest = transactions && Array.isArray(transactions.items) ? transactions.items[0] : null;
+      var latestPrice = latest && Number(latest.price);
+      if (latest && Number.isFinite(latestPrice) && latestPrice > 0) {
+        if (!marketPriceManuallyEdited) {
+          $("rentalMarketPrice").value = String(latestPrice);
+          calculate();
+        }
+        var details = [];
+        if (latest.deal_date) details.push(String(latest.deal_date).replace(/-/g, "."));
+        if (Number(latest.area) > 0) details.push("전용 " + Number(latest.area).toLocaleString("ko-KR") + "㎡");
+        if (latest.floor != null && latest.floor !== "") details.push(latest.floor + "층");
+        $("rentalMarketPriceHint").textContent = "최근 호실 실거래"
+          + (details.length ? " · " + details.join(" · ") : "")
+          + (marketPriceManuallyEdited ? " · 직접 수정값 사용 중" : " · 자동 반영");
+      } else {
+        $("rentalMarketPrice").placeholder = "직접 입력";
+        $("rentalMarketPriceHint").textContent = "연결된 최근 호실 실거래가 없어 직접 입력해 주세요.";
+      }
+    } catch (ignore) {
+      if (seq === buildingSequence) {
+        $("rentalMarketPrice").placeholder = "직접 입력";
+        $("rentalMarketPriceHint").textContent = "최근 실거래를 불러오지 못했습니다. 직접 입력할 수 있습니다.";
+      }
+    }
   }
   ids.forEach(function (id) {
     $(id).addEventListener("input", function () {
       if (id === "rentalPropertyTax") taxManuallyEdited = true;
+      if (id === "rentalMarketPrice") {
+        marketPriceManuallyEdited = true;
+        if ($(id).value) $("rentalMarketPriceHint").textContent = "사용자가 직접 입력한 실거래 기준가입니다.";
+      }
       if (id === "rentalPurchasePrice") updateEstimatedTax();
       calculate();
     });
@@ -127,6 +172,7 @@
   $("rentalCalculate").addEventListener("click", calculate);
   $("rentalReset").addEventListener("click", function () {
     taxManuallyEdited = false;
+    marketPriceManuallyEdited = false;
     ids.forEach(function (id) { $(id).value = ""; });
     $("rentalVacancyRate").value = "5";
     $("rentalManagementCost").value = "0";
