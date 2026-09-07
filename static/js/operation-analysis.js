@@ -37,11 +37,12 @@
     return Number.isInteger(index) && index >= 0 ? lodgings[index] : null;
   }
   function selectedRooms() {
+    return number($("operationRoomCountInput").value);
+  }
+  function officialRooms() {
     var lodging = selectedLodging();
-    return lodging
-      ? number(lodging.room_count)
-      : building && (number(building.lodging_room_total)
-        || number(building.building_name_representative_room_count));
+    return lodging ? number(lodging.room_count) : building && (number(building.lodging_room_total)
+      || number(building.building_name_representative_room_count));
   }
   function setModeClass() {
     var operation = new URLSearchParams(location.search).get("mode") === "operation"
@@ -63,8 +64,9 @@
     renderRoomCount();
   }
   function renderRoomCount() {
-    var rooms = selectedRooms();
+    var rooms = officialRooms();
     $("operationRoomCount").textContent = rooms == null ? "신고 객실 수 확인 불가" : format(rooms, 0) + "실";
+    $("operationRoomCountInput").value = rooms == null ? "" : String(rooms);
   }
   function grade(adr, occ) {
     var baseAdr = average("adr");
@@ -208,6 +210,7 @@
     if (!id) {
       building = null; benchmarks = []; region = "";
       $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
+      $("operationRoomCountInput").value = "";
       renderRoomCount();
       renderChart();
       return;
@@ -242,6 +245,9 @@
   }).observe($("operationRoomCount"), { childList: true, characterData: true, subtree: true });
   ["operationOcc", "operationAdr"].forEach(function (id) {
     $(id).addEventListener("input", function () { setTimeout(renderChart, 0); });
+  });
+  $("operationRoomCountInput").addEventListener("input", function () {
+    setTimeout(renderChart, 0);
   });
   $("operationRun").addEventListener("click", function () { setTimeout(renderChart, 0); });
   $("analysisTabs").addEventListener("click", function () {

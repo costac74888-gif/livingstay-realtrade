@@ -47,7 +47,8 @@
       <h2>영업신고 숙박업소</h2>
       <label class="operation-lodging-choice" for="operationLodging"><select id="operationLodging" aria-label="분석할 영업신고 숙박업소"><option value="">건물을 먼저 선택해 주세요</option></select></label>
       <strong id="operationRoomCount">건물을 먼저 선택해 주세요</strong>
-      <p>한 건물에 여러 영업신고가 있으면 분석할 업소를 선택할 수 있습니다.</p>
+      <label class="operation-room-edit" for="operationRoomCountInput"><span>분석 적용 객실 수</span><div><input id="operationRoomCountInput" type="number" min="1" step="1" placeholder="신고 객실 수"><b>실</b></div></label>
+      <p>신고 객실 수가 자동 입력되며 실제 운영 기준에 맞게 수정할 수 있습니다.</p>
     </div>
     <label class="operation-field" for="operationOcc"><span>객실 이용률(OCC)</span><div><input id="operationOcc" type="number" min="0" max="100" step="0.01" placeholder="예: 74"><b>%</b></div><small>자료에서 확인되면 자동 입력됩니다.</small></label>
     <label class="operation-field" for="operationAdr"><span>판매객실 평균요금(ADR)</span><div><input id="operationAdr" type="number" min="0" step="1" placeholder="예: 162000"><b>원</b></div><small>객실매출과 판매객실 수가 있으면 자동 계산됩니다.</small></label>
