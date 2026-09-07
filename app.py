@@ -677,6 +677,20 @@ def favicon_ico():
     return send_from_directory(os.path.join(app.static_folder, "img"), "favicon.ico")
 
 
+@app.route("/vendor/chart.umd.js")
+def chart_js_vendor():
+    """원본 HTML 폴백에서도 투자분석 그래프 라이브러리를 로컬 제공한다."""
+    chart_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "node_modules", "chart.js", "dist", "chart.umd.js",
+    )
+    if not os.path.isfile(chart_path):
+        abort(503)
+    response = send_file(chart_path, mimetype="text/javascript", conditional=True)
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
 @app.route("/building/<int:building_id>")
 def building_page(building_id):
     """건물 상세 — 별도 페이지가 아니라 홈화면(index.html)을 그대로 서빙한다.

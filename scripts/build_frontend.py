@@ -24,7 +24,7 @@ CHART_JS = ROOT / "node_modules" / "chart.js" / "dist" / "chart.umd.js"
 RELEASE_TOKEN = "__FRONTEND_RELEASE__"
 SCRIPT_RE = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
 SOURCE_JS_RE = re.compile(r"/static/js/(?P<name>[A-Za-z0-9_.-]+)\.js(?P<query>\?[^\"']*)?")
-VENDOR_CHART_URL = "/static/vendor/chart.umd.js"
+VENDOR_CHART_URL = "/vendor/chart.umd.js"
 
 
 def minify(source: Path, target: Path) -> None:
