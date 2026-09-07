@@ -38,9 +38,15 @@ expect(
   "전체 실거래와 분석 표본 거래가 분리되지 않았습니다.",
 );
 expect(
-  js.includes("pointRadius") && js.includes("?10:5")
+  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?6:4.5")
     && css.includes(".selected-pulse") && css.includes("@keyframes selectedAssetPulse"),
   "선택 건물 점의 두 배 강조와 점멸 효과가 없습니다.",
+);
+expect(
+  html.includes("같은 시군구") && html.includes('id="regionBaseline"')
+    && js.includes("sameRegion") && js.includes('"#b9c2cc"')
+    && css.includes(".legend-nearby") && css.includes(".legend-other"),
+  "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
 );
 expect(
   js.includes("window.print()") && js.includes("navigator.share")
