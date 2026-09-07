@@ -10,6 +10,7 @@
     "test:map-mobile": "node tests/map_location_browser_test.js"
   },
   "dependencies": {
+    "chart.js": "^4.4.4",
     "playwright": "^1.62.1",
     "terser": "^5.51.2"
   }

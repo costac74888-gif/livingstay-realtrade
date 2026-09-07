@@ -20,9 +20,11 @@ DIST = STATIC / "dist"
 GENERATED = STATIC / "generated"
 MARKER = GENERATED / ".frontend-build.json"
 TERSER = ROOT / "node_modules" / ".bin" / "terser"
+CHART_JS = ROOT / "node_modules" / "chart.js" / "dist" / "chart.umd.js"
 RELEASE_TOKEN = "__FRONTEND_RELEASE__"
 SCRIPT_RE = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
 SOURCE_JS_RE = re.compile(r"/static/js/(?P<name>[A-Za-z0-9_.-]+)\.js(?P<query>\?[^\"']*)?")
+VENDOR_CHART_URL = "/static/vendor/chart.umd.js"
 
 
 def minify(source: Path, target: Path) -> None:
@@ -52,6 +54,11 @@ def build_external_scripts(stage: Path) -> list[Path]:
         target = stage / "js" / f"{source.stem}.min.js"
         minify(source, target)
         outputs.append(target)
+    if not CHART_JS.is_file():
+        raise SystemExit("Chart.js가 없습니다. 먼저 npm ci를 실행하세요.")
+    chart_target = stage / "js" / "chart.umd.min.js"
+    minify(CHART_JS, chart_target)
+    outputs.append(chart_target)
     return outputs
 
 
@@ -95,6 +102,10 @@ def build_html(stage: Path, source_html: Path) -> list[Path]:
             f"{match.group('query') or ''}"
         ),
         html,
+    )
+    html = html.replace(
+        VENDOR_CHART_URL,
+        f"/static/dist/{RELEASE_TOKEN}/js/chart.umd.min.js",
     )
     target_html = stage / "html" / source_html.name
     target_html.parent.mkdir(parents=True, exist_ok=True)
