@@ -412,18 +412,29 @@ async function run() {
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
       && Math.abs(rentalResult.calculation.invested - 4250) < 0.01,
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
-    await page.click("#operationTab");
-    await page.fill("#buildingSearch", "선택 테스트");
-    await page.waitForSelector("#searchResults .search-result");
-    await page.click("#searchResults .search-result");
-    const pendingBuilding = await page.evaluate(() => ({
-      status: document.getElementById("operationBuildingStatus").textContent,
-      disabled: document.getElementById("operationBuildingApply").disabled,
-    }));
-    expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
-      "검색 결과를 확인한 뒤 건물 선택 버튼으로 확정하는 흐름이 없습니다.");
-    await page.click("#operationBuildingApply");
-    await page.waitForFunction(() => new URLSearchParams(location.search).get("mode") === "operation");
+    for (const tab of [
+      { id: "propertyTab", mode: null },
+      { id: "rentalTab", mode: "rental" },
+      { id: "operationTab", mode: "operation" },
+    ]) {
+      await page.click(`#${tab.id}`);
+      await page.fill("#buildingSearch", "선택 테스트");
+      await page.waitForSelector("#searchResults .search-result");
+      await page.click("#searchResults .search-result");
+      const pendingBuilding = await page.evaluate(() => ({
+        status: document.getElementById("buildingSelectionStatus").textContent,
+        disabled: document.getElementById("buildingSelectionApply").disabled,
+      }));
+      expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
+        `${tab.id}에서 검색 결과를 건물 선택 버튼으로 확정하는 흐름이 없습니다.`);
+      await page.click("#buildingSelectionApply");
+      await page.waitForFunction((expectedMode) => {
+        const query = new URLSearchParams(location.search);
+        return query.get("building_id") === "101" && query.get("mode") === expectedMode;
+      }, tab.mode);
+      await page.waitForFunction(() =>
+        document.getElementById("buildingSelectionStatus").textContent.includes("선택 건물 · 선택 테스트 자산"));
+    }
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {

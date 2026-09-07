@@ -6,7 +6,6 @@
   var region = "";
   var subregion = "";
   var loadSequence = 0;
-  var pendingBuildingResult = null;
 
   function $(id) { return document.getElementById(id); }
   function number(value) {
@@ -68,10 +67,7 @@
     document.querySelector(".analysis-shell").classList.toggle("operation-mode", operation);
   }
   function setBuildingStatus(name, ready) {
-    $("operationBuildingStatus").textContent = name
-      ? (ready ? "선택 건물 · " : "선택 예정 · ") + name
-      : "검색 결과에서 건물을 선택해 주세요.";
-    $("operationBuildingApply").disabled = !pendingBuildingResult;
+    if (ready && window.setAnalysisBuildingStatus) window.setAnalysisBuildingStatus(name);
   }
   function renderLodgingOptions() {
     var lodgings = building && Array.isArray(building.lodgings) ? building.lodgings : [];
@@ -297,32 +293,6 @@
   $("operationLodging").addEventListener("change", function () {
     renderRoomCount();
     setTimeout(renderChart, 0);
-  });
-  document.addEventListener("click", function (event) {
-    var result = event.target.closest && event.target.closest("#searchResults .search-result");
-    if (!result || !$("operationTab").classList.contains("active")
-        || result.dataset.operationConfirmed === "true") return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    pendingBuildingResult = result;
-    setBuildingStatus(
-      result.dataset.name || result.querySelector("b") && result.querySelector("b").textContent,
-      false
-    );
-  }, true);
-  $("operationBuildingApply").addEventListener("click", function () {
-    if (!pendingBuildingResult) return;
-    var result = pendingBuildingResult;
-    pendingBuildingResult = null;
-    result.dataset.operationConfirmed = "true";
-    result.click();
-    setTimeout(function () {
-      var query = new URLSearchParams(location.search);
-      query.set("mode", "operation");
-      history.replaceState({}, "", "/analysis?" + query.toString());
-      setModeClass();
-      load();
-    }, 0);
   });
   new MutationObserver(function () {
     if (!building || !selectedLodging()) return;

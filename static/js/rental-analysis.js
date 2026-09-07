@@ -140,6 +140,9 @@
       if (data) {
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
         $("rentalBuildingAddress").textContent = data.road_address || data.jibun_address || "주소 미확인";
+        if (window.setAnalysisBuildingStatus) {
+          window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
+        }
       }
       var latest = transactions && Array.isArray(transactions.items) ? transactions.items[0] : null;
       var latestPrice = latest && Number(latest.price);

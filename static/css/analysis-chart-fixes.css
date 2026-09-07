@@ -51,8 +51,8 @@
   margin-bottom: 16px;
 }
 
-.operation-building-confirm {
-  display: none;
+.building-selection-confirm {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
@@ -65,11 +65,7 @@
   font-weight: 800;
 }
 
-.analysis-shell.operation-mode .operation-building-confirm {
-  display: flex;
-}
-
-.operation-building-confirm button:disabled {
+.building-selection-confirm button:disabled {
   cursor: default;
   opacity: .5;
   transform: none;
