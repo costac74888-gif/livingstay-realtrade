@@ -25,6 +25,7 @@ from sync_building_photos import (
     TOURAPI_DAILY_CAP,
     TOURAPI_READ_TIMEOUT,
     TOURAPI_URL,
+    DailyCapReached,
     _assert_tourapi_success,
     _claim_daily_slot,
     _extract_items,
@@ -74,6 +75,10 @@ def _tour_catalog_page(session, api_key, page_no, status_key=None, run_id=None):
     last_error = None
     for attempt in range(CATALOG_CONNECT_RETRIES + 1):
         try:
+            if _claim_daily_slot(
+                "building_photos_tourapi_calls", TOURAPI_DAILY_CAP
+            ) is None:
+                raise DailyCapReached
             response = session.get(
                 f"{TOURAPI_URL}/areaBasedList2",
                 params=params,
@@ -83,6 +88,8 @@ def _tour_catalog_page(session, api_key, page_no, status_key=None, run_id=None):
             data = response.json()
             _assert_tourapi_success(data)
             return data
+        except DailyCapReached:
+            raise
         except (requests.RequestException, ValueError, RuntimeError) as exc:
             last_error = exc
             if attempt < CATALOG_CONNECT_RETRIES:
@@ -160,6 +167,10 @@ def _upsert_catalog_metadata(cur, items, road_map, jibun_map):
         )
         status = "catalog_matched" if has_image else "catalog_no_photo"
         for building_id in building_ids:
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                (7421, building_id),
+            )
             cur.execute("""
                 INSERT INTO building_photo_fetches
                     (building_id, source, status, last_attempt_at,
@@ -167,26 +178,29 @@ def _upsert_catalog_metadata(cur, items, road_map, jibun_map):
                 VALUES (%s, 'tourapi', %s, NOW(), NULL, %s, %s)
                 ON CONFLICT (building_id, source) DO UPDATE SET
                     status=CASE
-                        WHEN building_photo_fetches.status='success'
+                        WHEN building_photo_fetches.status IN (
+                            'success', 'images_backfilled'
+                        )
+                         AND building_photo_fetches.provider_ref
+                             IS NOT DISTINCT FROM EXCLUDED.provider_ref
                             THEN building_photo_fetches.status
-                        WHEN building_photo_fetches.photo_available IS TRUE
-                             AND EXCLUDED.photo_available IS FALSE
-                            THEN 'catalog_matched'
                         ELSE EXCLUDED.status
                     END,
                     last_attempt_at=EXCLUDED.last_attempt_at,
                     error_message=NULL,
-                    provider_ref=CASE
-                        WHEN building_photo_fetches.photo_available IS TRUE
-                             AND EXCLUDED.photo_available IS FALSE
-                             AND building_photo_fetches.provider_ref IS NOT NULL
-                            THEN building_photo_fetches.provider_ref
-                        ELSE EXCLUDED.provider_ref
-                    END,
-                    photo_available=(
-                        COALESCE(building_photo_fetches.photo_available, FALSE)
-                        OR EXCLUDED.photo_available
-                    )
+                    provider_ref=EXCLUDED.provider_ref,
+                    photo_available=CASE
+                        WHEN building_photo_fetches.provider_ref
+                             IS NOT DISTINCT FROM EXCLUDED.provider_ref
+                            THEN (
+                                COALESCE(
+                                    building_photo_fetches.photo_available,
+                                    FALSE
+                                )
+                                OR EXCLUDED.photo_available
+                            )
+                        ELSE EXCLUDED.photo_available
+                    END
             """, [building_id, status, content_id, has_image])
             matched_buildings += 1
             if has_image:
@@ -224,14 +238,13 @@ def run(status_key, run_id, sleep_seconds):
     cur = conn.cursor()
     try:
         road_map, jibun_map = _build_address_maps(cur)
-        if _claim_daily_slot(
-            "building_photos_tourapi_calls", TOURAPI_DAILY_CAP
-        ) is None:
+        try:
+            first = _tour_catalog_page(
+                session, api_key, 1, status_key=status_key, run_id=run_id
+            )
+        except DailyCapReached:
             stats["capped"] = True
             return stats
-        first = _tour_catalog_page(
-            session, api_key, 1, status_key=status_key, run_id=run_id
-        )
         first_body = first.get("response", {}).get("body", {})
         total = int(first_body.get("totalCount") or 0)
         page_count = (total + PAGE_SIZE - 1) // PAGE_SIZE
@@ -252,18 +265,17 @@ def run(status_key, run_id, sleep_seconds):
             if page_no == 1:
                 data = first
             else:
-                if _claim_daily_slot(
-                    "building_photos_tourapi_calls", TOURAPI_DAILY_CAP
-                ) is None:
+                try:
+                    data = _tour_catalog_page(
+                        session,
+                        api_key,
+                        page_no,
+                        status_key=status_key,
+                        run_id=run_id,
+                    )
+                except DailyCapReached:
                     stats["capped"] = True
                     break
-                data = _tour_catalog_page(
-                    session,
-                    api_key,
-                    page_no,
-                    status_key=status_key,
-                    run_id=run_id,
-                )
             items = _extract_items(data)
             page_stats = _upsert_catalog_metadata(cur, items, road_map, jibun_map)
             conn.commit()

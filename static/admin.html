@@ -2975,6 +2975,78 @@
       }
     }
 
+    // ---- TourAPI 숙박 대표사진·다중사진 재개형 백필 ----
+    let tourapiImageTimer = null;
+    function stopTourapiImagePolling() {
+      if (tourapiImageTimer) {
+        clearInterval(tourapiImageTimer);
+        tourapiImageTimer = null;
+      }
+    }
+    function renderTourapiImageStatus(d) {
+      const box = document.getElementById("tourapiImageBackfillStatus");
+      const btn = document.getElementById("tourapiImageBackfillRunBtn");
+      if (!box || !btn) { stopTourapiImagePolling(); return; }
+      const state = d.stale ? "응답 지연" : ({
+        running: "실행 중", partial: "한도 도달 · 이어서 가능",
+        done: "완료", failed: "실패"
+      }[d.state] || "대기");
+      box.innerHTML = [
+        `<div class="geo-stat-row"><b>상태:</b> ${dgEscape(state)}${d.heartbeat_at ? ` · 마지막 신호 ${dgEscape(d.heartbeat_at)}` : ""}</div>`,
+        `<div class="geo-stat-row"><b>사진 확보:</b> ${num(d.completed_total)}/${num(d.eligible_total)}건 · 남은 ${num(d.remaining_count)}건 · 체크포인트 건물 ID ${num((d.checkpoint || {}).last_building_id)}</div>`,
+        `<div class="geo-stat-row"><b>이번 실행:</b> 처리 ${num(d.processed)} · 건물 갱신 ${num(d.updated)} · 사진 저장 ${num(d.saved)}장 · 사진 없음 ${num(d.skipped)} · 실패 ${num(d.failed)}</div>`,
+        `<div class="geo-stat-row"><b>서버 관리자 수집 오늘 호출:</b> ${num(d.calls_today)}/${num(d.daily_cap || 3000)} · 남은 ${num(d.calls_remaining)}</div>`,
+        d.error ? `<div class="geo-error">${dgEscape(d.error)}</div>` : ""
+      ].join("");
+      btn.disabled = Boolean(d.running || Number(d.calls_remaining) < 1);
+      btn.textContent = d.running ? "TourAPI 숙박사진 수집 중…" :
+        (Number(d.calls_remaining) < 1
+          ? "오늘 TourAPI 호출 한도 도달"
+          : "TourAPI 숙박사진 이어서 수집");
+      if (d.running && !tourapiImageTimer) {
+        tourapiImageTimer = setInterval(loadTourapiImageStatus, 5000);
+      } else if (!d.running) {
+        stopTourapiImagePolling();
+      }
+    }
+    async function loadTourapiImageStatus() {
+      const box = document.getElementById("tourapiImageBackfillStatus");
+      if (!box) { stopTourapiImagePolling(); return; }
+      try {
+        const res = await fetch("/api/admin/tourapi-image-backfill-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "status failed");
+        renderTourapiImageStatus(d);
+      } catch (e) {
+        box.textContent = "TourAPI 숙박사진 수집 현황을 불러오지 못했습니다.";
+      }
+    }
+    async function runTourapiImageBackfill() {
+      const btn = document.getElementById("tourapiImageBackfillRunBtn");
+      const msg = document.getElementById("tourapiImageBackfillMsg");
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      try {
+        const res = await fetch("/api/admin/tourapi-image-backfill", {method: "POST"});
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#52606d" : "#b3261e";
+        msg.textContent = d.message || (
+          res.ok ? "TourAPI 숙박사진 수집을 시작했습니다." : "수집을 시작하지 못했습니다."
+        );
+        await loadTourapiImageStatus();
+        if (res.ok && d.ok && !tourapiImageTimer) {
+          tourapiImageTimer = setInterval(loadTourapiImageStatus, 5000);
+        }
+      } catch (e) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+        await loadTourapiImageStatus();
+      }
+    }
+
     // ---- 중개업소 좌표 채우기 (geocode_brokers.py, 지도 주소검색) ----
     let brokerGeoTimer = null;
     function stopBrokerGeoPolling() {
@@ -4797,7 +4869,7 @@
       dsSecBrhub: ["production", "운영 건물마스터에 새 건물을 추가합니다. 실제 서비스 데이터 수집은 운영 관리자에서만 실행합니다."],
       dsSecBackfillLodging: ["production", "운영 숙박신고를 근거로 누락 건물을 보완합니다. 정부 8종 승인 원장과 별개인 건물마스터 보완 작업입니다."],
       dsSecGeo: ["production", "운영 건물마스터의 좌표 공란만 채웁니다. 개발에서 실행하면 개발 DB만 바뀝니다."],
-      dsSecPhotos: ["production", "운영 상세화면 요청 시 사진을 조회·캐시합니다. 별도 대량수집 버튼은 사용하지 않습니다."],
+      dsSecPhotos: ["production", "TourAPI 숙박 목록을 주소 매칭한 뒤 대표사진과 다중사진을 체크포인트부터 이어서 수집합니다."],
       dsSecTitle: ["production", "운영 건물의 건축정보 공란만 보완합니다."],
       dsSecZip: ["production", "운영 정기 작업이 자동 처리합니다. 수동 조작이 필요 없습니다."],
       dsSecTx: ["production", "운영 실거래 테이블에 최근 거래를 수집합니다."],
@@ -5029,12 +5101,25 @@
             사전조회 후 상세 화면은 저장된 콘텐츠 ID로 바로 사진 상세를 조회합니다.
             정확히 주소가 매칭됐지만 대표사진이 없는 건물만 Street View 후보가 됩니다.
           </p>
+          <div id="tourapiImageBackfillStatus" class="geo-status" style="margin-top:10px;">
+            TourAPI 숙박사진 수집 현황 불러오는 중…
+          </div>
           <div class="legal-admin-actions">
             <span id="photoSyncMsg" class="legal-msg" role="alert"></span>
             <button id="photoTourApiPrewarmBtn" class="admin-btn admin-btn-primary">
               TourAPI 숙박 사진 유무 사전조회
             </button>
+            <span id="tourapiImageBackfillMsg" class="legal-msg" role="alert"></span>
+            <button id="tourapiImageBackfillRunBtn" class="admin-btn">
+              TourAPI 숙박사진 이어서 수집
+            </button>
           </div>
+          <p class="legal-admin-hint" style="margin-top:8px;">
+            주소가 연결된 숙박시설의 목록 대표사진(firstimage)과 detailImage2 다중사진을
+            중복 없이 최대 100장까지 저장합니다. 기존 사진은 빈 응답으로 지우지 않으며,
+            <b>서버 관리자 수집 하루 3,000회 호출 한도</b>에 도달하면 다음 실행에서 이어집니다.
+            사용자 상세화면의 온디맨드 조회는 이 관리자 배치 수치와 별도입니다.
+          </p>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecTitle">
           <div class="legal-admin-head">
@@ -5346,6 +5431,7 @@
       document.getElementById("reclassifyHygieneBtn").addEventListener("click", runReclassifyByHygiene);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
       document.getElementById("photoTourApiPrewarmBtn")?.addEventListener("click", runPhotoSync);
+      document.getElementById("tourapiImageBackfillRunBtn")?.addEventListener("click", runTourapiImageBackfill);
       document.getElementById("titleInfoRunBtn").addEventListener("click", runTitleInfoBackfill);
       document.getElementById("txSyncRunBtn").addEventListener("click", runTxSync);
       document.getElementById("backfillRunBtn").addEventListener("click", runBackfill);
@@ -5378,6 +5464,7 @@
       loadBackfillLodgingStatus();
       loadGeocodeStatus();
       loadPhotoSyncStatus();
+      loadTourapiImageStatus();
       loadTitleInfoStatus();
       loadTxSyncStatus();
       loadBackfillStatus();

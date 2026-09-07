@@ -41,8 +41,14 @@ class TourApiMetadataTest(unittest.TestCase):
 
         self.assertEqual(result["matched_buildings"], 1)
         self.assertEqual(result["with_image_buildings"], 1)
-        self.assertEqual(cursor.calls[0][1], [3804, "catalog_matched", "12345", True])
-        self.assertNotIn("example.jpg", str(cursor.calls[0][1]))
+        self.assertEqual(cursor.calls[0][1], (7421, 3804))
+        self.assertEqual(cursor.calls[1][1], [3804, "catalog_matched", "12345", True])
+        self.assertNotIn("example.jpg", str(cursor.calls[1][1]))
+        self.assertIn(
+            "IS NOT DISTINCT FROM EXCLUDED.provider_ref",
+            cursor.calls[1][0],
+        )
+        self.assertIn("provider_ref=EXCLUDED.provider_ref", cursor.calls[1][0])
 
     def test_no_representative_image_becomes_streetview_candidate(self):
         item = {
@@ -58,12 +64,15 @@ class TourApiMetadataTest(unittest.TestCase):
 
         self.assertEqual(result["without_image_buildings"], 1)
         self.assertEqual(
-            cursor.calls[0][1],
+            cursor.calls[1][1],
             [4114, "catalog_no_photo", "67890", False],
         )
 
+    @patch("prewarm_tourapi_metadata._claim_daily_slot", return_value=1)
     @patch("prewarm_tourapi_metadata.time.sleep")
-    def test_catalog_connection_timeout_retries_with_backoff(self, sleep):
+    def test_catalog_connection_timeout_retries_with_backoff(
+        self, sleep, claim
+    ):
         success = Mock()
         success.raise_for_status.return_value = None
         success.json.return_value = {"response": {"body": {"items": {"item": []}}}}
@@ -78,6 +87,7 @@ class TourApiMetadataTest(unittest.TestCase):
 
         self.assertEqual(result, success.json.return_value)
         self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(claim.call_count, 3)
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [10, 20])
 
 

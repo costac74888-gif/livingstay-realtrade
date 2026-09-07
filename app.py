@@ -1368,6 +1368,22 @@ def save_tourapi_building_photos(building_id):
         if not building:
             return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
 
+        # 관리자 다중사진 백필과 같은 잠금으로 건물당 100장 상한을 보장한다.
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(%s, %s)",
+            (7421, building_id),
+        )
+        cur.execute(
+            """
+            SELECT photo_url FROM building_photos
+            WHERE building_id=%s AND source='tourapi'
+            """,
+            (building_id,),
+        )
+        existing_urls = {row["photo_url"] for row in cur.fetchall()}
+        photos = [
+            photo for photo in photos if photo[0] not in existing_urls
+        ][:max(0, 100 - len(existing_urls))]
         inserted = 0
         for display_order, (url, photo_type) in enumerate(photos):
             cur.execute("""
@@ -1378,20 +1394,28 @@ def save_tourapi_building_photos(building_id):
                 ON CONFLICT (building_id, photo_url) DO NOTHING
             """, [building_id, url, photo_type, display_order])
             inserted += cur.rowcount
-        fetch_status = "success" if photos else "no_match"
+        fetch_status = "success" if (photos or existing_urls) else "no_match"
         cur.execute("""
             INSERT INTO building_photo_fetches
                 (building_id, source, status, last_attempt_at, error_message)
             VALUES (%s, 'tourapi', %s, NOW(), NULL)
             ON CONFLICT (building_id, source) DO UPDATE SET
-                status=EXCLUDED.status,
+                status=CASE
+                    WHEN building_photo_fetches.status='images_backfilled'
+                        THEN building_photo_fetches.status
+                    ELSE EXCLUDED.status
+                END,
                 last_attempt_at=EXCLUDED.last_attempt_at,
                 error_message=NULL,
                 provider_ref=CASE
+                    WHEN building_photo_fetches.status='images_backfilled'
+                        THEN building_photo_fetches.provider_ref
                     WHEN EXCLUDED.status='no_match' THEN NULL
                     ELSE building_photo_fetches.provider_ref
                 END,
                 photo_available=CASE
+                    WHEN building_photo_fetches.status='images_backfilled'
+                        THEN building_photo_fetches.photo_available
                     WHEN EXCLUDED.status='no_match' THEN FALSE
                     ELSE building_photo_fetches.photo_available
                 END
@@ -17390,6 +17414,7 @@ _MANUAL_SYNC_POST_PATHS = {
     "/api/admin/sync-realty",
     "/api/admin/sync-photos",
     "/api/admin/prewarm-tourapi-metadata",
+    "/api/admin/tourapi-image-backfill",
 }
 
 
@@ -17463,8 +17488,12 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     try:
+        resolved_args = [
+            status["run_id"] if value == "__RUN_ID__" else value
+            for value in script_args
+        ]
         proc = subprocess.Popen(
-            [sys.executable, "-u", os.path.join(base_dir, script_name)] + list(script_args),
+            [sys.executable, "-u", os.path.join(base_dir, script_name)] + resolved_args,
             cwd=base_dir, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -17686,6 +17715,8 @@ def admin_title_info_status():
 
 
 _PHOTO_SYNC_META_KEY = "building_photos_sync_status"
+_TOURAPI_IMAGE_BACKFILL_META_KEY = "admin:tourapi_image_backfill:status"
+_TOURAPI_IMAGE_PROGRESS_META_KEY = "building_photos_tourapi_images_progress"
 _PHOTO_SYNC_SOURCES = ("tourapi", "streetview", "vworld")
 
 
@@ -17731,6 +17762,112 @@ def admin_tourapi_metadata_prewarm_run():
             "사진 파일·사진 URL은 저장하지 않습니다."
         )
     return jsonify(payload), code
+
+
+@app.route("/api/admin/tourapi-image-backfill", methods=["POST"])
+@require_admin
+@limiter.limit("3 per hour")
+def admin_tourapi_image_backfill_run():
+    """TourAPI 대표사진·다중사진 수집을 체크포인트부터 시작한다."""
+    if not os.environ.get("TOUR_API_SERVICE_KEY"):
+        return jsonify({
+            "ok": False,
+            "message": "TOUR_API_SERVICE_KEY 시크릿이 등록되어 있지 않습니다.",
+        }), 400
+    ok, code, payload = _start_detached_sync(
+        _TOURAPI_IMAGE_BACKFILL_META_KEY,
+        "backfill_tourapi_images.py",
+        [
+            "--status-key", _TOURAPI_IMAGE_BACKFILL_META_KEY,
+            "--run-id", "__RUN_ID__",
+            "--sleep", "0.2",
+        ],
+        done_cooldown_min=5,
+    )
+    if ok:
+        payload["message"] = (
+            "TourAPI 숙박 대표사진·다중사진 수집을 시작했습니다."
+        )
+    return jsonify(payload), code
+
+
+@app.route("/api/admin/tourapi-image-backfill-status")
+@require_admin
+def admin_tourapi_image_backfill_status():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        status = _read_sync_status_row(
+            cur, _TOURAPI_IMAGE_BACKFILL_META_KEY
+        ) or {}
+        cur.execute("""
+            SELECT
+              COUNT(*) FILTER (WHERE f.provider_ref IS NOT NULL) AS eligible,
+              COUNT(*) FILTER (
+                WHERE f.status='images_backfilled'
+              ) AS completed
+            FROM building_photo_fetches f
+            WHERE f.source='tourapi'
+        """)
+        counts = cur.fetchone()
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            (_TOURAPI_IMAGE_PROGRESS_META_KEY,),
+        )
+        progress_row = cur.fetchone()
+        cur.execute(
+            "SELECT value FROM app_meta WHERE key=%s",
+            ("building_photos_tourapi_calls",),
+        )
+        calls_row = cur.fetchone()
+        try:
+            progress = (
+                json.loads(progress_row["value"])
+                if progress_row and progress_row["value"] else {}
+            )
+        except (TypeError, ValueError):
+            progress = {}
+        try:
+            calls_value = (
+                json.loads(calls_row["value"])
+                if calls_row and calls_row["value"] else {}
+            )
+            calls_today = (
+                int(calls_value.get("count") or 0)
+                if calls_value.get("date") == korea_today() else 0
+            )
+        except (TypeError, ValueError):
+            calls_today = 0
+    finally:
+        cur.close()
+        conn.close()
+    eligible = int(counts["eligible"] or 0)
+    completed = int(counts["completed"] or 0)
+    return jsonify({
+        "ok": True,
+        "state": status.get("state") or "idle",
+        "running": status.get("state") == "running",
+        "stale": status.get("state") == "stale",
+        "heartbeat_at": status.get("heartbeat_at"),
+        "started_at": status.get("started_at"),
+        "finished_at": status.get("finished_at"),
+        "error": status.get("error"),
+        "capped": bool(status.get("capped")),
+        "processed": int(status.get("processed") or 0),
+        "updated": int(status.get("updated") or 0),
+        "saved": int(status.get("saved") or 0),
+        "skipped": int(status.get("skipped") or 0),
+        "failed": int(status.get("failed") or 0),
+        "catalog_items": int(status.get("catalog_items") or 0),
+        "catalog_total": int(status.get("catalog_total") or 0),
+        "eligible_total": eligible,
+        "completed_total": completed,
+        "remaining_count": max(0, eligible - completed),
+        "checkpoint": progress,
+        "daily_cap": 3000,
+        "calls_today": calls_today,
+        "calls_remaining": max(0, 3000 - calls_today),
+    })
 
 
 @app.route("/api/admin/sync-photos-status")
