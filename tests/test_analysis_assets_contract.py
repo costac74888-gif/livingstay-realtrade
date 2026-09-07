@@ -65,7 +65,7 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn('tourism_axis not in {"index", "growth"}', self.endpoint)
         self.assertIn('"tourism_growth": demand.get("growth")', self.endpoint)
         self.assertIn('"tourism_comparison_complete"', self.endpoint)
-        self.assertIn('request.args.get("tourism_axis", "growth")', self.endpoint)
+        self.assertIn('request.args.get("tourism_axis", "index")', self.endpoint)
 
     def test_quadrants_use_the_exact_plotted_comparison_population(self):
         self.assertIn("comparable_items = [", self.endpoint)

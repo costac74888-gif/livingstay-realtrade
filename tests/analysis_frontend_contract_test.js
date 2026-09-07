@@ -38,7 +38,7 @@ expect(
   "전체 실거래와 분석 표본 거래가 분리되지 않았습니다.",
 );
 expect(
-  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?5.5:i.is_representative?8:0")
+  js.includes("pointRadius") && js.includes("?10:sameRegion(i)?5.5:i.is_representative?8:4")
     && css.includes(".selected-pulse") && css.includes("@keyframes selectedAssetPulse"),
   "선택 건물 점의 두 배 강조와 점멸 효과가 없습니다.",
 );
@@ -78,9 +78,9 @@ expect(
   "관심단지 또는 최근 조회 건물 바로가기가 없습니다.",
 );
 expect(
-  html.includes("가격 선행과열") && html.includes("다른 지역 대표")
+  html.includes("가격 선행과열") && html.includes("전체 비교 건물")
     && js.includes('sameRegion(i)?"#168f91"')
-    && js.includes("i.is_representative?8:0")
+    && js.includes("i.is_representative?8:4")
     && js.includes("representativeLabelsPlugin"),
   "사분면 설명 또는 지역·대표 표본 색상 구분이 없습니다.",
 );

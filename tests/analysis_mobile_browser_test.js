@@ -115,17 +115,19 @@ async function run() {
       });
 
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
-    expect(result.baselineText[0] === "0%" && result.baselineText[1] === "0%", "증감률 사분면 기준이 0%가 아닙니다.");
+    expect(result.baselineText[0] === "53" && result.baselineText[1] === "+12%", "기본 관광수요 지수 기준선이 응답 중앙값과 다릅니다.");
     const { baseline, points, labels, quadrantText } = result.layout;
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,
       "가로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
-    expect(baseline.valueX === 0 && baseline.valueY === 0, "증감률 차트의 점선이 실제 0% 좌표를 사용하지 않습니다.");
+    expect(baseline.valueX === 53 && Math.abs(baseline.valueY - Math.log10(13)) < 0.0001,
+      "기본 관광수요 지수 차트의 점선이 실제 응답 기준값을 사용하지 않습니다.");
 
     const selected = points.find((point) => point.selected);
     const nearby = points.find((point) => point.sameRegion && !point.selected);
     const representatives = points.filter((point) => point.representative);
+    expect(points.every((point) => point.radius > 0), "기본 관광수요 지수의 전체 비교 건물 분포가 숨겨졌습니다.");
     expect(selected && selected.color === "#102a43" && selected.radius === 10, "선택 건물의 색상 또는 크기가 다릅니다.");
     expect(nearby && nearby.color === "#168f91" && nearby.radius === 5.5, "같은 시군구 비교군의 색상 또는 크기가 다릅니다.");
       expect(representatives.length === 4 && representatives.every((point) => point.radius === 8),
@@ -165,6 +167,12 @@ async function run() {
     }
     incompleteSelected = true;
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+    await page.selectOption("#selTourismAxis", "growth");
+    await page.evaluate(() => {
+      if (window.__analysisChartLayout) window.__analysisChartLayout.ready = false;
+      document.getElementById("selTourismAxis").dispatchEvent(new Event("change", { bubbles: true }));
+      document.getElementById("applyBtn").click();
+    });
     await page.waitForFunction(() => {
       const layout = window.__analysisChartLayout;
       return layout && layout.ready && layout.points
