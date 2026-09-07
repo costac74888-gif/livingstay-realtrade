@@ -74,7 +74,7 @@
         <div class="rental-fields">
           <label><span>선택 호실 전용면적</span><div><input id="rentalUnitArea" type="number" min="1" max="10000" step="0.1" list="rentalUnitAreaOptions" placeholder="면적 선택 또는 입력"><b>㎡</b></div><datalist id="rentalUnitAreaOptions"></datalist><small id="rentalUnitAreaHint">건물을 선택하면 확인된 호실 면적을 불러옵니다.</small></label>
           <label><span>본인 매입가</span><div><input id="rentalPurchasePrice" type="number" min="0" step="100" placeholder="예: 10000"><b>만원</b></div></label>
-          <label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="1" placeholder="호실 면적을 먼저 선택"><b>만원</b></div><small id="rentalMarketPriceHint">선택 면적의 최근 실거래 중앙값을 자동으로 불러옵니다.</small></label>
+          <div class="rental-market-field"><label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="1" placeholder="호실 면적을 먼저 선택"><b>만원</b></div><small id="rentalMarketPriceHint">선택 면적의 최근 실거래 중앙값을 자동으로 불러옵니다.</small></label><details id="rentalMarketEvidence" class="rental-market-evidence hidden"><summary id="rentalMarketEvidenceSummary">기준가 산정 거래 보기</summary><div id="rentalMarketEvidenceList"></div></details></div>
           <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
           <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
           <label><span>예상 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" value="5"><b>%</b></div></label>

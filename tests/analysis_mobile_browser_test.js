@@ -139,6 +139,11 @@ async function run() {
         ok: true, area_sqm: 32.5, median_price: 9876,
         latest_deal_date: "2026-08-19", sample_count: 3, match_type: "exact",
         area_range: { min: 32.45, max: 32.51 }, period_months: 36,
+        transactions: [
+          { deal_date: "2026-08-19", area_sqm: 32.5, price: 10000, area_match: "exact" },
+          { deal_date: "2026-07-10", area_sqm: 32.45, price: 9876, area_match: "exact" },
+          { deal_date: "2026-06-01", area_sqm: 32.51, price: 9000, area_match: "exact" },
+        ],
       });
     }
     if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
@@ -457,6 +462,18 @@ async function run() {
       && automaticMarketPrice.source === "automatic"
       && rentalMarketRequest.includes("area_sqm=32.5"),
       "선택 면적의 최근 호실 실거래 중앙값과 근거가 자동 반영되지 않았습니다.");
+    await page.click("#rentalMarketEvidenceSummary");
+    const marketEvidence = await page.evaluate(() => ({
+      summary: document.getElementById("rentalMarketEvidenceSummary").textContent,
+      rows: Array.from(document.querySelectorAll(".rental-market-evidence-row")).map((row) => row.textContent),
+    }));
+    expect(marketEvidence.summary.includes("3건")
+      && marketEvidence.rows.length === 3
+      && marketEvidence.rows[0].includes("동일 면적")
+      && marketEvidence.rows[0].includes("2026.08.19")
+      && marketEvidence.rows[0].includes("32.5㎡")
+      && marketEvidence.rows[0].includes("10,000만원"),
+      "자동 기준가에 사용된 공개 거래일·면적·가격 표본을 펼쳐 확인할 수 없습니다.");
     await page.fill("#rentalUnitArea", "99");
     await page.waitForFunction(() =>
       document.getElementById("rentalMarketPriceHint").textContent.includes("자료 부족"));

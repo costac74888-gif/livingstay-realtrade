@@ -40,6 +40,11 @@ class RentalMarketPriceTest(unittest.TestCase):
                 "sample_count": 3,
                 "min_area": 32.45,
                 "max_area": 32.51,
+                "transactions": [
+                    {"deal_date": "2026-08-19", "area_sqm": 32.5, "price": 10000},
+                    {"deal_date": "2026-07-01", "area_sqm": 32.45, "price": 9876},
+                    {"deal_date": "2026-06-01", "area_sqm": 32.51, "price": 9000},
+                ],
             },
         ])
         with patch.object(application, "get_conn", return_value=connection):
@@ -54,6 +59,12 @@ class RentalMarketPriceTest(unittest.TestCase):
         self.assertEqual(payload["median_price"], 9876)
         self.assertEqual(payload["latest_deal_date"], "2026-08-19")
         self.assertEqual(payload["sample_count"], 3)
+        self.assertEqual(len(payload["transactions"]), payload["sample_count"])
+        self.assertEqual(
+            set(payload["transactions"][0]),
+            {"deal_date", "area_sqm", "price", "area_match"},
+        )
+        self.assertTrue(all(row["area_match"] == "exact" for row in payload["transactions"]))
         query, params = connection.cursor_instance.executions[1]
         self.assertIn("percentile_cont(0.5)", query)
         self.assertIn("INTERVAL '36 months'", query)
@@ -72,6 +83,10 @@ class RentalMarketPriceTest(unittest.TestCase):
                 "sample_count": 2,
                 "min_area": 40,
                 "max_area": 40,
+                "transactions": [
+                    {"deal_date": "2026-08-20", "area_sqm": 40, "price": 7000},
+                    {"deal_date": "2026-08-19", "area_sqm": 40, "price": 8000},
+                ],
             },
         ])
         with patch.object(application, "get_conn", return_value=connection):
@@ -81,6 +96,53 @@ class RentalMarketPriceTest(unittest.TestCase):
         self.assertTrue(response.get_json()["ok"])
         market_query = connection.cursor_instance.executions[1][0]
         self.assertNotIn("deal_type", market_query)
+
+    def test_similar_area_sample_labels_each_transaction(self):
+        connection = _Connection([
+            {"building_name": "테스트", "sgg_cd": "11110", "umd_nm": "청운동", "jibun": "1", "parcel_building_count": 1},
+            {"median_price": None, "latest_deal_date": None, "sample_count": 1, "min_area": 40, "max_area": 40},
+            {
+                "median_price": 7200, "latest_deal_date": "2026-08-20",
+                "sample_count": 3, "min_area": 40, "max_area": 43.5,
+                "transactions": [
+                    {"deal_date": "2026-08-20", "area_sqm": 40, "price": 7000},
+                    {"deal_date": "2026-08-19", "area_sqm": 42, "price": 7200},
+                    {"deal_date": "2026-08-18", "area_sqm": 43.5, "price": 7400},
+                ],
+            },
+        ])
+        with patch.object(application, "get_conn", return_value=connection):
+            response = application.app.test_client().get(
+                "/api/analysis/rental-market-price?building_id=101&area_sqm=40"
+            )
+
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["match_type"], "similar")
+        self.assertEqual(
+            [row["area_match"] for row in payload["transactions"]],
+            ["exact", "similar", "similar"],
+        )
+
+    def test_fails_closed_when_evidence_count_does_not_match_calculation_sample(self):
+        connection = _Connection([
+            {"building_name": "테스트", "sgg_cd": "11110", "umd_nm": "청운동", "jibun": "1", "parcel_building_count": 1},
+            {
+                "median_price": 7200, "latest_deal_date": "2026-08-20",
+                "sample_count": 2, "min_area": 40, "max_area": 40,
+                "transactions": [
+                    {"deal_date": "2026-08-20", "area_sqm": 40, "price": 7200},
+                ],
+            },
+        ])
+        with patch.object(application, "get_conn", return_value=connection):
+            response = application.app.test_client().get(
+                "/api/analysis/rental-market-price?building_id=101&area_sqm=40"
+            )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.get_json()["ok"])
+        self.assertNotIn("median_price", response.get_json())
 
     def test_expands_to_similar_area_and_reports_no_data(self):
         connection = _Connection([
@@ -122,7 +184,14 @@ class RentalMarketPriceTest(unittest.TestCase):
     def test_same_parcel_uses_only_selected_building_transactions(self):
         connection = _Connection([
             {"building_name": "선택 건물", "sgg_cd": "11110", "umd_nm": "청운동", "jibun": "1", "parcel_building_count": 2},
-            {"median_price": 7200, "latest_deal_date": "2026-08-20", "sample_count": 2, "min_area": 40, "max_area": 40},
+            {
+                "median_price": 7200, "latest_deal_date": "2026-08-20",
+                "sample_count": 2, "min_area": 40, "max_area": 40,
+                "transactions": [
+                    {"deal_date": "2026-08-20", "area_sqm": 40, "price": 7000},
+                    {"deal_date": "2026-08-19", "area_sqm": 40, "price": 7400},
+                ],
+            },
         ])
         with patch.object(application, "get_conn", return_value=connection):
             response = application.app.test_client().get(

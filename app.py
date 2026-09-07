@@ -2866,7 +2866,15 @@ def get_rental_market_price():
                     MAX(deal_date) AS latest_deal_date,
                     COUNT(*) AS sample_count,
                     MIN(area) AS min_area,
-                    MAX(area) AS max_area
+                    MAX(area) AS max_area,
+                    jsonb_agg(
+                        jsonb_build_object(
+                            'deal_date', deal_date,
+                            'area_sqm', area,
+                            'price', price
+                        )
+                        ORDER BY deal_date DESC, area, price
+                    ) AS transactions
                 FROM transactions
                 WHERE {match_sql}
                   AND transaction_scope = 'unit'
@@ -2894,6 +2902,25 @@ def get_rental_market_price():
                 "sample_count": observed_count,
                 "reason": "자료 부족: 최근 36개월 내 동일·유사 면적의 매매 실거래가 2건 미만입니다.",
             })
+        public_transactions = []
+        for transaction in summary.get("transactions") or []:
+            transaction_area = float(transaction["area_sqm"])
+            public_transactions.append({
+                "deal_date": transaction["deal_date"],
+                "area_sqm": transaction_area,
+                "price": float(transaction["price"]),
+                "area_match": "exact" if abs(transaction_area - area_sqm) <= 0.5 else "similar",
+            })
+        if len(public_transactions) != int(summary["sample_count"]):
+            app.logger.error(
+                "rental market evidence count mismatch building_id=%s expected=%s actual=%s",
+                building_id, summary["sample_count"], len(public_transactions),
+            )
+            return jsonify({
+                "ok": False,
+                "area_sqm": area_sqm,
+                "reason": "실거래 계산 근거를 확인할 수 없어 자동 기준가를 제공하지 않습니다.",
+            }), 500
         return jsonify({
             "ok": True,
             "area_sqm": area_sqm,
@@ -2906,6 +2933,7 @@ def get_rental_market_price():
                 "max": float(summary["max_area"]),
             },
             "period_months": 36,
+            "transactions": public_transactions,
         })
     finally:
         cur.close()
