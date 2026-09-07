@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-06-09"
+SCHEMA_VERSION = "2026-09-07-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -623,6 +623,48 @@ def _run_init_db():
         row_hash TEXT NOT NULL UNIQUE,
         collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+    """)
+    # 자산 분석의 고비용 집계는 원장 버전과 함께 영속 캐시한다. 원장 변경 트리거가
+    # 버전을 먼저 올리므로, 갱신과 동시에 실행 중이던 이전 스냅샷의 캐시가 나중에
+    # 저장되더라도 다음 요청에서는 버전 불일치로 절대 재사용되지 않는다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS analysis_source_versions (
+        source_name TEXT PRIMARY KEY,
+        version BIGINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+    cur.execute("""
+    INSERT INTO analysis_source_versions (source_name)
+    VALUES ('tourism_stats'), ('transactions'), ('master_buildings')
+    ON CONFLICT (source_name) DO NOTHING
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS analysis_assets_cache (
+        cache_kind TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        source_version TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (cache_kind, cache_key)
+    )
+    """)
+    cur.execute("""
+    CREATE OR REPLACE FUNCTION invalidate_analysis_assets_cache()
+    RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        INSERT INTO analysis_source_versions (source_name, version, updated_at)
+        VALUES (TG_TABLE_NAME, 1, NOW())
+        ON CONFLICT (source_name) DO UPDATE
+        SET version = analysis_source_versions.version + 1,
+            updated_at = NOW();
+        DELETE FROM analysis_assets_cache
+        WHERE (TG_TABLE_NAME = 'tourism_stats' AND cache_kind = 'tourism')
+           OR (TG_TABLE_NAME IN ('transactions', 'master_buildings')
+               AND cache_kind = 'transactions');
+        RETURN NULL;
+    END
+    $$
     """)
     # Approved annual tourism-accommodation workbooks are a separate,
     # production-only aggregate evidence source.  They must never rewrite
@@ -946,6 +988,15 @@ def _run_init_db():
         updated_at TIMESTAMP
     )
     """)
+    for source_table in ("tourism_stats", "transactions", "master_buildings"):
+        cur.execute(f"""
+        DROP TRIGGER IF EXISTS trg_invalidate_analysis_cache ON {source_table}
+        """)
+        cur.execute(f"""
+        CREATE TRIGGER trg_invalidate_analysis_cache
+        AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON {source_table}
+        FOR EACH STATEMENT EXECUTE FUNCTION invalidate_analysis_assets_cache()
+        """)
 
     # 기존에 이미 만들어진 DB(컬럼 없이 생성됐던 경우)에도 안전하게 컬럼 추가 (데이터 보존)
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS si_do TEXT")

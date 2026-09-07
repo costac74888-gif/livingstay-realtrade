@@ -30594,8 +30594,53 @@ def _analysis_quadrant(tourism_demand, price_change, tourism_baseline=50, price_
     return "수요·가격 관망"
 
 
+def _analysis_source_version(cur, *source_names):
+    cur.execute("""
+        SELECT source_name, version
+        FROM analysis_source_versions
+        WHERE source_name = ANY(%s)
+        ORDER BY source_name
+    """, (list(source_names),))
+    versions = {row["source_name"]: int(row["version"]) for row in cur.fetchall()}
+    return "|".join(f"{name}:{versions.get(name, 0)}" for name in sorted(source_names))
+
+
+def _analysis_cached_payload(cur, cache_kind, cache_key, source_version):
+    cur.execute("""
+        SELECT payload
+        FROM analysis_assets_cache
+        WHERE cache_kind = %s AND cache_key = %s AND source_version = %s
+    """, (cache_kind, cache_key, source_version))
+    row = cur.fetchone()
+    return row["payload"] if row else None
+
+
+def _analysis_store_payload(cur, cache_kind, cache_key, source_version, payload):
+    cur.execute("""
+        INSERT INTO analysis_assets_cache
+            (cache_kind, cache_key, source_version, payload, created_at)
+        VALUES (%s, %s, %s, %s::jsonb, NOW())
+        ON CONFLICT (cache_kind, cache_key) DO UPDATE
+        SET source_version = EXCLUDED.source_version,
+            payload = EXCLUDED.payload,
+            created_at = NOW()
+    """, (
+        cache_kind, cache_key, source_version,
+        json.dumps(payload, ensure_ascii=False, default=str),
+    ))
+
+
 def _analysis_tourism_demand_by_sgg(cur, period_months):
     """Return latest demand percentile and complete same-period visitor growth."""
+    source_version = _analysis_source_version(cur, "tourism_stats")
+    cached = _analysis_cached_payload(
+        cur, "tourism", str(period_months), source_version
+    )
+    if cached is not None:
+        return {
+            (item.pop("sido"), item.pop("sgg")): item
+            for item in (dict(value) for value in cached)
+        }
     cur.execute("""
         WITH latest_file AS (
             SELECT source_file, source_period
@@ -30708,6 +30753,10 @@ def _analysis_tourism_demand_by_sgg(cur, period_months):
             _analysis_float(row["previous_visitors"]),
         ) if complete else None
         item["comparison_complete"] = complete
+    _analysis_store_payload(cur, "tourism", str(period_months), source_version, [
+        {"sido": key[0], "sgg": key[1], **value}
+        for key, value in result.items()
+    ])
     return result
 
 
@@ -30774,7 +30823,23 @@ def analysis_assets():
         """, params)
         registered_buildings = int(cur.fetchone()["count"] or 0)
 
-        cur.execute(f"""
+        # 거래 기간은 PostgreSQL CURRENT_DATE 기준의 rolling window다. 원장
+        # 변경이 없어도 자정에 경계 거래가 달라질 수 있으므로 날짜도 키에 넣는다.
+        cur.execute("SELECT CURRENT_DATE::text AS cache_date")
+        transaction_cache_date = cur.fetchone()["cache_date"]
+        transaction_cache_key = hashlib.sha256(json.dumps(
+            [transaction_cache_date, period_months, sido, sgg, lodging_type],
+            ensure_ascii=False, separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
+        transaction_source_version = _analysis_source_version(
+            cur, "transactions", "master_buildings"
+        )
+        rows = _analysis_cached_payload(
+            cur, "transactions", transaction_cache_key,
+            transaction_source_version,
+        )
+        if rows is None:
+            cur.execute(f"""
             WITH recent_tx AS MATERIALIZED (
                 SELECT id, sgg_cd, umd_nm, jibun, price, area, deal_date
                 FROM transactions
@@ -30831,12 +30896,16 @@ def analysis_assets():
             WHERE a.current_count > 0
             ORDER BY m.id, a.current_count DESC
             LIMIT %s
-        """, [
-            period_months, *params,
-            period_months, period_months, period_months, period_months,
-            _ANALYSIS_MAX_ITEMS,
-        ])
-        rows = cur.fetchall()
+            """, [
+                period_months, *params,
+                period_months, period_months, period_months, period_months,
+                _ANALYSIS_MAX_ITEMS,
+            ])
+            rows = [dict(row) for row in cur.fetchall()]
+            _analysis_store_payload(
+                cur, "transactions", transaction_cache_key,
+                transaction_source_version, rows,
+            )
         tourism_demand = _analysis_tourism_demand_by_sgg(cur, period_months)
 
         items = []
@@ -30893,6 +30962,9 @@ def analysis_assets():
                 ),
                 price_baseline if price_baseline is not None else 0,
             )
+        # Cache writes are part of this read transaction. Commit only those
+        # derived rows before the pooled connection is released.
+        conn.commit()
         return jsonify({
             "ok": True, "generated_at": datetime.now(timezone.utc).isoformat(),
             "filters": {

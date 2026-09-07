@@ -88,3 +88,4 @@
 - [외부 API 백필 체크포인트](external-api-backfill-checkpoints.md) — autoscale 백필은 DB lease로 소유권을 fence하고, API 호출 한도는 요청 전에 DB에 예약한다.
 - [숙박자산 투자분석 데이터 원칙](lodging-asset-analysis.md) — 관광 스냅샷은 단일 원본 백분위로 표시하고, 유일 지번 연결·최근 후보 제한 뒤에만 실거래를 분석한다.
 - [관광수요 월간 비교 무결성](tourism-monthly-comparison-integrity.md) — 겹치는 원본은 지역·월 최신행만 쓰고, 현재·직전 기간의 모든 월이 있을 때만 실제 증감률을 공개한다.
+- [원장 기반 분석 캐시](source-versioned-analysis-cache.md) — 영속 집계 캐시는 원장 버전으로 검증하고 CURRENT_DATE 이동구간은 DB 날짜를 키에 포함한다.

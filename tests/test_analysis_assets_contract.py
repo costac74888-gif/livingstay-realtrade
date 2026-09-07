@@ -53,6 +53,15 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("WITH recent_tx AS MATERIALIZED", self.endpoint)
         self.assertIn("CURRENT_DATE - make_interval(months => %s * 2)", self.endpoint)
 
+    def test_expensive_aggregates_use_versioned_persistent_cache(self):
+        self.assertIn("_analysis_cached_payload(", self.endpoint)
+        self.assertIn('"transactions", transaction_cache_key', self.endpoint)
+        self.assertIn("_analysis_tourism_demand_by_sgg(cur, period_months)", self.endpoint)
+        self.assertIn("_analysis_source_version(", self.source)
+        self.assertIn("_analysis_store_payload(", self.source)
+        self.assertIn("SELECT CURRENT_DATE::text AS cache_date", self.endpoint)
+        self.assertIn("[transaction_cache_date, period_months", self.endpoint)
+
 
 if __name__ == "__main__":
     unittest.main()
