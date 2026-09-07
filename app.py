@@ -30746,11 +30746,58 @@ def tourism_heatmap_domestic():
 
 _ANALYSIS_PERIODS = (6, 12, 24)
 _ANALYSIS_MAX_ITEMS = 500
+_APPROVED_OPERATION_BENCHMARKS = None
 
 
 def _analysis_float(value):
     """JSON 응답에 Decimal/psycopg2 수치가 남지 않게 한다."""
     return float(value) if value is not None else None
+
+
+def _approved_operation_benchmarks(sido):
+    """운영 DB가 비어 있어도 배포 번들의 승인 원본에서 비교지표를 제공한다."""
+    global _APPROVED_OPERATION_BENCHMARKS
+    if _APPROVED_OPERATION_BENCHMARKS is None:
+        from import_hotel_operation import (
+            DEFAULT_YEAR, SOURCE_NAME, parse_operation_zip,
+            validate_operation_records,
+        )
+        source_path = os.path.join(
+            os.path.dirname(__file__),
+            "attached_assets",
+            "2024_호텔업운영현황_1788781907828.zip",
+        )
+        _, records = parse_operation_zip(source_path, DEFAULT_YEAR)
+        validate_operation_records(records)
+        grouped = {}
+        for record in records:
+            if record[3] is None or record[4] != "전체":
+                continue
+            if any(record[index] is None for index in (5, 6, 7)):
+                continue
+            grouped.setdefault(record[2], []).append({
+                "region": record[3],
+                "occ": _analysis_float(record[5]),
+                "adr": _analysis_float(record[6]),
+                "revpar": _analysis_float(record[7]),
+                "foreign": _analysis_float(record[8]),
+            })
+        for items in grouped.values():
+            items.sort(key=lambda item: (
+                -item["revpar"], -item["occ"], -item["adr"], item["region"],
+            ))
+        _APPROVED_OPERATION_BENCHMARKS = {
+            "items": grouped,
+            "source": {
+                "name": SOURCE_NAME,
+                "file": os.path.basename(source_path),
+                "reference_year": DEFAULT_YEAR,
+            },
+        }
+    return (
+        list(_APPROVED_OPERATION_BENCHMARKS["items"].get(sido, [])),
+        dict(_APPROVED_OPERATION_BENCHMARKS["source"]),
+    )
 
 
 @app.route("/api/analysis/operation-benchmarks")
@@ -30805,6 +30852,8 @@ def analysis_operation_benchmarks():
             "file": rows[0]["source_file"],
             "reference_year": rows[0]["reference_year"],
         } if rows else None)
+        if not rows:
+            rows, source = _approved_operation_benchmarks(sido)
         for row in rows:
             row.pop("source_name", None)
             row.pop("source_file", None)
