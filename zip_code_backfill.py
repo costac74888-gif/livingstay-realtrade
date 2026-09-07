@@ -312,6 +312,22 @@ def main_impl():
           AND id > %s
     """, (prog["last_id"],))
     total = cur.fetchone()["c"]
+    if total == 0 and prog["last_id"] > 0:
+        # Earlier versions advanced last_id even on provider timeouts. Once the
+        # forward pass reaches the end, wrap once so those historical misses
+        # are naturally retried instead of being stranded forever.
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM master_buildings
+            WHERE zip_code IS NULL AND road_address IS NOT NULL
+        """)
+        unresolved = cur.fetchone()["c"]
+        if unresolved > 0:
+            prog["last_id"] = 0
+            prog["in_flight_id"] = None
+            prog["state"] = "running"
+            save_progress(conn, prog)
+            total = unresolved
+            print(f"[복구] 과거 오류·응답없음 {unresolved}건을 처음부터 다시 확인합니다.")
     print(f"[대상] zip_code 미채움 건물: {total}건 (id > {prog['last_id']})")
 
     # 이미 채워진 건수 (전체 현황)

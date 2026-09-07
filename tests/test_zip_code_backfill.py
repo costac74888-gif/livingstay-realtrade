@@ -160,6 +160,7 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
         with open("zip_code_backfill.py", encoding="utf-8") as source_file:
             source = source_file.read()
         self.assertIn("NOT IN ('running', 'waiting_provider')", source)
+        self.assertIn("과거 오류·응답없음", source)
 
 
 if __name__ == "__main__":
