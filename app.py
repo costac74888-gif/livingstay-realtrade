@@ -4522,71 +4522,35 @@ def get_building_count():
     count   : 통계 대시보드의 '등록 건물' 총수 (분류 합계)
     tx_count: 현재 실거래 건수
     """
-    # /api/building-count는 _MASTER_STATS_CACHE가 있으면 지도와 관리자 통계가 같은 시점의 건물 수를
-    # 사용한다. 만료·무효화된 캐시는 stale 값을 즉시 사용하고 백그라운드
-    # 재검증만 예약한다. 최초 캐시가 없을 때만 아래의 실시간 쿼리를 실행한다.
-    cached_lodging = (
-        _MASTER_STATS_CACHE.get("data", {}).get("lodging_stats")
-        if "_MASTER_STATS_CACHE" in globals()
-        else None
-    )
-    if cached_lodging is not None:
-        if not _master_stats_cache_is_valid():
-            _MASTER_STATS_NEEDS_REFRESH.set()
-        cached_rows = cached_lodging.get("rows") or []
-        by_type = cached_lodging.get("building_count_by_type") or {
-            row.get("type"): int(row.get("building_count") or 0)
-            for row in cached_rows
-            if row.get("type") not in (None, "전체")
-            and int(row.get("building_count") or 0) > 0
-        }
-        cached_total = cached_lodging.get("total_building_cnt")
-        total = (
-            int(cached_total)
-            if cached_total is not None
-            else sum(by_type.values())
-        )
-    else:
-        conn = get_conn()
-        cur = conn.cursor()
-
-        # 용도별 건물 수 — 지도 필터와 동일한 기준 (클릭 결과와 숫자 일치 보장)
-        # mixed_use_excluded: 지도 노출 금지 → 범례에도 카운트 제외
-        # 준공전: building_status IN ('허가','착공') AND use_apr_day 없음 — lodging_type NULL보다 우선
-        #   use_apr_day가 있으면 이미 완공된 건물이므로 준공전에서 제외 (backfill이 채웠지만
-        #   building_status 미갱신된 오분류 112건 방어)
-        # 복합: lodging_type = '복합' 또는 '·' 포함 (지도 복합 필터와 동일)
-        # 미분류: lodging_type NULL/'' 이면서 준공전이 아닌 건물
-        cur.execute("""
-            SELECT
-                CASE
-                    WHEN building_status IN ('허가','착공')
-                         AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
-                    WHEN lodging_type IN ('생활', '생숙')                    THEN '생활'
-                    WHEN lodging_type = '관광'                               THEN '관광'
-                    WHEN lodging_type = '일반'                               THEN '일반'
-                    WHEN lodging_type = '에어비앤비'                         THEN '에어비앤비'
-                    WHEN lodging_type = '농어촌민박'                         THEN '농어촌민박'
-                    WHEN lodging_type = '캠핑'                               THEN '캠핑'
-                    WHEN lodging_type = '한옥'                               THEN '한옥'
-                    WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
-                    WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
-                    ELSE NULL   -- mixed_use_excluded 등 → 제외
-                END AS t,
-                COUNT(*) AS c
-            FROM master_buildings
-            WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
-            GROUP BY 1
-        """)
-        by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
-        # total: mixed_use_excluded 제외 건물 수 (범례에 표시할 건물 수와 동일)
-        total = sum(by_type.values())
-        cur.close()
-        conn.close()
-
-    # 실거래 건수
+    # 지도 범례는 정밀 통계의 워커별 메모리 캐시를 사용하지 않는다. Gunicorn
+    # 워커마다 캐시 세대가 달라 첫 로드와 새로고침의 숫자가 바뀔 수 있기 때문이다.
+    # 단일 경량 GROUP BY와 실거래 COUNT를 같은 DB 연결에서 읽어 모든 워커가
+    # 동일한 현재 원장을 반환하게 한다.
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            CASE
+                WHEN building_status IN ('허가','착공')
+                     AND (use_apr_day IS NULL OR use_apr_day = '') THEN '준공전'
+                WHEN lodging_type IN ('생활', '생숙')                    THEN '생활'
+                WHEN lodging_type = '관광'                               THEN '관광'
+                WHEN lodging_type = '일반'                               THEN '일반'
+                WHEN lodging_type = '에어비앤비'                         THEN '에어비앤비'
+                WHEN lodging_type = '농어촌민박'                         THEN '농어촌민박'
+                WHEN lodging_type = '캠핑'                               THEN '캠핑'
+                WHEN lodging_type = '한옥'                               THEN '한옥'
+                WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
+                WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
+                ELSE NULL
+            END AS t,
+            COUNT(*) AS c
+        FROM master_buildings
+        WHERE lodging_type IS DISTINCT FROM 'mixed_use_excluded'
+        GROUP BY 1
+    """)
+    by_type = {r["t"]: int(r["c"]) for r in cur.fetchall() if r["t"] is not None}
+    total = sum(by_type.values())
     cur.execute("SELECT COUNT(*) AS c FROM transactions WHERE transaction_scope = 'unit'")
     tx_count = int(cur.fetchone()["c"])
 

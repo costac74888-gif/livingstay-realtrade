@@ -338,10 +338,19 @@ class AppMutationInvalidationTests(unittest.TestCase):
         finally:
             app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
 
-    def test_map_building_count_uses_cached_master_total(self):
-        tx_conn = FakeConnection(FakeCursor(
-            lambda sql, _params: {"c": 777} if "FROM transactions" in sql else None
-        ))
+    def test_map_building_count_ignores_worker_local_master_cache(self):
+        def responder(sql, _params):
+            if "GROUP BY 1" in sql:
+                return [
+                    {"t": "생활", "c": 700},
+                    {"t": "관광", "c": 200},
+                    {"t": "준공전", "c": 16},
+                ]
+            if "FROM transactions" in sql:
+                return {"c": 777}
+            return None
+
+        tx_conn = FakeConnection(FakeCursor(responder))
         cached_lodging_stats = {
             "total_building_cnt": 22416,
             "building_count_by_type": {"생활": 20000, "관광": 2000, "준공전": 416},
@@ -361,8 +370,8 @@ class AppMutationInvalidationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), {
-            "count": 22416,
-            "by_type": {"생활": 20000, "관광": 2000, "준공전": 416},
+            "count": 916,
+            "by_type": {"생활": 700, "관광": 200, "준공전": 16},
             "tx_count": 777,
         })
 
