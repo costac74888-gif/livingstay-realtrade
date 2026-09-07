@@ -49,6 +49,11 @@ expect(
   "선택 건물의 시군구 비교 강조 또는 범례가 없습니다.",
 );
 expect(
+  css.includes(".q-top-left{padding-left:82px")
+    && css.includes(".q-bottom-left{padding-left:82px"),
+  "왼쪽 사분면 설명이 Y축 눈금 밖의 그래프 안쪽에 배치되지 않았습니다.",
+);
+expect(
   js.includes("window.print()") && js.includes("navigator.share")
     && js.includes('location.origin+"/analysis?building_id="')
     && css.includes("@media print"),
