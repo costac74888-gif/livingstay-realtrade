@@ -124,12 +124,18 @@ expect(
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
+    && js.includes("priceDisplayCap") && js.includes("Math.abs(price)<=priceDisplayCap")
     && js.includes('String(i.building_id)===String(state.selected)')
     && js.includes('if(c.raw.incomplete)return"#758596"')
     && js.includes('points[idx].incomplete?"#758596"')
     && js.includes('tourism==null?(baselineX==null?0:baselineX):tourism')
     && js.includes('price==null?(baselineY==null?0:baselineY):symlog(price)'),
   "비교기간이 부족한 선택 건물의 회색 기준선 점 표시가 없습니다.",
+);
+expect(
+  js.includes('priceOnly=true') && js.includes("가격 저평가 후보")
+    && js.includes("비교 가능한 가격·관광 자료가 없습니다"),
+  "관광자료 전체 부족 시 차트와 추천표가 모두 비는 것을 막는 보조 표시가 없습니다.",
 );
 expect(
   html.includes('id="propertyTab"') && html.includes('id="operationTab"')
