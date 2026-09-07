@@ -153,7 +153,7 @@ expect(
     && html.indexOf("부동산투자분석") < html.indexOf("임대수익분석")
     && html.indexOf("임대수익분석") < html.indexOf("숙박운영분석")
     && html.includes('id="operationInputs"') && html.includes('id="operationChart"')
-    && js.includes("lodging_room_total") && js.includes("operationBenchmarks")
+    && operationJs.includes("lodging_room_total") && operationJs.includes("benchmarks")
     && html.includes('id="operationLodging"') && html.includes('id="operationRoomCountInput"')
     && html.includes('id="operationBusinessName"')
     && html.includes('id="buildingSelectionApply"') && html.includes('id="buildingSelectionStatus"')
@@ -168,12 +168,16 @@ expect(
   "부동산분석 다음 운영분석 탭 또는 운영 포지셔닝 화면이 없습니다.",
 );
 expect(
-  html.includes('id="tableMoreBtn"')
-    && js.includes("tableLimit:10")
-    && js.includes("list.slice(0,state.tableLimit)")
+  !html.includes('data-sort="address"')
+    && html.includes('id="tableExpandBtn"')
+    && js.includes("tableExpanded:false")
+    && js.includes("updateTableVisibility")
+    && js.includes("rows.length-10")
+    && js.includes("index>=10")
+    && js.includes('"목록 접기"')
     && html.indexOf('id="methodology"') < html.indexOf('id="summaryGrid"')
     && !html.includes('id="rentalBuildingAddress"'),
-  "건물 목록 10개·더보기, 하단 산출 숫자 또는 임대분석 주소 제거가 반영되지 않았습니다.",
+  "건물 비교표 주소 제거·10개 펼침/접기, 하단 산출 숫자 또는 임대분석 주소 제거가 반영되지 않았습니다.",
 );
 expect(
   html.includes("<h1>홈앤스테이 숙박자산 분석</h1>")
@@ -200,7 +204,9 @@ expect(
   html.includes("별도 승인 없이 바로 분석")
     && html.includes("실제 운영 기준에 맞게 수정")
     && !html.includes("식음 매출액")
-    && js.includes("analyzeOperationFiles"),
+    && operationJs.includes("analyzeFiles")
+    && operationJs.includes("/api/analysis/operation-upload")
+    && !js.includes("analyzeOperationFiles"),
   "신고 객실 자동 적용 또는 자기자료 즉시 분석 원칙이 반영되지 않았습니다.",
 );
 

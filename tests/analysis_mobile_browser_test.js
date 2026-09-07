@@ -94,7 +94,9 @@ async function run() {
   const errors = [];
   let incompleteSelected = false;
   let incompleteFinalTrajectory = false;
+  let comparisonItemCount = 6;
   let rentalTransactionRequest = "";
+  let uploadHasOccupancyBasis = true;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
@@ -109,7 +111,19 @@ async function run() {
         address: "강원특별자치도 속초시 테스트로 1",
       }],
     });
-    if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
+    if (url.pathname === "/api/analysis/assets") {
+      const payload = fixture(incompleteSelected, incompleteFinalTrajectory);
+      const incompleteItem = payload.items.find((entry) => entry.building_id === 301);
+      payload.items = payload.items
+        .filter((entry) => entry.building_id !== 301)
+        .slice(0, comparisonItemCount - (incompleteItem ? 1 : 0));
+      if (incompleteItem) payload.items.push(incompleteItem);
+      while (payload.items.length < comparisonItemCount) {
+        const id = 400 + payload.items.length;
+        payload.items.push(item(id, `비교 자산 ${id}`, "경기도", "수원시", 5, -3, "비교 자산"));
+      }
+      return json(route, payload);
+    }
     if (url.pathname === "/api/transactions") {
       rentalTransactionRequest = url.search;
       return json(route, { total: 1, page: 1, size: 1, transaction_scope: "unit", items: [{
@@ -128,6 +142,18 @@ async function run() {
         { region: "고성군", adr: 135489, occ: 59.46, revpar: 80562, foreign: 8 },
         { region: "춘천시", adr: 113000, occ: 55, revpar: 62150, foreign: 2 },
       ],
+    });
+    if (url.pathname === "/api/analysis/operation-upload") return json(route, {
+      ok: true,
+      result: uploadHasOccupancyBasis ? {
+        period_start: "2026-01-01", period_end: "2026-01-31",
+        adr: 162000, room_revenue: 502200000, sold_rooms: 3100,
+        occupancy_days: 31,
+      } : {
+        adr: 162000, room_revenue: 16200000, sold_rooms: 100,
+      },
+      processed_file_count: 1,
+      retained: false,
     });
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
     if (url.pathname.endsWith("/photos")) return json(route, { photos: [] });
@@ -235,6 +261,35 @@ async function run() {
       }
       }
     }
+    expect(await page.locator("#assetRows tr:visible").count() === 6
+      && await page.locator("#tableExpandBtn").evaluate((node) => node.classList.contains("hidden")),
+    "10개 이하 건물 비교 목록에서 펼침 버튼이 숨겨지지 않았습니다.");
+    expect(!(await page.locator(".table-card thead").textContent()).includes("위치"),
+      "건물 비교표에 제거한 주소·위치 열이 다시 표시됐습니다.");
+    expect(await page.locator("#methodology #summaryGrid").count() === 1,
+      "분석 요약 카드가 계산 기준과 산출근거 내부에 배치되지 않았습니다.");
+
+    comparisonItemCount = 12;
+    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 12);
+    const collapsedComparison = await page.evaluate(() => ({
+      visible: Array.from(document.querySelectorAll("#assetRows tr"))
+        .filter((row) => getComputedStyle(row).display !== "none").length,
+      button: document.getElementById("tableExpandBtn").textContent,
+      expanded: document.getElementById("tableExpandBtn").getAttribute("aria-expanded"),
+    }));
+    expect(collapsedComparison.visible === 10 && collapsedComparison.button.includes("나머지 2개")
+      && collapsedComparison.expanded === "false", "건물 비교 목록이 처음 10개로 접히지 않았습니다.");
+    await page.click("#tableExpandBtn");
+    expect(await page.locator("#assetRows tr:visible").count() === 12
+      && await page.getAttribute("#tableExpandBtn", "aria-expanded") === "true",
+    "건물 비교 목록의 나머지 항목이 펼쳐지지 않았습니다.");
+    await page.click("#tableExpandBtn");
+    expect(await page.locator("#assetRows tr:visible").count() === 10
+      && await page.getAttribute("#tableExpandBtn", "aria-expanded") === "false",
+    "건물 비교 목록이 다시 10개로 접히지 않았습니다.");
+    comparisonItemCount = 6;
+
     incompleteSelected = true;
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
@@ -271,12 +326,33 @@ async function run() {
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("200실"));
+    await page.setInputFiles("#operationFiles", {
+      name: "operation.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("기간,OCC,객실매출,판매객실 수\n2026-01,74,16200000,100"),
+    });
+    await page.waitForFunction(() => {
+      const state = window.__operationAnalysisState;
+      return state && state.selectedName === "선택 테스트 자산" && state.roomCount === 200
+        && state.occ === 50 && state.adr === 162000 && state.benchmarkCount === 6
+        && document.getElementById("operationFileStatus").textContent.includes("자동 인식 완료");
+    });
+    await page.waitForTimeout(80);
+    const uploadedOperationResult = await page.evaluate(() => ({
+      roomCount: document.getElementById("operationRoomCount").textContent,
+      appliedRoomCount: document.getElementById("operationRoomCountInput").value,
+      detail: document.getElementById("operationDetail").textContent,
+      adrBaseline: document.getElementById("operationAdrBaseline").textContent,
+      occBaseline: document.getElementById("operationOccBaseline").textContent,
+      uploadStatus: document.getElementById("operationFileStatus").textContent,
+      renderState: window.__operationAnalysisState,
+    }));
     await page.fill("#operationRoomCountInput", "180");
     const defaultOperationName = await page.inputValue("#operationBusinessName");
     await page.fill("#operationBusinessName", "사용자 수정 상호");
-    await page.fill("#operationOcc", "74");
-    await page.fill("#operationAdr", "162000");
-    await page.click("#operationRun");
+    await page.waitForFunction(() => window.__operationAnalysisState
+      && window.__operationAnalysisState.roomCount === 180
+      && window.__operationAnalysisState.selectedName === "사용자 수정 상호");
     const operationResult = await page.evaluate(() => ({
       operationVisible: !document.getElementById("operationAnalysis").classList.contains("hidden"),
       propertyHidden: document.getElementById("propertyAnalysis").classList.contains("hidden"),
@@ -288,6 +364,9 @@ async function run() {
       chart: !!Chart.getChart("operationChart"),
       lodgingOptions: document.querySelectorAll("#operationLodging option").length,
       adrBaseline: document.getElementById("operationAdrBaseline").textContent,
+      occBaseline: document.getElementById("operationOccBaseline").textContent,
+      uploadStatus: document.getElementById("operationFileStatus").textContent,
+      renderState: window.__operationAnalysisState,
       hiddenFilters: getComputedStyle(document.getElementById("analysisFilter")).display === "none",
       operationLayout: window.__operationChartLayout,
       operationName: document.getElementById("operationBusinessName").value,
@@ -295,8 +374,13 @@ async function run() {
     expect(operationResult.operationVisible && operationResult.propertyHidden && operationResult.selectedTab === "true",
       "운영분석 탭 전환 상태가 올바르지 않습니다.");
     expect(operationResult.roomCount.includes("200실"), "선택 영업신고 업소의 객실 수가 운영분석에 자동 적용되지 않았습니다.");
-    expect(operationResult.detail.includes("119,880원") && operationResult.detail.includes("자동분석"),
-      `OCC·ADR 입력으로 RevPAR 운영분석 결과가 표시되지 않았습니다: ${operationResult.detail}`);
+    expect(uploadedOperationResult.roomCount.includes("200실")
+      && uploadedOperationResult.appliedRoomCount === "200"
+      && uploadedOperationResult.detail.includes("선택 테스트 자산")
+      && uploadedOperationResult.detail.includes("200실")
+      && uploadedOperationResult.detail.includes("81,000원")
+      && uploadedOperationResult.detail.includes("자동분석"),
+      `업로드 후 선택 건물 기준 운영분석 결과가 유지되지 않았습니다: ${uploadedOperationResult.detail}`);
     expect(operationResult.topRows === 5 && operationResult.chart,
       "운영 포지셔닝 차트 또는 지역 TOP 5가 표시되지 않았습니다.");
     expect(operationResult.lodgingOptions === 2 && operationResult.roomCount.includes("200실"),
@@ -307,8 +391,18 @@ async function run() {
       && operationResult.operationName === "사용자 수정 상호"
       && operationResult.detail.includes("사용자 수정 상호"),
       "분석 상호가 건물명을 기본값으로 사용하거나 사용자 수정값을 반영하지 않습니다.");
-    expect(operationResult.adrBaseline.includes("원") && operationResult.hiddenFilters,
+    expect(uploadedOperationResult.adrBaseline.includes("원")
+      && uploadedOperationResult.occBaseline.includes("%")
+      && uploadedOperationResult.uploadStatus.includes("OCC 50% 자동계산")
+      && uploadedOperationResult.uploadStatus.includes("객실매출 502,200,000원")
+      && uploadedOperationResult.renderState.selectedName === "선택 테스트 자산"
+      && uploadedOperationResult.renderState.roomCount === 200 && operationResult.hiddenFilters,
       "지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다.");
+    expect(operationResult.appliedRoomCount === "180"
+      && operationResult.renderState.roomCount === 180
+      && operationResult.renderState.occ === 55.56
+      && operationResult.detail.includes("180실"),
+      "자동 입력된 신고 객실 수를 사용자가 임의 수정할 수 없습니다.");
     expect(operationResult.operationLayout.comparisonPoints === 6
       && operationResult.operationLayout.comparisonColor === "#8798a8"
       && operationResult.operationLayout.selectedRadius === 11
@@ -321,6 +415,17 @@ async function run() {
       && Math.abs(operationResult.operationLayout.baselinePixelY
         - operationResult.operationLayout.chartCenterY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    uploadHasOccupancyBasis = false;
+    await page.setInputFiles("#operationFiles", {
+      name: "missing-period.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("객실매출,판매객실 수\n16200000,100"),
+    });
+    await page.waitForFunction(() => {
+      const status = document.getElementById("operationFileStatus").textContent;
+      return !document.getElementById("operationOcc").value
+        && status.includes("운영분석 보류") && status.includes("OCC 계산 불가");
+    });
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
@@ -388,12 +493,7 @@ async function run() {
         document.getElementById("buildingSelectionStatus").textContent.includes("선택 건물 · 선택 테스트 자산"));
     }
     await page.click("#propertyTab");
-    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 10);
-    expect(await page.locator("#tableMoreBtn").isVisible(),
-      "건물 비교 목록의 10개 이후 더보기 버튼이 보이지 않습니다.");
-    await page.click("#tableMoreBtn");
-    expect(await page.locator("#assetRows tr").count() > 10,
-      "건물 더보기 후 나머지 건물이 표시되지 않았습니다.");
+    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
 
     await page.click("#buildingSelectionClear");
     await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id"));

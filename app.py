@@ -99,6 +99,16 @@ import tourism_datalab_admin
 import annual_tourism_roster
 import import_hotel_operation
 import import_tourism_stats as tourism_stats_importer
+from operation_document_parser import (
+    ALLOWED_EXTENSIONS as OPERATION_UPLOAD_EXTENSIONS,
+    DocumentParseError,
+    MAX_FILES as OPERATION_UPLOAD_MAX_FILES,
+    MAX_FILE_BYTES as OPERATION_UPLOAD_MAX_FILE_BYTES,
+    merge_documents,
+    parse_documents_isolated,
+    release_parse_slot,
+    try_acquire_parse_slot,
+)
 from utils.photo_validate import validate_photo
 from lodging_matching import (
     ACTIVE_STATUS as ACTIVE_LODGING_STATUS,
@@ -30799,6 +30809,64 @@ def _approved_operation_benchmarks(sido):
         list(_APPROVED_OPERATION_BENCHMARKS["items"].get(sido, [])),
         dict(_APPROVED_OPERATION_BENCHMARKS["source"]),
     )
+
+
+@app.route("/api/analysis/operation-upload", methods=["POST"])
+@limiter.limit("10 per minute")
+def analysis_operation_upload():
+    """예약표·매출자료를 영구 저장하지 않고 요청 중 즉시 분석한다."""
+    if not any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    )):
+        return jsonify({"ok": False, "requires_login": True, "message": "로그인이 필요합니다."}), 401
+    maximum_request_bytes = OPERATION_UPLOAD_MAX_FILES * OPERATION_UPLOAD_MAX_FILE_BYTES + 1024 * 1024
+    if request.content_length is None or request.content_length > maximum_request_bytes:
+        return jsonify({"ok": False, "message": "전체 업로드 크기가 너무 큽니다."}), 413
+    slot = try_acquire_parse_slot()
+    if slot is None:
+        response = jsonify({"ok": False, "message": "다른 자료를 분석 중입니다. 잠시 후 다시 시도해 주세요."})
+        response.headers["Retry-After"] = "5"
+        return response, 503
+    try:
+        uploads = request.files.getlist("files")
+        if not uploads:
+            return jsonify({"ok": False, "message": "분석할 파일을 선택해 주세요."}), 400
+        if len(uploads) > OPERATION_UPLOAD_MAX_FILES:
+            return jsonify({
+                "ok": False,
+                "message": f"한 번에 {OPERATION_UPLOAD_MAX_FILES}개 파일까지 분석할 수 있습니다.",
+            }), 400
+        items = []
+        for upload in uploads:
+            filename = os.path.basename(str(upload.filename or ""))
+            extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if extension not in OPERATION_UPLOAD_EXTENSIONS:
+                raise DocumentParseError("지원하지 않는 파일 형식입니다.")
+            raw = upload.read(OPERATION_UPLOAD_MAX_FILE_BYTES + 1)
+            if not raw or len(raw) > OPERATION_UPLOAD_MAX_FILE_BYTES:
+                raise DocumentParseError("파일은 5MB 이하이어야 합니다.")
+            items.append((raw, extension))
+        documents = parse_documents_isolated(items)
+    except DocumentParseError as exc:
+        # 파일명·문서 본문·예외 repr은 개인정보를 포함할 수 있으므로 기록/응답하지 않는다.
+        return jsonify({"ok": False, "message": str(exc)}), 400
+    except Exception:
+        app.logger.error("운영자료 자동 분석 실패", exc_info=False)
+        return jsonify({
+            "ok": False,
+            "message": "자료를 분석하지 못했습니다. 파일 형식과 내용을 확인해 주세요.",
+        }), 422
+    finally:
+        release_parse_slot(slot)
+
+    merged = merge_documents(documents)
+    return jsonify({
+        "ok": True,
+        "result": merged,
+        "documents": documents,
+        "processed_file_count": len(documents),
+        "retained": False,
+    })
 
 
 @app.route("/api/analysis/operation-benchmarks")

@@ -1,5 +1,6 @@
 (function () {
   "use strict";
+  var uploadedOccupancyBasis = null;
 
   var building = null;
   var benchmarks = [];
@@ -55,6 +56,22 @@
   }
   function selectedRooms() {
     return number($("operationRoomCountInput").value);
+  }
+
+  function applyDerivedOcc() {
+    if (!uploadedOccupancyBasis) return null;
+    var rooms = selectedRooms();
+    var sold = number(uploadedOccupancyBasis.soldRooms);
+    var days = number(uploadedOccupancyBasis.days);
+    var occ = rooms && sold != null && days
+      ? Math.round(sold / (rooms * days) * 10000) / 100
+      : null;
+    if (occ == null || occ < 0 || occ > 100) {
+      $("operationOcc").value = "";
+      return null;
+    }
+    $("operationOcc").value = occ;
+    return occ;
   }
   function officialRooms() {
     var lodging = selectedLodging();
@@ -170,6 +187,15 @@
     renderTop();
     renderEvidence(baseAdr, baseOcc);
     renderDetail(selected);
+    window.__operationAnalysisState = {
+      selectedName: selected && selected.region || null,
+      roomCount: selectedRooms(),
+      occ: occ,
+      adr: adr,
+      baseAdr: baseAdr,
+      baseOcc: baseOcc,
+      benchmarkCount: benchmarks.length,
+    };
     var canvas = $("operationChart");
     var existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
@@ -290,28 +316,88 @@
     }).catch(function () {});
   }
 
+  async function analyzeFiles(files) {
+    if (!files.length) return;
+    var status = $("operationFileStatus");
+    var input = $("operationFiles");
+    if (files.length > 5) {
+      status.textContent = "한 번에 5개 파일까지 선택해 주세요";
+      input.value = "";
+      return;
+    }
+    status.textContent = files.length + "개 파일 자동 분석 중…";
+    input.disabled = true;
+    try {
+      var form = new FormData();
+      Array.from(files).forEach(function (file) { form.append("files", file); });
+      var response = await fetch("/api/analysis/operation-upload", {
+        method: "POST", body: form, credentials: "same-origin",
+      });
+      var payload = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw Error(payload.message || "자료를 분석하지 못했습니다.");
+      var result = payload.result || {};
+      var appliedOcc = number(result.occ);
+      uploadedOccupancyBasis = null;
+      if (appliedOcc != null) {
+        $("operationOcc").value = appliedOcc;
+      } else if (number(result.sold_rooms) != null) {
+        uploadedOccupancyBasis = {
+          soldRooms: result.sold_rooms,
+          days: result.occupancy_days,
+        };
+        appliedOcc = applyDerivedOcc();
+      }
+      if (result.adr != null) $("operationAdr").value = Math.round(result.adr);
+      var found = [
+        result.period_start && ("기간 " + result.period_start + "~" + result.period_end),
+        appliedOcc != null && ("OCC " + format(appliedOcc, 2) + "%"
+          + (result.occ == null ? " 자동계산" : "")),
+        result.room_revenue != null && ("객실매출 " + format(result.room_revenue, 0) + "원"),
+        result.sold_rooms != null && ("판매객실 " + format(result.sold_rooms, 0) + "실"),
+        result.adr != null && ("ADR " + format(result.adr, 0) + "원"),
+        result.occ == null && result.sold_rooms != null && appliedOcc == null
+          && "OCC 계산 불가 · 분석기간과 적용 객실 수를 확인해 주세요",
+      ].filter(Boolean);
+      var occupancyInsufficient = (
+        result.occ == null && result.sold_rooms != null && appliedOcc == null
+      );
+      status.textContent = found.length
+        ? (occupancyInsufficient ? "자료 인식 완료 · 운영분석 보류 · " : "자동 인식 완료 · ")
+          + found.join(" · ")
+        : "확인 가능한 운영지표를 찾지 못했습니다.";
+      renderChart();
+    } catch (error) {
+      status.textContent = error && error.message ? error.message : "자료를 분석하지 못했습니다.";
+    } finally {
+      input.disabled = false;
+      input.value = "";
+    }
+  }
   $("operationLodging").addEventListener("change", function () {
     renderRoomCount();
     setTimeout(renderChart, 0);
   });
-  new MutationObserver(function () {
-    if (!building || !selectedLodging()) return;
-    var rooms = selectedRooms();
-    var expected = rooms == null ? "신고 객실 수 확인 불가" : format(rooms, 0) + "실";
-    if ($("operationRoomCount").textContent !== expected) {
-      $("operationRoomCount").textContent = expected;
-    }
-  }).observe($("operationRoomCount"), { childList: true, characterData: true, subtree: true });
-  ["operationOcc", "operationAdr"].forEach(function (id) {
-    $(id).addEventListener("input", function () { setTimeout(renderChart, 0); });
-  });
   $("operationRoomCountInput").addEventListener("input", function () {
+    var derived = applyDerivedOcc();
+    if (uploadedOccupancyBasis) {
+      $("operationFileStatus").textContent = derived == null
+        ? "OCC 계산 불가 · 분석기간과 적용 객실 수를 확인해 주세요"
+        : "적용 객실 수 변경 반영 · OCC " + format(derived, 2) + "% 자동계산";
+    }
+    setTimeout(renderChart, 0);
+  });
+  $("operationOcc").addEventListener("input", function () {
+    uploadedOccupancyBasis = null;
+    setTimeout(renderChart, 0);
+  });
+  $("operationAdr").addEventListener("input", function () {
     setTimeout(renderChart, 0);
   });
   $("operationBusinessName").addEventListener("input", function () {
     setTimeout(renderChart, 0);
   });
   $("operationRun").addEventListener("click", function () { setTimeout(renderChart, 0); });
+  $("operationFiles").addEventListener("change", function () { analyzeFiles(this.files); });
   $("analysisTabs").addEventListener("click", function () {
     setTimeout(function () { setModeClass(); if ($("operationTab").getAttribute("aria-selected") === "true") load(); }, 0);
   });
@@ -326,5 +412,6 @@
   });
   window.addEventListener("livingstay:analysis-building-clear", load);
   window.addEventListener("popstate", load);
+  window.addEventListener("livingstay:operation-context", load);
   load();
 }());

@@ -90,3 +90,4 @@
 - [관광수요 월간 비교 무결성](tourism-monthly-comparison-integrity.md) — 겹치는 원본은 지역·월 최신행만 쓰고, 현재·직전 기간의 모든 월이 있을 때만 실제 증감률을 공개한다.
 - [원장 기반 분석 캐시](source-versioned-analysis-cache.md) — 영속 집계 캐시는 원장 버전으로 검증하고 CURRENT_DATE 이동구간은 DB 날짜를 키에 포함한다.
 - [Chart.js 오버레이 배치 순서](chart-overlay-layout-order.md) — DOM 사분면 경계를 먼저 확정한 뒤 캔버스 라벨을 배치하고, 애니메이션 완료 신호로 브라우저 검사를 동기화한다.
+- [비신뢰 문서 즉시 분석](untrusted-document-analysis.md) — 네이티브 파서는 프로세스 그룹 격리·단일 실행하며, ADR은 같은 기간의 객실매출·판매객실 수로만 계산한다.

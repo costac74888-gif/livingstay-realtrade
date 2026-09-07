@@ -9,7 +9,12 @@ class OperationBenchmarkContractTests(unittest.TestCase):
         start = source.index('@app.route("/api/analysis/operation-benchmarks")')
         end = source.index("def _analysis_growth", start)
         cls.endpoint = source[start:end]
-        cls.frontend = pathlib.Path("static/js/analysis.js").read_text(encoding="utf-8")
+        cls.operation_frontend = pathlib.Path(
+            "static/js/operation-analysis.js"
+        ).read_text(encoding="utf-8")
+        cls.asset_frontend = pathlib.Path(
+            "static/js/analysis.js"
+        ).read_text(encoding="utf-8")
 
     def test_endpoint_uses_building_sido_and_real_sgg_overall_rows(self):
         self.assertIn("FROM master_buildings WHERE id=%s", self.endpoint)
@@ -36,11 +41,26 @@ class OperationBenchmarkContractTests(unittest.TestCase):
         self.assertIn("2024_호텔업운영현황_1788781907828.zip", schema)
 
     def test_frontend_fetches_benchmarks_without_hardcoded_regions(self):
-        self.assertIn("/api/analysis/operation-benchmarks?building_id=", self.frontend)
-        self.assertIn("seq!==operationSeq", self.frontend)
-        self.assertIn("state.targetBuildingId=String(i.building_id)", self.frontend)
-        self.assertIn("해당 시도의 공개 운영지표가 없습니다.", self.frontend)
-        self.assertNotIn('{region:"서울",adr:', self.frontend)
+        self.assertIn(
+            "/api/analysis/operation-benchmarks?building_id=",
+            self.operation_frontend,
+        )
+        self.assertIn(
+            "sequence !== loadSequence",
+            self.operation_frontend,
+        )
+        self.assertIn(
+            "state.targetBuildingId=String(i.building_id)",
+            self.asset_frontend,
+        )
+        self.assertIn(
+            "해당 시도의 공개 운영지표가 없습니다.",
+            self.operation_frontend,
+        )
+        self.assertNotIn(
+            '{region:"서울",adr:',
+            self.operation_frontend,
+        )
 
 
 if __name__ == "__main__":
