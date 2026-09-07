@@ -31573,11 +31573,23 @@ def analysis_assets():
             prepared = dict(row)
             prepared["current_median_value"] = _analysis_float(row["current_median"])
             prepared_rows.append(prepared)
+        # 건물을 지정한 분석은 사용자가 숙박유형을 다시 선택하지 않아도 선택
+        # 건물의 유형을 표시 비교군에 자동 적용한다. 유사자산 풀 자체는 아래에서
+        # 전국 원장을 유지하므로 시군구→시도→전국 보완 기준은 변하지 않는다.
+        effective_lodging_type = lodging_type
+        if building_id and not effective_lodging_type:
+            selected_row = next(
+                (row for row in prepared_rows if row["id"] == building_id),
+                None,
+            )
+            if selected_row:
+                effective_lodging_type = selected_row["lodging_type"]
         display_rows = [
             row for row in prepared_rows
             if (not sido or row["sido"] == sido)
             and (not sgg or row["sgg"] == sgg)
-            and (not lodging_type or row["lodging_type"] == lodging_type)
+            and (not effective_lodging_type
+                 or row["lodging_type"] == effective_lodging_type)
         ]
 
         items = []

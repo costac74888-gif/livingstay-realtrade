@@ -304,8 +304,7 @@ async function run() {
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
     await page.evaluate(() => {
       if (window.__analysisChartLayout) window.__analysisChartLayout.ready = false;
-      document.getElementById("selTourismAxis").dispatchEvent(new Event("change", { bubbles: true }));
-      document.getElementById("applyBtn").click();
+      window.dispatchEvent(new CustomEvent("livingstay:auth", { detail: { loggedIn: true } }));
     });
     await page.waitForFunction(() => {
       const layout = window.__analysisChartLayout;
@@ -377,7 +376,7 @@ async function run() {
       occBaseline: document.getElementById("operationOccBaseline").textContent,
       uploadStatus: document.getElementById("operationFileStatus").textContent,
       renderState: window.__operationAnalysisState,
-      hiddenFilters: getComputedStyle(document.getElementById("analysisFilter")).display === "none",
+      hiddenFilters: document.getElementById("analysisFilter") === null,
       operationLayout: window.__operationChartLayout,
       operationName: document.getElementById("operationBusinessName").value,
     }));

@@ -210,8 +210,9 @@ class AnalysisAssetsRegionIntegrationTests(unittest.TestCase):
             mock.patch.object(application, "_analysis_cached_payload", return_value=None),
             mock.patch.object(application, "_analysis_store_payload"),
             mock.patch.object(application, "_analysis_tourism_demand_by_sgg", return_value={}),
+            mock.patch.object(application, "_analysis_selected_trajectory", return_value=[]),
         )
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
             response = self.client.get(f"/api/analysis/assets?{query}")
         self.assertEqual(response.status_code, 200, response.get_json())
         return response.get_json()["items"]
@@ -236,6 +237,21 @@ class AnalysisAssetsRegionIntegrationTests(unittest.TestCase):
         self.assertEqual(sparse_target["peer_building_count"], 22)
         for field in ("peer_scope", "peer_building_count", "peer_price_gap"):
             self.assertEqual(sparse_target[field], unfiltered[12][field])
+
+    def test_selected_building_automatically_applies_its_lodging_type(self):
+        self.rows[-1] = {
+            **self.rows[-1],
+            "lodging_type": "관광숙박시설",
+        }
+
+        items = self._get_items("building_id=1")
+
+        self.assertTrue(items)
+        self.assertIn(1, [item["building_id"] for item in items])
+        self.assertEqual(
+            {item["lodging_type"] for item in items},
+            {"생활숙박시설"},
+        )
 
 
 if __name__ == "__main__":

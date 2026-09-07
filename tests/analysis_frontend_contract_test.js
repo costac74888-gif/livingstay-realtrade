@@ -26,8 +26,13 @@ expect(
   "사분면별 컬러 배경이 없습니다.",
 );
 expect(
-  mobileCss.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"),
-  "모바일 분석 조건이 2열로 배치되지 않았습니다.",
+  !html.includes('id="analysisFilter"')
+    && !html.includes('id="selType"')
+    && !html.includes('id="selPeriod"')
+    && html.includes("선택 건물의 숙박유형을 자동 적용")
+    && html.includes("가격 비교기간 = 최근 12개월 고정")
+    && html.includes("관광 기준 = 관광수요 지수 고정"),
+  "중복 조건 입력 제거 또는 자동 적용 산출근거가 반영되지 않았습니다.",
 );
 expect(
   js.includes("/api/analysis/building-search?q=")
