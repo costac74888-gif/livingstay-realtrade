@@ -30753,6 +30753,71 @@ def _analysis_float(value):
     return float(value) if value is not None else None
 
 
+@app.route("/api/analysis/operation-benchmarks")
+@limiter.limit("60 per minute")
+def analysis_operation_benchmarks():
+    """선택 건물의 시도 안에서 실제 시군구 전체 운영지표만 반환한다."""
+    if not any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    )):
+        return jsonify({"ok": False, "requires_login": True, "message": "로그인이 필요합니다."}), 401
+    try:
+        building_id = int(request.args.get("building_id", ""))
+        if building_id <= 0:
+            raise ValueError
+    except ValueError:
+        return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT regexp_replace(split_part(trim(COALESCE(
+                       NULLIF(road_address, ''), NULLIF(jibun_address, ''), sgg_text, ''
+                     )), ' ', 1),
+                     '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido
+            FROM master_buildings WHERE id=%s
+        """, (building_id,))
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+        sido = building["sido"]
+        cur.execute("""
+            WITH latest AS (
+                SELECT id, reference_year, source_name, source_file
+                FROM hotel_operation_source_versions
+                ORDER BY reference_year DESC, imported_at DESC, id DESC LIMIT 1
+            )
+            SELECT m.sgg_name AS region, m.adr, m.occupancy_rate AS occ,
+                   m.revpar, m.foreign_guest_rate AS foreign,
+                   latest.reference_year, latest.source_name, latest.source_file
+            FROM hotel_operation_metrics m JOIN latest ON latest.id=m.version_id
+            WHERE m.sido_name=%s AND m.sgg_name IS NOT NULL AND m.grade='전체'
+              AND m.revpar IS NOT NULL AND m.occupancy_rate IS NOT NULL AND m.adr IS NOT NULL
+            ORDER BY m.revpar DESC, m.occupancy_rate DESC, m.adr DESC, m.sgg_name
+            LIMIT 5
+        """, (sido,))
+        rows = [dict(row) for row in cur.fetchall()]
+        for row in rows:
+            for key in ("adr", "occ", "revpar", "foreign"):
+                row[key] = _analysis_float(row[key])
+        source = ({
+            "name": rows[0]["source_name"],
+            "file": rows[0]["source_file"],
+            "reference_year": rows[0]["reference_year"],
+        } if rows else None)
+        for row in rows:
+            row.pop("source_name", None)
+            row.pop("source_file", None)
+            row.pop("reference_year", None)
+        return jsonify({"ok": True, "sido": sido, "items": rows, "source": source})
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
 def _analysis_growth(current_value, previous_value):
     """두 실제 관측값이 있을 때만 증감률을 계산한다."""
     if current_value is None or previous_value is None or previous_value <= 0:

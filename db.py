@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-07-01"
+SCHEMA_VERSION = "2026-09-07-04"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -648,6 +648,47 @@ def _run_init_db():
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (cache_kind, cache_key)
     )
+    """)
+    # 한국호텔업협회 지역별 운영현황 원본. 업로드 파일 단위 버전과 원본 행을
+    # 분리해 같은 ZIP 재업로드는 한 번만 적재하고 시군구/등급 계층은 보존한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hotel_operation_source_versions (
+        id BIGSERIAL PRIMARY KEY,
+        reference_year INTEGER NOT NULL CHECK (reference_year BETWEEN 2000 AND 2100),
+        source_name TEXT NOT NULL,
+        source_file TEXT NOT NULL,
+        source_sha256 TEXT NOT NULL UNIQUE,
+        imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(reference_year, source_sha256)
+    )
+    """)
+    cur.execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS hotel_operation_source_sha256_unique
+        ON hotel_operation_source_versions(source_sha256)
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS hotel_operation_metrics (
+        id BIGSERIAL PRIMARY KEY,
+        version_id BIGINT NOT NULL REFERENCES hotel_operation_source_versions(id) ON DELETE CASCADE,
+        source_file TEXT NOT NULL,
+        source_row_number INTEGER NOT NULL,
+        sido_name TEXT NOT NULL,
+        sgg_name TEXT,
+        grade TEXT NOT NULL,
+        occupancy_rate NUMERIC,
+        adr NUMERIC,
+        revpar NUMERIC,
+        foreign_guest_rate NUMERIC,
+        available_room_nights BIGINT,
+        sold_room_nights BIGINT,
+        room_count INTEGER,
+        business_count INTEGER,
+        UNIQUE(version_id, source_file, source_row_number)
+    )
+    """)
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_hotel_operation_metrics_region
+        ON hotel_operation_metrics(version_id, sido_name, sgg_name, grade)
     """)
     cur.execute("""
     CREATE OR REPLACE FUNCTION invalidate_analysis_assets_cache()
@@ -3699,6 +3740,7 @@ def _run_init_db():
     END $$;
     """)
 
+    _seed_hotel_operation_metrics(cur)
     conn.commit()
     cur.close()
     conn.close()
@@ -4079,6 +4121,45 @@ def _ensure_mileage_missions_code_unique_constraint():
     conn.commit()
     cur.close()
     conn.close()
+
+
+def _seed_hotel_operation_metrics(cur):
+    """배포 번들에 포함된 승인 원본을 새 DB에도 멱등 적재한다."""
+    from import_hotel_operation import (
+        DEFAULT_YEAR,
+        SOURCE_NAME,
+        parse_operation_zip,
+        validate_operation_records,
+    )
+
+    source_path = os.path.join(
+        os.path.dirname(__file__),
+        "attached_assets",
+        "2024_호텔업운영현황_1788781907828.zip",
+    )
+    if not os.path.isfile(source_path):
+        raise RuntimeError(f"호텔 운영현황 승인 원본이 없습니다: {source_path}")
+    source_sha256, records = parse_operation_zip(source_path, DEFAULT_YEAR)
+    validate_operation_records(records)
+    cur.execute("""
+        INSERT INTO hotel_operation_source_versions
+            (reference_year, source_name, source_file, source_sha256)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (source_sha256) DO NOTHING
+        RETURNING id
+    """, (
+        DEFAULT_YEAR, SOURCE_NAME, os.path.basename(source_path), source_sha256,
+    ))
+    inserted = cur.fetchone()
+    if not inserted:
+        return
+    psycopg2.extras.execute_values(cur, """
+        INSERT INTO hotel_operation_metrics
+            (version_id, source_file, source_row_number, sido_name, sgg_name,
+             grade, occupancy_rate, adr, revpar, foreign_guest_rate,
+             available_room_nights, sold_room_nights, room_count, business_count)
+        VALUES %s
+    """, [(inserted["id"], *record) for record in records])
 
 
 def _seed_mileage_missions():

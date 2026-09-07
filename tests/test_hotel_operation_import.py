@@ -1,0 +1,63 @@
+import os
+import tempfile
+import unittest
+import zipfile
+
+from openpyxl import Workbook
+
+from import_hotel_operation import (
+    EXPECTED_SIDOS,
+    parse_operation_zip,
+    validate_operation_records,
+)
+
+
+class HotelOperationImportTests(unittest.TestCase):
+    @staticmethod
+    def complete_records():
+        return [
+            (f"root/{sido}/지역 원데이터.xlsx", 2, sido, "테스트시", "전체")
+            for sido in EXPECTED_SIDOS
+        ]
+
+    def test_parser_preserves_sgg_overall_and_grade_rows(self):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Sheet1"
+        sheet.append([" 구   분"] + [""] * 15 + ["등급", "시도cd"])
+        sheet.append(["강원 / 전체"] + [None] * 7 + [56.94, 166983, 95080, 3.3, 100, 57, 20, 2, "전체", 900])
+        sheet.append(["강릉시"] + [None] * 7 + [62.23, 208511, 129756, 3.94, 100, 62, 20, 2, "전체", 901])
+        sheet.append(["         5성"] + [None] * 7 + [81.26, 417190, 339009, 0, 50, 40, 10, 1, "5성", 901])
+        handle, xlsx_path = tempfile.mkstemp(suffix=".xlsx")
+        os.close(handle)
+        workbook.save(xlsx_path)
+        handle, zip_path = tempfile.mkstemp(suffix=".zip")
+        os.close(handle)
+        try:
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.write(
+                    xlsx_path,
+                    "root/강원특별자치도/2024년 호텔업 운영현황 강원지역 원데이터.xlsx",
+                )
+            digest, rows = parse_operation_zip(zip_path)
+            self.assertEqual(64, len(digest))
+            self.assertEqual([None, "강릉시", "강릉시"], [row[3] for row in rows])
+            self.assertEqual(["전체", "전체", "5성"], [row[4] for row in rows])
+            self.assertEqual((62.23, 208511.0, 129756.0), rows[1][5:8])
+            with self.assertRaisesRegex(ValueError, "완전하지 않습니다"):
+                validate_operation_records(rows)
+        finally:
+            os.unlink(xlsx_path)
+            os.unlink(zip_path)
+
+    def test_complete_validation_requires_exact_official_sido_set(self):
+        records = self.complete_records()
+        validate_operation_records(records)
+        fake = [row for row in records if row[2] != "서울"]
+        fake.append(("root/가짜도/지역 원데이터.xlsx", 2, "가짜", "가짜시", "전체"))
+        with self.assertRaisesRegex(ValueError, "누락 \\['서울'\\].*예상 외 \\['가짜'\\]"):
+            validate_operation_records(fake)
+
+
+if __name__ == "__main__":
+    unittest.main()

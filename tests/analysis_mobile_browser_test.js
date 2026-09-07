@@ -96,6 +96,17 @@ async function run() {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, { logged_in: true, user: { id: 1, name: "테스트 회원" } });
     if (url.pathname === "/api/analysis/assets") return json(route, fixture(incompleteSelected, incompleteFinalTrajectory));
+    if (url.pathname === "/api/analysis/operation-benchmarks") return json(route, {
+      ok: true, sido: "강원",
+      source: { name: "한국호텔업협회 호텔업 운영현황", reference_year: 2024 },
+      items: [
+        { region: "속초시", adr: 210000, occ: 80, revpar: 168000, foreign: 12 },
+        { region: "강릉시", adr: 208511, occ: 62.23, revpar: 129756, foreign: 3.94 },
+        { region: "평창군", adr: 190000, occ: 60, revpar: 114000, foreign: 5 },
+        { region: "양양군", adr: 170000, occ: 61, revpar: 103700, foreign: 4 },
+        { region: "고성군", adr: 135489, occ: 59.46, revpar: 80562, foreign: 8 },
+      ],
+    });
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
     if (url.pathname.endsWith("/photos")) return json(route, { photos: [] });
     if (url.pathname === `/api/building/${SELECTED_ID}`) return json(route, {
@@ -300,7 +311,7 @@ async function run() {
       "운영분석 탭 전환 상태가 올바르지 않습니다.");
     expect(operationResult.roomCount.includes("348실"), "영업신고 객실 수가 운영분석에 자동 적용되지 않았습니다.");
     expect(operationResult.detail.includes("119,880원") && operationResult.detail.includes("자동분석"),
-      "OCC·ADR 입력으로 RevPAR 운영분석 결과가 표시되지 않았습니다.");
+      `OCC·ADR 입력으로 RevPAR 운영분석 결과가 표시되지 않았습니다: ${operationResult.detail}`);
     expect(operationResult.topRows === 5 && operationResult.chart,
       "운영 포지셔닝 차트 또는 지역 TOP 5가 표시되지 않았습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
