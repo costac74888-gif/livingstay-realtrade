@@ -30,6 +30,17 @@ class TourApiPartialGalleryContractTests(unittest.TestCase):
         )
         self.assertIn("BUILDING_PHOTO_LOCAL_CACHE_VERSION = 2", main)
 
+    def test_partial_gallery_has_a_real_browser_regression_check(self):
+        browser_test = Path(
+            "tests/tourapi_partial_gallery_browser_test.js"
+        ).read_text(encoding="utf-8")
+        package = Path("package.json").read_text(encoding="utf-8")
+
+        self.assertIn('scenario = "empty"', browser_test)
+        self.assertIn('openScenario("success")', browser_test)
+        self.assertIn('openScenario("error")', browser_test)
+        self.assertIn('"test:tourapi-gallery"', package)
+
 
 if __name__ == "__main__":
     unittest.main()
