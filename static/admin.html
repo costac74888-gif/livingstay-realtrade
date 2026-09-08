@@ -120,6 +120,14 @@
    .tdl-empty{padding:34px 14px;text-align:center;color:var(--tdl-muted);font-size:12px}.tdl-loading{padding:28px;color:var(--tdl-muted);font-size:12px}
    @media(max-width:760px){.tdl-summary{grid-template-columns:repeat(2,1fr)}.tdl-filters{grid-template-columns:1fr 1fr}.tdl-upload{grid-template-columns:1fr 1fr}.tdl-upload input{grid-column:1/-1}}
    @media(max-width:450px){.tdl-filters{grid-template-columns:1fr}.tdl-title{font-size:20px}}
+    /* === 운영 액션 센터 === */
+    .action-center{--ac-ink:#18252d;--ac-muted:#65727a;--ac-line:#d9e1df;--ac-paper:#fbfdfb;--ac-teal:#176b67;--ac-coral:#bd5548;margin:0 0 16px;border:1px solid var(--ac-line);border-radius:11px;background:var(--ac-paper);overflow:hidden;box-shadow:0 5px 18px rgba(23,62,60,.06)}
+    .action-center-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 16px 11px;border-bottom:1px solid var(--ac-line)}
+    .action-center-kicker{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ac-teal);font-weight:800}.action-center-title{margin:3px 0 0;color:var(--ac-ink);font-size:17px;letter-spacing:-.03em}.action-center-meta{margin:4px 0 0;color:var(--ac-muted);font-size:11px}.action-center-refresh{border:1px solid #b9cfcc;background:#fff;color:var(--ac-teal);border-radius:6px;padding:7px 10px;font:700 11px inherit;cursor:pointer}.action-center-refresh:hover{background:#eef8f6;transform:translateY(-1px)}.action-center-refresh:focus-visible,.action-center-tab:focus-visible,.action-center-link:focus-visible{outline:2px solid #d39a38;outline-offset:2px}
+    .action-center-counts{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--ac-line);border-bottom:1px solid var(--ac-line)}.action-center-count{padding:10px 12px;background:#fff;min-width:0}.action-center-count strong{display:block;color:var(--ac-ink);font-size:21px;line-height:1}.action-center-count span{display:block;margin-top:5px;color:var(--ac-muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.action-center-count.is-urgent{background:#fff8f5}.action-center-count.is-urgent strong{color:var(--ac-coral)}
+    .action-center-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:10px 13px;background:#f5faf8;border-bottom:1px solid var(--ac-line)}.action-center-tabs{display:flex;gap:3px;overflow:auto}.action-center-tab{border:0;background:transparent;color:var(--ac-muted);padding:6px 9px;border-radius:5px;font:700 11px inherit;cursor:pointer;white-space:nowrap}.action-center-tab:hover,.action-center-tab.is-active{background:#dcefeb;color:var(--ac-teal)}.action-center-search{margin-left:auto;width:190px;height:29px;border:1px solid #cbd9d6;border-radius:5px;padding:0 8px;color:var(--ac-ink);font:12px inherit;background:#fff}.action-center-search:focus{outline:2px solid #d5ede8;border-color:var(--ac-teal)}
+    .action-center-list{padding:0 13px}.action-center-row{display:grid;grid-template-columns:86px minmax(0,1fr) 96px 60px;align-items:center;gap:10px;padding:10px 3px;border-bottom:1px solid #e8eeec;animation:ac-in .22s ease both}.action-center-row:last-child{border-bottom:0}.action-center-row:hover{background:#f7fbf9}.action-center-kind{font-size:10px;font-weight:800;color:var(--ac-teal)}.action-center-row-title{display:block;color:var(--ac-ink);font-size:12px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.action-center-row-label{display:block;color:var(--ac-muted);font-size:10.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.action-center-time{color:var(--ac-muted);font-size:10px;text-align:right}.action-center-link{justify-self:end;border:1px solid #c3d7d3;border-radius:5px;background:#fff;color:var(--ac-teal);padding:5px 8px;text-decoration:none;font-size:10.5px;font-weight:800}.action-center-link:hover{background:#eaf6f3}.action-center-priority{display:inline-block;margin-left:4px;border-radius:9px;padding:2px 5px;background:#fce7e2;color:#a84439;font-size:9px;vertical-align:1px}.action-center-empty,.action-center-loading,.action-center-error{padding:24px 10px;text-align:center;color:var(--ac-muted);font-size:12px}.action-center-error{color:#a84439;background:#fff8f5}.action-center-error button{margin-left:6px;border:0;background:none;color:var(--ac-teal);font-weight:800;cursor:pointer}@keyframes ac-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+    @media(max-width:700px){.action-center-counts{grid-template-columns:repeat(3,1fr)}.action-center-count:nth-child(4),.action-center-count:nth-child(5){display:none}.action-center-search{width:100%;margin-left:0}.action-center-row{grid-template-columns:1fr auto;gap:5px}.action-center-kind{grid-column:1}.action-center-time{grid-column:2;grid-row:1;text-align:right}.action-center-row-title,.action-center-row-label{grid-column:1/-1}.action-center-link{grid-column:2;grid-row:3}.action-center-head{padding:12px}}
   </style>
 </head>
 <body>
@@ -1262,25 +1270,97 @@
     async function showStats(menuKey) {
       destroyStatsCharts();
       mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
-      let data, mapBld;
+      let data, mapBld, actionCenter;
       try {
         // /api/building-count : 지도 필터 기준 용도별 건수 (mixed_use_excluded 제외)
         // /api/admin/stats    : 대시보드 집계 (mixed_use_excluded 포함)
         // 두 숫자 차이(복합 불일치)를 화면에 명시하기 위해 병렬 로드
-        const [res, bldRes] = await Promise.all([
+        const [res, bldRes, actionRes] = await Promise.all([
           fetch("/api/admin/stats"),
           fetch("/api/building-count"),
+          fetch("/api/admin/action-center").catch(() => null),
         ]);
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         if (!res.ok) throw new Error("stats fetch failed");
         data = await res.json();
         mapBld = bldRes.ok ? await bldRes.json() : {};
+        actionCenter = actionRes && actionRes.ok ? await actionRes.json() : { ok: false };
       } catch (e) {
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
-      renderStats(data, mapBld);
+      renderStats(data, mapBld, actionCenter);
       loadPartnerBuildingCounts();
+    }
+
+    function actionCenterHref(value) {
+      const raw = String(value || "").trim();
+      try {
+        const parsed = new URL(raw, window.location.origin);
+        if (parsed.origin !== window.location.origin || !parsed.pathname.startsWith("/admin")) return "#stats";
+        if (parsed.pathname === "/admin") return (parsed.search || "") + (parsed.hash || "") || "#stats";
+        return parsed.pathname + parsed.search + parsed.hash;
+      } catch (e) { return "#stats"; }
+    }
+
+    function renderActionCenter(payload) {
+      const counts = (payload && payload.counts) || {};
+      const items = Array.isArray(payload && payload.items) ? payload.items : [];
+      if (!payload || payload.ok === false) {
+        return `<section class="action-center" id="actionCenter" aria-labelledby="actionCenterTitle">
+          <div class="action-center-head"><div><div class="action-center-kicker">Operations desk</div><h3 id="actionCenterTitle" class="action-center-title">운영 액션 센터</h3><p class="action-center-meta">현재 처리 신호를 불러오지 못했습니다.</p></div></div>
+          <div class="action-center-error">액션 센터를 불러오지 못했습니다.<button type="button" data-action-center-retry>다시 시도</button></div></section>`;
+      }
+      const generated = payload.generated_at ? new Date(payload.generated_at).toLocaleString("ko-KR", { month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit" }) : "방금 전";
+      const labels = {urgent:"긴급",approval_required:"승인 필요",new_registration:"신규 등록",delayed:"지연",total:"전체"};
+      const sourceLabels = {member:"회원",pending_member:"가입 신청",member_pending:"가입 신청",building:"건물",building_request:"건물 등록 요청",building_unassigned:"건물 담당 공백",listing:"매물",transaction:"실거래",bug_report:"오류 신고",operational_failure:"운영 장애",assignment_gap:"담당 공백",ota_request:"OTA 신청",data_sync:"데이터 동기화",notice:"공지"};
+      const countHtml = Object.keys(labels).map((key) => `<div class="action-center-count ${key === "urgent" ? "is-urgent" : ""}"><strong>${Number(counts[key] || 0).toLocaleString("ko-KR")}</strong><span>${labels[key]}</span></div>`).join("");
+      const rowHtml = items.map((item, index) => {
+        const kind = sourceLabels[item.kind] || item.kind || "운영 신호";
+        const priority = String(item.priority || "").toLowerCase();
+        const categories = Array.isArray(item.categories) ? item.categories : [];
+        return `<article class="action-center-row" data-kind="${dgEscape(item.kind || "")}" data-categories="${dgEscape(categories.join("|"))}" data-search="${dgEscape(`${item.title || ""} ${item.label || ""} ${item.id || ""}`.toLowerCase())}" style="animation-delay:${Math.min(index, 8) * 22}ms">
+          <div class="action-center-kind">${dgEscape(kind)}${priority === "urgent" || priority === "high" ? `<span class="action-center-priority">${priority === "urgent" ? "긴급" : "높음"}</span>` : ""}</div>
+          <div><strong class="action-center-row-title">${dgEscape(item.title || "제목 없음")}</strong><span class="action-center-row-label">${dgEscape(item.label || (item.id ? `ID ${item.id}` : "-"))}</span></div>
+          <time class="action-center-time" datetime="${dgEscape(item.created_at || "")}">${item.created_at ? dgEscape(new Date(item.created_at).toLocaleDateString("ko-KR")) : "-"}</time>
+          <a class="action-center-link" href="${dgEscape(actionCenterHref(item.deep_link))}">열기</a>
+        </article>`;
+      }).join("");
+      return `<section class="action-center" id="actionCenter" aria-labelledby="actionCenterTitle">
+        <div class="action-center-head"><div><div class="action-center-kicker">Operations desk</div><h3 id="actionCenterTitle" class="action-center-title">운영 액션 센터</h3><p class="action-center-meta">마지막 집계 ${dgEscape(generated)} · ${payload.recipient_email ? `${dgEscape(payload.recipient_email)} 수신` : "관리 신호"}</p></div><button type="button" class="action-center-refresh" data-action-center-retry>새로고침</button></div>
+        <div class="action-center-counts" aria-label="운영 신호 요약">${countHtml}</div>
+        <div class="action-center-tools"><div class="action-center-tabs" role="tablist" aria-label="액션 센터 필터">
+          <button type="button" class="action-center-tab is-active" data-action-filter="all" role="tab" aria-selected="true">전체 ${Number(counts.total || items.length).toLocaleString("ko-KR")}</button>
+          <button type="button" class="action-center-tab" data-action-filter="urgent" role="tab" aria-selected="false">긴급</button>
+          <button type="button" class="action-center-tab" data-action-filter="approval_required" role="tab" aria-selected="false">승인 필요</button>
+          <button type="button" class="action-center-tab" data-action-filter="new_registration" role="tab" aria-selected="false">신규 등록</button>
+          <button type="button" class="action-center-tab" data-action-filter="delayed" role="tab" aria-selected="false">지연</button>
+        </div><input class="action-center-search" type="search" data-action-search placeholder="제목·ID 검색" aria-label="액션 센터 검색"></div>
+        <div class="action-center-list" data-action-list>${rowHtml || `<div class="action-center-empty">현재 처리할 운영 신호가 없습니다.</div>`}</div>
+      </section>`;
+    }
+
+    function bindActionCenter() {
+      const box = document.getElementById("actionCenter");
+      if (!box) return;
+      let filter = "all";
+      const apply = () => {
+        const query = (box.querySelector("[data-action-search]")?.value || "").trim().toLowerCase();
+        box.querySelectorAll(".action-center-row").forEach((row) => {
+          row.hidden = (filter !== "all" && !row.dataset.categories.split("|").includes(filter)) || (query && !row.dataset.search.includes(query));
+        });
+      };
+      box.addEventListener("click", (event) => {
+        const tab = event.target.closest("[data-action-filter]");
+        if (tab) {
+          filter = tab.dataset.actionFilter;
+          box.querySelectorAll(".action-center-tab").forEach((el) => { const active = el === tab; el.classList.toggle("is-active", active); el.setAttribute("aria-selected", String(active)); });
+          apply();
+          return;
+        }
+        if (event.target.closest("[data-action-center-retry]")) showStats("stats");
+      });
+      box.querySelector("[data-action-search]")?.addEventListener("input", apply);
     }
 
     // 파트너(중개사/운영지원업체)별 담당 건물 수 — 무료 캡 대비 현황
@@ -2098,7 +2178,7 @@
       load();
     }
 
-    function renderStats(d, mapBld) {
+    function renderStats(d, mapBld, actionCenter) {
       mapBld = mapBld || {};
       const m = d.members || {};
       const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
@@ -2121,6 +2201,7 @@
           <h2 class="stats-title">통계 대시보드</h2>
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
+        ${renderActionCenter(actionCenter)}
         <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
 
         <div class="stats-kpi-row">
@@ -2436,6 +2517,7 @@
       } else {
         topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div><div class="stats-toppath-empty">아직 오늘 방문 기록이 없습니다.</div>`;
       }
+      bindActionCenter();
     }
 
     function showGrid(menuKey) {

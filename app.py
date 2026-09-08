@@ -39,6 +39,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from sms_util import send_sms
 from email_util import send_email
+from admin_action_center import action_payload as _admin_action_payload, enqueue_immediate as _enqueue_admin_immediate, dispatch_pending_immediate as _dispatch_pending_admin_immediate
 import storage_util
 import addr_norm
 from lodging_categories import GENERAL_LODGING_HYGIENE_TYPES
@@ -7269,6 +7270,25 @@ def require_admin(f):
     return wrapper
 
 
+@app.route("/api/admin/action-center")
+@require_admin
+def admin_action_center():
+    """Live, privacy-minimised queue used by the approved admin action centre."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        return jsonify(_admin_action_payload(cur))
+    except Exception as exc:
+        app.logger.exception("관리자 액션 센터 조회 실패")
+        return jsonify({"ok": False, "message": f"액션 센터를 조회할 수 없습니다: {str(exc)[:160]}"}), 500
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
 def _serve_static_html(filename):
     """정적 HTML을 no-cache 헤더와 함께 서빙 (apply 페이지들과 동일 방식)."""
     html_path = _frontend_html_path(filename)
@@ -12978,6 +12998,18 @@ def create_listing_request():
                     cur.execute("RELEASE SAVEPOINT new_listing_alerts")
                     new_listing_email_jobs = []
                     app.logger.exception("신규매물 알림 예약 실패(listing_id=%s)", req_id)
+        if deal_mode == "broker" and routed_agent_id is None:
+            # Delivery persistence cannot be allowed to undo the listing itself.
+            cur.execute("SAVEPOINT unassigned_listing_outbox")
+            try:
+                _enqueue_admin_immediate(
+                    cur, "unassigned_broker_listing", req_id, f"미배정 중개 매물 요청 #{req_id}",
+                )
+                cur.execute("RELEASE SAVEPOINT unassigned_listing_outbox")
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT unassigned_listing_outbox")
+                cur.execute("RELEASE SAVEPOINT unassigned_listing_outbox")
+                app.logger.exception("미배정 중개 매물 outbox 등록 실패(listing_id=%s)", req_id)
         conn.commit()
     finally:
         cur.close()
@@ -13000,6 +13032,22 @@ def create_listing_request():
         _send_urgent_listing_email(urgent_email_job)
     for new_listing_email_job in new_listing_email_jobs:
         _send_new_listing_email(new_listing_email_job)
+    # 중개사 미배정 매물만 운영자가 즉시 배정할 수 있도록 한 번 알린다.
+    if deal_mode == "broker" and routed_agent_id is None:
+        def _unassigned_listing_alert():
+            alert_conn = alert_cur = None
+            try:
+                alert_conn = get_conn()
+                alert_cur = alert_conn.cursor()
+                _dispatch_pending_admin_immediate(alert_conn, alert_cur, limit=1)
+            except Exception:
+                app.logger.exception("미배정 중개 매물 관리자 알림 실패(listing_id=%s)", req_id)
+            finally:
+                if alert_cur:
+                    alert_cur.close()
+                if alert_conn:
+                    alert_conn.close()
+        threading.Thread(target=_unassigned_listing_alert, daemon=True).start()
 
     return jsonify({
         "ok": True, "id": req_id,
@@ -17206,32 +17254,21 @@ def operator_booking_url_request_cancel(req_id):
 # ── 사이트 오류신고 ─────────────────────────────────────────────────────────
 
 def _bug_report_admin_email_notify(report_id, description, page_url, created_at):
-    """blocking 심각도 신고 접수 시 관리자 이메일 알림 (비동기 호출, 실패해도 신고 저장 유지)."""
+    """Blocking report alert to the visible company contact, with durable dedupe."""
+    conn = cur = None
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT email FROM admin_users ORDER BY id LIMIT 5")
-        admins = cur.fetchall()
-        cur.close()
-        conn.close()
-        if not admins:
-            return
-        subject = f"[긴급 오류신고] {description[:50]}"
-        body = (
-            f"<h3>🚨 긴급 오류신고가 접수되었습니다</h3>"
-            f"<p><b>신고 ID:</b> #{report_id}</p>"
-            f"<p><b>신고내용:</b><br>{description}</p>"
-            f"<p><b>발생 페이지:</b> {page_url or '(미기재)'}</p>"
-            f"<p><b>신고일시:</b> {created_at}</p>"
-            f"<p><a href='https://homenstay.com/admin'>관리자 화면에서 확인하기 →</a></p>"
-        )
-        for admin in admins:
-            try:
-                send_email(admin["email"], subject, body)
-            except Exception:
-                pass
+        _dispatch_pending_admin_immediate(conn, cur, limit=1)
     except Exception:
-        pass
+        app.logger.exception("차단 오류 신고 관리자 알림 실패(report_id=%s)", report_id)
+    finally:
+        try:
+            if cur:
+                cur.close()
+        finally:
+            if conn:
+                conn.close()
 
 
 @app.route("/api/bug-reports/upload-screenshot", methods=["POST"])
@@ -17315,6 +17352,16 @@ def submit_bug_report():
         """, [user_id, account_type, description, page_url, user_agent,
               severity, None, screenshot_key])
         row = cur.fetchone()
+        if severity == "blocking":
+            # Delivery persistence cannot be allowed to undo the report itself.
+            cur.execute("SAVEPOINT blocking_bug_outbox")
+            try:
+                _enqueue_admin_immediate(cur, "bug_report", row["id"], f"차단 오류 신고 #{row['id']}")
+                cur.execute("RELEASE SAVEPOINT blocking_bug_outbox")
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT blocking_bug_outbox")
+                cur.execute("RELEASE SAVEPOINT blocking_bug_outbox")
+                app.logger.exception("차단 오류 신고 outbox 등록 실패(report_id=%s)", row["id"])
         conn.commit()
     finally:
         cur.close()

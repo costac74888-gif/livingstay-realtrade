@@ -53,6 +53,7 @@ from app import (  # noqa: E402
 )
 from db import get_conn  # noqa: E402
 import addr_norm  # noqa: E402
+import admin_action_center  # noqa: E402
 from lodging_classification import is_active_status, lodging_type_for_hygiene  # noqa: E402
 from lodging_stats_dedup import deduplicate_cross_source_lodgings  # noqa: E402
 
@@ -115,6 +116,95 @@ def check_feature_tips_admin_api(client):
         if first_id and old_label:
             client.patch(f"/api/admin/feature-tips/{first_id}", json={"cta_label": old_label})
     return None
+
+
+def check_admin_action_center_api(client):
+    """Action queue is admin-only and its public contract contains no PII fields."""
+    with client.session_transaction() as sess:
+        sess.clear()
+    denied = client.get("/api/admin/action-center")
+    if denied.status_code != 401:
+        return "액션 센터 API가 비관리자 요청을 차단하지 않음"
+    with client.session_transaction() as sess:
+        sess["admin"] = True
+    response = client.get("/api/admin/action-center")
+    payload = response.get_json() or {}
+    expected_categories = {"approval_required", "new_registration", "urgent", "delayed"}
+    required_item = {"kind", "id", "label", "title", "created_at", "priority",
+                     "requires_approval", "deep_link"}
+    if response.status_code != 200 or payload.get("ok") is not True:
+        return "관리자 액션 센터 API가 정상 응답하지 않음"
+    if set(payload.get("categories") or {}) != expected_categories:
+        return "액션 센터의 4개 카테고리가 누락됨"
+    if set(payload.get("counts") or {}) != expected_categories | {"total"}:
+        return "액션 센터의 카테고리별 count가 누락됨"
+    if (not isinstance(payload.get("generated_at"), str)
+            or payload.get("recipient_email") != admin_action_center.company_email()
+            or not isinstance(payload.get("items"), list)):
+        return "액션 센터 UI의 generated_at/recipient_email/items 계약이 잘못됨"
+    for category, items in payload["categories"].items():
+        if payload["counts"][category] != len(items) or not isinstance(items, list):
+            return f"액션 센터 {category} count 또는 목록 형태가 잘못됨"
+        for item in items:
+            if set(item) != required_item | {"categories"} or not isinstance(item["id"], int):
+                return "액션 센터 항목의 최소·PII 비노출 계약이 잘못됨"
+            if (not isinstance(item["categories"], list) or not item["categories"]
+                    or any(category not in expected_categories for category in item["categories"])):
+                return "액션 센터 평면 항목의 카테고리 소속 정보가 잘못됨"
+    flat_keys = {(item["kind"], item["id"]) for item in payload["items"]}
+    if len(flat_keys) != len(payload["items"]) or payload["counts"]["total"] != len(flat_keys):
+        return "액션 센터 평면 items 또는 total이 중복 항목을 포함함"
+    expected_links = {
+        "/admin#members", "/admin#ota-requests", "/admin#requests", "/admin#presale",
+        "/admin#listings", "/admin#bug-reports", "/admin#datasync",
+    }
+    if any(item["deep_link"] not in expected_links for item in payload["items"]):
+        return "액션 센터 항목이 기존 관리자 탭 deep link를 사용하지 않음"
+    # The recipient is derived from the visible source, and this test never calls
+    # send_email, so it cannot make an external network request.
+    with open(os.path.join(os.path.dirname(__file__), "..", "static", "index.html"), encoding="utf-8") as source:
+        visible = re.findall(r"문의\s+([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})", source.read(), re.I)
+    if len(set(visible)) != 1 or admin_action_center.company_email() != visible[0]:
+        return "액션 센터 수신자가 static/index.html의 회사 문의 이메일과 다름"
+    return None
+
+
+def _check_admin_delivery_outbox():
+    """Outbox is idempotent, reclaims stale leases, and uses mocked mail only."""
+    tag = f"api-test-outbox-{time.time_ns()}"
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        if not admin_action_center.enqueue_immediate(cur, tag, 1, "<unsafe>"):
+            return ["admin outbox: first enqueue was not accepted"]
+        if admin_action_center.enqueue_immediate(cur, tag, 1, "<unsafe>"):
+            return ["admin outbox: duplicate enqueue was accepted"]
+        cur.execute("""UPDATE admin_notification_deliveries SET status='attempting',
+                       attempting_at=NOW()-INTERVAL '16 minutes', next_attempt_at=NOW()
+                       WHERE source_kind=%s AND source_id=1""", (tag,))
+        conn.commit()
+        with patch.object(admin_action_center, "send_email", return_value=(True, "mock", "accepted")) as mocked:
+            dispatched, failures = admin_action_center.dispatch_pending_immediate(
+                conn, cur, limit=1, source_kind=tag
+            )
+        cur.execute("""SELECT status, attempts FROM admin_notification_deliveries
+                       WHERE source_kind=%s AND source_id=1""", (tag,))
+        row = cur.fetchone() or {}
+        if dispatched != 1 or failures or mocked.call_count != 1 or row.get("status") != "sent" or row.get("attempts") != 1:
+            return ["admin outbox: stale attempting lease was not safely reclaimed/sent"]
+        return []
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        return [f"admin outbox test error: {exc}"]
+    finally:
+        if cur:
+            cur.execute("DELETE FROM admin_notification_deliveries WHERE source_kind=%s", (tag,))
+            conn.commit()
+            cur.close()
+        if conn:
+            conn.close()
 
 
 def check_user_stats_admin_api(client):
@@ -829,6 +919,13 @@ def run():
         failures.append(feature_tip_error)
     else:
         print("OK  /api/admin/feature-tips (관리자 인증·입력 검증)")
+
+    action_center_error = check_admin_action_center_api(client)
+    if action_center_error:
+        failures.append(action_center_error)
+    else:
+        print("OK  /api/admin/action-center (인증·카테고리·PII 비노출)")
+    failures += _check_admin_delivery_outbox()
 
     user_stats_error = check_user_stats_admin_api(client)
     if user_stats_error:
@@ -5327,7 +5424,11 @@ def _check_room_expiry_alerts():
         # Resend REST 호출에도 alert ID 기반 멱등 키 헤더가 실제로 전달되어야 한다.
         with patch.dict(
             os.environ,
-            {"RESEND_API_KEY": "test-key", "RESEND_FROM_EMAIL": "test@example.test"},
+            {
+                "RESEND_API_KEY": "test-key",
+                "RESEND_FROM_EMAIL": "test@example.test",
+                "DISABLE_EXTERNAL_NOTIFICATIONS": "",
+            },
             clear=False,
         ), patch.object(
             email_util.requests,
@@ -5346,7 +5447,11 @@ def _check_room_expiry_alerts():
 
         with patch.dict(
             os.environ,
-            {"RESEND_API_KEY": "test-key", "RESEND_FROM_EMAIL": "test@example.test"},
+            {
+                "RESEND_API_KEY": "test-key",
+                "RESEND_FROM_EMAIL": "test@example.test",
+                "DISABLE_EXTERNAL_NOTIFICATIONS": "",
+            },
             clear=False,
         ), patch.object(
             email_util.requests,

@@ -159,6 +159,27 @@ def run_local():
     else:
         print("OK  카카오 복사 버튼에 복사 횟수 표시")
 
+    action_center_contract = (
+        'fetch("/api/admin/action-center")',
+        "Array.isArray(item.categories) ? item.categories : []",
+        "row.dataset.categories",
+        'data-action-filter="urgent"',
+        'data-action-filter="approval_required"',
+        'data-action-filter="new_registration"',
+        'data-action-filter="delayed"',
+        "actionCenterHref(item.deep_link)",
+    )
+    missing_action_center = [
+        token for token in action_center_contract if token not in admin_html
+    ]
+    if missing_action_center:
+        failures.append(
+            "관리자 액션센터 API·필터·딥링크 계약 누락: "
+            + ", ".join(missing_action_center)
+        )
+    else:
+        print("OK  관리자 액션센터 긴급·승인·신규·지연 필터와 딥링크")
+
     modal_test = os.path.join(os.path.dirname(__file__), "auth_reset_modal_test.js")
     try:
         result = subprocess.run(
