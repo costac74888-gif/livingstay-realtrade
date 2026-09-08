@@ -5663,7 +5663,7 @@ function streetViewFallbackPhoto(buildingId, lat, lng){
   if (lat == null || lng == null || String(lat).trim() === "" || String(lng).trim() === "") return [];
   if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return [];
   return [{
-    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v6`,
+    url: `/api/building-photo/${encodeURIComponent(buildingId)}/streetview?view=building-v7`,
     source: "streetview",
     photo_type: "exterior"
   }];
@@ -6617,6 +6617,25 @@ async function loadBuildingHeader(id){
     return;
   }
   if (!_isActiveBuilding(id, requestToken)) return;
+
+  // 같은 이름의 건물이 여러 지역에 있으면 검색 결과 bounds의 중간 지점이 남을 수 있다.
+  // 상세 응답의 확정 좌표로 다시 이동하고 해당 건물 마커만 조회한다.
+  const detailLat = Number(b.lat);
+  const detailLng = Number(b.lng);
+  if (kakaoMap && Number.isFinite(detailLat) && Number.isFinite(detailLng)) {
+    const targetBuildingId = Number(b.building_id ?? id);
+    if (Number.isInteger(targetBuildingId) && targetBuildingId > 0) {
+      setMapLocationTarget(targetBuildingId);
+      kakaoMap.setLevel(3);
+      kakaoMap.setCenter(new kakao.maps.LatLng(detailLat, detailLng));
+      Promise.resolve(
+        updateMapForZoom({ building_id: targetBuildingId }, { force: true })
+      ).then(
+        applyMapLocationTarget,
+        error => console.error("[MAP] 상세 건물 위치 재조회 실패:", error),
+      );
+    }
+  }
 
 
   const operatingInfo = b.operating_info || null;
