@@ -4611,7 +4611,8 @@ def get_building_count():
                 WHEN lodging_type = '캠핑'                               THEN '캠핑'
                 WHEN lodging_type = '한옥'                               THEN '한옥'
                 WHEN lodging_type = '복합' OR lodging_type LIKE '%·%'   THEN '복합'
-                WHEN lodging_type IS NULL OR lodging_type = ''           THEN '미분류'
+                WHEN lodging_type IN ('미분류', '기타')
+                     OR lodging_type IS NULL OR lodging_type = ''         THEN '미분류'
                 ELSE NULL
             END AS t,
             COUNT(*) AS c
