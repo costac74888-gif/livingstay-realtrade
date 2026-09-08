@@ -1023,8 +1023,231 @@ def _select_streetview_metadata(lat, lng, key, floor_count=None, height_m=None):
     return max(within_target or usable, key=lambda item: item[0])[1]
 
 
+def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
+    """건물 주변 도로 파노라마 중 서로 다른 촬영 지점 최대 3곳을 고른다."""
+    try:
+        floors = max(1.0, float(floor_count))
+    except (TypeError, ValueError):
+        floors = None
+    try:
+        height = float(height_m)
+        if height <= 0:
+            height = None
+    except (TypeError, ValueError):
+        height = None
+    if height is None and floors is not None:
+        height = floors * 3.0
+    ideal_distance = min(50.0, max(22.0, (height or 45.0) * 0.4))
+
+    found = []
+    for north_m, east_m, radius in (
+        (0, 0, 50),
+        (ideal_distance, 0, 20),
+        (-ideal_distance, 0, 20),
+        (0, ideal_distance, 20),
+        (0, -ideal_distance, 20),
+    ):
+        query_lat, query_lng = _offset_coordinate(
+            lat, lng, north_m=north_m, east_m=east_m
+        )
+        metadata = _google_streetview_metadata(query_lat, query_lng, key, radius=radius)
+        if not metadata or metadata.get("status") != "OK":
+            continue
+        if _streetview_quality_rejection(metadata, lat, lng, max_distance_m=55):
+            continue
+        try:
+            distance = _distance_meters(
+                metadata["lat"], metadata["lng"], lat, lng
+            )
+        except (TypeError, ValueError):
+            continue
+        found.append((abs(distance - ideal_distance), -distance, metadata))
+
+    unique = {}
+    for distance_gap, negative_distance, metadata in found:
+        key_value = metadata.get("pano_id") or (
+            round(float(metadata["lat"]), 6),
+            round(float(metadata["lng"]), 6),
+        )
+        current = unique.get(key_value)
+        candidate = (distance_gap, negative_distance, metadata)
+        if current is None or candidate[:2] < current[:2]:
+            unique[key_value] = candidate
+    return [item[2] for item in sorted(unique.values(), key=lambda item: item[:2])[:3]]
+
+
+def _streetview_ocr_text(image_bytes):
+    """간판 OCR은 점수 보조값이며, 실행 불가·시간초과 시 빈 문자열로 닫는다."""
+    try:
+        result = subprocess.run(
+            ["tesseract", "stdin", "stdout", "-l", "kor+eng", "--psm", "11"],
+            input=image_bytes,
+            capture_output=True,
+            timeout=4,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.decode("utf-8", errors="ignore")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ""
+
+
+def _streetview_image_score(
+    image_bytes,
+    distance_m,
+    heading_offset,
+    building_name=None,
+    road_address=None,
+):
+    """위치·중앙 건물 노출·OCR 일치도를 0~1 점수로 합산한다."""
+    distance_score = max(0.0, 1.0 - abs(float(distance_m) - 32.0) / 40.0)
+    angle_score = max(0.0, 1.0 - abs(float(heading_offset)) / 45.0)
+    exposure_score = 0.0
+    try:
+        from PIL import Image, ImageFilter, ImageStat
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            gray = image.convert("L")
+            width, height = gray.size
+            center = gray.crop((
+                int(width * 0.18), int(height * 0.12),
+                int(width * 0.82), int(height * 0.92),
+            ))
+            contrast = min(1.0, (ImageStat.Stat(center).stddev[0] or 0.0) / 55.0)
+            edges = center.filter(ImageFilter.FIND_EDGES)
+            edge_strength = min(1.0, (ImageStat.Stat(edges).mean[0] or 0.0) / 38.0)
+            exposure_score = contrast * 0.45 + edge_strength * 0.55
+    except (OSError, ValueError):
+        pass
+
+    expected_tokens = {
+        token.lower()
+        for token in re.findall(r"[가-힣A-Za-z0-9]{2,}", f"{building_name or ''} {road_address or ''}")
+        if len(token) >= 2
+    }
+    ocr_text = _streetview_ocr_text(image_bytes).lower()
+    ocr_score = (
+        sum(1 for token in expected_tokens if token in ocr_text) / len(expected_tokens)
+        if expected_tokens else 0.0
+    )
+    return (
+        distance_score * 0.25
+        + angle_score * 0.15
+        + exposure_score * 0.40
+        + ocr_score * 0.20
+    )
+
+
+_STREETVIEW_SELECTION_CACHE = {}
+_STREETVIEW_SELECTION_CACHE_LOCK = threading.Lock()
+_STREETVIEW_SELECTION_SEMAPHORE = threading.BoundedSemaphore(2)
+_STREETVIEW_SELECTION_TTL_SECONDS = 86400
+
+
+def _streetview_cached_image(building_id):
+    now = time.monotonic()
+    with _STREETVIEW_SELECTION_CACHE_LOCK:
+        cached = _STREETVIEW_SELECTION_CACHE.get(int(building_id))
+        if not cached:
+            return None
+        if now - cached["cached_at"] > _STREETVIEW_SELECTION_TTL_SECONDS:
+            _STREETVIEW_SELECTION_CACHE.pop(int(building_id), None)
+            return None
+        return cached["content"], cached["content_type"]
+
+
+def _cache_streetview_image(building_id, content, content_type):
+    with _STREETVIEW_SELECTION_CACHE_LOCK:
+        _STREETVIEW_SELECTION_CACHE[int(building_id)] = {
+            "cached_at": time.monotonic(),
+            "content": content,
+            "content_type": content_type,
+        }
+        if len(_STREETVIEW_SELECTION_CACHE) > 200:
+            oldest_id = min(
+                _STREETVIEW_SELECTION_CACHE,
+                key=lambda key: _STREETVIEW_SELECTION_CACHE[key]["cached_at"],
+            )
+            _STREETVIEW_SELECTION_CACHE.pop(oldest_id, None)
+
+
+def _fetch_best_streetview_image(building, key, capture_points, max_candidates=9):
+    """3개 촬영 지점×3개 각도를 평가하고 신뢰도와 무관하게 최고점으로 종료한다."""
+    from sync_building_photos import (
+        STREETVIEW_MONTHLY_CAP,
+        _claim_daily_slot,
+    )
+    jobs = []
+    for metadata in capture_points[:3]:
+        try:
+            distance_m = _distance_meters(
+                metadata["lat"], metadata["lng"], building["lat"], building["lng"]
+            )
+            base_heading = _bearing_degrees(
+                metadata["lat"], metadata["lng"], building["lat"], building["lng"]
+            )
+            pitch, fov = _streetview_view_params(
+                distance_m, building.get("grnd_flr_cnt"), building.get("heit")
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+        for offset in (-18.0, 0.0, 18.0):
+            if len(jobs) >= max_candidates:
+                break
+            if _claim_daily_slot(
+                "building_photos_streetview_monthly",
+                STREETVIEW_MONTHLY_CAP,
+                window="monthly",
+            ) is None:
+                break
+            jobs.append((metadata, distance_m, base_heading, pitch, fov, offset))
+
+    def fetch_and_score(job):
+        metadata, distance_m, base_heading, pitch, fov, offset = job
+        params = {
+            "size": "640x480",
+            "heading": round((base_heading + offset) % 360.0, 1),
+            "fov": fov,
+            "pitch": pitch,
+            "source": "outdoor",
+            "key": key,
+            "pano": metadata["pano_id"],
+        }
+        try:
+            upstream = requests.get(
+                "https://maps.googleapis.com/maps/api/streetview",
+                params=params,
+                timeout=20,
+            )
+            content_type = str(upstream.headers.get("Content-Type") or "").lower()
+            if not (
+                200 <= upstream.status_code < 400
+                and content_type.startswith("image/")
+                and len(upstream.content) <= 10 * 1024 * 1024
+            ):
+                return None
+            score = _streetview_image_score(
+                upstream.content,
+                distance_m,
+                offset,
+                building.get("building_name"),
+                building.get("road_address"),
+            )
+            return score, upstream.content, content_type.split(";", 1)[0]
+        except Exception:
+            # 한 후보의 네트워크·디코딩·OCR 실패가 나머지 최고점 선택을 막지 않는다.
+            return None
+
+    if not jobs:
+        return None
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(fetch_and_score, jobs))
+    usable = [result for result in results if result is not None]
+    return max(usable, key=lambda result: result[0]) if usable else None
+
+
 @app.route("/api/building-photo/<int:building_id>/<source>")
-@limiter.limit("60 per minute")
+@limiter.limit("12 per hour")
 def get_building_provider_photo(building_id, source):
     """최근 TourAPI no_match 건물의 Street View fallback만 제한적으로 중계한다."""
     if source != "streetview":
@@ -1033,7 +1256,8 @@ def get_building_provider_photo(building_id, source):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT b.lat, b.lng, b.grnd_flr_cnt, b.heit
+            SELECT b.lat, b.lng, b.grnd_flr_cnt, b.heit,
+                   b.building_name, b.road_address
             FROM master_buildings b
             WHERE b.id=%s
               AND b.lat IS NOT NULL
@@ -1053,96 +1277,47 @@ def get_building_provider_photo(building_id, source):
     if not row:
         return jsonify({"error": "not found"}), 404
 
+    cached_image = _streetview_cached_image(building_id)
+    if cached_image:
+        image_content, content_type = cached_image
+        response = Response(image_content, content_type=content_type)
+        response.headers["Cache-Control"] = "public, max-age=86400, stale-if-error=604800"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
     key = os.environ.get("GOOGLE_MAPS_API_KEY")
     if not key:
         return jsonify({"error": "provider unavailable"}), 503
-    metadata = _select_streetview_metadata(
-        row["lat"],
-        row["lng"],
-        key,
-        row.get("grnd_flr_cnt"),
-        row.get("heit"),
-    )
-    if metadata is None:
-        return jsonify({"error": "provider unavailable"}), 502
-    if metadata["status"] == "ZERO_RESULTS":
-        response = jsonify({"error": "no imagery"})
-        response.status_code = 404
-        response.headers["Cache-Control"] = "public, max-age=86400"
-        return response
-    if metadata["status"] != "OK":
-        return jsonify({"error": "provider unavailable"}), 502
-    quality_rejection = _streetview_quality_rejection(
-        metadata,
-        row["lat"],
-        row["lng"],
-        max_distance_m=55,
-    )
-    if quality_rejection:
-        app.logger.info(
-            "[streetview] unsuitable panorama building_id=%s reason=%s",
-            building_id,
-            quality_rejection,
-        )
-        response = jsonify({"error": "no suitable exterior imagery"})
-        response.status_code = 404
-        response.headers["Cache-Control"] = "public, max-age=86400"
+    if not _STREETVIEW_SELECTION_SEMAPHORE.acquire(blocking=False):
+        response = jsonify({"error": "provider busy"})
+        response.status_code = 503
+        response.headers["Retry-After"] = "5"
         return response
     try:
-        distance_m = _distance_meters(
-            metadata["lat"],
-            metadata["lng"],
-            row["lat"],
-            row["lng"],
-        )
-        heading = _bearing_degrees(
-            metadata["lat"],
-            metadata["lng"],
-            row["lat"],
-            row["lng"],
-        )
-    except (TypeError, ValueError):
+        # 다른 요청이 직전에 같은 건물 결과를 만들었을 수 있으므로 재확인한다.
+        cached_image = _streetview_cached_image(building_id)
+        if cached_image:
+            image_content, content_type = cached_image
+            best = (1.0, image_content, content_type)
+        else:
+            capture_points = _streetview_capture_points(
+                row["lat"],
+                row["lng"],
+                key,
+                row.get("grnd_flr_cnt"),
+                row.get("heit"),
+            )
+            best = (
+                _fetch_best_streetview_image(row, key, capture_points)
+                if capture_points else None
+            )
+    finally:
+        _STREETVIEW_SELECTION_SEMAPHORE.release()
+    if best is None:
         return jsonify({"error": "provider unavailable"}), 502
-    pitch, fov = _streetview_view_params(
-        distance_m,
-        row.get("grnd_flr_cnt"),
-        row.get("heit"),
-    )
-    # 온디맨드 fallback은 실제 이미지 요청 시점에 월 한도를 차감한다.
-    # 프록시 재호출·새로고침도 포함해 Google 무료 범위를 넘기지 않는다.
-    from sync_building_photos import (
-        STREETVIEW_MONTHLY_CAP,
-        _claim_daily_slot,
-    )
-    if _claim_daily_slot(
-        "building_photos_streetview_monthly",
-        STREETVIEW_MONTHLY_CAP,
-        window="monthly",
-    ) is None:
-        return jsonify({"error": "monthly quota reached"}), 429
-    base_url = "https://maps.googleapis.com/maps/api/streetview"
-    params = {
-        "size": "640x480",
-        "heading": round(heading, 1),
-        "fov": fov,
-        "pitch": pitch,
-        "source": "outdoor",
-        "key": key,
-    }
-    if metadata["pano_id"]:
-        params["pano"] = metadata["pano_id"]
-    else:
-        params["location"] = f"{float(row['lat'])},{float(row['lng'])}"
-    try:
-        upstream = requests.get(base_url, params=params, timeout=20)
-        content_type = str(upstream.headers.get("Content-Type") or "").lower()
-        if not (200 <= upstream.status_code < 400 and content_type.startswith("image/")):
-            return jsonify({"error": "provider unavailable"}), 502
-        if len(upstream.content) > 10 * 1024 * 1024:
-            return jsonify({"error": "provider response too large"}), 502
-    except requests.RequestException:
-        return jsonify({"error": "provider unavailable"}), 502
-    response = Response(upstream.content, content_type=content_type.split(";", 1)[0])
+    _score, image_content, content_type = best
+    _cache_streetview_image(building_id, image_content, content_type)
+    response = Response(image_content, content_type=content_type)
     response.headers["Cache-Control"] = "public, max-age=86400, stale-if-error=604800"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
