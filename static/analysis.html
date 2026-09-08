@@ -10,6 +10,12 @@
 <body>
 <header id="siteHeader"></header>
 <main class="analysis-shell">
+  <section id="printReport" class="print-report" aria-hidden="true">
+    <header class="print-report-header"><div class="analysis-kicker">HOME &amp; STAY / ASSET REPORT</div><h1 id="printReportTitle">숙박자산 분석보고서</h1><p id="printReportMeta"></p></header>
+    <section class="print-zone print-overview"><h2>01. 건물개요 · 분석결과</h2><div id="printOverview"></div></section>
+    <section class="print-zone print-graph"><h2 id="printGraphTitle">02. 분석 그래프</h2><div id="printGraph"></div></section>
+    <section class="print-zone print-basis"><h2>03. 계산근거</h2><div id="printBasis"></div></section>
+  </section>
   <section class="reading-note analysis-guide" aria-label="세 가지 분석 안내"><span class="reading-mark">01</span><div><strong>세 가지 분석 한눈에 보기</strong><div class="analysis-guide-items"><p><b>부동산투자분석</b><em>관광수요와 유사자산 가격으로 투자 매력을 확인합니다.</em></p><p><b>임대수익분석</b><em>월세·비용·대출을 반영한 실제 수익을 확인합니다.</em></p><p><b>숙박운영분석</b><em>객실가격과 판매율로 숙박 운영성과를 확인합니다.</em></p></div></div></section>
   <div class="analysis-heading">
     <div><div class="analysis-kicker">Home &amp; Stay / Asset Intelligence</div><h1>홈앤스테이 숙박자산 분석</h1><p>최근 관광수요와 숙박시설 실거래를 바탕으로 부동산투자·임대수익·숙박운영을 함께 분석합니다.<br>값을 예측하거나 수익을 약속하지 않고, 각 분석의 확인 가능한 근거와 표본 수준을 함께 보여드립니다.</p></div>
@@ -19,7 +25,7 @@
         <button type="button" id="rentalTab" data-analysis-mode="rental" role="tab" aria-selected="false">임대수익분석</button>
         <button type="button" id="operationTab" data-analysis-mode="operation" role="tab" aria-selected="false">숙박운영분석</button>
       </div>
-      <div class="generated" id="generatedAt">데이터 준비 중</div>
+      <div class="analysis-report-actions"><div class="generated" id="generatedAt">데이터 준비 중</div><button class="am-btn report-print-btn" id="reportPrintBtn" type="button">보고서 출력</button></div>
     </div>
   </div>
   <section class="analysis-card building-search" id="buildingSearchCard" aria-label="건물 선택">
@@ -122,6 +128,6 @@
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
-<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script>
+<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script><script src="/static/js/analysis-print.js"></script>
 </body>
 </html>

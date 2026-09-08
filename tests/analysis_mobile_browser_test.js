@@ -9,6 +9,27 @@ function expect(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function expectSinglePageReport(page, mode, titleText, graphRequired) {
+  await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
+  await page.emulateMedia({ media: "print" });
+  const report = await page.evaluate(() => ({
+    display: getComputedStyle(document.getElementById("printReport")).display,
+    mode: document.getElementById("printReport").dataset.mode,
+    zones: document.querySelectorAll("#printReport .print-zone").length,
+    title: document.getElementById("printReportTitle").textContent,
+    graphImage: document.querySelector("#printGraph .print-chart-image")?.getAttribute("src") || "",
+    exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
+  }));
+  const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+  const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
+  await page.emulateMedia({ media: "screen" });
+  expect(report.display === "grid" && report.mode === mode && report.zones === 3
+    && report.title.includes(titleText) && !report.exampleIncluded
+    && (!graphRequired || report.graphImage.startsWith("data:image/png"))
+    && pages === 1,
+  `${titleText} 인쇄보고서가 A4 한 장·3개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
+}
+
 function chromiumExecutable() {
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
     return process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -469,6 +490,7 @@ async function run() {
       && Math.abs(operationResult.operationLayout.baselinePixelY
         - operationResult.operationLayout.chartCenterY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    await expectSinglePageReport(page, "operation", "숙박운영분석", true);
     await page.click("#operationRentalGuide");
     expect(await page.getAttribute("#rentalTab", "aria-selected") === "true"
       && !await page.locator("#rentalAnalysis").evaluate((el) => el.classList.contains("hidden")),
@@ -565,6 +587,7 @@ async function run() {
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
       && Math.abs(rentalResult.calculation.invested - 4250) < 0.01,
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
+    await expectSinglePageReport(page, "rental", "임대수익분석", false);
     for (const tab of [
       { id: "propertyTab", mode: null },
       { id: "rentalTab", mode: "rental" },
@@ -590,6 +613,33 @@ async function run() {
     }
     await page.click("#propertyTab");
     await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
+    await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
+    await page.emulateMedia({ media: "print" });
+    const printReport = await page.evaluate(() => {
+      const report = document.getElementById("printReport");
+      const rect = report.getBoundingClientRect();
+      return {
+        display: getComputedStyle(report).display,
+        mode: report.dataset.mode,
+        zones: report.querySelectorAll(".print-zone").length,
+        title: document.getElementById("printReportTitle").textContent,
+        graphImage: document.querySelector("#printGraph .print-chart-image")?.getAttribute("src") || "",
+        reportHeight: rect.height,
+        recommendationDisplay: getComputedStyle(document.getElementById("recommendationCard")).display,
+        exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
+      };
+    });
+    const printPdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+    const printPageCount = (printPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
+    expect(printReport.display === "grid" && printReport.mode === "property"
+      && printReport.zones === 3 && printReport.title.includes("부동산투자분석")
+      && printReport.graphImage.startsWith("data:image/png")
+      && printReport.reportHeight <= 960
+      && printReport.recommendationDisplay === "none"
+      && !printReport.exampleIncluded
+      && printPageCount === 1,
+      `부동산투자분석 인쇄보고서가 A4 한 장·3개 존으로 구성되지 않았습니다. pages=${printPageCount} report=${JSON.stringify(printReport)}`);
+    await page.emulateMedia({ media: "screen" });
 
     await page.click("#buildingSelectionClear");
     await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id"));

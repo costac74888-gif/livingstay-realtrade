@@ -1,0 +1,29 @@
+(function(){
+  "use strict";
+  function $(id){return document.getElementById(id)}
+  function text(selector,fallback){var node=document.querySelector(selector);return node&&node.textContent.trim()||fallback||"—"}
+  function esc(value){var node=document.createElement("div");node.textContent=value==null?"":String(value);return node.innerHTML}
+  function activeMode(){if(!$("rentalAnalysis").classList.contains("hidden"))return"rental";if(!$("operationAnalysis").classList.contains("hidden"))return"operation";return"property"}
+  function metricCards(nodes,limit){return Array.from(nodes).slice(0,limit||8).map(function(node){var small=node.querySelector("small"),strong=node.querySelector("strong"),span=node.querySelector("span");return'<article><small>'+esc(small&&small.textContent.trim()||"분석지표")+'</small><strong>'+esc(strong&&strong.textContent.trim()||"—")+'</strong>'+(span?'<span>'+esc(span.textContent.trim())+'</span>':"")+'</article>'}).join("")}
+  function chartSnapshot(sourceSelector,canvasSelector){var source=document.querySelector(sourceSelector),canvas=document.querySelector(canvasSelector);if(!source||!canvas)return'<div class="print-empty">분석 그래프를 준비하고 있습니다.</div>';var clone=source.cloneNode(true),copyCanvas=clone.querySelector("canvas"),img=document.createElement("img"),chart=window.Chart&&Chart.getChart(canvas);try{if(chart){chart.resize(1120,500);chart.update("none")}img.src=canvas.toDataURL("image/png",1)}catch(e){img.src=""}finally{if(chart){chart.resize();chart.update("none")}}img.alt="분석 그래프";img.className="print-chart-image";if(copyCanvas)copyCanvas.replaceWith(img);clone.querySelectorAll("[id]").forEach(function(node){node.removeAttribute("id")});clone.querySelectorAll("button,.selected-pulse,.detail-actions").forEach(function(node){node.remove()});return clone.outerHTML}
+  function propertyReport(){
+    var name=text("#detailCard .detail-name","선택 건물"),address=text("#detailCard .detail-address-main"),status=text("#detailCard .detail-status"),analysis=text("#detailCard .detail-analysis b"),guide=text("#detailCard .quadrant-guide h3"),metrics=metricCards(document.querySelectorAll("#detailCard .detail-metric"),6),formula=document.querySelector("#methodology .formula");
+    return{title:"부동산투자분석 — "+name,overview:'<div class="print-building"><div><b>'+esc(name)+'</b><span>'+esc(address)+'</span></div><em>'+esc(status)+'</em></div><div class="print-result-line"><strong>'+esc(guide)+'</strong><span>'+esc(analysis)+'</span></div><div class="print-metrics">'+metrics+'</div>',graphTitle:"02. 관광수요 × 유사자산 가격 포지셔닝",graph:chartSnapshot("#propertyAnalysis .chart-card","#scatterChart"),basis:'<p>선택 건물의 숙박유형과 최근 실거래를 동일 조건의 유사자산 및 관광수요 자료와 비교합니다.</p>'+(formula?formula.outerHTML:"")}
+  }
+  function rentalReport(){
+    var name=text("#rentalBuildingName","선택 건물"),results=document.querySelectorAll("#rentalResults .rental-result"),area=text("#rentalUnitArea"),purchase=text("#rentalPurchasePrice"),rent=text("#rentalMonthlyRent"),formula=document.querySelector("#rentalAnalysis .methodology .formula"),note=formula&&formula.nextElementSibling;
+    return{title:"임대수익분석 — "+name,overview:'<div class="print-building"><div><b>'+esc(name)+'</b><span>선택 전용면적 '+esc(area)+'㎡ · 매입가 '+esc(purchase)+'만원 · 월 임대료 '+esc(rent)+'만원</span></div><em>호실 단위 분석</em></div><div class="print-result-line"><strong>비용·대출 반영 결과</strong><span>입력한 매입·임대·대출 조건 기준</span></div>',graphTitle:"02. 임대 현금흐름 · 수익률 결과",graph:'<div class="print-rental-results">'+(results.length?metricCards(results,8):'<div class="print-empty">임대조건을 입력하면 수익률 결과가 표시됩니다.</div>')+'</div>',basis:(formula?formula.outerHTML:"")+(note?'<p>'+esc(note.textContent.trim())+'</p>':"")}
+  }
+  function operationReport(){
+    var name=text("#operationDetail .detail-name",text("#operationBusinessName","선택 숙박시설")),address=text("#operationDetail .detail-address-main"),status=text("#operationDetail .detail-status"),analysis=text("#operationDetail .detail-analysis b"),guide=text("#operationDetail .quadrant-guide h3"),metrics=metricCards(document.querySelectorAll("#operationDetail .detail-metric"),6),method=document.querySelector("#operationAnalysis .methodology"),formula=method&&method.querySelector(".formula"),region=$("operationMethodRegion");
+    return{title:"숙박운영분석 — "+name,overview:'<div class="print-building"><div><b>'+esc(name)+'</b><span>'+esc(address)+'</span></div><em>'+esc(status)+'</em></div><div class="print-result-line"><strong>'+esc(guide)+'</strong><span>'+esc(analysis)+'</span></div><div class="print-metrics">'+metrics+'</div>',graphTitle:"02. ADR × OCC 운영 포지셔닝",graph:chartSnapshot("#operationAnalysis .chart-card","#operationChart"),basis:(region?'<p>'+esc(region.textContent.trim())+'</p>':"")+(formula?formula.outerHTML:"")}
+  }
+  function renderPrintReport(){
+    var mode=activeMode(),report=mode==="rental"?rentalReport():mode==="operation"?operationReport():propertyReport(),generated=text("#generatedAt","");
+    $("printReportTitle").textContent=report.title;$("printReportMeta").textContent=(generated?generated+" · ":"")+"홈앤스테이 숙박자산 분석보고서";$("printOverview").innerHTML=report.overview;$("printGraphTitle").textContent=report.graphTitle;$("printGraph").innerHTML=report.graph;$("printBasis").innerHTML=report.basis;$("printReport").dataset.mode=mode;window.__analysisPrintReport={mode:mode,title:report.title,zones:3,ready:true}
+  }
+  function printReport(){renderPrintReport();requestAnimationFrame(function(){requestAnimationFrame(function(){window.print()})})}
+  var button=$("reportPrintBtn");if(button)button.addEventListener("click",printReport);
+  window.addEventListener("beforeprint",renderPrintReport);
+  window.livingstayRenderAnalysisPrintReport=renderPrintReport;
+})();
