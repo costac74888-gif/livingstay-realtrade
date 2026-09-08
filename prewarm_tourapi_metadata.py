@@ -179,7 +179,7 @@ def _upsert_catalog_metadata(cur, items, road_map, jibun_map):
                 ON CONFLICT (building_id, source) DO UPDATE SET
                     status=CASE
                         WHEN building_photo_fetches.status IN (
-                            'success', 'images_backfilled'
+                            'success', 'images_backfilled', 'gallery_checked'
                         )
                          AND building_photo_fetches.provider_ref
                              IS NOT DISTINCT FROM EXCLUDED.provider_ref

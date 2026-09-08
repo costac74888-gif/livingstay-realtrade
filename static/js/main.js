@@ -5483,7 +5483,7 @@ function initBuildingPhotoSlider(photoCount){
 
 let _activePhotoBuildingId = null;
 const TOUR_API_BROWSER_BASE = "https://apis.data.go.kr/B551011/KorService2";
-const BUILDING_PHOTO_LOCAL_CACHE_VERSION = 1;
+const BUILDING_PHOTO_LOCAL_CACHE_VERSION = 2;
 const BUILDING_PHOTO_LOCAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function normalizeTourAddress(address){
@@ -5712,6 +5712,19 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
     if (photos.length > 0) {
       renderPhotoSlider(photos);
+      if (data.status === "cached") return;
+    }
+    const mergePhotos = (...groups) => {
+      const merged = [];
+      groups.flat().forEach(photo => {
+        const url = String(photo?.url || "").trim();
+        if (url && !merged.some(item => String(item?.url || "").trim() === url)) {
+          merged.push(photo);
+        }
+      });
+      return merged.slice(0, 20);
+    };
+    if (data.status === "cached") {
       return;
     }
     const gocampingInitial = initial.filter(photo => photo?.source === "gocamping");
@@ -5738,7 +5751,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       ? null
       : readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
     if (local && local.photos.length > 0) {
-      renderPhotoSlider(local.photos);
+      renderPhotoSlider(mergePhotos(photos, local.photos));
       return;
     }
     if (local && !prewarmed?.content_id) {
@@ -5768,7 +5781,8 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
 
     fetchTourApiPhotos(buildingName, roadAddress, prewarmed)
       .then(async clientPhotos => {
-        writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, clientPhotos);
+        const mergedPhotos = mergePhotos(photos, gocampingInitial, clientPhotos);
+        writeLocalBuildingPhotos(buildingId, buildingName, roadAddress, mergedPhotos);
         let saved;
         try {
           saved = await savePhotosToServer(buildingId, clientPhotos);
@@ -5778,6 +5792,10 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         }
         if (!isCurrentPhotoRequest()) return;
         if (!clientPhotos.length) {
+          if (mergedPhotos.length) {
+            renderPhotoSlider(mergedPhotos);
+            return;
+          }
           // 고캠핑 대표사진은 Google Street View보다 우선한다. TourAPI의 비동기
           // no_match 저장 응답이 늦게 와도 이미 표시한 캠핑 사진을 덮어쓰지 않는다.
           if (saved?.streetview_available === true && !gocampingInitial.length) {
@@ -5788,7 +5806,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
           return;
         }
         // TourAPI 매칭 성공 시에만 Street View를 교체한다.
-        renderPhotoSlider(clientPhotos);
+        renderPhotoSlider(mergedPhotos);
       })
       .catch(() => {
         // TourAPI 실패 시 이미 표시한 고캠핑 대표 이미지나 Street View를 유지한다.

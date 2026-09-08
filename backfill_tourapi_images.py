@@ -8,7 +8,7 @@ import json
 import sys
 import time
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import requests
 
@@ -36,6 +36,7 @@ from sync_building_photos import (
 PROGRESS_KEY = "building_photos_tourapi_images_progress"
 CALLS_KEY = "building_photos_tourapi_calls"
 MAX_PHOTOS = 20
+REQUEST_RETRY_DELAYS = (1, 3)
 
 
 class ProviderReferenceChanged(RuntimeError):
@@ -120,34 +121,39 @@ def _catalog_first_images(session, api_key, status_key, run_id, stats):
 
 def _tour_request(session, path, params, api_key):
     """실제 HTTP 시도 한 번마다 공유 일일 슬롯을 먼저 예약한다."""
-    if _claim_daily_slot(CALLS_KEY, TOURAPI_DAILY_CAP) is None:
-        raise DailyCapReached
     query = {
-        "serviceKey": api_key,
+        "serviceKey": unquote(api_key),
         "MobileOS": "ETC",
         "MobileApp": "homenstay",
         "_type": "json",
         **params,
     }
-    try:
-        response = session.get(
-            f"{TOURAPI_URL}/{path}",
-            params=query,
-            timeout=(TOURAPI_CONNECT_TIMEOUT, TOURAPI_READ_TIMEOUT),
-        )
-        response.raise_for_status()
-        data = response.json()
-    except requests.RequestException as exc:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        raise ProviderFatalError(
-            f"TourAPI HTTP 오류 {status or '연결 실패'}"
-        ) from exc
-    except ValueError as exc:
-        raise ProviderFatalError(
-            "TourAPI JSON 응답을 해석하지 못했습니다."
-        ) from exc
-    _assert_tourapi_success(data)
-    return data
+    for attempt in range(len(REQUEST_RETRY_DELAYS) + 1):
+        if _claim_daily_slot(CALLS_KEY, TOURAPI_DAILY_CAP) is None:
+            raise DailyCapReached
+        try:
+            response = session.get(
+                f"{TOURAPI_URL}/{path}",
+                params=query,
+                timeout=(TOURAPI_CONNECT_TIMEOUT, TOURAPI_READ_TIMEOUT),
+            )
+            response.raise_for_status()
+            data = response.json()
+            _assert_tourapi_success(data)
+            return data
+        except requests.RequestException as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = status is None or status in (408, 429) or status >= 500
+            if retryable and attempt < len(REQUEST_RETRY_DELAYS):
+                time.sleep(REQUEST_RETRY_DELAYS[attempt])
+                continue
+            raise ProviderFatalError(
+                f"TourAPI HTTP 오류 {status or '연결 실패'}"
+            ) from exc
+        except ValueError as exc:
+            raise ProviderFatalError(
+                "TourAPI JSON 응답을 해석하지 못했습니다."
+            ) from exc
 
 
 def _tour_detail_images(session, content_id, api_key):
@@ -243,7 +249,16 @@ def run(status_key, run_id, sleep_seconds=0.2):
             WHERE f.source='tourapi'
               AND f.provider_ref IS NOT NULL
               AND f.building_id > %s
-              AND f.status IS DISTINCT FROM 'images_backfilled'
+              AND f.status IS DISTINCT FROM 'gallery_checked'
+              AND (
+                  f.status IS DISTINCT FROM 'images_backfilled'
+                  OR (
+                      SELECT COUNT(*)
+                      FROM building_photos p
+                      WHERE p.building_id=f.building_id
+                        AND p.source='tourapi'
+                  ) < 2
+              )
             ORDER BY f.building_id
             """,
             (last_id,),
@@ -306,7 +321,7 @@ def run(status_key, run_id, sleep_seconds=0.2):
                 cur.execute(
                     """
                     UPDATE building_photo_fetches
-                    SET status='images_backfilled',
+                    SET status='gallery_checked',
                         last_attempt_at=NOW(),
                         error_message=NULL,
                         photo_available=%s

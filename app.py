@@ -1317,19 +1317,34 @@ def get_building_photos_on_demand(building_id):
             return jsonify({"error": "not found"}), 404
 
         photos = _public_building_photo_rows(cur, building_id)
-        if any(photo["source"] == "tourapi" for photo in photos):
-            return jsonify({"ok": True, "photos": photos, "status": "cached"})
-
         cur.execute("""
-            SELECT status, provider_ref, photo_available
+            SELECT status, provider_ref, photo_available,
+                   last_attempt_at > NOW() - INTERVAL '30 days' AS is_recent
             FROM building_photo_fetches
             WHERE building_id=%s
               AND source='tourapi'
-              AND last_attempt_at > NOW() - INTERVAL '30 days'
         """, [building_id])
         fetch = cur.fetchone()
+        tourapi_photo_count = sum(
+            1 for photo in photos if photo["source"] == "tourapi"
+        )
+        gallery_checked = bool(
+            fetch
+            and (
+                fetch["status"] == "gallery_checked"
+                or (
+                    fetch["status"] == "images_backfilled"
+                    and tourapi_photo_count >= 2
+                )
+            )
+        )
+        if tourapi_photo_count and gallery_checked:
+            return jsonify({"ok": True, "photos": photos, "status": "cached"})
+
         streetview_available = bool(
-            fetch and fetch["status"] in ("no_match", "catalog_no_photo")
+            fetch
+            and fetch["is_recent"]
+            and fetch["status"] in ("no_match", "catalog_no_photo")
         )
         return jsonify({
             "ok": True,
@@ -1343,7 +1358,10 @@ def get_building_photos_on_demand(building_id):
                     "photo_available": bool(fetch["photo_available"]),
                 }
                 if fetch
-                and fetch["status"] in ("catalog_matched", "catalog_no_photo")
+                and fetch["status"] in (
+                    "catalog_matched", "catalog_no_photo", "success",
+                    "images_backfilled",
+                )
                 and fetch["provider_ref"]
                 else None
             ),
@@ -1434,29 +1452,25 @@ def save_tourapi_building_photos(building_id):
                 ON CONFLICT (building_id, photo_url) DO NOTHING
             """, [building_id, url, photo_type, display_order])
             inserted += cur.rowcount
-        fetch_status = "success" if (photos or existing_urls) else "no_match"
+        fetch_status = (
+            "gallery_checked" if (photos or existing_urls) else "no_match"
+        )
         cur.execute("""
             INSERT INTO building_photo_fetches
                 (building_id, source, status, last_attempt_at, error_message)
             VALUES (%s, 'tourapi', %s, NOW(), NULL)
             ON CONFLICT (building_id, source) DO UPDATE SET
-                status=CASE
-                    WHEN building_photo_fetches.status='images_backfilled'
-                        THEN building_photo_fetches.status
-                    ELSE EXCLUDED.status
-                END,
+                status=EXCLUDED.status,
                 last_attempt_at=EXCLUDED.last_attempt_at,
                 error_message=NULL,
                 provider_ref=CASE
-                    WHEN building_photo_fetches.status='images_backfilled'
-                        THEN building_photo_fetches.provider_ref
-                    WHEN EXCLUDED.status='no_match' THEN NULL
+                    WHEN EXCLUDED.status='no_match'
+                        THEN NULL
                     ELSE building_photo_fetches.provider_ref
                 END,
                 photo_available=CASE
-                    WHEN building_photo_fetches.status='images_backfilled'
-                        THEN building_photo_fetches.photo_available
-                    WHEN EXCLUDED.status='no_match' THEN FALSE
+                    WHEN EXCLUDED.status='no_match'
+                        THEN FALSE
                     ELSE building_photo_fetches.photo_available
                 END
         """, [building_id, fetch_status])
@@ -17951,7 +17965,7 @@ def admin_tourapi_image_backfill_status():
             SELECT
               COUNT(*) FILTER (WHERE f.provider_ref IS NOT NULL) AS eligible,
               COUNT(*) FILTER (
-                WHERE f.status='images_backfilled'
+                WHERE f.status IN ('images_backfilled', 'gallery_checked')
               ) AS completed
             FROM building_photo_fetches f
             WHERE f.source='tourapi'

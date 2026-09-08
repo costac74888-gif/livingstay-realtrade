@@ -2,6 +2,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import requests
+
 import backfill_tourapi_images as images
 
 
@@ -80,6 +82,40 @@ class TourApiImageBackfillTests(unittest.TestCase):
             images.CALLS_KEY, images.TOURAPI_DAILY_CAP
         )
         session.get.assert_called_once()
+        self.assertEqual(
+            session.get.call_args.kwargs["params"]["serviceKey"], "key"
+        )
+
+    @mock.patch.object(images.time, "sleep")
+    def test_transient_timeout_retries_and_claims_each_attempt(self, sleep):
+        response = mock.Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "response": {
+                "header": {"resultCode": "0000"},
+                "body": {"items": {"item": []}},
+            }
+        }
+        session = mock.Mock()
+        session.get.side_effect = [
+            requests.Timeout("temporary timeout"),
+            response,
+        ]
+        with mock.patch.object(
+            images, "_claim_daily_slot", side_effect=[1, 2]
+        ) as claim:
+            result = images._tour_request(
+                session, "detailImage2", {"contentId": "1"}, "a%2Bb"
+            )
+        self.assertEqual(
+            result["response"]["header"]["resultCode"], "0000"
+        )
+        self.assertEqual(claim.call_count, 2)
+        self.assertEqual(session.get.call_count, 2)
+        self.assertEqual(
+            session.get.call_args.kwargs["params"]["serviceKey"], "a+b"
+        )
+        sleep.assert_called_once_with(images.REQUEST_RETRY_DELAYS[0])
 
     def test_admin_runner_is_detached_resumable_and_visible(self):
         app = Path("app.py").read_text(encoding="utf-8")
@@ -101,9 +137,13 @@ class TourApiImageBackfillTests(unittest.TestCase):
         self.assertIn('id="tourapiImageBackfillRunBtn"', admin)
         self.assertIn("TourAPI 숙박사진 이어서 수집", admin)
         self.assertIn("detailImage2 다중사진", admin)
-        self.assertIn("f.status IS DISTINCT FROM 'images_backfilled'", Path(
+        self.assertIn("f.status IS DISTINCT FROM 'gallery_checked'", Path(
             "backfill_tourapi_images.py"
         ).read_text(encoding="utf-8"))
+        self.assertIn(
+            "AND p.source='tourapi'",
+            Path("backfill_tourapi_images.py").read_text(encoding="utf-8"),
+        )
         self.assertIn(
             "SELECT pg_advisory_xact_lock(%s, %s)",
             Path("app.py").read_text(encoding="utf-8"),
