@@ -404,7 +404,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-07-05"
+SCHEMA_VERSION = "2026-09-08-01"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1048,6 +1048,7 @@ def _run_init_db():
         REFERENCES master_buildings(id) ON DELETE SET NULL
     """)
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS source_building_name TEXT")
+    cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS sgg_nm TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS floor TEXT")
     cur.execute("ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lodging_type TEXT")
@@ -4150,6 +4151,27 @@ def _seed_hotel_operation_metrics(cur):
         "2024_호텔업운영현황_1788781907828.zip",
     )
     if not os.path.isfile(source_path):
+        # 운영 DB에 승인 원본이 이미 적재된 뒤에는 배포 번들에서 대용량 ZIP을
+        # 제외할 수 있다. 이 경우 무관한 실거래·건축정보 배치의 init_db까지
+        # 막지 말고, 실제 지표 행이 존재하는지 확인한 뒤 기존 시드를 보존한다.
+        cur.execute("""
+            SELECT 1
+            FROM hotel_operation_source_versions v
+            WHERE v.reference_year=%s
+              AND v.source_name=%s
+              AND EXISTS (
+                  SELECT 1
+                  FROM hotel_operation_metrics m
+                  WHERE m.version_id=v.id
+              )
+            LIMIT 1
+        """, (DEFAULT_YEAR, SOURCE_NAME))
+        if cur.fetchone():
+            _logger.info(
+                "호텔 운영현황 승인 원본 ZIP이 없지만 DB 시드가 존재해 "
+                "재적재를 건너뜁니다."
+            )
+            return
         raise RuntimeError(f"호텔 운영현황 승인 원본이 없습니다: {source_path}")
     source_sha256, records = parse_operation_zip(source_path, DEFAULT_YEAR)
     validate_operation_records(records)

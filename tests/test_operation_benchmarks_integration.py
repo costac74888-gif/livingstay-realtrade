@@ -48,6 +48,22 @@ class OperationBenchmarksIntegrationTests(unittest.TestCase):
         self.assertEqual(77, values[0][0])
         self.assertEqual(16, len({row[3] for row in values}))
 
+    def test_missing_deployment_archive_does_not_block_existing_seed(self):
+        cursor = FakeCursor(inserted_id=77)
+        with patch("db.os.path.isfile", return_value=False), \
+                patch("psycopg2.extras.execute_values") as execute_values:
+            _seed_hotel_operation_metrics(cursor)
+        execute_values.assert_not_called()
+        self.assertEqual(1, cursor.execute_count)
+
+    def test_missing_archive_still_fails_when_database_seed_is_empty(self):
+        cursor = FakeCursor()
+        with patch("db.os.path.isfile", return_value=False):
+            with self.assertRaisesRegex(
+                RuntimeError, "호텔 운영현황 승인 원본이 없습니다"
+            ):
+                _seed_hotel_operation_metrics(cursor)
+
     def test_endpoint_returns_sorted_real_shaped_rows_for_building_address_sido(self):
         rows = [
             {
