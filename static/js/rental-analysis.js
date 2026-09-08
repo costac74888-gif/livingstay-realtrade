@@ -25,6 +25,16 @@
   function percent(value) {
     return Number.isFinite(value) ? value.toFixed(2) + "%" : "계산 불가";
   }
+  var resultHelp = {
+    "대출 후 월 순현금": "대출을 갚고 매달 남는 돈",
+    "자기자본 수익률": "내가 실제 넣은 돈 대비 연간 수익",
+    "비용 반영 순수익률": "공실·운영비를 뺀 실제 수익률",
+    "표면수익률": "비용을 빼기 전 단순 임대수익률",
+    "현재 실거래 기준 수익률": "주변 실거래 가격으로 다시 계산한 수익률",
+    "월 대출 상환액": "매달 갚아야 할 원금과 이자",
+    "DSCR": "임대수익으로 대출을 갚을 수 있는 정도",
+    "연간 보유비용": "1년간 드는 세금·관리비·수선비",
+  };
   function estimateTax(purchasePrice) {
     if (!purchasePrice) return 0;
     var estimatedTaxBase = purchasePrice * 0.6;
@@ -54,8 +64,9 @@
     return { annual: monthly * 12, monthly: monthly, firstPrincipal: Math.max(0, monthly - amount * rate) };
   }
   function card(label, value, note, style) {
-    return '<article class="analysis-card rental-result ' + (style || "") + '"><small>'
-      + label + '</small><strong>' + value + '</strong><span>' + note + "</span></article>";
+    return '<article class="analysis-card rental-result ' + (style || "") + '"><small><b>'
+      + label + '</b><em>' + (resultHelp[label] || "") + '</em></small><strong>'
+      + value + '</strong><span>' + note + "</span></article>";
   }
   function calculate() {
     var purchase = n("rentalPurchasePrice");

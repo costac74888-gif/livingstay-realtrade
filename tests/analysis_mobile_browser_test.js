@@ -520,6 +520,10 @@ async function run() {
     expect(Number(rentalResult.tax) > 0 && rentalResult.text.includes("자기자본 수익률")
       && rentalResult.text.includes("DSCR") && rentalResult.text.includes("현재 실거래 기준 수익률"),
       "재산세·대출·현재 실거래를 반영한 임대수익 결과가 없습니다.");
+    expect(rentalResult.text.includes("내가 실제 넣은 돈 대비 연간 수익")
+      && rentalResult.text.includes("공실·운영비를 뺀 실제 수익률")
+      && rentalResult.text.includes("임대수익으로 대출을 갚을 수 있는 정도"),
+      "임대수익 전문용어 옆의 쉬운 설명이 누락됐습니다.");
     expect(Math.abs(rentalResult.calculation.annualRent - 600) < 0.01
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
       && Math.abs(rentalResult.calculation.invested - 4250) < 0.01,

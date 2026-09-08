@@ -100,6 +100,29 @@
   margin-top: 16px;
 }
 
+.analysis-shell .rental-result small {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.analysis-shell .rental-result small b {
+  color: inherit;
+  font-size: inherit;
+}
+
+.analysis-shell .rental-result small em {
+  color: #8190a0;
+  font-size: 9px;
+  font-weight: 600;
+  font-style: normal;
+}
+
+.analysis-shell .rental-result.primary small em {
+  color: #9fb3c7;
+}
+
 @media (max-width: 650px) {
   .building-selection-confirm {
     align-items: stretch;
