@@ -1568,7 +1568,7 @@
 @media (max-width:480px){
   .b-reservation-bar{align-items:flex-start;padding:10px;}.b-reserve-btn,.b-connect-btn{padding:7px 9px;}
   .b-reservation-bar span{max-width:170px;}
-  .operator-banner{align-items:flex-start}.operator-banner-cta{white-space:normal;text-align:center;max-width:92px}
+  .operator-banner{align-items:flex-start}.operator-banner-cta{white-space:nowrap;text-align:center;max-width:none}
 }
 
 /* 건물 상세 — 정보/행정운영/금융 표 */
