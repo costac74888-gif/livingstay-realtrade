@@ -84,6 +84,7 @@
 - [숙박 허가업종과 예약 플랫폼 분리](lodging-permit-vs-platform.md) — 외국인관광 도시민박업은 법적 업종이며 Airbnb는 예약 채널이므로 통계·표시·판정을 분리한다.
 - [관광 검색순위 장소 연결](tourism-rank-place-linking.md) — 검색순위 지역명은 행정구역 개편 뒤 낡을 수 있어 상호를 검증하고, 건물 연결은 정확한 주소일 때만 허용한다.
 - [운영자 등록 숙박정보 표시](operator-supplied-lodging-info.md) — 운영자 편의시설·인증은 고정 선택지만 즉시 공개하며, 표시 시 운영정보 끝에 운영자 직접 등록 고지를 붙인다.
+- [대표 영업신고 선정](operating-primary-room-count.md) — 한 건물에 활성 영업신고가 여러 개면 신고 객실수가 가장 많은 사업장을 첫 화면 대표로 사용한다.
 - [관광 급등동네 건물 매칭](tourism-surge-building-matching.md) — 행정동·법정동 이름이 정확히 같을 때만 건물에 급등 뱃지를 붙이고, 지표별 자료기간을 따로 표시한다.
 - [외부 API 백필 체크포인트](external-api-backfill-checkpoints.md) — autoscale 백필은 DB lease로 소유권을 fence하고, API 호출 한도는 요청 전에 DB에 예약한다.
 - [숙박자산 투자분석 데이터 원칙](lodging-asset-analysis.md) — 관광 스냅샷은 단일 원본 백분위로 표시하고, 유일 지번 연결·최근 후보 제한 뒤에만 실거래를 분석한다.

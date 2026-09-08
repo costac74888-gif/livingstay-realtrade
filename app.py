@@ -1906,17 +1906,13 @@ def get_building(building_id):
     # normalized address (road first, jibun fallback).
     registry_records = _public_lodging_registry_records(cur, building)
     annual_records = _public_annual_operating_records(cur, building_id)
-    building["operating_records"] = _deduplicate_public_operating_records(
-        registry_records + annual_records
+    building["operating_records"] = _sort_public_operating_records(
+        _deduplicate_public_operating_records(registry_records + annual_records)
     )
-    # 관광숙박 승인 원장이 있으면 운영정보의 대표 명칭·업종·등급으로 우선한다.
-    # 다른 영업신고 원장은 삭제하지 않고 operating_records에 모두 보존한다.
-    building["operating_primary"] = next(
-        (
-            record for record in building["operating_records"]
-            if record.get("source_category") == "annual_tourism_roster"
-        ),
-        building["operating_records"][0] if building["operating_records"] else None,
+    # 영업신고가 여러 건이면 신고 객실수가 가장 많은 사업장을 대표로 노출한다.
+    # 객실수가 없거나 같을 때는 원장의 기존 순서를 안정적으로 보존한다.
+    building["operating_primary"] = (
+        building["operating_records"][0] if building["operating_records"] else None
     )
     building["operating_record_count"] = len(building["operating_records"])
     # Compatibility field for existing clients: annual roster only.
@@ -20225,6 +20221,17 @@ def _deduplicate_public_operating_records(records):
         seen[key] = record
         result.append(record)
     return result
+
+
+def _sort_public_operating_records(records):
+    """Put the operating record with the largest official room count first."""
+    def room_count(record):
+        try:
+            return float(record.get("official_room_count"))
+        except (TypeError, ValueError):
+            return -1
+
+    return sorted(records, key=room_count, reverse=True)
 
 
 def _building_ids_by_lodging_status(where_sql, params, status_filter):

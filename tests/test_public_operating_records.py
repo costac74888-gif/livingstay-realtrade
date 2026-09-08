@@ -90,15 +90,30 @@ class PublicOperatingRecordTests(unittest.TestCase):
         self.assertEqual(record["hotel_grade"], "5성급")
         self.assertNotIn("phone", record)
 
-    def test_annual_tourism_record_is_selected_as_operating_primary(self):
-        registry = {"source_category": "lodging_registry", "registered_name": "일반 신고명"}
-        annual = {"source_category": "annual_tourism_roster", "registered_name": "관광 등록명"}
-        records = [registry, annual]
-        primary = next(
-            (row for row in records if row.get("source_category") == "annual_tourism_roster"),
-            records[0],
+    def test_largest_official_room_count_is_first_operating_record(self):
+        records = [
+            {"registered_name": "관광 등록명", "official_room_count": 20},
+            {"registered_name": "대형 신고명", "official_room_count": 80},
+            {"registered_name": "객실수 미상", "official_room_count": None},
+        ]
+        ordered = application._sort_public_operating_records(records)
+        self.assertEqual(
+            [record["registered_name"] for record in ordered],
+            ["대형 신고명", "관광 등록명", "객실수 미상"],
         )
-        self.assertEqual(primary["registered_name"], "관광 등록명")
+
+    def test_equal_or_missing_room_counts_preserve_source_order(self):
+        records = [
+            {"registered_name": "첫 신고", "official_room_count": 10},
+            {"registered_name": "둘째 신고", "official_room_count": "10"},
+            {"registered_name": "첫 미상", "official_room_count": None},
+            {"registered_name": "둘째 미상", "official_room_count": ""},
+        ]
+        ordered = application._sort_public_operating_records(records)
+        self.assertEqual(
+            [record["registered_name"] for record in ordered],
+            ["첫 신고", "둘째 신고", "첫 미상", "둘째 미상"],
+        )
 
     def test_inactive_registry_rows_are_not_exposed(self):
         cur = MagicMock()
