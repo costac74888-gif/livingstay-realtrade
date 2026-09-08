@@ -256,7 +256,7 @@ async function run() {
     const nearby = points.find((point) => point.sameRegion && !point.selected);
     const representatives = points.filter((point) => point.representative);
     expect(points.every((point) => point.radius > 0), "기본 관광수요 지수의 전체 비교 건물 분포가 숨겨졌습니다.");
-    expect(selected && selected.color === "#102a43" && selected.radius === 10, "선택 건물의 색상 또는 크기가 다릅니다.");
+    expect(selected && selected.color === "#A66F00" && selected.radius === 10, "선택 건물이 진한 골드 포인트로 표시되지 않습니다.");
     expect(nearby && nearby.color === "#168f91" && nearby.radius === 5.5, "같은 시군구 비교군의 색상 또는 크기가 다릅니다.");
       expect(representatives.length === 4 && representatives.every((point) => point.radius === 8),
       "사분면 대표 표본 네 개의 표시 크기가 다릅니다.");
