@@ -125,7 +125,17 @@ async function run() {
       return json(route, payload);
     }
     if (url.pathname === `/api/building/${SELECTED_ID}/area-types`) {
-      return json(route, { ok: true, items: [{ sqm: 32.5, ho_cnt: 12 }], sqms: [32.5] });
+      return json(route, {
+        ok: true,
+        items: [
+          { sqm: 18.1, ho_cnt: 8 },
+          { sqm: 18.2, ho_cnt: 18 },
+          { sqm: 18.3, ho_cnt: 3 },
+          { sqm: 21.2, ho_cnt: 1 },
+          { sqm: 32.5, ho_cnt: 12 },
+        ],
+        sqms: [18.1, 18.2, 18.3, 21.2, 32.5],
+      });
     }
     if (url.pathname === "/api/analysis/rental-market-price") {
       rentalMarketRequest = url.search;
@@ -460,6 +470,13 @@ async function run() {
     });
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
+    await page.waitForFunction(() => document.querySelectorAll("#rentalUnitAreaOptions option").length === 5);
+    const areaOptions = await page.locator("#rentalUnitAreaOptions option").evaluateAll((options) =>
+      options.map((option) => option.value));
+    expect(areaOptions.join("|") === "18.1|18.2|18.3|21.2|32.5"
+      && await page.locator("#rentalUnitArea").inputValue() === "",
+      "임대수익분석 전용면적 목록이 첫 면적으로 필터링되지 않고 모두 표시되어야 합니다.");
+    await page.fill("#rentalUnitArea", "32.5");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
     const automaticMarketPrice = await page.evaluate(() => ({
       area: document.getElementById("rentalUnitArea").value,

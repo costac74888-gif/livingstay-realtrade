@@ -278,7 +278,6 @@
       }).join("");
       if (items.length) {
         $("rentalUnitAreaHint").textContent = "확인된 면적 " + items.length + "개 중 선택하거나 직접 입력할 수 있습니다.";
-        if (!$("rentalUnitArea").value) $("rentalUnitArea").value = String(items[0].sqm);
         await loadMarketPrice(id, seq);
       } else {
         $("rentalUnitAreaHint").textContent = "확인된 호실 면적이 없어 직접 입력해 주세요.";
