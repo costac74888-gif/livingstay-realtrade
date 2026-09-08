@@ -4756,6 +4756,63 @@ def get_monthly_trend():
     ]
     params = [TREND_FLOOR_YM, scope]
 
+    q = request.args.get("q", "").strip()
+    si_do = request.args.get("si_do", "").strip()
+    sgg_nm = request.args.get("sgg_nm", "").strip()
+    umd_nm = request.args.get("umd_nm", "").strip()
+    year = request.args.get("year", "").strip()
+    lodging_type = request.args.get("lodging_type", "").strip()
+    if q:
+        q_no_space = q.replace(" ", "")
+        where.append(
+            "(building_name ILIKE %s OR address ILIKE %s OR jibun ILIKE %s"
+            " OR REPLACE(building_name,' ','') ILIKE %s"
+            " OR REPLACE(address,' ','') ILIKE %s)"
+        )
+        params += [
+            f"%{q}%", f"%{q}%", f"%{q}%",
+            f"%{q_no_space}%", f"%{q_no_space}%",
+        ]
+    if si_do:
+        where.append(sido_match_clause("si_do"))
+        params.append(sido_core(si_do))
+    if sgg_nm:
+        where.append("%s LIKE '%%' || sgg_nm")
+        params.append(sgg_nm)
+    if umd_nm:
+        where.append("REPLACE(umd_nm, ' ', '') = REPLACE(%s, ' ', '')")
+        params.append(umd_nm)
+    if year and year != "all":
+        where.append("deal_date LIKE %s")
+        params.append(f"{year}-%")
+    if lodging_type == "자동차야영":
+        where.append(
+            """
+            lodging_type = '캠핑' AND EXISTS (
+                SELECT 1 FROM master_buildings mb_subtype
+                WHERE mb_subtype.sgg_cd = transactions.sgg_cd
+                  AND mb_subtype.umd_nm = transactions.umd_nm
+                  AND mb_subtype.jibun = transactions.jibun
+                  AND mb_subtype.lodging_subtype = '자동차야영'
+            )
+            """
+        )
+    elif lodging_type == "복합":
+        where.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "준공전":
+        where.append(
+            "building_status IN ('허가','착공')"
+            " AND (use_apr_day IS NULL OR use_apr_day = '')"
+        )
+    elif lodging_type == "미분류":
+        where.append(
+            "(lodging_type IS NULL OR lodging_type = '')"
+            " AND building_status NOT IN ('허가','착공')"
+        )
+    elif lodging_type:
+        where.append("lodging_type = %s")
+        params.append(lodging_type)
+
     # 선택적 building_id → 해당 건물의 실거래만 집계(하위호환: 없거나 정수 아니면 전체 집계).
     # 정확도: A화면 마커(get_buildings_geo)와 동일한 키 전략을 쓴다.
     #   - 지번키(sgg_cd+umd_nm+jibun)가 모두 있으면 지번으로 정확 매칭

@@ -76,6 +76,21 @@
     </div>
   </div>
 
+  <section class="tx-trend-card" aria-labelledby="txTrendTitle">
+    <div class="tx-trend-head">
+      <h2 id="txTrendTitle">실거래추세</h2>
+      <span id="txTrendNote">검색 결과 기준</span>
+    </div>
+    <div class="tx-trend-chart-wrap">
+      <canvas id="txTrendChart" aria-label="거래건수와 거래금액 추세 그래프"></canvas>
+      <div id="txTrendEmpty" class="tx-trend-empty" hidden>검색 조건에 해당하는 실거래 추세가 없습니다.</div>
+    </div>
+    <div class="tx-trend-legend" aria-hidden="true">
+      <span><i class="tx-trend-bar"></i>거래건수</span>
+      <span><i class="tx-trend-line"></i>거래금액(억)</span>
+    </div>
+  </section>
+
   <div class="results-head" style="margin-top:18px;">
     <h2>실거래 목록<span class="count" id="resultCount"></span></h2>
   </div>
@@ -115,6 +130,19 @@
   .tx-filter-grid .btn-search:hover{ background:var(--brass-dark); }
   .tx-favbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-soft); }
   .tx-favbar label{ display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:600; color:var(--ink); white-space:nowrap; }
+  .tx-trend-card{ margin-top:18px; padding:16px 18px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow:0 4px 14px rgba(22,32,46,.04); }
+  .tx-trend-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:8px; }
+  .tx-trend-head h2{ margin:0; font-size:16px; color:var(--ink); }
+  .tx-trend-head span{ color:var(--ink-soft); font-size:11px; }
+  .tx-trend-chart-wrap{ position:relative; height:250px; }
+  .tx-trend-empty{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--ink-soft); font-size:12.5px; }
+  .tx-trend-empty[hidden]{ display:none; }
+  .tx-trend-legend{ display:flex; gap:17px; align-items:center; margin-top:8px; color:var(--ink-soft); font-size:11.5px; }
+  .tx-trend-legend span{ display:flex; align-items:center; gap:5px; }
+  .tx-trend-legend i{ display:inline-block; width:10px; height:10px; }
+  .tx-trend-bar{ border-radius:2px; background:#B4863F; }
+  .tx-trend-line{ position:relative; height:2px!important; background:#378ADD; }
+  .tx-trend-line::after{ content:""; position:absolute; width:5px; height:5px; border-radius:50%; background:#378ADD; left:3px; top:-2px; }
   /* ⑨ 관심저장 별 컬럼 */
   .col-star{ width:32px; min-width:32px; text-align:center; cursor:pointer; font-size:16px; color:#c5cdd6; user-select:none; }
   .col-star.on{ color:#B4863F; }
@@ -130,9 +158,12 @@
   @media (max-width: 520px){
     /* 좁은 폰: 필터를 한 줄에 하나씩 — 셀렉트가 눌리지 않게 */
     .tx-filter-grid{ grid-template-columns:1fr; }
+    .tx-trend-card{ padding:14px 12px 10px; }
+    .tx-trend-chart-wrap{ height:220px; }
   }
 </style>
 
+<script src="/vendor/chart.umd.js"></script>
 <script src="/static/js/format_util.js"></script>
 <script>
   let regionTree = {};
@@ -143,6 +174,8 @@
   // 비로그인 → 항상 빈 Set
   const MAX_FAVORITES = 5;
   let serverFavKeys = new Set();
+  let txTrendChart = null;
+  let txTrendRequestToken = 0;
   function getFavorites(){ return [...serverFavKeys]; }
   function favKey(item){ return `${item.building_name}|${item.address}`; }
   function isFav(item){ return serverFavKeys.has(favKey(item)); }
@@ -299,6 +332,88 @@
       </tr>`;
   }
 
+  function aggregateFavoriteTrend(items){
+    const buckets = new Map();
+    (items || []).forEach(item => {
+      const ym = String(item.deal_date || "").slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(ym)) return;
+      const bucket = buckets.get(ym) || { ym, count:0, sum_price:0 };
+      bucket.count += 1;
+      bucket.sum_price += Number(item.price || 0);
+      buckets.set(ym, bucket);
+    });
+    return [...buckets.values()].sort((a, b) => a.ym.localeCompare(b.ym));
+  }
+
+  async function loadTrendChart(favoriteItems){
+    const token = ++txTrendRequestToken;
+    const canvas = document.getElementById("txTrendChart");
+    const empty = document.getElementById("txTrendEmpty");
+    const note = document.getElementById("txTrendNote");
+    if (!canvas || typeof Chart === "undefined") return;
+    let items = [], granularity = "month";
+    try {
+      if (state.favOnly){
+        items = aggregateFavoriteTrend(favoriteItems);
+      } else {
+        const params = new URLSearchParams({
+          q:state.q, si_do:state.si_do, sgg_nm:state.sgg_nm, umd_nm:state.umd_nm,
+          year:state.year, lodging_type:state.lodging_type,
+          transaction_scope:state.transaction_scope,
+        });
+        const response = await fetch(`/api/monthly-trend?${params}`);
+        if (!response.ok) throw new Error("trend fetch failed");
+        const data = await response.json();
+        items = data.items || [];
+        granularity = data.granularity || "month";
+      }
+    } catch (error) {
+      if (token !== txTrendRequestToken) return;
+      items = [];
+    }
+    if (token !== txTrendRequestToken) return;
+    const visible = items.filter(item => Number(item.count || 0) > 0);
+    if (!visible.length){
+      if (txTrendChart) { txTrendChart.destroy(); txTrendChart = null; }
+      canvas.hidden = true;
+      empty.hidden = false;
+      note.textContent = "검색 결과 기준";
+      return;
+    }
+    canvas.hidden = false;
+    empty.hidden = true;
+    note.textContent = state.favOnly
+      ? `관심단지 ${visible.reduce((sum, item) => sum + Number(item.count || 0), 0).toLocaleString("ko-KR")}건`
+      : `${granularity === "quarter" ? "분기별" : "월별"} · 현재 검색조건`;
+    const labels = items.map(item => granularity === "quarter"
+      ? String(item.ym || "").replace(/^\d{2}/, "")
+      : String(item.ym || "").slice(2).replace("-", "/"));
+    const counts = items.map(item => Number(item.count || 0));
+    const sums = items.map(item => Math.round(Number(item.sum_price || 0) / 10000));
+    if (txTrendChart) txTrendChart.destroy();
+    txTrendChart = new Chart(canvas, {
+      data:{
+        labels,
+        datasets:[
+          {type:"bar",label:"거래건수",data:counts,yAxisID:"y",backgroundColor:"#B4863F",borderRadius:3,order:2},
+          {type:"line",label:"거래금액(억)",data:sums,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,order:1},
+        ],
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        interaction:{mode:"index",intersect:false},
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:context => context.dataset.type === "line"
+          ? ` 거래금액 ${context.parsed.y.toLocaleString("ko-KR")}억`
+          : ` 거래건수 ${context.parsed.y.toLocaleString("ko-KR")}건`}}},
+        scales:{
+          x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45,minRotation:0,autoSkip:true,maxTicksLimit:18}},
+          y:{position:"left",beginAtZero:true,ticks:{font:{size:10},precision:0},grid:{color:"#EEF1F3"}},
+          y1:{position:"right",beginAtZero:true,ticks:{font:{size:10}},grid:{display:false}},
+        },
+      },
+    });
+  }
+
   async function loadBoard(){
     const board = document.getElementById("board");
     board.innerHTML = `<div class="loading">불러오는 중…</div>`;
@@ -333,6 +448,7 @@
     }
 
     document.getElementById("resultCount").textContent = `총 ${total.toLocaleString('ko-KR')}건`;
+    loadTrendChart(state.favOnly ? items : null);
 
     if (items.length === 0){
       board.innerHTML = state.favOnly
