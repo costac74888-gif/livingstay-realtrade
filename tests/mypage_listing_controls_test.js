@@ -9,6 +9,7 @@ function expect(condition, message) {
 
 for (const needle of [
   '"보류": "보류중"',
+  '"철회됨": "철회됨"',
   'class="lr-hold-btn"',
   'class="lr-resume-btn"',
   'class="lr-disclosure-btn"',
@@ -21,6 +22,10 @@ for (const needle of [
 ]) {
   expect(html.includes(needle), `매물 보류·공개범위 UI 누락: ${needle}`);
 }
+expect(
+  html.includes("의뢰와 채팅 이력은 기록으로 보존됩니다."),
+  "매물 철회 안내가 데이터 보존 정책을 설명하지 않습니다.",
+);
 
 const cardStart = html.indexOf('class="lr-edit-btn"');
 const holdStart = html.indexOf("holdButton", cardStart);

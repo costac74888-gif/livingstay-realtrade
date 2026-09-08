@@ -11832,6 +11832,9 @@ def agent_lead_update_status(lead_id):
             # 다른 중개사에게 배정된 건은 수정 불가.
             conn.rollback()
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row["status"] == "철회됨":
+            conn.rollback()
+            return jsonify({"ok": False, "message": "철회된 의뢰는 다시 처리할 수 없습니다."}), 400
         cur_rank = _LEAD_STATUS_ORDER.get(row["status"], 0)
         if _LEAD_STATUS_ORDER[new_status] <= cur_rank:
             conn.rollback()
@@ -15522,14 +15525,17 @@ def update_listing_request(req_id):
 
 @app.route("/api/listing-requests/<int:req_id>/withdraw", methods=["POST"])
 def withdraw_listing_request(req_id):
-    """매물의뢰 철회 — 접수됨 또는 보류 상태인 본인 의뢰만 철회 가능."""
+    """매물의뢰 철회 — 원본·배정·채팅·이력은 보존하고 최종 상태로 전환한다."""
     user = current_user()
     if not user:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT id, user_id, status FROM listing_requests WHERE id = %s", [req_id])
+        cur.execute(
+            "SELECT id, user_id, status FROM listing_requests WHERE id = %s FOR UPDATE",
+            [req_id],
+        )
         row = cur.fetchone()
         if not row:
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
@@ -15537,19 +15543,23 @@ def withdraw_listing_request(req_id):
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
         if row["status"] not in ("submitted", "보류"):
             return jsonify({"ok": False, "message": "접수됨 또는 보류 상태에서만 철회할 수 있습니다."}), 400
-        # 연관 데이터 순서대로 삭제 (FK NO ACTION이므로 수동 처리)
-        cur.execute("""
-            DELETE FROM chat_messages
-            WHERE room_id IN (SELECT id FROM chat_rooms WHERE listing_request_id = %s)
-        """, [req_id])
-        cur.execute("DELETE FROM chat_rooms WHERE listing_request_id = %s", [req_id])
-        cur.execute("DELETE FROM listing_request_history WHERE listing_request_id = %s", [req_id])
-        cur.execute("DELETE FROM listing_requests WHERE id = %s", [req_id])
+        before = {"status": row["status"]}
+        after = {"status": "철회됨"}
+        cur.execute(
+            "UPDATE listing_requests SET status = '철회됨', updated_at = NOW() WHERE id = %s",
+            [req_id],
+        )
+        cur.execute(
+            "INSERT INTO listing_request_history "
+            "(listing_request_id, action, before_data, after_data) "
+            "VALUES (%s, 'withdrawn', %s, %s)",
+            [req_id, json.dumps(before), json.dumps(after)],
+        )
         conn.commit()
     finally:
         cur.close()
         conn.close()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "status": "철회됨"})
 
 
 def _set_listing_hold_state(req_id, *, held):
