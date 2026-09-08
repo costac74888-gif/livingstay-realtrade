@@ -15,6 +15,7 @@
   ];
   function n(id) {
     var value = $(id).value;
+    if (id === "rentalUnitArea") value = value.replace(/\s*㎡\s*$/, "").trim();
     return value === "" || !Number.isFinite(Number(value)) ? 0 : Number(value);
   }
   function money(value, digits) {
@@ -272,9 +273,7 @@
       var items = areas && Array.isArray(areas.items) ? areas.items : [];
       $("rentalUnitAreaOptions").innerHTML = items.map(function (item) {
         var sqm = Number(item.sqm);
-        var label = sqm.toLocaleString("ko-KR") + "㎡"
-          + (Number(item.ho_cnt) > 0 ? " · " + item.ho_cnt + "호" : "");
-        return '<option value="' + sqm + '" label="' + label + '"></option>';
+        return '<option value="' + sqm.toLocaleString("ko-KR") + '㎡"></option>';
       }).join("");
       if (items.length) {
         $("rentalUnitAreaHint").textContent = "확인된 면적 " + items.length + "개 중 선택하거나 직접 입력할 수 있습니다.";
