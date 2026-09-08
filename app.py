@@ -17849,7 +17849,7 @@ def admin_title_info_run():
         return jsonify({"ok": False, "message": "BLD_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
     ok, code, payload = _start_detached_sync(
         _TITLE_INFO_META_KEY, "backfill_title_info.py",
-        ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.2"], done_cooldown_min=5)
+        ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.05"], done_cooldown_min=5)
     if ok:
         payload["message"] = "건축정보 채우기를 시작했습니다."
     return jsonify(payload), code
@@ -34016,7 +34016,7 @@ def _resume_interrupted_sync_jobs():
     덕분에 한 워커만 실제로 기동하므로 안전하다."""
     jobs = [
         (_GEOCODE_META_KEY,       "geocode_buildings.py",    ["--status-key", _GEOCODE_META_KEY]),
-        (_TITLE_INFO_META_KEY,    "backfill_title_info.py",  ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.2"]),
+        (_TITLE_INFO_META_KEY,    "backfill_title_info.py",  ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.05"]),
         (_GEOCODE_BROKERS_META_KEY, "geocode_brokers.py",    ["--status-key", _GEOCODE_BROKERS_META_KEY]),
         (_SYNC_META_KEY,          "sync_runner.py",          []),
         (_BACKFILL_META_KEY,      "sync_runner.py",          ["--meta-key", _BACKFILL_META_KEY, "--months", "60", "--progress-key", "tx_backfill_progress"]),

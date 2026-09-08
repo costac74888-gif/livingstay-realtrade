@@ -47,7 +47,7 @@ class BuildingRegistryRequestError(RuntimeError):
     """A building-registry transport error with credentials removed."""
 
 
-def _get_with_retry(url, params, timeout):
+def _get_with_retry(url, params, timeout, retry_max=None):
     """ConnectTimeout에 한해 최대 _RETRY_MAX 회 재시도.
 
     4xx/5xx 같은 진짜 API 오류는 재시도해도 의미 없으므로 즉시 올린다.
@@ -55,14 +55,15 @@ def _get_with_retry(url, params, timeout):
     짧은 대기 후 재시도하면 대부분 해결된다.
     """
     last_exc = None
-    for attempt in range(1 + _RETRY_MAX):
+    max_retries = _RETRY_MAX if retry_max is None else max(0, int(retry_max))
+    for attempt in range(1 + max_retries):
         try:
             response = requests.get(url, params=params, timeout=timeout)
             response.raise_for_status()
             return response
         except ConnectTimeout as e:
             last_exc = e
-            if attempt < _RETRY_MAX:
+            if attempt < max_retries:
                 time.sleep(_RETRY_SLEEP)
         except RequestException as e:
             raise BuildingRegistryRequestError(
@@ -118,7 +119,7 @@ def resolve_api_building_name(title: dict | None) -> str:
     return ""
 
 
-def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, retry_max=None):
     """표제부(getBrTitleInfo) 조회 → 이 지번에 선 '모든 동'의 raw dict 리스트. 없으면 []
 
     용도 병기는 '지번 내 전체 동'을 봐야 정확하므로, totalCount만큼 페이징해서
@@ -139,7 +140,9 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "pageNo": page,
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
-        resp = _get_with_retry(BLD_TITLE_URL, params=params, timeout=15)
+        resp = _get_with_retry(
+            BLD_TITLE_URL, params=params, timeout=timeout, retry_max=retry_max
+        )
         try:
             root = ET.fromstring(resp.content)
         except ET.ParseError as e:

@@ -54,9 +54,11 @@ from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEA
 BJDONG_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
 MAX_DB_RECONNECT_ATTEMPTS = 3
 DB_RECONNECT_DELAY_SEC = 5.0
-PROVIDER_RETRY_MAX = 6
-PROVIDER_RETRY_BASE_SEC = 30.0
-PROVIDER_RETRY_MAX_SEC = 600.0
+# 대량 수집은 한 건을 장시간 붙잡지 않는다. building_registry 내부에서 이미
+# 짧은 연결 재시도를 수행하므로, 실패 건은 미완료로 남기고 다음 실행에서 재처리한다.
+PROVIDER_RETRY_MAX = 0
+PROVIDER_RETRY_BASE_SEC = 0.0
+PROVIDER_RETRY_MAX_SEC = 0.0
 
 
 class _DatabaseReconnectExhausted(RuntimeError):
@@ -523,7 +525,10 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     print(f"  [{i}/{total}] SKIP id={bid} {name} — {outcome_detail}", flush=True)
                     continue
                 plat_gb, bun, ji = parse_jibun(b["jibun"])
-                rows = _fetch_title_rows(b["sgg_cd"], bjd, plat_gb, bun, ji)
+                rows = _fetch_title_rows(
+                    b["sgg_cd"], bjd, plat_gb, bun, ji,
+                    timeout=(3, 8), retry_max=0,
+                )
                 consec_err = 0  # 성공적으로 응답 받음
                 api_response_count += 1
                 rep = _pick_representative(rows)
@@ -672,8 +677,8 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     f"{type(e).__name__}: {_mask_key(e)}"
                 )[:500]
                 print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
-                if provider_retry_attempt > PROVIDER_RETRY_MAX or consec_err >= 10:
-                    print("[중단] 외부 API 재접속 한도 소진 — 체크포인트를 유지하고 종료합니다.", flush=True)
+                if consec_err >= 10:
+                    print("[중단] 외부 API 오류 10건 연속 — 체크포인트를 유지하고 종료합니다.", flush=True)
                     stop_for_errors = True
 
         processed = n_ok + n_empty + n_skip + n_err

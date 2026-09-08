@@ -3233,7 +3233,7 @@
            rows.push(`<div class="geo-stat-row" style="color:#b3261e"><b>마지막 API 오류:</b> ${dgEscape(s.last_item_error)}</div>`);
          }
          if (s.provider_state === "waiting") {
-           rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>건축HUB 재접속:</b> ${num(s.provider_retry_attempt || 0)}회차 · 최대 ${num(s.provider_retry_wait_seconds || 0)}초 대기 후 같은 건물 재시도</div>`);
+           rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>건축HUB 연결 확인:</b> ${num(s.provider_retry_attempt || 0)}회차 · 실패 건은 미완료로 남겨 다음 실행에서 재수집</div>`);
          }
         if (s.connection_state === "reconnecting") {
           rows.push(`<div class="geo-stat-row" style="color:#9a6700"><b>DB 연결:</b> 재접속 중… (${num(s.reconnect_attempts || 0)}회 시도)</div>`);

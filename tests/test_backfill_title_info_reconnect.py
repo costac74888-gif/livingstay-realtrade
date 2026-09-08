@@ -302,8 +302,8 @@ class BackfillReconnectTests(unittest.TestCase):
         )
         replacement_conn.commit.assert_called_once_with()
 
-    def test_provider_timeout_retries_same_row_then_keeps_checkpoint_open(self):
-        """외부 API 장애는 다른 행으로 넘기지 않고 같은 건물을 백오프 재시도한다."""
+    def test_provider_timeout_fails_fast_and_keeps_checkpoint_open(self):
+        """외부 API 장애는 같은 건물을 장시간 재시도하지 않고 재실행 대상으로 남긴다."""
         conn = MagicMock()
         conn.closed = 0
         cur = MagicMock()
@@ -325,7 +325,6 @@ class BackfillReconnectTests(unittest.TestCase):
             patch.object(title_info, "_read_status", return_value=status),
             patch.object(title_info, "_write_status", side_effect=capture_status),
             patch.object(title_info, "refresh_auto_building_names") as refresh,
-            patch.object(title_info, "PROVIDER_RETRY_MAX", 2),
             patch.object(title_info.time, "sleep"),
         ):
             with self.assertRaises(title_info._ProviderFailure) as raised:
@@ -340,14 +339,14 @@ class BackfillReconnectTests(unittest.TestCase):
                 )
 
         failure = raised.exception
-        self.assertEqual(failure.counts, (0, 0, 0, 1))
+        self.assertEqual(failure.counts, (0, 0, 0, 10))
         self.assertIn("재접속이 반복 실패", str(failure))
         self.assertEqual(cur.execute.call_count, 1)  # 대상 조회 외 완료 UPDATE 없음
         self.assertFalse(conn.commit.called)
         refresh.assert_not_called()
-        self.assertEqual(writes[-1]["processed"], 1)
+        self.assertEqual(writes[-1]["processed"], 10)
         self.assertEqual(writes[-1]["total"], 10)
-        self.assertEqual(writes[-1]["err"], 1)
+        self.assertEqual(writes[-1]["err"], 10)
         self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
 
 
