@@ -12,7 +12,7 @@ assert.match(index, /data-datalab-key="presale"/);
 assert.match(index, /data-datalab-key="presale"[\s\S]*?>준공전</);
 assert.doesNotMatch(index, /미준공\(분양중\)/);
 assert.match(index, /준공전\(분양포함\)/);
-assert.match(index, /class="datalab-tab datalab-presale-tab"[\s\S]*?<span>준공전<\/span>/);
+assert.match(index, /class="datalab-tab datalab-presale-tab"[\s\S]*?<span class="datalab-icon" aria-hidden="true">🏗️<\/span><span>준공전<\/span>/);
 assert.doesNotMatch(index, /<span class="datalab-icon">前<\/span>/);
 assert.match(main, /\/apply\/presale\?building_id=/);
 assert.match(main, /<a href="\/apply\/presale\?building_id=\$\{encodeURIComponent\(id\)\}">분양 정보 등록 요청<\/a>/);

@@ -713,8 +713,8 @@
   .datalab-rate-marker{position:absolute; top:-3px; bottom:-3px; width:1px; background:#3E566F; z-index:1;}
   .datalab-rate-legend{display:flex; align-items:center; gap:4px; margin-top:7px; color:var(--ink-soft); font-size:9.5px;}
   .datalab-rate-legend i{display:inline-block; width:1px; height:12px; background:#3E566F;}
-  .datalab-tourism-tab .datalab-icon{display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:5px; background:#EAF0F2; color:#58717A; font:700 9px 'JetBrains Mono',monospace;}
-  .datalab-tourism-tab.active .datalab-icon{background:#58717A; color:#fff;}
+  .datalab-tourism-tab .datalab-icon{display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; font-size:14px; line-height:1;}
+  .datalab-tourism-tab.active .datalab-icon{filter:drop-shadow(0 1px 1px rgba(0,0,0,.18));}
   .datalab-heatmap{display:flex; flex-direction:column; gap:8px; min-height:420px;}
   .datalab-heatmap-head{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
   .datalab-heatmap-title{font-size:12px; font-weight:800; color:var(--ink);}
