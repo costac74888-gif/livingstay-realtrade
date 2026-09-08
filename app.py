@@ -99,6 +99,7 @@ import tourism_datalab_admin
 import annual_tourism_roster
 import import_hotel_operation
 import import_tourism_stats as tourism_stats_importer
+from secret_redaction import log_redacted_exception
 from operation_document_parser import (
     ALLOWED_EXTENSIONS as OPERATION_UPLOAD_EXTENSIONS,
     DocumentParseError,
@@ -118,6 +119,13 @@ from lodging_matching import (
 from lodging_stats_dedup import deduplicate_cross_source_lodgings
 from camping_stats import summarize_active_camping_facilities
 from lodging_data_contract import is_in_active_statistics
+
+_EXTERNAL_API_SECRET_ENV_NAMES = (
+    "BLD_SERVICE_KEY",
+    "BLD_INSPECTION_SERVICE_KEY",
+    "GOOGLE_MAPS_API_KEY",
+    "KAKAO_REST_API_KEY",
+)
 
 # 서버 기동 시각 — 정적 SDK URL 캐시 무효화용 (기동할 때만 바뀜)
 SERVER_BOOT_V = str(int(time.time()))
@@ -791,8 +799,15 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
         conn.commit()
         cur.close()
         conn.close()
-    except Exception:
-        app.logger.warning("건축정보 백그라운드 조회 실패 (building_id=%s)", building_id, exc_info=True)
+    except Exception as exc:
+        log_redacted_exception(
+            app.logger,
+            "warning",
+            "건축정보 백그라운드 조회 실패 (building_id=%s)",
+            exc,
+            _EXTERNAL_API_SECRET_ENV_NAMES,
+            building_id,
+        )
 
 
 def _google_streetview_metadata(lat, lng, key, radius=50):
@@ -3058,10 +3073,17 @@ def get_building_unit_areas(building_id):
         areas = [{"ho": ho, "area_sqm": float(sqm)} for ho, sqm in raw]
         return jsonify({"ok": True, "areas": areas, "from_cache": False})
     except Exception as e:
-        app.logger.exception("unit-areas 조회 오류 building_id=%s", building_id)
+        log_redacted_exception(
+            app.logger,
+            "error",
+            "unit-areas 조회 오류 building_id=%s",
+            e,
+            _EXTERNAL_API_SECRET_ENV_NAMES,
+            building_id,
+        )
         try: conn.rollback()
         except Exception: pass
-        return jsonify({"ok": False, "areas": [], "error": str(e)})
+        return jsonify({"ok": False, "areas": [], "error": "외부 건축정보 조회에 실패했습니다."})
     finally:
         cur.close(); conn.close()
 

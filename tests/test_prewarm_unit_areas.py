@@ -19,6 +19,8 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import unittest
+import io
+from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch, call
 
 # ---------------------------------------------------------------------------
@@ -271,15 +273,16 @@ class TestFetchExposAreaStrict(unittest.TestCase):
     """building_registry.fetch_expos_area_strict: 실패 시 예외, 성공 시 반환."""
 
     def test_raises_on_http_error(self):
-        """HTTP 오류(raise_for_status) → 예외 전파."""
+        """HTTP 오류 → 인증정보가 제거된 예외 전파."""
         import requests
         import building_registry as br
 
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.side_effect = requests.HTTPError("429")
+        response = requests.Response()
+        response.status_code = 429
+        response.url = br.BLD_EXPOS_URL
 
-        with patch.object(br, "_get_with_retry", return_value=mock_resp):
-            with self.assertRaises(requests.HTTPError):
+        with patch.object(br.requests, "get", return_value=response):
+            with self.assertRaises(br.BuildingRegistryRequestError):
                 br.fetch_expos_area_strict("11110", "10100", "0", "1", "0")
 
     def test_raises_on_xml_parse_error(self):
@@ -388,6 +391,45 @@ class TestFetchExposAreaStrict(unittest.TestCase):
         n_ok, n_empty, n_skip, n_err = result
         self.assertEqual(n_err, 1)
         self.assertEqual(saved, [])  # sentinel 없음
+
+    def test_http_error_batch_output_does_not_include_service_key(self):
+        import building_registry as br
+        import prewarm_unit_areas as pw
+        import requests
+
+        secret = "batch+/= secret"
+        response = requests.Response()
+        response.status_code = 429
+        response.url = requests.Request(
+            "GET",
+            br.BLD_EXPOS_URL,
+            params={"serviceKey": secret},
+        ).prepare().url
+        buildings = [_make_building(1)]
+        conn = MagicMock()
+        cur = MagicMock()
+        cur.fetchall.return_value = buildings
+        conn.cursor.return_value = cur
+        bjdong = MagicMock()
+        bjdong.find_bjdong_cd.return_value = "10100"
+        output = io.StringIO()
+
+        with (
+            patch.dict(os.environ, {"BLD_SERVICE_KEY": secret}, clear=False),
+            patch.object(pw, "init_db"),
+            patch.object(pw, "get_conn", return_value=conn),
+            patch.object(pw, "BjdongMap", return_value=bjdong),
+            patch("building_registry.requests.get", return_value=response),
+            patch.object(pw.time, "sleep"),
+            redirect_stdout(output),
+        ):
+            result = pw.run(only_missing=True, sleep=0)
+
+        self.assertEqual(result[3], 1)
+        rendered = output.getvalue()
+        self.assertNotIn(secret, rendered)
+        self.assertNotIn(requests.utils.quote(secret, safe=""), rendered)
+        self.assertIn("serviceKey=***", rendered)
 
     def test_original_fetch_expos_area_swallows_errors(self):
         """(하위호환) fetch_expos_area는 예외를 삼켜 [] 반환."""

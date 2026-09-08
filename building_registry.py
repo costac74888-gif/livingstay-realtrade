@@ -26,7 +26,9 @@ import time
 from xml.etree import ElementTree as ET
 
 import requests
-from requests.exceptions import ConnectTimeout
+from requests.exceptions import ConnectTimeout, RequestException
+
+from secret_redaction import redact_exception
 
 BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
@@ -38,6 +40,11 @@ LIVINGSTAY_KEYWORD = "생활숙박시설"
 
 _RETRY_MAX = 2        # ConnectTimeout 재시도 횟수 (총 최대 3회 시도)
 _RETRY_SLEEP = 2.5    # 재시도 사이 대기(초)
+_SECRET_ENV_NAMES = ("BLD_SERVICE_KEY", "BLD_INSPECTION_SERVICE_KEY")
+
+
+class BuildingRegistryRequestError(RuntimeError):
+    """A building-registry transport error with credentials removed."""
 
 
 def _get_with_retry(url, params, timeout):
@@ -50,12 +57,20 @@ def _get_with_retry(url, params, timeout):
     last_exc = None
     for attempt in range(1 + _RETRY_MAX):
         try:
-            return requests.get(url, params=params, timeout=timeout)
+            response = requests.get(url, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response
         except ConnectTimeout as e:
             last_exc = e
             if attempt < _RETRY_MAX:
                 time.sleep(_RETRY_SLEEP)
-    raise last_exc
+        except RequestException as e:
+            raise BuildingRegistryRequestError(
+                redact_exception(e, _SECRET_ENV_NAMES)
+            ) from None
+    raise BuildingRegistryRequestError(
+        redact_exception(last_exc, _SECRET_ENV_NAMES)
+    ) from None
 
 
 def _hocnt(row: dict) -> int:
@@ -125,11 +140,13 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         resp = _get_with_retry(BLD_TITLE_URL, params=params, timeout=15)
-        resp.raise_for_status()
         try:
             root = ET.fromstring(resp.content)
         except ET.ParseError as e:
-            raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
+            response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
+            raise RuntimeError(
+                f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
+            )
         items = root.findall(".//item")
         rows.extend({c.tag: (c.text or "").strip() for c in it} for it in items)
 
@@ -159,11 +176,13 @@ def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
         params=params, timeout=10,
     )
-    resp.raise_for_status()
     try:
         root = ET.fromstring(resp.content)
     except ET.ParseError as e:
-        raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
+        response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
+        raise RuntimeError(
+            f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
+        )
     return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
@@ -180,11 +199,13 @@ def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "https://apis.data.go.kr/1613000/MtnChkHubService/getMaintenanceHistory",
         params=params, timeout=10,
     )
-    resp.raise_for_status()
     try:
         root = ET.fromstring(resp.content)
     except ET.ParseError as e:
-        raise RuntimeError(f"건축물대장 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
+        response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
+        raise RuntimeError(
+            f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
+        )
     return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
@@ -223,14 +244,16 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         }
         try:
             resp = _get_with_retry(BLD_FLOOR_URL, params=params, timeout=15)
-            resp.raise_for_status()
         except Exception:
             return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
 
         try:
             root = ET.fromstring(resp.content)
         except ET.ParseError as e:
-            raise RuntimeError(f"건축물대장 층별개요 API XML 파싱 오류: {e} / 응답: {resp.text[:300]}")
+            response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
+            raise RuntimeError(
+                f"건축물대장 층별개요 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
+            )
         items = root.findall(".//item")
         for item in items:
             row = {child.tag: (child.text or "").strip() for child in item}
@@ -317,7 +340,6 @@ def _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "type": "xml",
         }
         resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15)
-        resp.raise_for_status()
         root = ET.fromstring(resp.content)
         _check_api_result_code(root)
 
