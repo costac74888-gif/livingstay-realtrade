@@ -170,6 +170,11 @@ def send_email(to, subject, html_body, idempotency_key=None, detailed=False):
     def _result(ok, message, outcome):
         return (ok, message, outcome) if detailed else (ok, message)
 
+    if os.environ.get("DISABLE_EXTERNAL_NOTIFICATIONS", "").strip().lower() in {
+        "1", "true", "yes",
+    }:
+        return _result(True, "외부 이메일 발송이 비활성화되어 건너뜁니다.", "accepted")
+
     api_key = os.environ.get("RESEND_API_KEY", "").strip()
     from_email = os.environ.get("RESEND_FROM_EMAIL", "").strip()
     if not api_key or not from_email:

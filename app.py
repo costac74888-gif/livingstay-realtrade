@@ -10097,7 +10097,8 @@ def _send_lead_email(agent, kind, building_name, deal_type, desired_price,
     if not agent.get("email"):
         return False, "중개사 이메일 없음"
     try:
-        kind_label = "매물의뢰" if kind == "listing" else "매수의뢰"
+        request_type_label = "중개거래 의뢰" if kind == "listing" else "매수 중개의뢰"
+        subject_label = "중개거래 매물의뢰" if kind == "listing" else "매수 중개의뢰"
         assignment_label = "담당 의뢰로 배정되었습니다." if assigned else "참고용으로 전달드립니다."
         safe_building = _html.escape(str(building_name or ""), quote=True)
         safe_deal_type = _html.escape(str(deal_type or ""), quote=True)
@@ -10107,10 +10108,11 @@ def _send_lead_email(agent, kind, building_name, deal_type, desired_price,
         body = f"""
         <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;max-width:560px;margin:0 auto;color:#16202E;">
           <h2 style="font-size:18px;border-bottom:2px solid #B4863F;padding-bottom:8px;">홈앤스테이 (HOME &amp; STAY)</h2>
-          <p style="font-size:15px;font-weight:700;">새 {kind_label}가 접수되었습니다.</p>
+          <p style="font-size:15px;font-weight:700;">새 {subject_label}가 접수되었습니다.</p>
           <p style="font-size:14px;">{assignment_label}</p>
           <table style="font-size:14px;border-collapse:collapse;margin:12px 0;">
             <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">건물</td><td>{safe_building}</td></tr>
+            <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">의뢰구분</td><td style="font-weight:700;">{request_type_label}</td></tr>
             <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">거래유형</td><td>{safe_deal_type}</td></tr>
             <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">희망가</td><td>{safe_price}</td></tr>
             <tr><td style="padding:4px 16px 4px 0;color:#6b7280;">연락처</td><td>{safe_phone}</td></tr>
@@ -10119,7 +10121,7 @@ def _send_lead_email(agent, kind, building_name, deal_type, desired_price,
           <p style="font-size:12px;color:#6b7280;">링크는 발송 후 72시간 동안 유효합니다.</p>
         </div>
         """
-        subject = f"[홈앤스테이] 새 {kind_label} 알림"
+        subject = f"[홈앤스테이] 새 {subject_label} 알림"
         ok, msg = send_email(agent["email"], subject, body)
         if not ok:
             app.logger.warning("의뢰 알림 이메일 발송 실패 (kind=%s, agent_id=%s): %s",
@@ -12224,7 +12226,7 @@ def _send_urgent_listing_email(job):
         )
         has_content, email_html = render_newsletter_email(
             unsubscribe_link=f"{_public_base_url()}/mypage",
-            greeting_line=f"관심 단지에 {tier_text} 매물이 새로 등록됐어요.",
+            greeting_line=f"관심 단지에 직거래 {tier_text} 매물이 새로 등록됐어요.",
             transactions=[{
                 "building_name": job["building_name"],
                 "deal_type": job.get("deal_type") or "매매",
@@ -12240,7 +12242,7 @@ def _send_urgent_listing_email(job):
         else:
             ok, message = send_email(
                 job["email"],
-                f"[홈앤스테이] 새 {tier_text} 매물 — {job['building_name']}",
+                f"[홈앤스테이] 새 직거래 {tier_text} 매물 — {job['building_name']}",
                 email_html,
                 idempotency_key=f"urgent-listing/{job['listing_id']}/{job['user_id']}",
             )
@@ -12354,7 +12356,7 @@ def _send_new_listing_email(job):
         )
         has_content, email_html = render_newsletter_email(
             unsubscribe_link=f"{_public_base_url()}/mypage",
-            greeting_line="관심 단지에 새 매물이 등록됐어요.",
+            greeting_line="관심 단지에 새 직거래 매물이 등록됐어요.",
             transactions=[{
                 "building_name": job["building_name"],
                 "deal_type": job.get("deal_type") or "매물",
@@ -12370,7 +12372,7 @@ def _send_new_listing_email(job):
         else:
             ok, message = send_email(
                 job["email"],
-                f"[홈앤스테이] 새 매물 — {job['building_name']}",
+                f"[홈앤스테이] 새 직거래 매물 — {job['building_name']}",
                 email_html,
                 idempotency_key=f"new-listing/{job['listing_id']}/{job['user_id']}",
             )
@@ -12983,7 +12985,7 @@ def create_listing_request():
 
     # SMS 알림 — 실패해도 접수 자체는 성공 처리 (send_sms는 예외를 던지지 않음)
     sms_body = (
-        f"[홈앤스테이] 매물의뢰 접수 — {bld['building_name']} / {deal_type}"
+        f"[홈앤스테이] 중개거래 매물의뢰 접수 — {bld['building_name']} / {deal_type}"
         + (f" / 희망가 {desired_price}" if desired_price else "")
         + f" / 연락처 {contact_phone}"
     )

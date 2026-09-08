@@ -42,6 +42,11 @@ def _response_message(data):
 
 def send_sms(phone, message):
     """솔라피 API로 SMS 발송. 반환: (ok: bool, message: str). 예외를 던지지 않음."""
+    if os.environ.get("DISABLE_EXTERNAL_NOTIFICATIONS", "").strip().lower() in {
+        "1", "true", "yes",
+    }:
+        return True, "외부 SMS 발송이 비활성화되어 건너뜁니다."
+
     api_key = os.environ.get("SOLAPI_API_KEY", "").strip()
     api_secret = os.environ.get("SOLAPI_API_SECRET", "").strip()
     sender = re.sub(r"\D", "", os.environ.get("SOLAPI_SENDER", ""))

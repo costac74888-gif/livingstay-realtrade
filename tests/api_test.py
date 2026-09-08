@@ -32,6 +32,10 @@ from datetime import timedelta
 from unittest.mock import patch
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# 자동검사에서 임시 신청·의뢰를 생성하더라도 실제 사용자에게 이메일이나 문자를
+# 보내지 않는다. 발송 내용 검사는 각 테스트의 mock으로만 수행한다.
+os.environ["DISABLE_EXTERNAL_NOTIFICATIONS"] = "1"
+
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -1399,6 +1403,7 @@ def _check_lead_short_links(client):
             )
         sms_body = sms_mock.call_args.args[1] if sms_mock.call_args else ""
         email_html = email_mock.call_args.args[2] if email_mock.call_args else ""
+        email_subject = email_mock.call_args.args[1] if email_mock.call_args else ""
         if (
             sent_url != "https://lead-link.example.test/s/ABCDEF"
             or not results or not results[0]["sent"]
@@ -1406,8 +1411,25 @@ def _check_lead_short_links(client):
             or len(sms_body.encode("utf-8")) <= 0
             or "https://lead-link.example.test/s/ABCDEF" not in email_html
             or "&lt;테스트건물&gt;" not in email_html
+            or "매수 중개의뢰" not in email_subject
+            or "의뢰구분" not in email_html
+            or "매수 중개의뢰" not in email_html
         ):
-            failures.append("의뢰 알림: SMS 단축 URL 또는 이메일 HTML 이스케이프·동시 발송이 누락됨")
+            failures.append("의뢰 알림: 중개의뢰 구분·SMS 단축 URL·이메일 HTML 처리가 누락됨")
+
+        with patch.object(app_module, "send_email", return_value=(True, "발송 성공")) as listing_email_mock:
+            app_module._send_lead_email(
+                agents[0], "listing", "테스트 숙박시설", "매매", "32,000만원",
+                "01000000000", "https://lead-link.example.test/s/LIST01", True,
+            )
+        listing_subject = listing_email_mock.call_args.args[1] if listing_email_mock.call_args else ""
+        listing_html = listing_email_mock.call_args.args[2] if listing_email_mock.call_args else ""
+        if (
+            "중개거래 매물의뢰" not in listing_subject
+            or "중개거래 의뢰" not in listing_html
+            or "직거래" in listing_subject
+        ):
+            failures.append("매물의뢰 이메일에서 중개거래 의뢰 구분이 명확하지 않음")
     except Exception as exc:
         failures.append(f"의뢰 알림 단축 링크 테스트 오류: {exc}")
 
