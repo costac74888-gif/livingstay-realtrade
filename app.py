@@ -26695,6 +26695,52 @@ def admin_listing_requests_update(req_id):
     return jsonify({"ok": True})
 
 
+def _archive_listing_requests_before_delete(cur, request_ids, deletion_source, admin_id):
+    """영구삭제 전에 매물 원본과 모든 주요 연관기록을 복구 가능한 JSON으로 보존한다."""
+    if not request_ids:
+        return 0
+    cur.execute("""
+        INSERT INTO listing_request_deletion_archive
+            (listing_request_id, request_snapshot, related_snapshot,
+             deleted_by_admin_id, deletion_source)
+        SELECT lr.id,
+               to_jsonb(lr),
+               jsonb_build_object(
+                   'history', COALESCE((
+                       SELECT jsonb_agg(to_jsonb(h) ORDER BY h.id)
+                         FROM listing_request_history h
+                        WHERE h.listing_request_id = lr.id
+                   ), '[]'::jsonb),
+                   'chat_rooms', COALESCE((
+                       SELECT jsonb_agg(to_jsonb(cr) ORDER BY cr.id)
+                         FROM chat_rooms cr
+                        WHERE cr.listing_request_id = lr.id
+                   ), '[]'::jsonb),
+                   'chat_messages', COALESCE((
+                       SELECT jsonb_agg(to_jsonb(cm) ORDER BY cm.id)
+                         FROM chat_messages cm
+                         JOIN chat_rooms cr ON cr.id = cm.room_id
+                        WHERE cr.listing_request_id = lr.id
+                   ), '[]'::jsonb),
+                   'photos', COALESCE((
+                       SELECT jsonb_agg(to_jsonb(lp) ORDER BY lp.id)
+                         FROM listing_photos lp
+                        WHERE lp.listing_request_id = lr.id
+                   ), '[]'::jsonb),
+                   'likes', COALESCE((
+                       SELECT jsonb_agg(to_jsonb(ll) ORDER BY ll.id)
+                         FROM listing_likes ll
+                        WHERE ll.listing_request_id = lr.id
+                   ), '[]'::jsonb)
+               ),
+               %s,
+               %s
+          FROM listing_requests lr
+         WHERE lr.id = ANY(%s)
+    """, [admin_id, deletion_source, request_ids])
+    return cur.rowcount
+
+
 @app.route("/api/admin/listing-requests/bulk-delete", methods=["POST"])
 @require_admin
 def admin_listing_requests_bulk_delete():
@@ -26724,6 +26770,11 @@ def admin_listing_requests_bulk_delete():
         if not existing_ids:
             conn.rollback()
             return jsonify({"ok": False, "message": "삭제할 매물의뢰를 찾을 수 없습니다."}), 404
+        archived = _archive_listing_requests_before_delete(
+            cur, existing_ids, "admin_listing_request_delete", session.get("admin_user_id")
+        )
+        if archived != len(existing_ids):
+            raise RuntimeError("매물의뢰 삭제 보관 건수가 일치하지 않습니다.")
         # chat_rooms와 listing_request_history는 FK가 NO ACTION이므로 자식부터 지운다.
         # listing_photos/listing_likes는 ON DELETE CASCADE로 함께 삭제된다.
         cur.execute("""
@@ -26778,6 +26829,11 @@ def admin_listings_bulk_delete():
         if not existing_ids:
             conn.rollback()
             return jsonify({"ok": False, "message": "삭제할 직거래 매물을 찾을 수 없습니다."}), 404
+        archived = _archive_listing_requests_before_delete(
+            cur, existing_ids, "admin_direct_listing_delete", session.get("admin_user_id")
+        )
+        if archived != len(existing_ids):
+            raise RuntimeError("직거래 매물 삭제 보관 건수가 일치하지 않습니다.")
         # 채팅 관련 FK는 NO ACTION이므로 자식부터 삭제한다.
         # 사진/찜은 listing_requests 삭제 시 ON DELETE CASCADE로 처리된다.
         cur.execute("""
@@ -29761,8 +29817,37 @@ def admin_members_bulk_delete():
             deleted += cur.rowcount
         if by_type.get("general"):
             uid = by_type["general"]
-            # 각종 의뢰 테이블 — user_id NOT NULL, ON DELETE CASCADE 없으므로 먼저 삭제
-            cur.execute("DELETE FROM listing_requests WHERE user_id = ANY(%s)", [uid])
+            # 회원과 함께 지우는 매물도 원본·연관기록과 삭제 관리자를 먼저 보존한다.
+            cur.execute(
+                "SELECT id FROM listing_requests WHERE user_id = ANY(%s) FOR UPDATE",
+                [uid],
+            )
+            listing_request_ids = [row["id"] for row in cur.fetchall()]
+            if listing_request_ids:
+                archived = _archive_listing_requests_before_delete(
+                    cur, listing_request_ids, "admin_member_delete", session.get("admin_user_id")
+                )
+                if archived != len(listing_request_ids):
+                    raise RuntimeError("회원 매물의뢰 삭제 보관 건수가 일치하지 않습니다.")
+                cur.execute("""
+                    DELETE FROM chat_messages
+                     WHERE room_id IN (
+                         SELECT id FROM chat_rooms
+                          WHERE listing_request_id = ANY(%s)
+                     )
+                """, [listing_request_ids])
+                cur.execute(
+                    "DELETE FROM chat_rooms WHERE listing_request_id = ANY(%s)",
+                    [listing_request_ids],
+                )
+                cur.execute(
+                    "DELETE FROM listing_request_history WHERE listing_request_id = ANY(%s)",
+                    [listing_request_ids],
+                )
+                cur.execute(
+                    "DELETE FROM listing_requests WHERE id = ANY(%s)",
+                    [listing_request_ids],
+                )
             cur.execute("DELETE FROM buy_requests WHERE user_id = ANY(%s)", [uid])
             cur.execute("DELETE FROM loan_consult_requests WHERE user_id = ANY(%s)", [uid])
             cur.execute("DELETE FROM operator_consult_requests WHERE user_id = ANY(%s)", [uid])
