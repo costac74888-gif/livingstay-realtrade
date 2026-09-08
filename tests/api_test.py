@@ -207,6 +207,113 @@ def _check_admin_delivery_outbox():
             conn.close()
 
 
+def check_admin_notification_api(client):
+    """관리자별 수신함·채널·중복 방지·읽음 처리를 함께 확인한다."""
+    with client.session_transaction() as sess:
+        sess.clear()
+    if client.get("/api/admin/notifications").status_code != 401:
+        return "관리자 알림 수신함 API가 비관리자 요청을 차단하지 않음"
+    marker = -int(time.time() * 1_000_000)
+    visible_id = None
+    operator_admin_id = None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM admin_users ORDER BY id LIMIT 1")
+        admin = cur.fetchone()
+        if not admin:
+            return "관리자 알림 테스트용 admin_users 계정이 없음"
+        admin_id = admin["id"]
+        cur.execute("""
+            INSERT INTO admin_notifications
+              (admin_user_id,event_type,source_table,source_id,title,body,deep_link,in_app_enabled)
+            VALUES (%s,'new_signup','api_test',%s,'알림 API 테스트','테스트 알림','/admin#members',TRUE)
+            RETURNING id
+        """, [admin_id, marker])
+        visible_id = cur.fetchone()["id"]
+        cur.execute("""
+            INSERT INTO admin_notifications
+              (admin_user_id,event_type,source_table,source_id,title,body,deep_link,in_app_enabled)
+            VALUES (%s,'new_signup','api_test',%s,'숨김 테스트','숨김 알림','/admin#members',FALSE)
+        """, [admin_id, marker - 1])
+        cur.execute("""
+            INSERT INTO admin_notifications
+              (admin_user_id,event_type,source_table,source_id,title,body,deep_link,in_app_enabled)
+            VALUES (%s,'new_signup','api_test',%s,'중복 테스트','중복 알림','/admin#members',TRUE)
+            ON CONFLICT (admin_user_id,event_type,source_table,source_id) DO NOTHING
+        """, [admin_id, marker])
+        cur.execute("""
+            INSERT INTO admin_users (email,password_hash,name,role)
+            VALUES (%s,%s,'알림 권한 테스트','operator') RETURNING id
+        """, [f"notification-auth-{abs(marker)}@example.test",
+              generate_password_hash("test-password")])
+        operator_admin_id = cur.fetchone()["id"]
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+    with client.session_transaction() as sess:
+        sess["admin"] = True
+        sess["admin_user_id"] = admin_id
+    try:
+        for path, key in (
+            ("/api/admin/notifications", "items"),
+            ("/api/admin/notifications/unread-count", "count"),
+            ("/api/admin/notification-subscriptions", "admins"),
+            ("/api/admin/notification-email-attempts", "items"),
+        ):
+            response = client.get(path)
+            payload = response.get_json() or {}
+            if response.status_code != 200 or payload.get("ok") is not True or key not in payload:
+                return f"{path} 관리자 알림 API 응답 계약이 잘못됨"
+        inbox = client.get("/api/admin/notifications").get_json()["items"]
+        test_items = [item for item in inbox
+                      if item["title"] in ("알림 API 테스트", "숨김 테스트")]
+        if len(test_items) != 1 or test_items[0]["id"] != visible_id:
+            return "앱 채널을 끈 관리자 알림이 수신함에 노출되거나 중복 알림이 생성됨"
+        read_response = client.post(f"/api/admin/notifications/{visible_id}/read")
+        if read_response.status_code != 200:
+            return "관리자 알림 읽음 처리에 실패함"
+        unread = client.get("/api/admin/notifications/unread-count").get_json()
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT read_at FROM admin_notifications WHERE id=%s", [visible_id])
+            if not cur.fetchone()["read_at"] or not isinstance(unread.get("count"), int):
+                return "관리자 알림 읽음 상태 또는 미읽음 수가 저장되지 않음"
+        finally:
+            cur.close()
+            conn.close()
+        with client.session_transaction() as sess:
+            sess["admin"] = True
+            sess["admin_user_id"] = operator_admin_id
+        own_settings = client.get("/api/admin/notification-subscriptions").get_json()
+        if [row["id"] for row in own_settings.get("admins", [])] != [operator_admin_id]:
+            return "일반 관리자가 다른 관리자의 알림 설정을 조회할 수 있음"
+        forbidden = client.put(
+            "/api/admin/notification-subscriptions",
+            json={"admin_user_id": admin_id, "subscriptions": []},
+        )
+        if forbidden.status_code != 403:
+            return "일반 관리자가 다른 관리자의 알림 설정을 변경할 수 있음"
+        return None
+    finally:
+        conn = get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "DELETE FROM admin_notifications "
+                "WHERE source_table='api_test' AND source_id IN (%s,%s)",
+                [marker, marker - 1],
+            )
+            if operator_admin_id:
+                cur.execute("DELETE FROM admin_users WHERE id=%s", [operator_admin_id])
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+
 def check_user_stats_admin_api(client):
     """이용자 현황 API의 관리자 인증과 집계 응답 계약을 확인한다."""
     with client.session_transaction() as sess:
@@ -926,6 +1033,12 @@ def run():
     else:
         print("OK  /api/admin/action-center (인증·카테고리·PII 비노출)")
     failures += _check_admin_delivery_outbox()
+
+    notification_error = check_admin_notification_api(client)
+    if notification_error:
+        failures.append(notification_error)
+    else:
+        print("OK  /api/admin/notifications (관리자 수신함·구독 API)")
 
     user_stats_error = check_user_stats_admin_api(client)
     if user_stats_error:

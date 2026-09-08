@@ -161,6 +161,7 @@
         <button class="admin-menu-item" data-menu="bug-reports">오류신고 관리</button>
         <button class="admin-menu-item" data-menu="emailbanners">이메일 배너 관리</button>
         <button class="admin-menu-item" data-menu="presale">분양 관리</button>
+        <button class="admin-menu-item" data-menu="admin-notifications">알림 센터 <span id="adminNotificationBadge" class="admin-soon" hidden></span></button>
         <button class="admin-menu-item is-disabled" disabled>마일리지 <span class="admin-soon">준비 중</span></button>
         <button class="admin-menu-item is-disabled" disabled>위탁운영사DB <span class="admin-soon">준비 중</span></button>
         <a class="admin-menu-item" href="/admin/ad-products" style="display:block; text-decoration:none; box-sizing:border-box; width:100%;">광고상품 안내</a>
@@ -8705,7 +8706,57 @@
       if (menuKey === "notices") { showNotices(); return; }
       if (menuKey === "buildings") { showBuildings(); return; }
       if (menuKey === "presale") { showPresale(); return; }
+       if (menuKey === "admin-notifications") { showAdminNotifications(); return; }
       showGrid(menuKey);
+    }
+
+    async function refreshAdminNotificationBadge() {
+      const badge = document.getElementById("adminNotificationBadge");
+      try {
+        const r = await fetch("/api/admin/notifications/unread-count");
+        const d = await r.json();
+        const count = Number(d.count || 0);
+        badge.textContent = count > 99 ? "99+" : String(count);
+        badge.hidden = !count;
+      } catch (_) { badge.hidden = true; }
+    }
+    async function showAdminNotifications() {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = `<h2>알림 센터</h2><p class="admin-muted">신청 알림의 수신자와 채널을 설정하고 발송 이력을 확인합니다.</p>
+        <div id="adminNotificationSettings">불러오는 중…</div>
+        <h3 style="margin-top:24px">수신함</h3><div id="adminNotificationInbox">불러오는 중…</div>
+        <h3 style="margin-top:24px">이메일 발송 이력</h3><div id="adminNotificationEmailHistory">불러오는 중…</div>`;
+      const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+      const labels = {new_signup:"신규 회원가입",direct_listing:"직거래 매물",broker_listing_request:"중개 매물 의뢰",buy_request:"매수 의뢰",partner_agent:"중개사 신청",partner_operator:"운영업체 신청",partner_loan_consultant:"대출상담사 신청",partner_lodging_operator:"숙박 운영자 신청",ota_booking_link_request:"OTA 링크 신청"};
+      try {
+        const [subs, inbox, history] = await Promise.all([
+          fetch("/api/admin/notification-subscriptions").then(r=>r.json()),
+          fetch("/api/admin/notifications").then(r=>r.json()),
+          fetch("/api/admin/notification-email-attempts").then(r=>r.json())
+        ]);
+        const types = subs.event_types || [];
+        document.getElementById("adminNotificationSettings").innerHTML = (subs.admins || []).map(a => {
+          const byType = Object.fromEntries((a.subscriptions || []).map(s => [s.event_type, s]));
+          return `<form class="member-detail-card admin-notification-subscription" data-admin-id="${a.id}" style="margin:8px 0"><b>${esc(a.name || a.email)}</b> <small>${esc(a.email)}</small>` +
+            types.map(t => { const s=byType[t]||{}; return `<label style="display:inline-block;margin:9px 12px 0 0;font-size:12px">${esc(labels[t]||t)} <input type="checkbox" data-type="${t}" data-channel="in_app" ${s.in_app_enabled?"checked":""}> 앱 <input type="checkbox" data-type="${t}" data-channel="email" ${s.email_enabled?"checked":""}> 이메일</label>`; }).join("") +
+            `<button class="admin-btn" style="margin:10px 0 0">저장</button></form>`; }).join("") || "등록된 관리자가 없습니다.";
+        document.querySelectorAll(".admin-notification-subscription").forEach(form => form.onsubmit = async e => {
+          e.preventDefault(); const grouped={};
+          form.querySelectorAll("input[data-type]").forEach(i => { const x=grouped[i.dataset.type]||(grouped[i.dataset.type]={event_type:i.dataset.type}); x[i.dataset.channel+"_enabled"]=i.checked; });
+          const r=await fetch("/api/admin/notification-subscriptions",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({admin_user_id:Number(form.dataset.adminId),subscriptions:Object.values(grouped)})});
+          if(!r.ok) alert((await r.json()).message||"저장에 실패했습니다."); else alert("저장되었습니다.");
+        });
+        document.getElementById("adminNotificationInbox").innerHTML = (inbox.items || []).map(n =>
+          `<div class="member-bld-item" style="${n.read_at?"":"font-weight:700"}"><span>${esc(labels[n.event_type]||n.event_type)} · ${esc(n.title)}</span><a href="${esc(n.deep_link)}" data-notification-id="${n.id}">열기</a><small>${esc(n.created_at||"")}</small></div>`).join("") || "알림이 없습니다.";
+        document.querySelectorAll("[data-notification-id]").forEach(a => a.onclick = async e => {
+          e.preventDefault();
+          await fetch(`/api/admin/notifications/${a.dataset.notificationId}/read`,{method:"POST"});
+          location.href = a.getAttribute("href");
+        });
+        document.getElementById("adminNotificationEmailHistory").innerHTML = (history.items || []).map(e =>
+          `<div class="member-bld-item"><span>${esc(labels[e.event_type]||e.event_type)} · ${esc(e.recipient_email)} · ${esc(e.status)} (${e.attempt_count}회)</span>${e.error_message?`<small style="color:#b3261e">${esc(e.error_message)}</small>`:""}</div>`).join("") || "이메일 이력이 없습니다.";
+        refreshAdminNotificationBadge();
+      } catch (e) { grid.innerHTML = `<p>알림 센터를 불러오지 못했습니다: ${esc(e.message)}</p>`; }
     }
 
     async function showPolicies() {
@@ -8814,6 +8865,7 @@
     });
 
     // 초기 진입: hash가 있으면 해당 메뉴로, 없으면 stats
+    refreshAdminNotificationBadge();
     const _initKey = location.hash.replace(/^#/, "") || "stats";
     // 현재 관리자 권한 조회 → 메모 수정/삭제 버튼 노출 분기용
     window.ADMIN_IS_SUPER = false;

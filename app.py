@@ -7464,6 +7464,201 @@ def admin_action_center():
             conn.close()
 
 
+_ADMIN_EVENT_TYPES = (
+    "new_signup", "direct_listing", "broker_listing_request", "buy_request",
+    "partner_agent", "partner_operator", "partner_loan_consultant",
+    "partner_lodging_operator", "ota_booking_link_request",
+)
+
+
+@app.route("/api/admin/notification-subscriptions", methods=["GET", "PUT"])
+@require_admin
+def admin_notification_subscriptions():
+    """수신 대상 관리자와 채널을 한 화면에서 관리한다."""
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        current_admin_id = session.get("admin_user_id")
+        cur.execute("SELECT role FROM admin_users WHERE id=%s", [current_admin_id])
+        current_admin = cur.fetchone()
+        if not current_admin:
+            return jsonify({"ok": False, "message": "다시 로그인해주세요."}), 401
+        is_super = current_admin["role"] == "super_admin"
+        if request.method == "GET":
+            cur.execute("""
+                SELECT a.id, a.email, COALESCE(a.name, '') AS name,
+                       COALESCE(json_agg(json_build_object('event_type', s.event_type,
+                         'in_app_enabled', s.in_app_enabled, 'email_enabled', s.email_enabled))
+                         FILTER (WHERE s.event_type IS NOT NULL), '[]'::json) AS subscriptions
+                FROM admin_users a LEFT JOIN admin_event_subscriptions s ON s.admin_user_id=a.id
+                WHERE (%s OR a.id=%s)
+                GROUP BY a.id ORDER BY a.id
+            """, [is_super, current_admin_id])
+            return jsonify({"ok": True, "admins": cur.fetchall(), "event_types": list(_ADMIN_EVENT_TYPES)})
+        payload = request.get_json(silent=True) or {}
+        admin_id = payload.get("admin_user_id")
+        subscriptions = payload.get("subscriptions")
+        if not isinstance(admin_id, int) or not isinstance(subscriptions, list):
+            return jsonify({"ok": False, "message": "관리자와 구독 목록이 필요합니다."}), 400
+        if admin_id != current_admin_id and not is_super:
+            return jsonify({"ok": False, "message": "다른 관리자의 알림 설정을 바꿀 권한이 없습니다."}), 403
+        cur.execute("SELECT 1 FROM admin_users WHERE id=%s", [admin_id])
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "관리자를 찾을 수 없습니다."}), 404
+        for item in subscriptions:
+            if not isinstance(item, dict) or item.get("event_type") not in _ADMIN_EVENT_TYPES:
+                return jsonify({"ok": False, "message": "허용되지 않은 이벤트 유형입니다."}), 400
+            cur.execute("""
+                INSERT INTO admin_event_subscriptions
+                    (admin_user_id,event_type,in_app_enabled,email_enabled,updated_at)
+                VALUES (%s,%s,%s,%s,NOW())
+                ON CONFLICT (admin_user_id,event_type) DO UPDATE SET
+                  in_app_enabled=EXCLUDED.in_app_enabled, email_enabled=EXCLUDED.email_enabled,
+                  updated_at=NOW()
+            """, [admin_id, item["event_type"], bool(item.get("in_app_enabled")),
+                  bool(item.get("email_enabled"))])
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception:
+        conn.rollback()
+        app.logger.exception("관리자 알림 구독 저장 실패")
+        return jsonify({"ok": False, "message": "알림 구독을 저장하지 못했습니다."}), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/notifications")
+@require_admin
+def admin_notifications():
+    limit = min(max(request.args.get("limit", 50, type=int), 1), 100)
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT id,event_type,title,body,deep_link,read_at,created_at
+                       FROM admin_notifications
+                       WHERE admin_user_id=%s AND in_app_enabled
+                       ORDER BY created_at DESC LIMIT %s""", [session.get("admin_user_id"), limit])
+        return jsonify({"ok": True, "items": cur.fetchall()})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/notifications/unread-count")
+@require_admin
+def admin_notifications_unread_count():
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT COUNT(*) AS count FROM admin_notifications
+                       WHERE admin_user_id=%s AND in_app_enabled AND read_at IS NULL""",
+                    [session.get("admin_user_id")])
+        return jsonify({"ok": True, "count": cur.fetchone()["count"]})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/notifications/<int:notification_id>/read", methods=["POST"])
+@require_admin
+def admin_notification_read(notification_id):
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""UPDATE admin_notifications SET read_at=COALESCE(read_at,NOW())
+                       WHERE id=%s AND admin_user_id=%s""",
+                    [notification_id, session.get("admin_user_id")])
+        conn.commit()
+        if not cur.rowcount:
+            return jsonify({"ok": False, "message": "알림을 찾을 수 없습니다."}), 404
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/admin/notification-email-attempts")
+@require_admin
+def admin_notification_email_attempts():
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""SELECT h.id,e.notification_id,e.recipient_email,h.status,e.attempt_count,
+                               h.attempted_at AS last_attempt_at,e.sent_at,
+                               CASE WHEN h.status='failed' THEN h.message END AS error_message,
+                               e.created_at,
+                              n.event_type,n.title,n.deep_link
+                       FROM admin_notification_email_attempt_history h
+                       JOIN admin_notification_email_attempts e ON e.id=h.email_attempt_id
+                       JOIN admin_notifications n ON n.id=e.notification_id
+                       WHERE n.admin_user_id=%s ORDER BY h.attempted_at DESC LIMIT 100""",
+                    [session.get("admin_user_id")])
+        return jsonify({"ok": True, "items": cur.fetchall()})
+    finally:
+        cur.close(); conn.close()
+
+
+def _deliver_one_admin_notification_email():
+    """커밋된 outbox만 전송한다. 외부 실패는 outbox 이력에만 기록한다."""
+    conn = get_conn(); cur = conn.cursor()
+    try:
+        cur.execute("""
+            WITH next AS (
+              SELECT e.id, e.notification_id FROM admin_notification_email_attempts e
+              WHERE (e.status='pending' AND e.attempt_count < 3)
+                 OR (e.status='failed' AND e.attempt_count < 3
+                     AND e.updated_at < NOW() - INTERVAL '1 minute')
+                 OR (e.status='sending' AND e.last_attempt_at < NOW() - INTERVAL '5 minutes'
+                     AND e.attempt_count <= 3)
+              ORDER BY e.created_at FOR UPDATE SKIP LOCKED LIMIT 1
+            ), claimed AS (
+              UPDATE admin_notification_email_attempts e SET status='sending',
+                attempt_count=e.attempt_count + CASE WHEN e.status='sending' THEN 0 ELSE 1 END,
+                last_attempt_at=NOW(),updated_at=NOW()
+              FROM next
+              WHERE e.id=next.id
+              RETURNING e.id,e.notification_id,e.recipient_email,e.idempotency_key
+            )
+            SELECT c.id,c.recipient_email,c.idempotency_key,n.title,n.body,n.deep_link
+            FROM claimed c JOIN admin_notifications n ON n.id=c.notification_id
+        """)
+        job = cur.fetchone(); conn.commit()
+        if not job:
+            return
+        url = _public_base_url() + job["deep_link"]
+        ok, message, _outcome = send_email(
+            job["recipient_email"], f"[홈앤스테이 관리자] {job['title']}",
+            f"<p>{_html.escape(job['body'])}</p><p><a href=\"{_html.escape(url, quote=True)}\">관리자 화면 열기</a></p>",
+            idempotency_key=job["idempotency_key"], detailed=True)
+        cur.execute("""UPDATE admin_notification_email_attempts
+                       SET status=%s,sent_at=CASE WHEN %s THEN NOW() ELSE NULL END,
+                           error_message=%s,updated_at=NOW() WHERE id=%s""",
+                    ["sent" if ok else "failed", ok, None if ok else str(message)[:2000], job["id"]])
+        cur.execute("""INSERT INTO admin_notification_email_attempt_history
+                       (email_attempt_id,status,message)
+                       VALUES (%s,%s,%s)""",
+                    [job["id"], "sent" if ok else "failed", str(message)[:2000]])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        app.logger.exception("관리자 알림 이메일 outbox 처리 실패")
+    finally:
+        cur.close(); conn.close()
+
+
+def _admin_notification_email_loop():
+    """웹 응답과 분리해 커밋된 관리자 이메일 outbox를 처리한다."""
+    while True:
+        try:
+            with app.app_context(), background_connection_priority():
+                _deliver_one_admin_notification_email()
+        except BackgroundConnectionUnavailable:
+            pass
+        except Exception:
+            app.logger.exception("관리자 알림 이메일 워커 처리 실패")
+        time.sleep(5)
+
+
+def start_admin_notification_email_worker():
+    worker_thread = threading.Thread(
+        target=_admin_notification_email_loop,
+        daemon=True,
+        name="admin-notification-email-worker",
+    )
+    worker_thread.start()
+    return worker_thread
 def _serve_static_html(filename):
     """정적 HTML을 no-cache 헤더와 함께 서빙 (apply 페이지들과 동일 방식)."""
     html_path = _frontend_html_path(filename)

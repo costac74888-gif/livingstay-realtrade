@@ -94,3 +94,4 @@
 - [비신뢰 문서 즉시 분석](untrusted-document-analysis.md) — 네이티브 파서는 프로세스 그룹 격리·단일 실행하며, ADR은 같은 기간의 객실매출·판매객실 수로만 계산한다.
 - [자동검사 외부 알림 차단](test-notification-isolation.md) — 임시 신청을 만드는 자동검사는 실제 이메일·SMS를 절대 발송하지 않도록 최하위 발송 함수에서 차단한다.
 - [관리자 액션센터 알림 정책](admin-action-center-policy.md) — 관리자 업무 기준화면은 통합 액션센터; 긴급은 즉시, 일반은 일일 요약하며 수신자는 회사소개 문의 이메일을 따른다.
+- [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.

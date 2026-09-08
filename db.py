@@ -253,6 +253,13 @@ def get_conn():
 
     conn = _PooledConnection(raw_connection)
     conn._background_slot = background_slot
+    if os.environ.get("DISABLE_ADMIN_NOTIFICATION_ENQUEUE", "").strip().lower() in {
+        "1", "true", "yes",
+    }:
+        # 자동검사가 실제 신청 테이블에 fixture를 넣어도 관리자 수신함을 오염시키지
+        # 않도록 이 DB 세션에서만 트리거 enqueue를 끈다.
+        with raw_connection.cursor() as cur:
+            cur.execute("SET app.disable_admin_notifications = 'on'")
     with _connection_pool_lock:
         _borrowed_connections[id(raw_connection)] = (pool, os.getpid(), conn._lease_token)
     _track_request_connection(conn)
@@ -1164,6 +1171,79 @@ def _run_init_db():
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'operator'")
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()")
     cur.execute("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP")
+    # 관리자 수신함은 신청 원본과 분리한다. 원본 INSERT와 같은 트랜잭션에서
+    # 만들어져 롤백된 신청에 대한 알림이 남지 않으며, 수신자별 읽음 상태를 가진다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_event_subscriptions (
+        admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (admin_user_id, event_type),
+        CHECK (event_type IN ('new_signup','direct_listing','broker_listing_request',
+                              'buy_request','partner_agent','partner_operator',
+                              'partner_loan_consultant','partner_lodging_operator',
+                              'ota_booking_link_request'))
+    )""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_notifications (
+        id BIGSERIAL PRIMARY KEY,
+        admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_id BIGINT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL DEFAULT '',
+        deep_link TEXT NOT NULL,
+        in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(admin_user_id, event_type, source_table, source_id)
+    )""")
+    cur.execute("""ALTER TABLE admin_notifications
+                   ADD COLUMN IF NOT EXISTS in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE""")
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_admin_notifications_inbox
+                   ON admin_notifications(admin_user_id, read_at, created_at DESC)""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_notification_email_attempts (
+        id BIGSERIAL PRIMARY KEY,
+        notification_id BIGINT NOT NULL REFERENCES admin_notifications(id) ON DELETE CASCADE,
+        recipient_email TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_attempt_at TIMESTAMPTZ,
+        sent_at TIMESTAMPTZ,
+        error_message TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(notification_id)
+    )""")
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_admin_notification_email_pending
+                   ON admin_notification_email_attempts(status, created_at)""")
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS admin_notification_email_attempt_history (
+        id BIGSERIAL PRIMARY KEY,
+        email_attempt_id BIGINT NOT NULL REFERENCES admin_notification_email_attempts(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (status IN ('sent','failed')),
+        message TEXT,
+        attempted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )""")
+    cur.execute("""CREATE INDEX IF NOT EXISTS idx_admin_notification_email_history_attempt
+                   ON admin_notification_email_attempt_history(email_attempt_id, attempted_at DESC)""")
+    # 기존 관리자는 앱 수신함을 기본으로 받는다. 이메일은 명시적 opt-in으로만 켠다.
+    # ON CONFLICT로 운영자가 이미 바꾼 채널 설정은 절대 덮어쓰지 않는다.
+    cur.execute("""
+        INSERT INTO admin_event_subscriptions (admin_user_id, event_type, in_app_enabled, email_enabled)
+        SELECT a.id, v.event_type, TRUE, FALSE
+        FROM admin_users a CROSS JOIN (VALUES
+          ('new_signup'), ('direct_listing'), ('broker_listing_request'), ('buy_request'),
+          ('partner_agent'), ('partner_operator'), ('partner_loan_consultant'),
+          ('partner_lodging_operator'), ('ota_booking_link_request')
+        ) AS v(event_type)
+        ON CONFLICT (admin_user_id, event_type) DO NOTHING
+    """)
     # Administrator-authored manuals are Markdown source only.  Rendering is a
     # client concern and must never make stored HTML trusted.
     cur.execute("""
@@ -3472,6 +3552,87 @@ def _run_init_db():
         ADD COLUMN IF NOT EXISTS renewal_count INTEGER DEFAULT 0
     """)
     cur.execute("ALTER TABLE booking_url_requests ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP")
+    # 신청 INSERT를 관찰하는 DB 트리거. 애플리케이션의 여러 생성 경로가 늘어도
+    # 알림을 빼먹지 않고, 원본 INSERT와 알림이 원자적으로 커밋된다.
+    cur.execute("""
+    CREATE OR REPLACE FUNCTION enqueue_admin_submission_notification()
+    RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE
+        kind TEXT;
+        label TEXT;
+        link TEXT;
+        inserted_notification_id BIGINT;
+    BEGIN
+        IF COALESCE(current_setting('app.disable_admin_notifications', TRUE), '') = 'on' THEN
+            RETURN NEW;
+        END IF;
+        IF TG_TABLE_NAME = 'users' THEN
+            kind := 'new_signup'; label := '신규 회원가입'; link := '/admin#members';
+        ELSIF TG_TABLE_NAME = 'listing_requests' THEN
+            IF COALESCE(NEW.deal_mode, 'broker') = 'direct' THEN
+                kind := 'direct_listing'; label := '직거래 매물 등록'; link := '/admin#listings';
+            ELSE
+                kind := 'broker_listing_request'; label := '중개 매물 의뢰'; link := '/admin#listings';
+            END IF;
+        ELSIF TG_TABLE_NAME = 'buy_requests' THEN
+            kind := 'buy_request'; label := '매수 의뢰'; link := '/admin#listings';
+        ELSIF TG_TABLE_NAME = 'applications' THEN
+            CASE COALESCE(NEW.applicant_type, '')
+                WHEN 'agent' THEN
+                    kind := 'partner_agent'; label := '중개사 승인 신청';
+                WHEN 'operator' THEN
+                    kind := 'partner_operator'; label := '운영지원업체 승인 신청';
+                WHEN 'loan_consultant' THEN
+                    kind := 'partner_loan_consultant'; label := '대출상담사 승인 신청';
+                WHEN 'lodging_operator' THEN
+                    kind := 'partner_lodging_operator'; label := '숙박시설 운영자 승인 신청';
+                ELSE
+                    RETURN NEW;
+            END CASE;
+            link := '/admin#members';
+        ELSIF TG_TABLE_NAME = 'booking_url_requests' THEN
+            kind := 'ota_booking_link_request'; label := 'OTA 예약 링크 신청'; link := '/admin#ota-requests';
+        ELSE
+            RETURN NEW;
+        END IF;
+        FOR inserted_notification_id IN
+            INSERT INTO admin_notifications
+                (admin_user_id, event_type, source_table, source_id, title, body, deep_link,
+                 in_app_enabled)
+            SELECT s.admin_user_id, kind, TG_TABLE_NAME, NEW.id, label,
+                   '새 신청이 접수되었습니다.', link, s.in_app_enabled
+            FROM admin_event_subscriptions s
+            WHERE s.event_type = kind AND (s.in_app_enabled OR s.email_enabled)
+            ON CONFLICT (admin_user_id, event_type, source_table, source_id) DO NOTHING
+            RETURNING id
+        LOOP
+            INSERT INTO admin_notification_email_attempts
+                (notification_id, recipient_email, idempotency_key)
+            SELECT inserted_notification_id, a.email,
+                   'admin-notification-' || inserted_notification_id::text
+            FROM admin_users a JOIN admin_event_subscriptions s
+              ON s.admin_user_id = a.id
+            WHERE s.admin_user_id = (SELECT admin_user_id FROM admin_notifications WHERE id = inserted_notification_id)
+              AND s.event_type = kind AND s.email_enabled
+            ON CONFLICT (notification_id) DO NOTHING;
+        END LOOP;
+        RETURN NEW;
+    END $$""")
+    for table_name in ("users", "listing_requests", "buy_requests", "applications", "booking_url_requests"):
+        trigger_name = f"trg_admin_notification_{table_name}"
+        cur.execute(f"""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_trigger
+                WHERE tgname = '{trigger_name}' AND tgrelid = '{table_name}'::regclass
+                  AND NOT tgisinternal
+              ) THEN
+                CREATE TRIGGER {trigger_name}
+                AFTER INSERT ON {table_name}
+                FOR EACH ROW EXECUTE FUNCTION enqueue_admin_submission_notification();
+              END IF;
+            END $$""")
 
     # ── 사이트 오류신고 (플로팅 버튼 → 관리자 심사) ────────────────────────
     cur.execute("""
@@ -3802,6 +3963,7 @@ def _run_init_db():
     _ensure_users_unique_constraints()
     _seed_mileage_missions()
     _seed_admin_user()
+    _seed_admin_notification_subscriptions()
     _seed_legal_documents()
     _seed_weekly_feature_tips()
     _normalize_umd_nm_spaces()
@@ -4305,132 +4467,24 @@ def _seed_admin_user():
         cur.close()
         conn.close()
 
-
-_LEGAL_TERMS_SEED = """<h2>제1조 (목적)</h2>
-<p>이 약관은 빌드리머스(이하 "회사")가 제공하는 생활숙박시설·분양형호텔·콘도 실거래가 조회 서비스(이하 "서비스")의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</p>
-
-<h2>제2조 (정의)</h2>
-<ul>
-<li>"서비스"란 회사가 제공하는 전국 생활숙박시설 등의 실거래가 정보 조회 및 관련 부가 서비스를 말합니다.</li>
-<li>"이용자"란 이 약관에 따라 회사가 제공하는 서비스를 이용하는 회원 및 비회원을 말합니다.</li>
-<li>"회원"이란 회사에 개인정보를 제공하여 회원등록을 한 자로서, 서비스를 지속적으로 이용할 수 있는 자를 말합니다.</li>
-</ul>
-
-<h2>제2조의2 (파트너 회원)</h2>
-<p>"파트너 회원"이란 회사가 정한 승인 절차를 거쳐 중개사, 운영지원업체, 대출상담사로 등록된 회원을 말합니다. 파트너 회원에게는 일반 회원과 다른 별도의 이용조건이 적용될 수 있습니다.</p>
-
-<h2>제3조 (약관의 효력 및 변경)</h2>
-<p>이 약관은 서비스 화면에 게시하거나 기타의 방법으로 이용자에게 공지함으로써 효력이 발생합니다. 회사는 관련 법령을 위배하지 않는 범위에서 이 약관을 변경할 수 있으며, 변경된 약관은 공지와 동시에 효력이 발생합니다.</p>
-
-<h2>제4조 (서비스의 제공)</h2>
-<p>회사는 국토교통부 실거래가 공개시스템 등 공공데이터를 기반으로 실거래가 정보를 제공합니다. 제공되는 정보는 참고용이며, 실제 거래 시점의 가격 및 조건과 다를 수 있습니다. 회사는 정보의 정확성·완전성을 보장하지 않으며, 이를 근거로 한 이용자의 판단과 그 결과에 대해 책임지지 않습니다.</p>
-
-<h2>제4조의2 (파트너 서비스 및 정보 연결)</h2>
-<p>① 회사는 이용자와 파트너 회원 간의 정보 연결(매물의뢰 자동배정 등)을 제공할 뿐, 회사 스스로 부동산 중개행위, 위탁운영 계약, 대출 중개·모집 행위를 직접 수행하지 않습니다.</p>
-<p>② 회사는 파트너 회원의 자격 서류(사업자등록증, 중개사무소 등록증, 대출모집인 등록번호 등)를 확인 절차를 거쳐 승인하나, 이는 서류상 확인 절차일 뿐 파트너 회원의 실제 자격 유지, 서비스 품질, 상담·거래 결과를 보증하는 것이 아닙니다.</p>
-<p>③ 이용자와 파트너 회원 간에 체결되는 계약(중개계약, 위탁운영계약, 대출상담 등)은 이용자와 파트너 회원 간의 직접 계약이며, 회사는 그 계약의 당사자가 아닙니다.</p>
-
-<h2>제5조 (이용자의 의무)</h2>
-<ul>
-<li>이용자는 서비스를 이용함에 있어 관련 법령 및 이 약관의 규정을 준수하여야 합니다.</li>
-<li>이용자는 서비스에서 제공하는 정보를 회사의 사전 동의 없이 영리 목적으로 복제·배포·가공하여서는 안 됩니다.</li>
-<li>이용자는 서비스의 안정적 운영을 방해하는 행위를 하여서는 안 됩니다.</li>
-</ul>
-
-<h2>제5조의2 (파트너 회원의 의무)</h2>
-<p>① 파트너 회원은 신청 시 제출한 정보 및 서류가 진실함을 보증하며, 허위 서류 제출이 확인되는 경우 회사는 사전 통지 없이 승인을 취소하고 서비스 이용을 제한할 수 있습니다.</p>
-<p>② 파트너 회원은 관계 법령(공인중개사법, 금융소비자보호법 등)을 준수하여야 하며, 이를 위반하여 발생한 손해에 대해서는 파트너 회원 본인이 책임을 집니다.</p>
-
-<h2>제6조 (면책조항)</h2>
-<p>회사는 천재지변, 공공데이터 제공기관의 사정, 기타 불가항력으로 인하여 서비스를 제공할 수 없는 경우 그 책임이 면제됩니다. 회사는 이용자가 서비스에 게재한 정보·자료의 신뢰도, 정확성 등에 대하여 책임지지 않습니다.</p>
-<p>회사는 파트너 회원이 제공하는 정보, 상담 내용, 서비스 품질 및 이용자와 파트너 회원 간 거래 결과에 대하여 책임을 지지 않습니다. 대출상담 관련 정보는 참고용이며, 과도한 채무는 개인의 신용에 악영향을 줄 수 있습니다.</p>
-
-<h2>제6조의2 (유료 서비스)</h2>
-<p>회사는 파트너 회원을 대상으로 우선노출 등 유료 서비스를 제공할 수 있으며, 그 이용조건, 결제, 환불에 관한 사항은 별도로 정하는 바에 따릅니다.</p>
-
-<h2>제7조 (분쟁의 해결)</h2>
-<p>이 약관과 관련하여 회사와 이용자 간에 발생한 분쟁에 대하여는 대한민국 법을 준거법으로 하며, 분쟁으로 인한 소송은 관할 법원에 제기합니다.</p>
-
-<h2>부칙</h2>
-<p>이 약관은 2026년부터 시행합니다.</p>
-<p>서비스 제공자: 빌드리머스 · 대표 조혜성</p>"""
-
-
-_LEGAL_PRIVACY_SEED = """<h2>1. 개인정보의 처리 목적</h2>
-<p>빌드리머스(이하 "회사")는 다음의 목적을 위하여 개인정보를 처리합니다. 처리한 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며, 이용 목적이 변경되는 경우에는 별도의 동의를 받는 등 필요한 조치를 이행합니다.</p>
-<ul>
-<li>회원 가입 및 관리</li>
-<li>서비스 제공 및 문의 응대</li>
-<li>관심 단지 알림 등 이용자 맞춤형 서비스 제공</li>
-</ul>
-
-<h2>2. 처리하는 개인정보 항목</h2>
-<ul>
-<li>필수항목: 이메일, 이름, 비밀번호(암호화하여 저장)</li>
-<li>소셜 로그인 이용 시: 카카오 계정 식별자 및 프로필 정보</li>
-<li>자동 수집 항목: 접속 IP, 쿠키, 서비스 이용 기록</li>
-</ul>
-<p>파트너 회원(중개사·운영지원업체·대출상담사) 가입 시</p>
-<ul>
-<li>필수항목: 대표자명, 연락처, 이메일, 사업자등록번호(또는 중개사무소 등록번호, 대출모집인 등록번호)</li>
-<li>선택항목: 여권용 사진(중개사), 자격증·등록증 등 첨부서류</li>
-</ul>
-
-<h2>3. 개인정보의 처리 및 보유 기간</h2>
-<p>회사는 법령에 따른 개인정보 보유·이용기간 또는 정보주체로부터 개인정보를 수집 시에 동의받은 보유·이용기간 내에서 개인정보를 처리·보유합니다.</p>
-<ul>
-<li>회원 정보: 회원 탈퇴 시까지 (부정이용 방지를 위해 탈퇴 후 최대 30일간 보관 후 파기)</li>
-<li>파트너 신청 서류: 반려 시 즉시 파기, 승인 시 파트너 자격 유지 기간 동안 보관 후 파기</li>
-<li>전자상거래 등에서의 소비자보호에 관한 법률에 따른 계약 또는 청약철회 등에 관한 기록: 5년</li>
-<li>통신비밀보호법에 따른 로그인 기록: 3개월</li>
-</ul>
-
-<h2>4. 개인정보의 제3자 제공</h2>
-<p>회사는 정보주체의 개인정보를 제1조에서 명시한 범위 내에서만 처리하며, 정보주체의 동의, 법률의 특별한 규정 등 개인정보 보호법에 해당하는 경우에만 개인정보를 제3자에게 제공합니다.</p>
-
-<h2>4의2. 개인정보 처리업무의 위탁</h2>
-<p>회사는 원활한 서비스 제공을 위하여 다음과 같이 개인정보 처리업무를 위탁하고 있습니다.</p>
-<table>
-<thead><tr><th>수탁업체</th><th>위탁업무 내용</th></tr></thead>
-<tbody>
-<tr><td>(주)알리고</td><td>SMS 발송</td></tr>
-<tr><td>Resend</td><td>이메일 발송</td></tr>
-<tr><td>카카오</td><td>소셜 로그인</td></tr>
-<tr><td>Replit(Object Storage)</td><td>첨부서류 파일 저장</td></tr>
-</tbody>
-</table>
-<p>회사는 위탁계약 체결 시 개인정보보호법 제26조에 따라 개인정보가 안전하게 관리될 수 있도록 필요한 사항을 규정하고 있습니다.</p>
-
-<h2>5. 개인정보의 파기 절차 및 방법</h2>
-<p>회사는 개인정보 보유기간의 경과, 처리목적 달성 등 개인정보가 불필요하게 되었을 때에는 지체 없이 해당 개인정보를 파기합니다. 전자적 파일 형태의 정보는 복구 불가능한 방법으로 삭제합니다.</p>
-
-<h2>6. 정보주체의 권리·의무 및 행사 방법</h2>
-<p>정보주체는 회사에 대해 언제든지 개인정보 열람·정정·삭제·처리정지 요구 등의 권리를 행사할 수 있습니다. 개인정보 열람·정정·삭제·처리정지 요구는 아래로 접수해주시기 바랍니다.</p>
-<ul>
-<li>접수처(이메일): costac74888@gmail.com</li>
-</ul>
-
-<h2>7. 개인정보의 안전성 확보 조치</h2>
-<p>회사는 개인정보의 안전성 확보를 위해 비밀번호 암호화, 접근권한 관리, 접속기록의 보관 등 관리적·기술적 보호조치를 시행하고 있습니다.</p>
-
-<h2>8. 개인정보 보호책임자</h2>
-<ul>
-<li>개인정보 보호책임자: 조혜성 (빌드리머스 대표)</li>
-</ul>
-
-<h2>부칙</h2>
-<p>이 개인정보처리방침은 2026년부터 시행합니다.</p>"""
-
-
-# 2026-07-21 개정 전(초판) 시드 원문의 md5 — 관리자 수정 없이 초판 그대로인 행만
-# 새 개정판으로 자동 교체하기 위한 지문. (관리자가 admin.html에서 한 글자라도
-# 수정했다면 md5가 달라져 자동 교체 대상에서 제외된다.)
-_LEGAL_PREV_SEED_MD5 = {
-    "terms": "000c485737128061a5568d218862fe41",
-    "privacy": "2f411e7ef0bdce3d74acecf3de1ffe0f",
-}
-
-
+def _seed_admin_notification_subscriptions():
+    """초기 ADMIN도 기본 앱 수신함 구독을 받게 한다(운영자가 바꾼 값은 보존)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            INSERT INTO admin_event_subscriptions (admin_user_id,event_type,in_app_enabled,email_enabled)
+            SELECT a.id,v.event_type,TRUE,FALSE FROM admin_users a CROSS JOIN (VALUES
+              ('new_signup'),('direct_listing'),('broker_listing_request'),('buy_request'),
+              ('partner_agent'),('partner_operator'),('partner_loan_consultant'),
+              ('partner_lodging_operator'),('ota_booking_link_request')
+            ) v(event_type)
+            ON CONFLICT (admin_user_id,event_type) DO NOTHING
+        """)
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
 def _seed_legal_documents():
     """
     이용약관/개인정보처리방침 초기 본문을 시드한다.

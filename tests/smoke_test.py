@@ -33,6 +33,9 @@ import re
 import sys
 import subprocess
 
+# 로컬 스모크 체크가 미처리 알림 outbox를 만나도 실제 이메일·문자를 보내지 않는다.
+os.environ["DISABLE_EXTERNAL_NOTIFICATIONS"] = "1"
+
 # (경로, 기대하는 content-type 부분문자열)
 CHECKS = [
     ("/", "text/html"),
