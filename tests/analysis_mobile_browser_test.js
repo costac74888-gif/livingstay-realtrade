@@ -227,6 +227,9 @@ async function run() {
      if (width <= 650) {
        expect(result.yAxis.width <= 28 && result.yAxis.titleWritingMode === "vertical-rl",
          `${width}px 가격축 문구가 세로형으로 압축되지 않아 사분면이 오른쪽으로 밀렸습니다.`);
+        expect(result.layout.baseline.x < result.wrap.w * 0.56
+          && result.layout.axis.xMax - 50 > (50 - result.layout.axis.xMin) * 1.5,
+          `${width}px 관광수요 중심선이 모바일 그래프의 왼쪽으로 충분히 이동하지 않았습니다.`);
      }
     expect(result.baselineText[0] === "50" && result.baselineText[1] === "0%", "관광수요 50점·유사자산 가격 0% 기준선 표시가 다릅니다.");
     const { baseline, points, labels } = result.layout;
