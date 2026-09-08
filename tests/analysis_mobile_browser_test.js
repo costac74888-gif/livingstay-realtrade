@@ -181,7 +181,12 @@ async function run() {
       retained: false,
     });
     if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
-    if (url.pathname.endsWith("/photos")) return json(route, { photos: [] });
+    if (url.pathname.endsWith("/photos")) return json(route, {
+      photos: [
+        { url: "/missing-analysis-photo.jpg" },
+        { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Crect width='2' height='2' fill='%23ddd'/%3E%3C/svg%3E" },
+      ],
+    });
     if (url.pathname === `/api/building/${SELECTED_ID}`) return json(route, {
       building_name: "선택 테스트 자산", road_address: "강원특별자치도 속초시 테스트로 1",
       sido: "강원특별자치도", lodging_type: "생활숙박시설",
@@ -201,9 +206,11 @@ async function run() {
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       await page.waitForFunction(() => {
         const layout = window.__analysisChartLayout;
+        const photo = document.querySelector("#detailCard .detail-photo");
         return layout && layout.ready && layout.baseline && layout.baseline.valueX === 50
           && layout.labels && layout.labels.length === 4
-          && layout.points && layout.points.some((point) => point.selected);
+          && layout.points && layout.points.some((point) => point.selected)
+          && photo && photo.dataset.photoState === "loaded";
       });
 
       const result = await page.evaluate(() => {
@@ -228,6 +235,10 @@ async function run() {
          }),
          detailButtons: Array.from(document.querySelectorAll("#detailCard .detail-actions .am-btn")).map((node) => node.textContent.trim()),
          detailSections: Array.from(document.querySelectorAll("#detailCard .detail-analysis, #detailCard .quadrant-guide, #detailCard .detail-disclaimer, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
+          photo: {
+            state: document.querySelector("#detailCard .detail-photo").dataset.photoState,
+            src: document.querySelector("#detailCard .detail-photo img").getAttribute("src"),
+          },
          recommendations: Array.from(document.querySelectorAll("#recommendationRows tr[data-id]")).map((node) => node.dataset.id),
         loggedInWorkspace: !document.getElementById("workspace").classList.contains("hidden"),
       };
@@ -253,6 +264,8 @@ async function run() {
     expect(result.detailSections.some((text) => text.includes("현재 수요·상대가격 위치"))
       && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
+    expect(result.photo.state === "loaded" && result.photo.src.startsWith("data:image/svg+xml"),
+      "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
     expect(result.recommendations.length > 0 && result.recommendations.length <= 5,
       "가격 매력 후보 TOP 5에 수요 대비 저평가 후보가 표시되지 않았습니다.");
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
@@ -267,8 +280,10 @@ async function run() {
     const representatives = points.filter((point) => point.representative);
     expect(points.every((point) => point.radius > 0), "기본 관광수요 지수의 전체 비교 건물 분포가 숨겨졌습니다.");
     expect(selected && selected.color === "#A66F00" && selected.radius === 10
-      && result.layout.selectedDrawnOnTop === true,
-      "선택 건물이 진한 골드 포인트로 다른 포인트와 라벨보다 위에 표시되지 않습니다.");
+      && result.layout.selectedDrawnOnTop === true
+      && result.layout.selectedLabel
+      && result.layout.selectedLabel.text.startsWith("내 자산 · "),
+      "내 자산의 황금색 포인트와 설명이 다른 포인트와 라벨보다 위에 표시되지 않습니다.");
     expect(nearby && nearby.color === "#168f91" && nearby.radius === 5.5, "같은 시군구 비교군의 색상 또는 크기가 다릅니다.");
       expect(representatives.length === 4 && representatives.every((point) => point.radius === 8),
       "사분면 대표 표본 네 개의 표시 크기가 다릅니다.");
