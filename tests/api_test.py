@@ -119,7 +119,7 @@ def check_feature_tips_admin_api(client):
 
 
 def check_admin_action_center_api(client):
-    """Action queue is admin-only and its public contract contains no PII fields."""
+    """Action queue is admin-only and exposes a compact operator summary."""
     with client.session_transaction() as sess:
         sess.clear()
     denied = client.get("/api/admin/action-center")
@@ -131,7 +131,7 @@ def check_admin_action_center_api(client):
     payload = response.get_json() or {}
     expected_categories = {"approval_required", "new_registration", "urgent", "delayed"}
     required_item = {"kind", "id", "label", "title", "created_at", "priority",
-                     "requires_approval", "deep_link"}
+                     "requires_approval", "deep_link", "summary"}
     if response.status_code != 200 or payload.get("ok") is not True:
         return "관리자 액션 센터 API가 정상 응답하지 않음"
     if set(payload.get("categories") or {}) != expected_categories:
@@ -146,8 +146,10 @@ def check_admin_action_center_api(client):
         if payload["counts"][category] != len(items) or not isinstance(items, list):
             return f"액션 센터 {category} count 또는 목록 형태가 잘못됨"
         for item in items:
-            if set(item) != required_item | {"categories"} or not isinstance(item["id"], int):
-                return "액션 센터 항목의 최소·PII 비노출 계약이 잘못됨"
+            if (set(item) != required_item | {"categories"}
+                    or not isinstance(item["id"], int)
+                    or not isinstance(item["summary"], str)):
+                return "액션 센터 항목의 관리자용 한 줄 요약 계약이 잘못됨"
             if (not isinstance(item["categories"], list) or not item["categories"]
                     or any(category not in expected_categories for category in item["categories"])):
                 return "액션 센터 평면 항목의 카테고리 소속 정보가 잘못됨"

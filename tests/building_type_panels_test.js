@@ -30,7 +30,7 @@ expect(!main.includes("_reservationBar(b, false)"), "생활숙박시설의 예�
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
 expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
 expect(
-  main.includes('<div class="b-request-privacy-note">매물내놓기와 매수의뢰 비공개 진행가능</div>') &&
+  main.includes('<div class="b-request-privacy-note">직거래·중개 매물등록과 매수의뢰를 비공개로 진행할 수 있습니다.</div>') &&
   css.includes(".b-request-privacy-note"),
   "매물내놓기·매수의뢰 비공개 진행 안내가 없습니다.",
 );

@@ -57,12 +57,39 @@ def canonical_origin():
     return "https://homenstay.com"
 
 
-def _item(kind, row, label, priority="normal", requires_approval=False):
+def _compact_phone(value):
+    digits = re.sub(r"\D", "", str(value or ""))
+    if len(digits) == 11:
+        return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+    if len(digits) == 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return str(value or "").strip()
+
+
+def _money_label(value):
+    try:
+        amount = int(value or 0)
+    except (TypeError, ValueError):
+        return ""
+    if amount <= 0:
+        return ""
+    if amount >= 100_000_000:
+        billions, remainder = divmod(amount, 100_000_000)
+        ten_thousands = remainder // 10_000
+        return f"{billions}억" + (f" {ten_thousands:,}만원" if ten_thousands else "")
+    return f"{amount // 10_000:,}만원"
+
+
+def _summary(*values):
+    return " · ".join(str(value).strip() for value in values if str(value or "").strip())
+
+
+def _item(kind, row, label, priority="normal", requires_approval=False, summary=""):
     return {
         "kind": kind, "id": int(row["id"]), "label": label,
         "title": label, "created_at": row.get("created_at"),
         "priority": priority, "requires_approval": requires_approval,
-        "deep_link": _DEEP_LINKS[kind],
+        "deep_link": _DEEP_LINKS[kind], "summary": summary,
     }
 
 
@@ -82,62 +109,121 @@ def action_items(cur, limit=500):
     def add(category, value):
         groups[category].append(value)
 
-    cur.execute("""SELECT id, submitted_at AS created_at, applicant_type FROM applications
+    cur.execute("""SELECT id, submitted_at AS created_at, applicant_type,
+                          owner_name, office_or_company_name, phone
+                   FROM applications
                    WHERE status = 'submitted' ORDER BY submitted_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
-        item = _item("application", r, f"파트너 신청 #{r['id']}", "high", True)
+        item = _item(
+            "application", r, f"파트너 신청 #{r['id']}", "high", True,
+            _summary(
+                r.get("owner_name") or r.get("office_or_company_name"),
+                _compact_phone(r.get("phone")),
+                r.get("applicant_type"),
+            ),
+        )
         add("approval_required", item); add("new_registration", item)
 
-    cur.execute("""SELECT id, submitted_at AS created_at FROM booking_url_requests WHERE status = 'pending'
+    cur.execute("""SELECT r.id, r.submitted_at AS created_at,
+                          mb.building_name, o.company_name, o.phone
+                   FROM booking_url_requests r
+                   LEFT JOIN master_buildings mb ON mb.id=r.master_building_id
+                   LEFT JOIN operators o ON o.id=r.operator_id
+                   WHERE r.status = 'pending'
                    ORDER BY submitted_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
-        add("approval_required", _item("ota_request", r, f"OTA 링크 신청 #{r['id']}", "high", True))
+        add("approval_required", _item(
+            "ota_request", r, f"OTA 링크 신청 #{r['id']}", "high", True,
+            _summary(r.get("building_name"), r.get("company_name"), _compact_phone(r.get("phone"))),
+        ))
 
-    cur.execute("""SELECT id, created_at, status, request_type FROM building_requests
-                   WHERE status IN ('pending', 'name_review') ORDER BY created_at DESC LIMIT %s""", (limit,))
+    cur.execute("""SELECT id, created_at, status, request_type,
+                          building_name_hint, road_address
+                   FROM building_requests WHERE status IN ('pending', 'name_review')
+                   ORDER BY created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
         review = r["status"] == "name_review"
         item = _item("building_request", r, f"{'건물명 검토' if review else '건물 요청'} #{r['id']}",
-                     "high" if review else "normal", True)
+                     "high" if review else "normal", True,
+                     _summary(r.get("building_name_hint"), r.get("road_address"), r.get("request_type")))
         add("approval_required", item)
         if not review:
             add("new_registration", item)
 
-    cur.execute("""SELECT id, created_at, status FROM presale_applications
+    cur.execute("""SELECT id, created_at, status, title, company_name,
+                          contact_name, contact_phone, price_min, price_max
+                   FROM presale_applications
                    WHERE status IN ('submitted', 'reviewing') ORDER BY created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
         add("approval_required", _item("presale_application", r, f"분양 신청 #{r['id']}",
-                                        "high" if r["status"] == "submitted" else "normal", True))
+                                        "high" if r["status"] == "submitted" else "normal", True,
+                                        _summary(
+                                            r.get("title") or r.get("company_name"),
+                                            r.get("contact_name"),
+                                            _compact_phone(r.get("contact_phone")),
+                                            _money_label(r.get("price_min")),
+                                        )))
 
-    cur.execute("""SELECT id, created_at, deal_mode, routed_agent_id FROM listing_requests
-                   WHERE status = 'submitted' ORDER BY created_at DESC LIMIT %s""", (limit,))
+    cur.execute("""SELECT lr.id, lr.created_at, lr.deal_mode, lr.routed_agent_id,
+                          lr.deal_type, lr.price_krw, lr.desired_price,
+                          COALESCE(lr.verified_phone, lr.contact_phone, u.phone) AS phone,
+                          u.name AS requester_name, mb.building_name
+                   FROM listing_requests lr
+                   LEFT JOIN users u ON u.id=lr.user_id
+                   LEFT JOIN master_buildings mb ON mb.id=lr.master_building_id
+                   WHERE lr.status = 'submitted' ORDER BY lr.created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
         mode = r.get("deal_mode") or "broker"
         unassigned = mode == "broker" and r.get("routed_agent_id") is None
         item = _item("listing_request", r, f"{'직거래' if mode == 'direct' else '중개'} 매물 요청 #{r['id']}",
-                     "urgent" if unassigned else "normal", False)
+                     "urgent" if unassigned else "normal", False,
+                     _summary(
+                         r.get("building_name"), r.get("requester_name"),
+                         _compact_phone(r.get("phone")), r.get("deal_type"),
+                         _money_label(r.get("price_krw")) or r.get("desired_price"),
+                         "직거래" if mode == "direct" else "중개",
+                     ))
         add("new_registration", item)
         if unassigned:
             add("urgent", item)
 
-    cur.execute("""SELECT id, created_at, status FROM buy_requests
-                   WHERE status IN ('pending', 'submitted') ORDER BY created_at DESC LIMIT %s""", (limit,))
+    cur.execute("""SELECT br.id, br.created_at, br.status, br.deal_type,
+                          br.price_krw, br.desired_price,
+                          COALESCE(br.contact_phone, u.phone) AS phone,
+                          u.name AS requester_name, mb.building_name
+                   FROM buy_requests br
+                   LEFT JOIN users u ON u.id=br.user_id
+                   LEFT JOIN master_buildings mb ON mb.id=br.master_building_id
+                   WHERE br.status IN ('pending', 'submitted')
+                   ORDER BY br.created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
-        add("new_registration", _item("buy_request", r, f"매수 요청 #{r['id']}", "normal", False))
+        add("new_registration", _item(
+            "buy_request", r, f"매수 요청 #{r['id']}", "normal", False,
+            _summary(
+                r.get("building_name"), r.get("requester_name"),
+                _compact_phone(r.get("phone")), r.get("deal_type"),
+                _money_label(r.get("price_krw")) or r.get("desired_price"),
+            ),
+        ))
 
-    cur.execute("""SELECT id, created_at, severity FROM bug_reports WHERE status <> 'resolved'
+    cur.execute("""SELECT id, created_at, severity, contact, page_url
+                   FROM bug_reports WHERE status <> 'resolved'
                    ORDER BY created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
         item = _item("bug_report", r, f"오류 신고 #{r['id']}",
-                     "urgent" if r["severity"] == "blocking" else "normal", False)
+                     "urgent" if r["severity"] == "blocking" else "normal", False,
+                     _summary(r.get("contact"), r.get("severity"), r.get("page_url")))
         add("urgent" if r["severity"] == "blocking" else "new_registration", item)
 
-    cur.execute("""SELECT id, created_at FROM users
+    cur.execute("""SELECT id, created_at, name, phone, email FROM users
                    WHERE created_at >= NOW() - INTERVAL '7 days'
                    AND COALESCE(status, 'active') <> 'withdrawn'
                    ORDER BY created_at DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
-        add("new_registration", _item("user", r, f"신규 회원 #{r['id']}", "normal", False))
+        add("new_registration", _item(
+            "user", r, f"신규 회원 #{r['id']}", "normal", False,
+            _summary(r.get("name"), _compact_phone(r.get("phone")), r.get("email")),
+        ))
 
     cur.execute("""SELECT id, COALESCE(finished_at, started_at) AS created_at FROM sync_log
                    WHERE LOWER(COALESCE(status, '')) IN ('failed', 'error')

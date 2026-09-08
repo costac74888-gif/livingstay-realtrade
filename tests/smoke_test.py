@@ -171,6 +171,9 @@ def run_local():
         'data-action-filter="new_registration"',
         'data-action-filter="delayed"',
         "actionCenterHref(item.deep_link)",
+        "action-center-row-summary",
+        "item.summary ||",
+        'listing_request:"매물"',
     )
     missing_action_center = [
         token for token in action_center_contract if token not in admin_html
