@@ -6628,8 +6628,11 @@ async function loadBuildingHeader(id){
       setMapLocationTarget(targetBuildingId);
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(detailLat, detailLng));
+      const detailMapFilters = Object.assign({}, mapFiltersFromState());
+      delete detailMapFilters.q;
+      delete detailMapFilters.building_id;
       Promise.resolve(
-        updateMapForZoom({ building_id: targetBuildingId }, { force: true })
+        updateMapForZoom(detailMapFilters, { force: true })
       ).then(
         applyMapLocationTarget,
         error => console.error("[MAP] 상세 건물 위치 재조회 실패:", error),

@@ -28,6 +28,15 @@ expect(
   "우편번호 줄 지도위치 버튼의 지도 복귀·확대·점멸 흐름이 맞지 않습니다.",
 );
 expect(
+  source.includes("const detailLat = Number(b.lat)") &&
+    source.includes("const detailLng = Number(b.lng)") &&
+    source.includes("kakaoMap.setCenter(new kakao.maps.LatLng(detailLat, detailLng))") &&
+    source.includes("const detailMapFilters = Object.assign({}, mapFiltersFromState())") &&
+    source.includes("delete detailMapFilters.q") &&
+    source.includes("updateMapForZoom(detailMapFilters, { force: true })"),
+  "동명이건 검색 후 상세를 열 때 선택 건물 위치로 지도가 다시 이동하지 않습니다.",
+);
+expect(
   css.includes(".map-location-target") &&
     css.includes("map-location-target-pulse") &&
     !css.includes(".map-location-target-pin") &&

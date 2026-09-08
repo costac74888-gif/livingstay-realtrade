@@ -1155,9 +1155,11 @@ def _streetview_image_score(
 
 
 _STREETVIEW_SELECTION_CACHE = {}
+_STREETVIEW_REJECTION_CACHE = {}
 _STREETVIEW_SELECTION_CACHE_LOCK = threading.Lock()
 _STREETVIEW_SELECTION_SEMAPHORE = threading.BoundedSemaphore(2)
 _STREETVIEW_SELECTION_TTL_SECONDS = 86400
+_STREETVIEW_MIN_ACCEPT_SCORE = 0.70
 
 
 def _streetview_cached_image(building_id):
@@ -1174,6 +1176,7 @@ def _streetview_cached_image(building_id):
 
 def _cache_streetview_image(building_id, content, content_type):
     with _STREETVIEW_SELECTION_CACHE_LOCK:
+        _STREETVIEW_REJECTION_CACHE.pop(int(building_id), None)
         _STREETVIEW_SELECTION_CACHE[int(building_id)] = {
             "cached_at": time.monotonic(),
             "content": content,
@@ -1187,13 +1190,38 @@ def _cache_streetview_image(building_id, content, content_type):
             _STREETVIEW_SELECTION_CACHE.pop(oldest_id, None)
 
 
+def _streetview_rejection_cached(building_id):
+    now = time.monotonic()
+    with _STREETVIEW_SELECTION_CACHE_LOCK:
+        cached_at = _STREETVIEW_REJECTION_CACHE.get(int(building_id))
+        if cached_at is None:
+            return False
+        if now - cached_at > _STREETVIEW_SELECTION_TTL_SECONDS:
+            _STREETVIEW_REJECTION_CACHE.pop(int(building_id), None)
+            return False
+        return True
+
+
+def _cache_streetview_rejection(building_id):
+    with _STREETVIEW_SELECTION_CACHE_LOCK:
+        _STREETVIEW_SELECTION_CACHE.pop(int(building_id), None)
+        _STREETVIEW_REJECTION_CACHE[int(building_id)] = time.monotonic()
+        if len(_STREETVIEW_REJECTION_CACHE) > 200:
+            oldest_id = min(
+                _STREETVIEW_REJECTION_CACHE,
+                key=_STREETVIEW_REJECTION_CACHE.get,
+            )
+            _STREETVIEW_REJECTION_CACHE.pop(oldest_id, None)
+
+
 def _fetch_best_streetview_image(
     building,
     key,
     capture_points,
-    expansion_threshold=0.58,
+    expansion_threshold=_STREETVIEW_MIN_ACCEPT_SCORE,
+    min_accept_score=_STREETVIEW_MIN_ACCEPT_SCORE,
 ):
-    """양쪽 정면을 먼저 평가하고 점수가 낮을 때만 좌·우 4장을 추가한다."""
+    """양쪽 정면을 우선 평가하고 최종 품질 기준 미달 사진은 반환하지 않는다."""
     from sync_building_photos import (
         STREETVIEW_MONTHLY_CAP,
         _claim_daily_slot,
@@ -1276,10 +1304,14 @@ def _fetch_best_streetview_image(
         return None
     usable = evaluate(build_jobs((0.0,)))
     if usable and max(result[0] for result in usable) >= float(expansion_threshold):
-        return max(usable, key=lambda result: result[0])
+        best = max(usable, key=lambda result: result[0])
+        return best if best[0] >= float(min_accept_score) else None
 
     usable.extend(evaluate(build_jobs((-18.0, 18.0))))
-    return max(usable, key=lambda result: result[0]) if usable else None
+    if not usable:
+        return None
+    best = max(usable, key=lambda result: result[0])
+    return best if best[0] >= float(min_accept_score) else None
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")
@@ -1312,6 +1344,12 @@ def get_building_provider_photo(building_id, source):
         conn.close()
     if not row:
         return jsonify({"error": "not found"}), 404
+
+    if _streetview_rejection_cached(building_id):
+        response = jsonify({"error": "no suitable streetview image"})
+        response.status_code = 404
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
 
     cached_image = _streetview_cached_image(building_id)
     if cached_image:
@@ -1350,7 +1388,11 @@ def get_building_provider_photo(building_id, source):
     finally:
         _STREETVIEW_SELECTION_SEMAPHORE.release()
     if best is None:
-        return jsonify({"error": "provider unavailable"}), 502
+        _cache_streetview_rejection(building_id)
+        response = jsonify({"error": "no suitable streetview image"})
+        response.status_code = 404
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
     _score, image_content, content_type = best
     _cache_streetview_image(building_id, image_content, content_type)
     response = Response(image_content, content_type=content_type)

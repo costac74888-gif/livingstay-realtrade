@@ -22,6 +22,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
     def tearDown(self):
         import app
         app._STREETVIEW_SELECTION_CACHE.clear()
+        app._STREETVIEW_REJECTION_CACHE.clear()
 
     @patch("app.requests.get")
     def test_streetview_metadata_ok(self, get):
@@ -200,6 +201,31 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         }
         best = _fetch_best_streetview_image(building, "key", points)
         self.assertEqual(best[0], 0.95)
+        self.assertEqual(get.call_count, 6)
+
+    @patch("sync_building_photos._claim_daily_slot", return_value=1)
+    @patch("app._streetview_image_score", return_value=0.68)
+    @patch("app.requests.get")
+    def test_obstructed_low_confidence_photo_is_hidden_after_six_calls(
+        self, get, _score, _claim
+    ):
+        response = Mock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "image/jpeg"}
+        response.content = b"obstructed"
+        get.return_value = response
+        points = [
+            {
+                "pano_id": f"pano-{index}", "lat": 37.5 + index * 0.0001,
+                "lng": 127.0, "status": "OK",
+            }
+            for index in range(2)
+        ]
+        building = {
+            "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 27, "heit": None,
+            "building_name": "우남퍼스트빌스위트", "road_address": "경기도 구리시",
+        }
+        self.assertIsNone(_fetch_best_streetview_image(building, "key", points))
         self.assertEqual(get.call_count, 6)
 
     @patch("app.time.monotonic", side_effect=[100.0, 100.0, 86601.0])
