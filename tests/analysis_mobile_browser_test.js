@@ -200,10 +200,16 @@ async function run() {
       const layout = window.__analysisChartLayout;
       const wrap = document.querySelector(".chart-wrap").getBoundingClientRect();
       const canvas = document.getElementById("scatterChart").getBoundingClientRect();
+       const yAxis = document.querySelector(".y-axis-guide");
+       const yAxisRect = yAxis.getBoundingClientRect();
       return {
         layout,
         wrap: { w: wrap.width, h: wrap.height },
         canvas: { left: canvas.left - wrap.left, top: canvas.top - wrap.top, right: canvas.right - wrap.left, bottom: canvas.bottom - wrap.top },
+         yAxis: {
+           width: yAxisRect.width,
+           titleWritingMode: getComputedStyle(yAxis.querySelector("strong")).writingMode,
+         },
         baselineText: [document.getElementById("tourismBaseline").textContent, document.getElementById("priceBaseline").textContent],
          quadrants: Array.from(document.querySelectorAll(".chart-wrap .quad")).map((node) => {
            const rect = node.getBoundingClientRect();
@@ -218,6 +224,10 @@ async function run() {
       });
 
       expect(result.loggedInWorkspace, `${width}px 로그인 상태인데 분석 작업영역이 표시되지 않았습니다.`);
+     if (width <= 650) {
+       expect(result.yAxis.width <= 28 && result.yAxis.titleWritingMode === "vertical-rl",
+         `${width}px 가격축 문구가 세로형으로 압축되지 않아 사분면이 오른쪽으로 밀렸습니다.`);
+     }
     expect(result.baselineText[0] === "50" && result.baselineText[1] === "0%", "관광수요 50점·유사자산 가격 0% 기준선 표시가 다릅니다.");
     const { baseline, points, labels } = result.layout;
     expect(result.quadrants.length === 4 && result.quadrants.every((quad) => quad.text !== ""),

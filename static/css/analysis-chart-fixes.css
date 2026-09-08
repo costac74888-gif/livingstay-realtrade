@@ -232,4 +232,21 @@
   .q-bottom-right {
     padding-left: 9px;
   }
+
+  .chart-frame {
+    grid-template-columns: 27px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .y-axis-guide strong {
+    font-size: 9px;
+    line-height: 1.15;
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    white-space: nowrap;
+  }
+
+  .y-axis-guide strong br {
+    display: none;
+  }
 }
