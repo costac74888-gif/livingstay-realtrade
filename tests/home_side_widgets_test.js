@@ -22,7 +22,7 @@ expect(
 expect(
   index.includes('id="btnTogglePanel"') &&
   index.includes('aria-expanded="true"') &&
-  index.includes('data-lodging-type="관광" style="cursor:pointer;"><i style="background:#14B8A6;">') &&
+  index.includes('data-lodging-type="관광" style="cursor:pointer;"><i style="background:#008577;">') &&
   css.includes(".side-panel.panel-collapsed") &&
   css.includes("body:has(.side-panel.panel-collapsed) .map-list-toggle") &&
   header.includes("window.livingstaySetPanelToggle = setListToggleState") &&

@@ -8,20 +8,16 @@ function expect(ok, message) {
 }
 
 expect(
-  main.includes('el.className = "map-building-dot"')
-    && main.includes('el.dataset.label = b.building_name || "건물"')
-    && main.includes('((filters.q || filters.building_id) ? " is-emphasized" : "")')
-    && main.includes("zIndex: (filters.q || filters.building_id) ? 25 : 12"),
-  "거래가 없는 숙박건물의 가시성 또는 검색 강조가 없습니다.",
+  main.includes("`width:14px;height:14px;padding:0;border:2px solid #fff")
+    && main.includes("clickable: true, zIndex: 5")
+    && !main.includes('el.className = "map-building-dot"'),
+  "거래가 없는 숙박건물이 기존의 작은 점 마커로 표시되지 않습니다.",
 );
 
 expect(
-  css.includes(".map-building-dot{")
-    && css.includes("width:20px;height:20px")
-    && css.includes(".map-building-dot:hover::after")
-    && css.includes("content:attr(data-label)")
-    && css.includes(".map-building-dot.is-emphasized{width:28px;height:28px"),
-  "숙박건물 마커의 외곽선·건물명 도움말·검색 강조 스타일이 없습니다.",
+  !css.includes(".map-building-dot{")
+    && !css.includes(".map-building-dot.is-emphasized"),
+  "숙박건물의 이중 원형 또는 확대 강조 스타일이 남아 있습니다.",
 );
 
 console.log("map zero-activity marker checks passed");
