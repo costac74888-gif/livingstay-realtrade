@@ -11,8 +11,15 @@ const menu = fs.readFileSync("static/menu.html", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
 expect(
-  html.indexOf('class="reading-note"') < html.indexOf('class="analysis-heading"'),
-  "자료 읽는 법이 분석 화면 맨 위에 배치되지 않았습니다.",
+  html.indexOf('class="reading-note analysis-guide"') < html.indexOf('class="analysis-heading"'),
+  "세 가지 분석 안내가 분석 화면 맨 위에 배치되지 않았습니다.",
+);
+expect(
+  html.includes("세 가지 분석 한눈에 보기")
+    && html.includes("관광수요와 유사자산 가격으로 투자 매력을 확인합니다.")
+    && html.includes("월세·비용·대출을 반영한 실제 수익을 확인합니다.")
+    && html.includes("객실가격과 판매율로 숙박 운영성과를 확인합니다."),
+  "최상단에 세 가지 분석의 제목과 쉬운 의미가 모두 표시되지 않았습니다.",
 );
 expect(
   js.includes("수요 프리미엄") && js.includes("가격 부담")

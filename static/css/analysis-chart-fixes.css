@@ -6,6 +6,37 @@
   flex: none;
 }
 
+.analysis-guide > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.analysis-guide-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin-top: 6px;
+}
+
+.analysis-guide-items p {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+}
+
+.analysis-guide-items b {
+  color: #fff;
+  font-size: 11px;
+}
+
+.analysis-guide-items em {
+  color: rgba(255, 255, 255, .74);
+  font-size: 10px;
+  line-height: 1.45;
+  font-style: normal;
+}
+
 .analysis-heading .analysis-tabs {
   gap: 10px;
 }
@@ -236,6 +267,23 @@
 }
 
 @media (max-width: 650px) {
+  .analysis-guide-items {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+
+  .analysis-guide-items p {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px;
+  }
+
+  .analysis-guide-items b,
+  .analysis-guide-items em {
+    font-size: 10px;
+  }
+
   .analysis-heading-actions {
     align-items: stretch;
     margin-top: 14px;
