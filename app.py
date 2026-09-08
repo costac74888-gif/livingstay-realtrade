@@ -1024,7 +1024,7 @@ def _select_streetview_metadata(lat, lng, key, floor_count=None, height_m=None):
 
 
 def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
-    """건물 주변 도로 파노라마 중 서로 다른 촬영 지점 최대 3곳을 고른다."""
+    """건물 주변의 서로 반대편 도로 파노라마를 최대 2곳 고른다."""
     try:
         floors = max(1.0, float(floor_count))
     except (TypeError, ValueError):
@@ -1061,19 +1061,35 @@ def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
             )
         except (TypeError, ValueError):
             continue
-        found.append((abs(distance - ideal_distance), -distance, metadata))
+        camera_bearing = _bearing_degrees(lat, lng, metadata["lat"], metadata["lng"])
+        found.append((abs(distance - ideal_distance), -distance, distance, camera_bearing, metadata))
 
     unique = {}
-    for distance_gap, negative_distance, metadata in found:
+    for distance_gap, negative_distance, distance, camera_bearing, metadata in found:
         key_value = metadata.get("pano_id") or (
             round(float(metadata["lat"]), 6),
             round(float(metadata["lng"]), 6),
         )
         current = unique.get(key_value)
-        candidate = (distance_gap, negative_distance, metadata)
+        candidate = (distance_gap, negative_distance, distance, camera_bearing, metadata)
         if current is None or candidate[:2] < current[:2]:
             unique[key_value] = candidate
-    return [item[2] for item in sorted(unique.values(), key=lambda item: item[:2])[:3]]
+    ranked = sorted(unique.values(), key=lambda item: item[:2])
+    # 건물 바로 앞·좁은 골목으로 추정되는 지점은 충분한 원거리 후보가 있을 때 제외한다.
+    distant = [item for item in ranked if item[2] >= 18.0]
+    pool = distant if len(distant) >= 2 else ranked
+    if not pool:
+        return []
+    first = pool[0]
+    if len(pool) == 1:
+        return [first[4]]
+
+    def opposite_rank(item):
+        angle = abs((item[3] - first[3] + 180.0) % 360.0 - 180.0)
+        return abs(180.0 - angle), item[0], item[1]
+
+    second = min(pool[1:], key=opposite_rank)
+    return [first[4], second[4]]
 
 
 def _streetview_ocr_text(image_bytes):
@@ -1171,14 +1187,19 @@ def _cache_streetview_image(building_id, content, content_type):
             _STREETVIEW_SELECTION_CACHE.pop(oldest_id, None)
 
 
-def _fetch_best_streetview_image(building, key, capture_points, max_candidates=9):
-    """3개 촬영 지점×3개 각도를 평가하고 신뢰도와 무관하게 최고점으로 종료한다."""
+def _fetch_best_streetview_image(
+    building,
+    key,
+    capture_points,
+    expansion_threshold=0.58,
+):
+    """양쪽 정면을 먼저 평가하고 점수가 낮을 때만 좌·우 4장을 추가한다."""
     from sync_building_photos import (
         STREETVIEW_MONTHLY_CAP,
         _claim_daily_slot,
     )
-    jobs = []
-    for metadata in capture_points[:3]:
+    prepared = []
+    for metadata in capture_points[:2]:
         try:
             distance_m = _distance_meters(
                 metadata["lat"], metadata["lng"], building["lat"], building["lng"]
@@ -1191,16 +1212,20 @@ def _fetch_best_streetview_image(building, key, capture_points, max_candidates=9
             )
         except (KeyError, TypeError, ValueError):
             continue
-        for offset in (-18.0, 0.0, 18.0):
-            if len(jobs) >= max_candidates:
-                break
-            if _claim_daily_slot(
-                "building_photos_streetview_monthly",
-                STREETVIEW_MONTHLY_CAP,
-                window="monthly",
-            ) is None:
-                break
-            jobs.append((metadata, distance_m, base_heading, pitch, fov, offset))
+        prepared.append((metadata, distance_m, base_heading, pitch, fov))
+
+    def build_jobs(offsets):
+        jobs = []
+        for metadata, distance_m, base_heading, pitch, fov in prepared:
+            for offset in offsets:
+                if _claim_daily_slot(
+                    "building_photos_streetview_monthly",
+                    STREETVIEW_MONTHLY_CAP,
+                    window="monthly",
+                ) is None:
+                    return jobs
+                jobs.append((metadata, distance_m, base_heading, pitch, fov, offset))
+        return jobs
 
     def fetch_and_score(job):
         metadata, distance_m, base_heading, pitch, fov, offset = job
@@ -1238,11 +1263,22 @@ def _fetch_best_streetview_image(building, key, capture_points, max_candidates=9
             # 한 후보의 네트워크·디코딩·OCR 실패가 나머지 최고점 선택을 막지 않는다.
             return None
 
-    if not jobs:
+    def evaluate(jobs):
+        if not jobs:
+            return []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            return [
+                result for result in executor.map(fetch_and_score, jobs)
+                if result is not None
+            ]
+
+    if not prepared:
         return None
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        results = list(executor.map(fetch_and_score, jobs))
-    usable = [result for result in results if result is not None]
+    usable = evaluate(build_jobs((0.0,)))
+    if usable and max(result[0] for result in usable) >= float(expansion_threshold):
+        return max(usable, key=lambda result: result[0])
+
+    usable.extend(evaluate(build_jobs((-18.0, 18.0))))
     return max(usable, key=lambda result: result[0]) if usable else None
 
 

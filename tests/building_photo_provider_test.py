@@ -114,7 +114,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         metadata.assert_called_once_with(37.5, 127.0, "key")
 
     @patch("app._google_streetview_metadata")
-    def test_three_capture_points_are_selected_without_review_queue(self, metadata):
+    def test_two_opposite_capture_points_are_selected_without_review_queue(self, metadata):
         candidates = [
             {
                 "status": "OK", "pano_id": f"pano-{index}",
@@ -127,9 +127,9 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         selected = _streetview_capture_points(
             37.5, 127.0, "key", floor_count=20
         )
-        self.assertEqual(len(selected), 3)
+        self.assertEqual(len(selected), 2)
         self.assertEqual(metadata.call_count, 5)
-        self.assertEqual(len({item["pano_id"] for item in selected}), 3)
+        self.assertEqual(len({item["pano_id"] for item in selected}), 2)
 
     @patch("app._streetview_ocr_text", return_value="테스트호텔 서울 강남")
     def test_image_score_combines_exposure_location_and_ocr(self, _ocr):
@@ -151,7 +151,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score")
     @patch("app.requests.get")
-    def test_highest_of_nine_candidates_is_always_returned(
+    def test_good_front_views_stop_after_two_image_calls(
         self, get, score, _claim
     ):
         response = Mock()
@@ -159,13 +159,40 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         response.headers = {"Content-Type": "image/jpeg"}
         response.content = b"candidate"
         get.return_value = response
-        score.side_effect = [0.1, 0.2, 0.3, 0.4, 0.95, 0.5, 0.6, 0.7, 0.8]
+        score.side_effect = [0.72, 0.61]
         points = [
             {
                 "pano_id": f"pano-{index}", "lat": 37.5 + index * 0.0001,
                 "lng": 127.0, "status": "OK",
             }
-            for index in range(3)
+            for index in range(2)
+        ]
+        building = {
+            "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 10, "heit": 30,
+            "building_name": "테스트호텔", "road_address": "서울 강남",
+        }
+        best = _fetch_best_streetview_image(building, "key", points)
+        self.assertEqual(best[0], 0.72)
+        self.assertEqual(get.call_count, 2)
+
+    @patch("sync_building_photos._claim_daily_slot", return_value=1)
+    @patch("app._streetview_image_score")
+    @patch("app.requests.get")
+    def test_difficult_front_views_expand_to_six_image_calls(
+        self, get, score, _claim
+    ):
+        response = Mock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "image/jpeg"}
+        response.content = b"candidate"
+        get.return_value = response
+        score.side_effect = [0.31, 0.42, 0.50, 0.95, 0.44, 0.39]
+        points = [
+            {
+                "pano_id": f"pano-{index}", "lat": 37.5 + index * 0.0001,
+                "lng": 127.0, "status": "OK",
+            }
+            for index in range(2)
         ]
         building = {
             "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 10, "heit": 30,
@@ -173,7 +200,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         }
         best = _fetch_best_streetview_image(building, "key", points)
         self.assertEqual(best[0], 0.95)
-        self.assertEqual(get.call_count, 9)
+        self.assertEqual(get.call_count, 6)
 
     @patch("app.time.monotonic", side_effect=[100.0, 100.0, 86601.0])
     def test_selected_image_cache_expires_after_one_day(self, _clock):
@@ -195,13 +222,13 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         response.headers = {"Content-Type": "image/jpeg"}
         response.content = b"candidate"
         get.return_value = response
-        score.side_effect = [RuntimeError("broken OCR")] + [0.75] * 8
+        score.side_effect = [RuntimeError("broken OCR"), 0.75]
         points = [
             {
                 "pano_id": f"pano-{index}", "lat": 37.5 + index * 0.0001,
                 "lng": 127.0, "status": "OK",
             }
-            for index in range(3)
+            for index in range(2)
         ]
         building = {
             "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 10, "heit": 30,
