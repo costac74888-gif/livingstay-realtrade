@@ -1464,8 +1464,10 @@ def _check_lead_short_links(client):
                 or "const REQUESTED_TAB" not in dashboard_html
                 or "focusRequestedLead" not in dashboard_html
                 or 'id="buy-lead-card-${r.id}"' not in dashboard_html
+                or '의뢰번호: <b>${esc(l.listing_number || "-")}</b>' not in dashboard_html
+                or '의뢰자: <b>${esc(l.requester_name || "-")}</b>' not in dashboard_html
             ):
-                failures.append("의뢰 알림: 로그인한 중개사의 의뢰 탭·요청 강조 딥링크가 누락됨")
+                failures.append("의뢰 알림: 중개사 매물의뢰 번호·의뢰자 이름 또는 요청 강조 딥링크가 누락됨")
 
             cur.execute("UPDATE short_links SET expires_at=NOW() - INTERVAL '1 second' WHERE code=%s", (code,))
             conn.commit()

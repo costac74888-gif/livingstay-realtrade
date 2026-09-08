@@ -11248,6 +11248,7 @@ def _agent_leads_data(agent_id):
     try:
         cur.execute("""
             SELECT lr.id, lr.deal_type, lr.desired_price, lr.contact_phone,
+                   lr.deal_mode, lr.display_seq, u.name AS requester_name,
                    lr.routed_reason, lr.status,
                    CASE
                      WHEN lr.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
@@ -11260,6 +11261,7 @@ def _agent_leads_data(agent_id):
                    to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN users u ON u.id = lr.user_id
             LEFT JOIN agent_buildings ab
               ON ab.master_building_id = lr.master_building_id AND ab.agent_id = lr.routed_agent_id
             WHERE lr.routed_agent_id = %s
@@ -11267,6 +11269,13 @@ def _agent_leads_data(agent_id):
             LIMIT 200
         """, [agent_id])
         items = [dict(r) for r in cur.fetchall()]
+        for item in items:
+            item["listing_number"] = format_listing_number(
+                item.pop("deal_mode", "broker"),
+                item.pop("display_seq", None),
+            )
+            if item.get("contact_phone"):
+                item["contact_phone"] = format_phone(item["contact_phone"])
     finally:
         cur.close()
         conn.close()
