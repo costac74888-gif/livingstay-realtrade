@@ -184,6 +184,19 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         )
         self.assertGreater(matched, unmatched)
 
+    @patch("app._streetview_ocr_text", return_value="")
+    def test_low_rise_target_distance_prefers_nearby_frontage(self, _ocr):
+        image = Image.new("RGB", (640, 480), "gray")
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        nearby = _streetview_image_score(
+            buffer.getvalue(), 18, 0, include_ocr=False, target_distance_m=20
+        )
+        opposite = _streetview_image_score(
+            buffer.getvalue(), 27, 0, include_ocr=False, target_distance_m=20
+        )
+        self.assertGreater(nearby, opposite)
+
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score")
     @patch("app.requests.get")
@@ -211,7 +224,33 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         self.assertEqual(best[0], 0.72)
         self.assertEqual(get.call_count, 2)
         self.assertFalse(score.call_args.kwargs["include_ocr"])
+        self.assertEqual(score.call_args.kwargs["target_distance_m"], 32.0)
         self.record_evaluation.assert_called_once_with(2, 0, "base")
+
+    @patch("sync_building_photos._claim_daily_slot", return_value=1)
+    @patch("app._streetview_image_score", return_value=0.72)
+    @patch("app.requests.get")
+    def test_low_rise_web_selection_uses_close_frontage_distance(
+        self, get, score, _claim
+    ):
+        response = Mock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "image/jpeg"}
+        response.content = b"candidate"
+        get.return_value = response
+        points = [
+            {
+                "pano_id": f"pano-{index}", "lat": 37.5 + index * 0.0001,
+                "lng": 127.0, "status": "OK",
+            }
+            for index in range(2)
+        ]
+        building = {
+            "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 2, "heit": None,
+            "building_name": "로얄장", "road_address": "서울 성동구",
+        }
+        _fetch_best_streetview_image(building, "key", points)
+        self.assertEqual(score.call_args.kwargs["target_distance_m"], 20.0)
 
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score")

@@ -1133,9 +1133,13 @@ def _streetview_image_score(
     building_name=None,
     road_address=None,
     include_ocr=True,
+    target_distance_m=32.0,
 ):
     """위치·중앙 건물 노출·OCR 일치도를 0~1 점수로 합산한다."""
-    distance_score = max(0.0, 1.0 - abs(float(distance_m) - 32.0) / 40.0)
+    distance_score = max(
+        0.0,
+        1.0 - abs(float(distance_m) - float(target_distance_m)) / 40.0,
+    )
     angle_score = max(0.0, 1.0 - abs(float(heading_offset)) / 45.0)
     exposure_score = 0.0
     try:
@@ -1287,6 +1291,27 @@ def _fetch_best_streetview_image(
         STREETVIEW_MONTHLY_CAP,
         _claim_daily_slot,
     )
+    try:
+        floor_count = float(building.get("grnd_flr_cnt"))
+    except (TypeError, ValueError):
+        floor_count = None
+    try:
+        height_m = float(building.get("heit"))
+    except (TypeError, ValueError):
+        height_m = None
+    if height_m and height_m > 0:
+        estimated_floors = height_m / 3.0
+    else:
+        estimated_floors = floor_count
+    # 저층은 좁은 골목의 가까운 정면이 실제 필지일 가능성이 높다. 고층만
+    # 외관 전체를 담기 위해 먼 촬영점을 선호한다.
+    if estimated_floors is not None and estimated_floors <= 3:
+        score_target_distance = 20.0
+    elif estimated_floors is not None and estimated_floors <= 7:
+        score_target_distance = 26.0
+    else:
+        score_target_distance = 32.0
+
     prepared = []
     for metadata in capture_points[:2]:
         try:
@@ -1350,6 +1375,7 @@ def _fetch_best_streetview_image(
                 # gunicorn worker가 고갈된다. 파노라마 위치·구도·노출 점수만으로
                 # 즉시 선택하고 OCR은 동기 응답 경로에서 실행하지 않는다.
                 include_ocr=False,
+                target_distance_m=score_target_distance,
             )
             return score, upstream.content, content_type.split(";", 1)[0]
         except Exception:
