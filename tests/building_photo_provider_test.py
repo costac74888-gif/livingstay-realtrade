@@ -19,10 +19,15 @@ from app import (
 
 
 class BuildingPhotoProviderTest(unittest.TestCase):
+    def setUp(self):
+        self.record_patch = patch("app._record_streetview_evaluation")
+        self.record_evaluation = self.record_patch.start()
+
     def tearDown(self):
         import app
         app._STREETVIEW_SELECTION_CACHE.clear()
         app._STREETVIEW_REJECTION_CACHE.clear()
+        self.record_patch.stop()
 
     @patch("app.requests.get")
     def test_streetview_metadata_ok(self, get):
@@ -175,6 +180,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         best = _fetch_best_streetview_image(building, "key", points)
         self.assertEqual(best[0], 0.72)
         self.assertEqual(get.call_count, 2)
+        self.record_evaluation.assert_called_once_with(2, 0, "base")
 
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score")
@@ -202,6 +208,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         best = _fetch_best_streetview_image(building, "key", points)
         self.assertEqual(best[0], 0.95)
         self.assertEqual(get.call_count, 6)
+        self.record_evaluation.assert_called_once_with(2, 4, "extra")
 
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score", return_value=0.68)
@@ -227,6 +234,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         }
         self.assertIsNone(_fetch_best_streetview_image(building, "key", points))
         self.assertEqual(get.call_count, 6)
+        self.record_evaluation.assert_called_once_with(2, 4, "rejected")
 
     @patch("app.time.monotonic", side_effect=[100.0, 100.0, 86601.0])
     def test_selected_image_cache_expires_after_one_day(self, _clock):

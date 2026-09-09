@@ -1162,6 +1162,45 @@ _STREETVIEW_SELECTION_TTL_SECONDS = 86400
 _STREETVIEW_MIN_ACCEPT_SCORE = 0.70
 
 
+def _record_streetview_evaluation(base_calls, extra_calls, outcome):
+    """사진 평가 한 건당 한 번만 기록하며, 계측 실패는 사진 응답을 막지 않는다."""
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO streetview_evaluation_metrics
+                (metric_date, evaluations, base_calls, extra_calls,
+                 accepted_from_base, accepted_from_extra, rejected)
+            VALUES (CURRENT_DATE, 1, %s, %s, %s, %s, %s)
+            ON CONFLICT (metric_date) DO UPDATE SET
+                evaluations = streetview_evaluation_metrics.evaluations + 1,
+                base_calls = streetview_evaluation_metrics.base_calls + EXCLUDED.base_calls,
+                extra_calls = streetview_evaluation_metrics.extra_calls + EXCLUDED.extra_calls,
+                accepted_from_base = streetview_evaluation_metrics.accepted_from_base
+                                     + EXCLUDED.accepted_from_base,
+                accepted_from_extra = streetview_evaluation_metrics.accepted_from_extra
+                                      + EXCLUDED.accepted_from_extra,
+                rejected = streetview_evaluation_metrics.rejected + EXCLUDED.rejected,
+                updated_at = NOW()
+        """, [
+            int(base_calls), int(extra_calls),
+            1 if outcome == "base" else 0,
+            1 if outcome == "extra" else 0,
+            1 if outcome == "rejected" else 0,
+        ])
+        conn.commit()
+    except Exception:
+        if conn:
+            conn.rollback()
+        app.logger.warning("Street View 평가 효율 계측 실패", exc_info=True)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+
 def _streetview_cached_image(building_id):
     now = time.monotonic()
     with _STREETVIEW_SELECTION_CACHE_LOCK:
@@ -1302,16 +1341,27 @@ def _fetch_best_streetview_image(
 
     if not prepared:
         return None
-    usable = evaluate(build_jobs((0.0,)))
+    base_jobs = build_jobs((0.0,))
+    usable = evaluate(base_jobs)
     if usable and max(result[0] for result in usable) >= float(expansion_threshold):
         best = max(usable, key=lambda result: result[0])
-        return best if best[0] >= float(min_accept_score) else None
+        accepted = best if best[0] >= float(min_accept_score) else None
+        _record_streetview_evaluation(
+            len(base_jobs), 0, "base" if accepted else "rejected"
+        )
+        return accepted
 
-    usable.extend(evaluate(build_jobs((-18.0, 18.0))))
+    extra_jobs = build_jobs((-18.0, 18.0))
+    usable.extend(evaluate(extra_jobs))
     if not usable:
+        _record_streetview_evaluation(len(base_jobs), len(extra_jobs), "rejected")
         return None
     best = max(usable, key=lambda result: result[0])
-    return best if best[0] >= float(min_accept_score) else None
+    accepted = best if best[0] >= float(min_accept_score) else None
+    _record_streetview_evaluation(
+        len(base_jobs), len(extra_jobs), "extra" if accepted else "rejected"
+    )
+    return accepted
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")

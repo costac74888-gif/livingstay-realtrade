@@ -24,6 +24,7 @@ _DEEP_LINKS = {
     "unassigned_broker_listing": "/admin#listings",
     "bug_report": "/admin#bug-reports",
     "sync_failure": "/admin#datasync",
+    "streetview_usage": "/admin#datasync",
 }
 _CATEGORY_LABELS = {
     "approval_required": "승인 필요",
@@ -230,6 +231,47 @@ def action_items(cur, limit=500):
                    ORDER BY COALESCE(finished_at, started_at) DESC LIMIT %s""", (limit,))
     for r in cur.fetchall():
         add("urgent", _item("sync_failure", r, f"동기화 실패 #{r['id']}", "high", False))
+
+    # 첫 평가일부터 30일이 지난 뒤에만 추가 4회 호출의 실효성을 판단한다.
+    cur.execute("""
+        WITH bounds AS (
+            SELECT MIN(metric_date) AS started_at
+              FROM streetview_evaluation_metrics
+        )
+        SELECT b.started_at,
+               COALESCE(SUM(m.base_calls), 0) AS base_calls,
+               COALESCE(SUM(m.extra_calls), 0) AS extra_calls,
+               COALESCE(SUM(m.accepted_from_extra), 0) AS extra_accepts,
+               COALESCE(SUM(m.evaluations), 0) AS evaluations
+          FROM bounds b
+          LEFT JOIN streetview_evaluation_metrics m
+            ON m.metric_date >= b.started_at
+           AND m.metric_date < b.started_at + 30
+         GROUP BY b.started_at
+    """)
+    streetview = cur.fetchone()
+    if streetview and streetview.get("started_at"):
+        started_at = streetview["started_at"]
+        age_days = (datetime.now(KST).date() - started_at).days
+        extra_calls = int(streetview.get("extra_calls") or 0)
+        extra_accepts = int(streetview.get("extra_accepts") or 0)
+        # 최소 100회의 추가 사진 호출 뒤 채택률이 5% 미만이면 호출 낭비로 알린다.
+        inefficient = age_days >= 30 and extra_calls >= 100 and extra_accepts * 20 < extra_calls
+        if inefficient:
+            row = {
+                "id": int(started_at.strftime("%Y%m%d")),
+                "created_at": datetime.combine(started_at, datetime.min.time()),
+            }
+            add("urgent", _item(
+                "streetview_usage", row, "Street View 추가검증 효율 낮음",
+                "high", False,
+                _summary(
+                    f"관찰 {age_days}일",
+                    f"추가호출 {extra_calls:,}회",
+                    f"추가채택 {extra_accepts:,}건",
+                    "2회 검증 복귀 검토",
+                ),
+            ))
 
     # Outstanding work older than three days is a separate operational signal.
     # Do this from the live source timestamps instead of keeping a second state.
