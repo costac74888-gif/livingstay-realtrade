@@ -591,6 +591,9 @@ async function run() {
     const rentalPreInput = await page.evaluate(() => ({
       peerCount: document.querySelectorAll("#rentalPositioning .positioning-peer").length,
       quadrantCount: document.querySelectorAll("#rentalPositioning .positioning-quadrant").length,
+      quadrantColors: Array.from(document.querySelectorAll("#rentalPositioning .positioning-quadrant"))
+        .map((el) => getComputedStyle(el, "::before").backgroundColor),
+      mapHeight: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().height,
       selectedCount: document.querySelectorAll("#rentalPositioning .positioning-dot").length,
       text: document.getElementById("rentalPositioning").textContent,
       hasCalculateButton: Boolean(document.getElementById("rentalCalculate")),
@@ -598,6 +601,8 @@ async function run() {
     }));
     expect(rentalPreInput.peerCount === 2
       && rentalPreInput.quadrantCount === 4
+      && new Set(rentalPreInput.quadrantColors).size === 4
+      && rentalPreInput.mapHeight >= 230
       && rentalPreInput.selectedCount === 0
       && rentalPreInput.text.includes("내 조건 입력 대기")
       && !rentalPreInput.hasCalculateButton

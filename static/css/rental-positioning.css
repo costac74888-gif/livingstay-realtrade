@@ -1,0 +1,84 @@
+/* Rental positioning map — four distinct lodging-investment signals. */
+.rental-positioning{
+  background:#f5fbf9;
+  border:1px solid #c5e1d9;
+  color:#153f45;
+}
+.rental-positioning:before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.72),transparent 42%);
+}
+.rental-positioning:after{
+  width:330px;
+  height:330px;
+  right:-150px;
+  top:-185px;
+  border-color:rgba(25,111,101,.16);
+}
+.rental-positioning .positioning-copy h3{
+  color:#123f4a;
+  font-size:clamp(20px,2vw,25px);
+}
+.rental-positioning .positioning-copy p{color:#557875}
+.rental-positioning .positioning-verdict{color:#a25b24}
+.positioning-map{
+  min-height:260px;
+  border:1px solid #b5d2cc;
+  border-radius:16px;
+  background:#dcece8;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.45),0 10px 24px rgba(24,75,74,.10);
+}
+.positioning-map:before,.positioning-map:after{z-index:3;background:rgba(21,63,69,.38)}
+.positioning-map:before{width:2px}.positioning-map:after{height:2px}
+.positioning-quadrant{
+  z-index:1; display:flex; flex-direction:column; gap:4px;
+  width:50%; height:50%; padding:16px 18px;
+  font-size:11px; letter-spacing:-.02em; line-height:1.35; font-weight:700;
+}
+.positioning-quadrant:before{
+  content:""; position:absolute; inset:0; z-index:-1; opacity:.88;
+}
+.pq-tl{left:0;top:0;color:#315f79}.pq-tl:before{background:#e1edf4}
+.pq-tr{right:0;top:0;color:#216d55}.pq-tr:before{background:#d9eee3}
+.pq-bl{left:0;bottom:0;color:#83554d}.pq-bl:before{background:#f2e4e1}
+.pq-br{right:0;bottom:0;color:#8a642c}.pq-br:before{background:#f5ead2}
+.positioning-axis{
+  z-index:6; color:#264d52; font-size:10px; font-weight:900;
+  letter-spacing:-.02em; text-shadow:0 1px rgba(255,255,255,.75);
+}
+.positioning-axis.x{bottom:8px}.positioning-axis.y{left:9px}
+.positioning-peer{
+  z-index:4; width:8px; height:8px; background:#6f8b8d;
+  border:2px solid rgba(255,255,255,.92);
+  box-shadow:0 1px 3px rgba(20,53,57,.28); opacity:.82;
+}
+.positioning-dot{
+  z-index:8; width:22px; height:22px; border:4px solid #fff8e9;
+  background:#d9833b;
+  box-shadow:0 0 0 3px #a95328,0 0 0 9px rgba(217,131,59,.22),0 3px 8px rgba(57,43,28,.28);
+}
+.positioning-legend{align-items:center;color:#557875;font-size:10px}
+.positioning-legend>span:first-child:before{
+  content:""; display:inline-block; width:8px; height:8px; margin-right:5px;
+  border-radius:50%; background:#6f8b8d; vertical-align:0;
+}
+.positioning-legend strong{color:#9a5628;font-size:12px}
+.positioning-legend>span:last-child{display:flex;align-items:center;gap:7px;text-align:right}
+.positioning-legend>span:last-child:before{
+  content:""; width:13px; height:13px; flex:none; border-radius:50%;
+  background:#d9833b; border:3px solid #fff8e9; box-shadow:0 0 0 1px #a95328;
+}
+@media(max-width:900px){.positioning-map{min-height:245px}}
+@media(max-width:650px){
+  .rental-positioning .positioning-copy h3{font-size:19px}
+  .positioning-map{min-height:238px;border-radius:13px}
+  .positioning-quadrant{padding:12px 11px;font-size:9px}
+  .positioning-quadrant b{font-size:10px}
+  .positioning-axis{font-size:8px}
+  .positioning-dot{width:20px;height:20px}
+  .positioning-legend{display:grid;grid-template-columns:1fr;gap:7px;text-align:left}
+  .positioning-legend>span:last-child{text-align:left}
+}
