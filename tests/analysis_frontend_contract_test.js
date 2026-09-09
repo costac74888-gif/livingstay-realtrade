@@ -8,11 +8,19 @@ const css = fs.readFileSync("static/css/analysis.css", "utf8");
 const mobileCss = fs.readFileSync("static/css/analysis-mobile.css", "utf8");
 const chartCss = fs.readFileSync("static/css/analysis-chart-fixes.css", "utf8");
 const menu = fs.readFileSync("static/menu.html", "utf8");
+const printJs = fs.readFileSync("static/js/analysis-print.js", "utf8");
 function expect(ok, message) { if (!ok) throw new Error(message); }
 
 expect(
   html.indexOf('class="reading-note analysis-guide"') < html.indexOf('class="analysis-heading"'),
   "세 가지 분석 안내가 분석 화면 맨 위에 배치되지 않았습니다.",
+);
+expect(
+  html.includes('id="transactionTrendChart"') && html.includes('id="printTransactionTable"')
+    && js.includes("price_per_sqm_median") && js.includes("transactionTrendChart=new Chart")
+    && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
+    && printJs.includes("livingstayPrintAnalysisReport") && css.includes("writing-mode:vertical-rl"),
+  "화면·인쇄 실거래 그래프, 최근 거래표 또는 건물명·날짜 출력 파일명이 없습니다.",
 );
 expect(
   html.includes("세 가지 분석 한눈에 보기")
@@ -87,10 +95,9 @@ expect(
     && css.includes("@media print"),
   "한 장 보고서 출력 또는 홈앤스테이 분석 링크 공유 기능이 없습니다.",
 );
-const printJs = fs.readFileSync("static/js/analysis-print.js", "utf8");
 expect(
   html.includes('id="printReportSerial"') && html.includes('id="printMap"')
-    && html.includes("3.2 지도위치") && html.includes("주의사항")
+    && html.includes("3.3 지도위치") && html.includes("주의사항")
     && html.includes("/static/home_stay_report_logo.png")
     && printJs.includes('"tilesloaded"')
     && printJs.includes("pages:1")

@@ -23,11 +23,11 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
   await page.emulateMedia({ media: "screen" });
-  expect(report.display === "grid" && report.mode === mode && report.zones === 3
+  expect(report.display === "block" && report.mode === mode && report.zones === 5
     && report.title.includes(titleText) && !report.exampleIncluded
     && (!graphRequired || report.graphImage.startsWith("data:image/png"))
     && pages === 1,
-  `${titleText} 인쇄보고서가 A4 한 장·3개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
+  `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
 }
 
 function chromiumExecutable() {
@@ -613,6 +613,20 @@ async function run() {
     }
     await page.click("#propertyTab");
     await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
+    const transactionTrend = await page.evaluate(() => {
+      const card = document.getElementById("transactionTrendCard");
+      const canvas = document.getElementById("transactionTrendChart");
+      const rect = canvas.getBoundingClientRect();
+      return {
+        visible: getComputedStyle(card).display !== "none",
+        width: rect.width,
+        height: rect.height,
+        months: window.__analysisTransactionTrend?.months || 0,
+      };
+    });
+    expect(transactionTrend.visible && transactionTrend.width > 240
+      && transactionTrend.height >= 200 && transactionTrend.months > 0,
+      `모바일 실거래 추이 그래프가 정상 표시되지 않았습니다. ${JSON.stringify(transactionTrend)}`);
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
     await page.emulateMedia({ media: "print" });
     const printReport = await page.evaluate(() => {
@@ -631,14 +645,14 @@ async function run() {
     });
     const printPdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
     const printPageCount = (printPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
-    expect(printReport.display === "grid" && printReport.mode === "property"
-      && printReport.zones === 3 && printReport.title.includes("부동산투자분석")
+    expect(printReport.display === "block" && printReport.mode === "property"
+      && printReport.zones === 5 && printReport.title.includes("부동산투자분석")
       && printReport.graphImage.startsWith("data:image/png")
-      && printReport.reportHeight <= 960
+      && printReport.reportHeight <= 1075
       && printReport.recommendationDisplay === "none"
       && !printReport.exampleIncluded
       && printPageCount === 1,
-      `부동산투자분석 인쇄보고서가 A4 한 장·3개 존으로 구성되지 않았습니다. pages=${printPageCount} report=${JSON.stringify(printReport)}`);
+      `부동산투자분석 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${printPageCount} report=${JSON.stringify(printReport)}`);
     await page.emulateMedia({ media: "screen" });
 
     await page.click("#buildingSelectionClear");
