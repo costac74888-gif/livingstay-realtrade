@@ -3321,6 +3321,63 @@ def get_rental_market_price():
         conn.close()
 
 
+_RONE_RENTAL_PACKAGED_PERIOD = "2026-07-01"
+_RONE_RENTAL_PACKAGED_VACANCY_PERIOD = "2026-04-01"
+_RONE_RENTAL_PACKAGED_VACANCY_RATE = 8.4746
+_RONE_RENTAL_PACKAGED_YIELDS = {
+    "00": ("전국", 5.8398),
+    "11": ("서울", 5.0978),
+    "26": ("부산", 6.1281),
+    "27": ("대구", 6.3429),
+    "28": ("인천", 6.5135),
+    "29": ("광주", 6.9272),
+    "30": ("대전", 8.1266),
+    "31": ("울산", 5.9692),
+    "36": ("세종", 6.7460),
+    "41": ("경기", 6.0176),
+}
+
+
+def _packaged_rone_rental_benchmark(province_code):
+    """운영 캐시가 비었을 때 사용할 마지막 검증 R-ONE 기준값."""
+    selected_code = province_code if province_code in _RONE_RENTAL_PACKAGED_YIELDS else "00"
+    region_name, income_yield = _RONE_RENTAL_PACKAGED_YIELDS[selected_code]
+    items = [{
+        "region_code": code,
+        "region_name": name,
+        "region_level": "national" if code == "00" else "province",
+        "income_yield": value,
+        "vacancy_rate": _RONE_RENTAL_PACKAGED_VACANCY_RATE,
+        "stability_score": round(100 - _RONE_RENTAL_PACKAGED_VACANCY_RATE, 2),
+    } for code, (name, value) in _RONE_RENTAL_PACKAGED_YIELDS.items()]
+    return {
+        "ok": True,
+        "available": True,
+        "benchmark": {
+            "period": _RONE_RENTAL_PACKAGED_PERIOD,
+            "vacancy_period": _RONE_RENTAL_PACKAGED_VACANCY_PERIOD,
+            "region_code": selected_code,
+            "region_name": region_name,
+            "region_level": "national" if selected_code == "00" else "province",
+            "property_type": "officetel",
+            "property_type_name": "오피스텔 전체",
+            "income_yield": income_yield,
+            "vacancy_rate": _RONE_RENTAL_PACKAGED_VACANCY_RATE,
+            "stability_score": round(100 - _RONE_RENTAL_PACKAGED_VACANCY_RATE, 2),
+            "fallback_level": "packaged_snapshot",
+        },
+        "items": items,
+        "source": {
+            "provider": "한국부동산원 R-ONE",
+            "status": "verified_snapshot",
+            "checked_at": _RONE_RENTAL_PACKAGED_PERIOD,
+            "collected_at": _RONE_RENTAL_PACKAGED_PERIOD,
+            "is_exact_asset_type": False,
+            "notice": "운영 캐시가 비어 있어 마지막 검증 스냅샷을 적용했습니다. 수익률은 오피스텔 통계이며, 공실 미입력 시 소규모 상가 전국 전체 공실률을 대체 평균으로 적용합니다.",
+        },
+    }
+
+
 @app.route("/api/analysis/rental-benchmark")
 @limiter.limit("60 per minute")
 def get_rental_benchmark():
@@ -3376,17 +3433,7 @@ def get_rental_benchmark():
                 break
 
         if not benchmark:
-            return jsonify({
-                "ok": True,
-                "available": False,
-                "benchmark": None,
-                "items": [],
-                "source": {
-                    "provider": "한국부동산원 R-ONE",
-                    "status": "awaiting_data",
-                    "notice": "R-ONE 기준자료가 준비되면 전국 전체 공실률을 자동 적용합니다.",
-                },
-            })
+            return jsonify(_packaged_rone_rental_benchmark(province_code))
 
         period = benchmark["period"]
         cur.execute("""

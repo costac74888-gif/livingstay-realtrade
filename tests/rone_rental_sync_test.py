@@ -28,6 +28,22 @@ def income_row(period, group, value):
 
 
 class RoneRentalSyncTest(unittest.TestCase):
+    def test_packaged_snapshot_keeps_results_available_when_cache_is_empty(self):
+        from app import _packaged_rone_rental_benchmark
+
+        regional = _packaged_rone_rental_benchmark("26")
+        self.assertTrue(regional["available"])
+        self.assertEqual(regional["benchmark"]["region_name"], "부산")
+        self.assertEqual(regional["benchmark"]["income_yield"], 6.1281)
+        self.assertEqual(regional["benchmark"]["vacancy_rate"], 8.4746)
+        self.assertEqual(regional["benchmark"]["period"], "2026-07-01")
+        self.assertEqual(regional["benchmark"]["vacancy_period"], "2026-04-01")
+        self.assertEqual(regional["source"]["status"], "verified_snapshot")
+
+        national = _packaged_rone_rental_benchmark("42")
+        self.assertEqual(national["benchmark"]["region_name"], "전국")
+        self.assertEqual(national["benchmark"]["income_yield"], 5.8398)
+
     def test_uses_officetel_yield_and_latest_national_vacancy(self):
         records = build_records(
             [income_row("202607", "전국", 5.84)],
