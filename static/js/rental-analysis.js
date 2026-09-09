@@ -28,6 +28,11 @@
     node.textContent = value == null ? "" : String(value);
     return node.innerHTML;
   }
+  function quarterLabel(value) {
+    var match = String(value || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+    if (!match) return String(value || "");
+    return match[1] + "년 " + (Math.floor((Number(match[2]) - 1) / 3) + 1) + "분기";
+  }
   function money(value, digits) {
     return Number(value || 0).toLocaleString("ko-KR", {
       maximumFractionDigits: digits == null ? 0 : digits,
@@ -141,7 +146,7 @@
       rentalBenchmark = candidate != null && (typeof candidate === "object" || typeof candidate === "number") ? candidate : null;
       rentalBenchmarkItems = payload && Array.isArray(payload.items) ? payload.items : [];
       var source = payload && (payload.source || candidate && candidate.source);
-      benchmarkSource = typeof source === "string" ? source : source && (source.provider + (candidate && candidate.period ? " · " + candidate.period : "")) || "";
+      benchmarkSource = typeof source === "string" ? source : source && (source.provider + (candidate && candidate.period ? " · " + quarterLabel(candidate.period) : "")) || "";
       benchmarkNotice = source && source.notice || "";
       var months = benchmarkMonths();
       $("rentalVacancyMonthsHint").textContent = months == null ? "R-ONE 평균을 확인할 수 없어 사용자 입력을 기다립니다." : "R-ONE 평균 " + months.toFixed(1) + "개월 · 직접 입력 시 사용자 값 우선";

@@ -191,7 +191,7 @@ async function run() {
         ok: true,
         available: true,
         benchmark: {
-          period: "2026-Q2",
+          period: "2026-04-01",
           region_code: "42",
           region_name: "강원 조사권역",
           region_level: "province",
@@ -669,6 +669,7 @@ async function run() {
       && rentalResult.positioning.includes("수익개선 검토")
       && rentalResult.positioning.includes("지역 평균 가정")
       && rentalResult.positioning.includes("동일 자산군이 아닌")
+      && rentalResult.positioning.includes("2026년 2분기")
       && rentalResult.peerCount === 2
       && rentalResult.calculation.vacancySource === "rone",
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");

@@ -354,6 +354,16 @@ STAGES = (
         blocking_status_keys=("tourism_monthly_sync_status",),
     ),
     Stage(
+        "rone_rental",
+        "R-ONE 임대수익 기준",
+        "관광",
+        ("sync_rone_rental_benchmarks.py",),
+        "매주 월",
+        weekdays=(0,),
+        metric_query="SELECT COUNT(*) AS c FROM rone_rental_benchmarks",
+        metric_label="임대수익 기준값",
+    ),
+    Stage(
         "brokers",
         "공인중개사 사무소",
         "중개·상가",

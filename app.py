@@ -3346,6 +3346,9 @@ def get_rental_benchmark():
 
         sgg_code = str(building.get("sgg_cd") or "").strip()
         province_code = sgg_code[:2] if len(sgg_code) >= 2 else ""
+        # 강원·전북 특별자치도 전환 뒤 법정동코드는 바뀌었지만 R-ONE
+        # 2023년 기준표는 종전 시도코드를 사용한다.
+        province_code = {"51": "42", "52": "45"}.get(province_code, province_code)
         candidates = []
         if sgg_code:
             candidates.append(("sgg", sgg_code))
@@ -3359,7 +3362,7 @@ def get_rental_benchmark():
             cur.execute("""
                 SELECT period, region_code, region_name, region_level,
                        property_type, property_type_name,
-                       income_yield, vacancy_rate, source_published_at, collected_at
+                       income_yield, vacancy_rate, source_checked_at, collected_at
                 FROM rone_rental_benchmarks
                 WHERE property_type = %s
                   AND region_level = %s
@@ -3421,10 +3424,10 @@ def get_rental_benchmark():
             "source": {
                 "provider": "한국부동산원 R-ONE",
                 "status": "ready",
-                "published_at": benchmark["source_published_at"],
+                "checked_at": benchmark["source_checked_at"],
                 "collected_at": benchmark["collected_at"],
                 "is_exact_asset_type": False,
-                "notice": "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계를 이용한 대체 투자상품 참고 비교입니다.",
+                "notice": "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계이며, 분기 소득수익률을 단순 연환산한 대체 투자상품 참고 비교입니다.",
             },
         })
     except Exception:
@@ -18282,6 +18285,7 @@ _SCHEDULED_SYNC_STAGES = (
     ("lodging_compare", "숙박 운영 병행 비교", "숙박", "매일"),
     ("lodging_promotion", "숙박 승인 원장 자동 반영", "숙박", "매일"),
     ("tourism_monthly", "월간 관광 시군구 방문자 원본", "관광", "매주 월"),
+    ("rone_rental", "R-ONE 임대수익 기준", "관광", "매주 월"),
     ("brokers", "공인중개사 사무소", "중개·상가", "매일"),
     ("broker_geocode", "중개업소 좌표", "중개·상가", "매일"),
     ("realty", "건물 내 부동산", "중개·상가", "매일"),
