@@ -847,8 +847,8 @@ async function run() {
         options: Array.from(document.getElementById("transactionAreaSelect").options).map(option => option.value),
         lineLabel: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.label,
         lineValues: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.data || [],
-        priceMin: Chart.getChart(canvas)?.options.scales.price.min,
-        priceMax: Chart.getChart(canvas)?.options.scales.price.max,
+        countAxis: Chart.getChart(canvas)?.options.scales.y,
+        priceAxis: Chart.getChart(canvas)?.options.scales.y1,
       };
     });
     expect(transactionTrend.visible && transactionTrend.width > 240
@@ -858,11 +858,11 @@ async function run() {
        && transactionTrend.layout.afterDetailOnMobile
       && transactionTrend.area === "100.0"
       && transactionTrend.options.join("|") === "80.0|100.0"
-      && transactionTrend.lineLabel === "거래금액(만원)"
+       && transactionTrend.lineLabel === "평균 거래금액(만원)"
       && transactionTrend.lineValues.includes(41000)
       && !transactionTrend.lineValues.includes(410)
-      && transactionTrend.priceMin < Math.min(...transactionTrend.lineValues.filter(Number.isFinite))
-      && transactionTrend.priceMax > Math.max(...transactionTrend.lineValues.filter(Number.isFinite)),
+       && transactionTrend.countAxis.position === "left" && transactionTrend.countAxis.beginAtZero
+       && transactionTrend.priceAxis.position === "right" && transactionTrend.priceAxis.beginAtZero,
       `모바일 실거래 추이 그래프가 정상 표시되지 않았습니다. ${JSON.stringify(transactionTrend)}`);
     await page.selectOption("#transactionAreaSelect", "80.0");
     await page.waitForFunction(() => window.__analysisTransactionTrend?.area === "80.0");

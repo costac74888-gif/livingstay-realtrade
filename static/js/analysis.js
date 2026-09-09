@@ -60,16 +60,15 @@
       var labels=trajectory.map(function(row){var month=String(row.month||"");return month.length===6?month.slice(2,4)+"."+month.slice(4,6):month});
       var monthly=trajectory.map(function(row){return(Array.isArray(row.transactions)?row.transactions:[]).filter(function(tx){return Number(tx.area).toFixed(1)===areaKey})});
       var volume=monthly.map(function(rows){return rows.length});
-      var amounts=monthly.map(function(rows){var values=rows.map(function(tx){return Number(tx.price)}).filter(function(v){return Number.isFinite(v)&&v>0}).sort(function(a,b){return a-b});if(!values.length)return null;var middle=Math.floor(values.length/2);return values.length%2?values[middle]:Math.round((values[middle-1]+values[middle])/2)});
-      var actualAmounts=amounts.filter(function(value){return Number.isFinite(value)}),amountMin=actualAmounts.length?Math.min.apply(null,actualAmounts):0,amountMax=actualAmounts.length?Math.max.apply(null,actualAmounts):0,amountRange=amountMax-amountMin,amountPadding=Math.max(amountRange*.2,amountMax*.04,100),priceMin=Math.max(0,amountMin-amountPadding),priceMax=amountMax+amountPadding;
+      var amounts=monthly.map(function(rows){var values=rows.map(function(tx){return Number(tx.price)}).filter(function(v){return Number.isFinite(v)&&v>0});if(!values.length)return null;return Math.round(values.reduce(function(sum,value){return sum+value},0)/values.length)});
       if(transactionTrendChart)transactionTrendChart.destroy();
       transactionTrendChart=new Chart(canvas,{data:{labels:labels,datasets:[
-        {type:"bar",label:"거래량",data:volume,yAxisID:"count",backgroundColor:"rgba(171,119,37,.82)",borderRadius:3,maxBarThickness:34},
-        {type:"line",label:"거래금액(만원)",data:amounts,yAxisID:"price",borderColor:"#2673cf",backgroundColor:"#2673cf",pointRadius:3,pointHoverRadius:5,borderWidth:2,spanGaps:true,tension:.25}
-      ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.dataset.yAxisID==="price"?" 거래금액 "+fmt(c.raw,0)+"만원":" 거래량 "+fmt(c.raw,0)+"건"}}}},scales:{x:{grid:{display:false}},price:{position:"left",min:priceMin,max:priceMax,title:{display:true,text:"거래금액(만원)"},ticks:{callback:function(v){return fmt(v,0)}},beginAtZero:false},count:{position:"right",title:{display:true,text:"거래량"},ticks:{precision:0},grid:{drawOnChartArea:false},beginAtZero:true}}}});
+        {type:"bar",label:"거래량",data:volume,yAxisID:"y",backgroundColor:"#B4863F",borderRadius:3,order:2},
+        {type:"line",label:"평균 거래금액(만원)",data:amounts,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,spanGaps:true,order:1}
+      ]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.dataset.type==="line"?" 평균 거래금액 "+fmt(c.raw,0)+"만원":" 거래량 "+fmt(c.raw,0)+"건"}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{position:"left",beginAtZero:true,ticks:{font:{size:9},precision:0},grid:{color:"#EEF1F3"}},y1:{position:"right",beginAtZero:true,ticks:{font:{size:9}},grid:{display:false}}}}});
       var filtered=transactions.filter(function(tx){return Number(tx.area).toFixed(1)===areaKey});
       $("transactionTrendTitle").textContent=(selected&&selected.name||"선택 건물")+" 실거래 추이";
-      $("transactionTrendSubtitle").textContent=areaKey+"㎡(약 "+fmt(Number(areaKey)/3.3058,1)+"평) 월별 거래금액과 거래량 · 최근 "+trajectory.length+"개월";
+      $("transactionTrendSubtitle").textContent=areaKey+"㎡(약 "+fmt(Number(areaKey)/3.3058,1)+"평) 월별 평균 거래금액과 거래량 · 최근 "+trajectory.length+"개월";
       window.__analysisTransactionTrend={ready:true,months:trajectory.length,transactions:filtered,allTransactions:transactions,area:areaKey};
       renderSelectedTransactions(filtered);
     }
