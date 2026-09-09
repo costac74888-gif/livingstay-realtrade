@@ -2515,9 +2515,10 @@ async function loadMapMarkers(filters = {}, opts = {}){
     }
     if (placed > 0 && opts.fit === true) {
       kakaoMap.setBounds(bounds);
-      // 카카오맵은 단일 좌표에 setBounds를 하면 지나치게 넓은 레벨로 남는 특성이 있음.
-      // 결과가 1~2건이면 명시적으로 레벨 3으로 확대해 건물이 화면에 꽉 차게 표시한다.
-      if (placed <= 2) kakaoMap.setLevel(3);
+      // 단일 좌표만 setBounds하면 지나치게 넓게 남으므로 그때만 확대한다.
+      // 동명 건물이 서로 먼 지역에 2곳 이상 있으면 setBounds가 계산한 범위를 유지해야
+      // 두 건물 중간(예: 판교)만 레벨 3으로 확대되는 오류가 생기지 않는다.
+      if (placed === 1) kakaoMap.setLevel(3);
     }
     updateMarkerLabels();
     applyMapLocationTarget();

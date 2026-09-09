@@ -37,6 +37,11 @@ expect(
   "동명이건 검색 후 상세를 열 때 선택 건물 위치로 지도가 다시 이동하지 않습니다.",
 );
 expect(
+  source.includes("if (placed === 1) kakaoMap.setLevel(3)") &&
+    !source.includes("if (placed <= 2) kakaoMap.setLevel(3)"),
+  "서로 먼 동명 건물 2곳을 검색할 때 중간 지점만 확대하는 동작이 남아 있습니다.",
+);
+expect(
   css.includes(".map-location-target") &&
     css.includes("map-location-target-pulse") &&
     !css.includes(".map-location-target-pin") &&
