@@ -38,7 +38,9 @@ expect(
 );
 expect(
   source.includes("if (placed === 1) kakaoMap.setLevel(3)") &&
-    !source.includes("if (placed <= 2) kakaoMap.setLevel(3)"),
+    !source.includes("if (placed <= 2) kakaoMap.setLevel(3)") &&
+    source.includes("else if (filters.q)") &&
+    source.includes("kakaoMap.setLevel(Math.min(14, fittedLevel + 1))"),
   "서로 먼 동명 건물 2곳을 검색할 때 중간 지점만 확대하는 동작이 남아 있습니다.",
 );
 expect(

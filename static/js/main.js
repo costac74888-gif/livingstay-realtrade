@@ -2519,6 +2519,14 @@ async function loadMapMarkers(filters = {}, opts = {}){
       // 동명 건물이 서로 먼 지역에 2곳 이상 있으면 setBounds가 계산한 범위를 유지해야
       // 두 건물 중간(예: 판교)만 레벨 3으로 확대되는 오류가 생기지 않는다.
       if (placed === 1) kakaoMap.setLevel(3);
+      // 전국 건물명 검색의 복수 결과는 맞춤 범위보다 한 단계 더 축소한다.
+      // 결과가 가장자리에 걸려 마크가 사라지는 일을 막고 시군구 집계 마크도 보이게 한다.
+      else if (filters.q) {
+        const fittedLevel = Number(kakaoMap.getLevel());
+        if (Number.isFinite(fittedLevel)) {
+          kakaoMap.setLevel(Math.min(14, fittedLevel + 1));
+        }
+      }
     }
     updateMarkerLabels();
     applyMapLocationTarget();
