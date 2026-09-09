@@ -91,6 +91,7 @@ expect(
 );
 expect(
   main.includes('onclick="openBuildingDetail(${Number(b.id)}); return false;"') &&
+  main.includes("Date.parse(a.viewed_at)") &&
   main.includes("function closeMapSearchbar()") &&
   main.includes("closeMapSearchbar();") &&
   main.includes("function scrollHomeListsToStart()") &&

@@ -808,16 +808,25 @@ async function run() {
     expect(String(recentSelection.first?.id) === "101"
       && recentSelection.first?.name === "선택 테스트 자산"
       && recentSelection.first?.addr.includes("강원특별자치도 속초시")
+      && Number.isFinite(recentSelection.first?.viewed_at)
       && recentSelection.quickText.includes("최근 조회"),
       "세 분석의 공통 건물 선택이 최근 조회 목록에 저장되지 않았습니다.");
     await page.click("#propertyTab");
     await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
     await page.click("#favoriteBtn");
     await page.waitForFunction(() => document.getElementById("favoriteBtn").textContent === "관심해제");
+    const syncedQuickGroups = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("#quickBuildings .quick-group")).map((group) => ({
+        title: group.querySelector("strong").textContent,
+        ids: Array.from(group.querySelectorAll("button[data-id]")).map((button) => button.dataset.id),
+      })));
     expect(favoriteMutations.length === 1
       && favoriteMutations[0].method === "POST"
       && String(favoriteMutations[0].body.building_id) === "101",
       "부동산투자분석의 관심저장 버튼이 선택 건물을 저장하지 않았습니다.");
+    expect(syncedQuickGroups.some((group) => group.title === "관심단지" && group.ids.includes("101"))
+      && syncedQuickGroups.some((group) => group.title === "최근 조회" && group.ids.includes("101")),
+      "같은 건물이 홈과 동일하게 관심단지·최근 조회 양쪽에 동기화되지 않았습니다.");
     await page.click("#rentalTab");
     await page.waitForFunction(() =>
       document.querySelector('#rentalReportActions [data-report-action="favorite"]')?.textContent === "관심해제");

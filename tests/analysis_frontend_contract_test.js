@@ -145,8 +145,11 @@ expect(
 );
 expect(
   html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")
-    && js.includes('"hs_recent_buildings"'),
-  "관심단지 또는 최근 조회 건물 바로가기가 없습니다.",
+    && js.includes('"hs_recent_buildings"') && js.includes("viewed_at:Date.now()")
+    && js.includes("favorites.slice(0,3)") && js.includes("+더보기(")
+    && js.includes('window.addEventListener("storage"')
+    && js.includes('window.addEventListener("pageshow"'),
+  "관심단지 또는 최근 조회가 홈 지도 검색영역과 같은 기준으로 동기화되지 않았습니다.",
 );
 expect(
   html.includes("가격 부담") && html.includes("기타 단지")
@@ -193,7 +196,7 @@ expect(
   "수요 대비 저평가 후보 중심 TOP 5가 없습니다.",
 );
 expect(
-  js.includes("if(loadSeq===0&&!state.payload)load()")
+  js.includes("loadSeq===0&&!state.payload")
     && js.includes("기존 분석 유지 · 갱신 실패"),
   "초기 중복 요청 차단 또는 후속 갱신 실패 시 정상 화면 보존이 없습니다.",
 );

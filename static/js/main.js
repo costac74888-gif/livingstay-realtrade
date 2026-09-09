@@ -3313,7 +3313,11 @@ function renderRecentChips(){
     ? list
       .filter(b => Number.isInteger(Number(b && b.id)) && Number(b.id) > 0)
       .slice()
-      .sort((a, b) => (Number(b.viewed_at) || 0) - (Number(a.viewed_at) || 0))
+      .sort((a, b) => {
+        const aTime = Number(a.viewed_at) || Date.parse(a.viewed_at) || 0;
+        const bTime = Number(b.viewed_at) || Date.parse(b.viewed_at) || 0;
+        return bTime - aTime;
+      })
       .slice(0, HS_RECENT_MAX)
     : [];
   if (!list.length){ row.style.display = "none"; return; }
