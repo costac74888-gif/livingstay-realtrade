@@ -110,5 +110,6 @@
   $("analysisTabs").querySelectorAll("button").forEach(function(button){button.onclick=function(){setAnalysisMode(button.dataset.analysisMode)}});
   $("operationRentalGuide").onclick=function(){setAnalysisMode("rental")};
   window.addEventListener("livingstay:auth",function(e){if(e.detail&&e.detail.loggedIn){renderQuickBuildings();if(loadSeq===0&&!state.payload)load()}});
+  window.livingstaySelectedAnalysisBuilding=function(){return state.items.find(function(item){return String(item.building_id)===String(state.selected)})||null};
   renderQuickBuildings();setAnalysisMode(state.analysisMode);if(state.analysisMode!=="rental")load();
 })();

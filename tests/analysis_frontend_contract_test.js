@@ -87,6 +87,14 @@ expect(
     && css.includes("@media print"),
   "한 장 보고서 출력 또는 홈앤스테이 분석 링크 공유 기능이 없습니다.",
 );
+const printJs = fs.readFileSync("static/js/analysis-print.js", "utf8");
+expect(
+  html.includes('id="printReportSerial"') && html.includes('id="printMap"')
+    && html.includes("3.2 지도위치") && html.includes("주의사항")
+    && printJs.includes("보고서 생성 일련번호") && printJs.includes("kakao.maps.Map")
+    && printJs.includes("reportTypeMarkup(mode,true)") && printJs.includes('title:"부동산투자분석 보고서"'),
+  "인쇄 보고서의 로고형 헤더, 일련번호, 실제 지도, 주의사항 또는 보고서 종류 설명이 없습니다.",
+);
 expect(
   js.includes("/photos") && js.includes("/streetview?view=building-v9")
     && html.includes("유사자산 대비 가격 =")
