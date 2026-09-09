@@ -21,8 +21,22 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
     mapLayout: window.__analysisPrintMapLayout || null,
     propertyPoint: !!document.querySelector("#printMap .print-map-property-point"),
+    address: document.querySelector("#printOverview .print-building span")?.textContent || "",
+    result: document.querySelector("#printOverview .print-result-line")?.textContent || "",
+    metricLabels: Array.from(document.querySelectorAll("#printOverview .print-metrics small")).map(node => node.textContent),
+    sideMetricCount: document.querySelectorAll("#printTransactionTrend .print-side-metrics article").length,
+    sideMetricValues: Array.from(document.querySelectorAll("#printTransactionTrend .print-side-metrics strong")).map(node => node.textContent),
+    operationQuadrantsFit: Array.from(document.querySelectorAll("#printGraph .operation-quadrant")).every(node => {
+      const rect = node.getBoundingClientRect();
+      const wrap = node.parentElement.getBoundingClientRect();
+      return rect.left >= wrap.left - 1 && rect.right <= wrap.right + 1
+        && rect.top >= wrap.top - 1 && rect.bottom <= wrap.bottom + 1;
+    }),
   }));
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+  if (process.env.SAVE_OPERATION_PRINT && mode === "operation") {
+    fs.writeFileSync(process.env.SAVE_OPERATION_PRINT, pdf);
+  }
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
   await page.emulateMedia({ media: "screen" });
   expect(report.display === "block" && report.mode === mode && report.zones === 5
@@ -33,6 +47,12 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
       && report.mapLayout.preparedHeight >= 155
       && report.mapLayout.propertyPoint === true
       && report.propertyPoint))
+    && (mode !== "operation" || (report.address && !report.address.includes("—")
+      && report.result.includes("지역 평균 대비 ADR")
+      && report.metricLabels.join("|") === "ADR|OCC|RevPAR|적용 객실|지역 평균 ADR|지역 평균 OCC"
+      && report.sideMetricCount === 4
+      && report.sideMetricValues.every(value => value && !value.startsWith("—"))
+      && report.operationQuadrantsFit))
     && pages === 1,
   `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
 }
