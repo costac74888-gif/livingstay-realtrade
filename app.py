@@ -11863,7 +11863,7 @@ def _agent_leads_data(agent_id):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT lr.id, lr.deal_type, lr.desired_price, lr.contact_phone,
+            SELECT lr.id, lr.deal_type, lr.desired_price, lr.area_sqm, lr.contact_phone,
                    lr.deal_mode, lr.display_seq, u.name AS requester_name,
                    lr.routed_reason, lr.status,
                    CASE
@@ -11979,7 +11979,7 @@ def _agent_buy_requests_data(agent_id):
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT br.id, br.deal_type, br.desired_price, br.contact_phone,
+            SELECT br.id, br.deal_type, br.desired_price, br.area_sqm, br.contact_phone,
                    br.routed_reason, br.status,
                    CASE
                      WHEN br.routed_reason = 'exclusive' AND COALESCE(ab.has_priority_badge, FALSE)
@@ -13703,6 +13703,11 @@ def create_buy_request():
     deal_type = (data.get("deal_type") or "").strip()
     desired_price = (data.get("desired_price") or "").strip()[:100]
     contact_phone = (data.get("contact_phone") or "").strip()
+    try:
+        area_sqm = float(data.get("area_sqm") or 0)
+        area_sqm = round(area_sqm, 2) if 0 < area_sqm <= 10000 else None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "전유면적은 숫자로 입력해주세요."}), 400
 
     def _parse_krw(field, allowed):
         v = data.get(field)
@@ -13746,11 +13751,11 @@ def create_buy_request():
         cur.execute("""
             INSERT INTO buy_requests
                 (user_id, master_building_id, deal_type, desired_price, contact_phone,
-                 routed_agent_id, routed_reason, price_krw, monthly_rent_krw)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 routed_agent_id, routed_reason, price_krw, monthly_rent_krw, area_sqm)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, [user["id"], mb_id, deal_type, desired_price or None, contact_phone,
-              routed_agent_id, routed_reason, price_krw, monthly_rent_krw])
+              routed_agent_id, routed_reason, price_krw, monthly_rent_krw, area_sqm])
         req_id = cur.fetchone()["id"]
         _best_effort_weekly_email_opt_in(cur, user["id"], "buy_request")
         conn.commit()
@@ -27060,7 +27065,7 @@ def admin_buy_requests_list():
         total = cur.fetchone()["c"]
         cur.execute(f"""
             SELECT br.id, br.master_building_id, mb.building_name,
-                   br.deal_type, br.desired_price, br.contact_phone,
+                   br.deal_type, br.desired_price, br.area_sqm, br.contact_phone,
                    br.routed_reason, br.status, br.admin_note,
                    (br.status = 'submitted' AND br.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
                    a.office_name AS agent_office_name, a.phone AS agent_phone,
@@ -27151,7 +27156,7 @@ def admin_buy_requests_export():
     try:
         cur.execute("""
             SELECT br.id, mb.building_name, br.contact_phone, br.deal_type,
-                   br.desired_price, br.routed_reason, a.office_name AS agent_name,
+                   br.desired_price, br.area_sqm, br.routed_reason, a.office_name AS agent_name,
                    a.phone AS agent_phone, br.status, br.admin_note, br.created_at
             FROM buy_requests br
             LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
@@ -27167,7 +27172,7 @@ def admin_buy_requests_export():
     wb = Workbook()
     ws = wb.active
     ws.title = "매수의뢰"
-    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가",
+    headers = ["번호", "건물명", "의뢰자 연락처", "거래유형", "희망가", "전유면적(㎡)",
                "전달구분", "전달중개사", "중개사 연락처", "상태", "비고", "접수일"]
     ws.append(headers)
     hdr_fill = PatternFill("solid", fgColor="F9F5EE")
@@ -27180,13 +27185,14 @@ def admin_buy_requests_export():
         ws.append([
             r["id"], r["building_name"] or "", r["contact_phone"] or "",
             r["deal_type"] or "", r["desired_price"] or "",
+            float(r["area_sqm"]) if r["area_sqm"] else "",
             reason_map.get(r["routed_reason"], r["routed_reason"] or ""),
             r["agent_name"] or "", r["agent_phone"] or "",
             status_map.get(r["status"], r["status"] or ""),
             r["admin_note"] or "",
             r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
         ])
-    col_widths = [6, 20, 16, 10, 18, 8, 22, 14, 8, 20, 16]
+    col_widths = [6, 20, 16, 10, 18, 12, 8, 22, 14, 8, 20, 16]
     for col, w in zip(ws.columns, col_widths):
         ws.column_dimensions[col[0].column_letter].width = w
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)

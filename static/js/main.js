@@ -5076,6 +5076,8 @@ function openBuyRequestModal(buildingId, buildingName){
         <div id="brPriceShort" style="display:none;">
           <input id="brShortPrice" type="text" maxlength="100" placeholder="예) 1박 8만원 / 주 단위 협의" style="${FLD} margin-bottom:12px;" />
         </div>
+        <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">전유면적</div>
+        <input id="brAreaSqm" type="number" min="0.1" max="10000" step="0.1" inputmode="decimal" required placeholder="예) 17.6㎡" style="${FLD} margin-bottom:12px;" />
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
         <div id="brPhoneInputWrap" style="margin-bottom:6px;">
           <input id="brPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD} margin-bottom:6px;" />
@@ -5246,6 +5248,13 @@ function openBuyRequestModal(buildingId, buildingName){
       return;
     }
     const phone = verifiedPhone;
+    const areaRaw = Number(ov.querySelector("#brAreaSqm").value);
+    const areaSqm = Number.isFinite(areaRaw) && areaRaw > 0 ? Math.round(areaRaw * 100) / 100 : null;
+    if (!areaSqm || areaSqm > 10000){
+      msg.textContent = "전유면적을 ㎡ 단위 숫자로 입력해주세요.";
+      ov.querySelector("#brAreaSqm").focus();
+      return;
+    }
     const numVal = (id) => {
       const v = parseInt(ov.querySelector("#" + id).value, 10);
       return (Number.isFinite(v) && v > 0) ? v : null;
@@ -5281,6 +5290,7 @@ function openBuyRequestModal(buildingId, buildingName){
           desired_price: desiredPrice,
           price_krw: priceKrw,
           monthly_rent_krw: monthlyRentKrw,
+          area_sqm: areaSqm,
           contact_phone: phone,
         }),
       });
