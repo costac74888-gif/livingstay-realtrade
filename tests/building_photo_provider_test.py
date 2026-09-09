@@ -213,7 +213,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score", return_value=0.68)
     @patch("app.requests.get")
-    def test_obstructed_low_confidence_photo_is_hidden_after_six_calls(
+    def test_usable_front_photo_is_shown_after_two_calls_without_hard_cutoff(
         self, get, _score, _claim
     ):
         response = Mock()
@@ -232,9 +232,10 @@ class BuildingPhotoProviderTest(unittest.TestCase):
             "lat": 37.5, "lng": 127.0, "grnd_flr_cnt": 27, "heit": None,
             "building_name": "우남퍼스트빌스위트", "road_address": "경기도 구리시",
         }
-        self.assertIsNone(_fetch_best_streetview_image(building, "key", points))
-        self.assertEqual(get.call_count, 6)
-        self.record_evaluation.assert_called_once_with(2, 4, "rejected")
+        best = _fetch_best_streetview_image(building, "key", points)
+        self.assertEqual(best[0], 0.68)
+        self.assertEqual(get.call_count, 2)
+        self.record_evaluation.assert_called_once_with(2, 0, "base")
 
     @patch("app.time.monotonic", side_effect=[100.0, 100.0, 86601.0])
     def test_selected_image_cache_expires_after_one_day(self, _clock):

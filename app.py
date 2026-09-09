@@ -1159,7 +1159,7 @@ _STREETVIEW_REJECTION_CACHE = {}
 _STREETVIEW_SELECTION_CACHE_LOCK = threading.Lock()
 _STREETVIEW_SELECTION_SEMAPHORE = threading.BoundedSemaphore(2)
 _STREETVIEW_SELECTION_TTL_SECONDS = 86400
-_STREETVIEW_MIN_ACCEPT_SCORE = 0.70
+_STREETVIEW_EXPANSION_THRESHOLD = 0.58
 
 
 def _record_streetview_evaluation(base_calls, extra_calls, outcome):
@@ -1257,10 +1257,9 @@ def _fetch_best_streetview_image(
     building,
     key,
     capture_points,
-    expansion_threshold=_STREETVIEW_MIN_ACCEPT_SCORE,
-    min_accept_score=_STREETVIEW_MIN_ACCEPT_SCORE,
+    expansion_threshold=_STREETVIEW_EXPANSION_THRESHOLD,
 ):
-    """양쪽 정면을 우선 평가하고 최종 품질 기준 미달 사진은 반환하지 않는다."""
+    """양쪽 정면을 우선 평가하고 저점일 때만 좌·우 후보를 추가한다."""
     from sync_building_photos import (
         STREETVIEW_MONTHLY_CAP,
         _claim_daily_slot,
@@ -1345,11 +1344,8 @@ def _fetch_best_streetview_image(
     usable = evaluate(base_jobs)
     if usable and max(result[0] for result in usable) >= float(expansion_threshold):
         best = max(usable, key=lambda result: result[0])
-        accepted = best if best[0] >= float(min_accept_score) else None
-        _record_streetview_evaluation(
-            len(base_jobs), 0, "base" if accepted else "rejected"
-        )
-        return accepted
+        _record_streetview_evaluation(len(base_jobs), 0, "base")
+        return best
 
     extra_jobs = build_jobs((-18.0, 18.0))
     usable.extend(evaluate(extra_jobs))
@@ -1357,11 +1353,8 @@ def _fetch_best_streetview_image(
         _record_streetview_evaluation(len(base_jobs), len(extra_jobs), "rejected")
         return None
     best = max(usable, key=lambda result: result[0])
-    accepted = best if best[0] >= float(min_accept_score) else None
-    _record_streetview_evaluation(
-        len(base_jobs), len(extra_jobs), "extra" if accepted else "rejected"
-    )
-    return accepted
+    _record_streetview_evaluation(len(base_jobs), len(extra_jobs), "extra")
+    return best
 
 
 @app.route("/api/building-photo/<int:building_id>/<source>")
