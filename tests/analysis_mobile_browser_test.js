@@ -20,6 +20,7 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     graphImage: document.querySelector("#printGraph .print-chart-image")?.getAttribute("src") || "",
     exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
     mapLayout: window.__analysisPrintMapLayout || null,
+    propertyPoint: !!document.querySelector("#printMap .print-map-property-point"),
   }));
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
@@ -29,7 +30,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     && (!graphRequired || report.graphImage.startsWith("data:image/png"))
     && (mode !== "property" || (report.mapLayout
       && report.mapLayout.preparedWidth >= 200
-      && report.mapLayout.preparedHeight >= 155))
+      && report.mapLayout.preparedHeight >= 155
+      && report.mapLayout.propertyPoint === true
+      && report.propertyPoint))
     && pages === 1,
   `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
 }
