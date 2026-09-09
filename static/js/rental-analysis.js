@@ -28,10 +28,13 @@
     node.textContent = value == null ? "" : String(value);
     return node.innerHTML;
   }
+  function monthLabel(value) {
+    var match = String(value || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+    return match ? match[1] + "년 " + Number(match[2]) + "월" : String(value || "");
+  }
   function quarterLabel(value) {
     var match = String(value || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
-    if (!match) return String(value || "");
-    return match[1] + "년 " + (Math.floor((Number(match[2]) - 1) / 3) + 1) + "분기";
+    return match ? match[1] + "년 " + (Math.floor((Number(match[2]) - 1) / 3) + 1) + "분기" : String(value || "");
   }
   function money(value, digits) {
     return Number(value || 0).toLocaleString("ko-KR", {
@@ -118,9 +121,9 @@
       : highYield && highStable ? "고수익·안정형"
         : highYield ? "고수익·위험형" : highStable ? "안정·저수익형" : "수익개선 필요형";
     var source = userEntered
-      ? "공실 기준: 사용자 입력 · 비교 기준: " + benchmarkSource
-      : "공실 기준: " + benchmarkSource + " 평균 가정";
-    var comparison = "지역 평균 수익률 " + benchmarkYield.toFixed(2) + "% · 공실률 "
+      ? "공실 기준: 사용자 입력 · 수익률 비교: " + benchmarkSource
+      : "공실 기준: 소규모 상가 전국 전체 평균 · 수익률 비교: " + benchmarkSource;
+    var comparison = "오피스텔 평균 수익률 " + benchmarkYield.toFixed(2) + "% · 적용 공실률 "
       + benchmarkVacancy.toFixed(1) + "%";
     var peerDots = rentalBenchmarkItems.map(function (item) {
       var itemYield = Number(item.income_yield);
@@ -132,24 +135,28 @@
         + '%" title="' + escapeHtml(item.region_name || "비교지역") + '"></i>';
     }).join("");
     box.className = "analysis-card rental-positioning";
-    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 지역 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i></div><div class="positioning-legend"><span>R-ONE 비교지역</span><strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>' + (userEntered ? "사용자 입력" : "지역 평균 가정") + '</span></div></div>';
+    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 오피스텔 수익률 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i></div><div class="positioning-legend"><span>R-ONE 비교지역</span><strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>' + (userEntered ? "사용자 입력" : "전국 전체 평균") + '</span></div></div>';
   }
   async function loadRentalBenchmark(id, seq) {
     rentalBenchmark = null; rentalBenchmarkItems = []; benchmarkSource = ""; benchmarkNotice = "";
     if (!id) return;
     try {
       var response = await fetch("/api/analysis/rental-benchmark?building_id=" + encodeURIComponent(id)
-        + "&property_type=small_retail", { credentials: "same-origin" });
+        + "&property_type=officetel", { credentials: "same-origin" });
       var payload = response.ok ? await response.json() : null;
       if (seq !== buildingSequence || String(id) !== loadedBuildingId) return;
       var candidate = payload && payload.available !== false && (payload.benchmark || payload);
       rentalBenchmark = candidate != null && (typeof candidate === "object" || typeof candidate === "number") ? candidate : null;
       rentalBenchmarkItems = payload && Array.isArray(payload.items) ? payload.items : [];
       var source = payload && (payload.source || candidate && candidate.source);
-      benchmarkSource = typeof source === "string" ? source : source && (source.provider + (candidate && candidate.period ? " · " + quarterLabel(candidate.period) : "")) || "";
+      benchmarkSource = typeof source === "string" ? source : source && (source.provider + " 오피스텔" + (candidate && candidate.period ? " · " + monthLabel(candidate.period) : "")) || "";
       benchmarkNotice = source && source.notice || "";
       var months = benchmarkMonths();
-      $("rentalVacancyMonthsHint").textContent = months == null ? "R-ONE 평균을 확인할 수 없어 사용자 입력을 기다립니다." : "R-ONE 평균 " + months.toFixed(1) + "개월 · 직접 입력 시 사용자 값 우선";
+      $("rentalVacancyMonthsHint").textContent = months == null
+        ? "전국 전체 공실 평균을 확인할 수 없어 사용자 입력을 기다립니다."
+        : "소규모 상가 전국 전체 평균 " + months.toFixed(1) + "개월"
+          + (candidate && candidate.vacancy_period ? " (" + quarterLabel(candidate.vacancy_period) + ")" : "")
+          + " · 직접 입력 시 사용자 값 우선";
       calculate();
     } catch (ignore) {
       if (seq !== buildingSequence || String(id) !== loadedBuildingId) return;
@@ -167,8 +174,8 @@
     var resolvedMonths = enteredMonths != null ? Math.min(12, Math.max(0, enteredMonths)) : benchmarkMonths();
     $("rentalVacancyRate").value = resolvedMonths == null ? "" : (resolvedMonths / 12 * 100).toFixed(1);
     $("rentalVacancyRateHint").textContent = resolvedMonths == null
-      ? "공실 개월을 입력하거나 지역 평균을 불러와야 합니다."
-      : enteredMonths != null ? "사용자 입력 공실기간에서 자동계산" : "R-ONE 지역 평균 자동 적용";
+      ? "공실 개월을 입력하거나 전국 전체 평균을 불러와야 합니다."
+      : enteredMonths != null ? "사용자 입력 공실기간에서 자동계산" : "R-ONE 소규모 상가 전국 전체 평균 적용";
     var vacancy = resolvedMonths == null ? 0 : resolvedMonths / 12;
     var acquisitionTax = n("rentalAcquisitionTax");
     var brokerFee = n("rentalBrokerFee");
@@ -177,7 +184,7 @@
     var costs = tax + n("rentalManagementCost") + n("rentalOtherCost");
     var loan = n("rentalLoanAmount");
     if (resolvedMonths == null) {
-      $("rentalResults").innerHTML = '<div class="rental-calculation-warning"><b>공실 기준이 필요합니다</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 지역 평균이 연결되어야 수익률을 계산합니다.</span></div>';
+      $("rentalResults").innerHTML = '<div class="rental-calculation-warning"><b>공실 기준이 필요합니다</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 전국 전체 평균이 연결되어야 수익률을 계산합니다.</span></div>';
       renderPositioning(NaN, null, false);
       window.__rentalAnalysisResult = {
         purchasePrice: purchase, vacancyMonths: null, vacancyRate: null,
@@ -200,7 +207,7 @@
     var marketYield = market > 0 ? noi / market * 100 : NaN;
     var dscr = debt.annual > 0 ? noi / debt.annual : null;
     $("rentalResults").innerHTML =
-      (resolvedMonths == null ? '<div class="rental-calculation-warning"><b>공실 기준 미반영 임시 계산</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 지역 평균이 연결되면 결과가 자동으로 갱신됩니다.</span></div>' : "")
+      (resolvedMonths == null ? '<div class="rental-calculation-warning"><b>공실 기준 미반영 임시 계산</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 전국 전체 평균이 연결되면 결과가 자동으로 갱신됩니다.</span></div>' : "")
       + card("대출 후 월 순현금", money(cashFlow / 12, 1), "순영업소득에서 월 원리금 차감", "primary")
       + card("자기자본 수익률", percent(cashReturn), "실투자금 " + money(invested), cashReturn < 0 ? "warning" : "")
       + card("비용 반영 순수익률", percent(netYield), "순영업소득 " + money(noi) + "/년")
@@ -364,7 +371,7 @@
       $("rentalUnitAreaOptions").innerHTML = "";
       $("rentalMarketPrice").value = "";
       $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
-      $("rentalVacancyMonthsHint").textContent = "건물을 선택하면 R-ONE 지역 평균을 확인합니다.";
+      $("rentalVacancyMonthsHint").textContent = "건물을 선택하면 R-ONE 전국 전체 공실 평균을 확인합니다.";
       $("rentalUnitAreaHint").textContent = "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
       setMarketStatus("건물과 호실 면적을 선택하면 최근 실거래 중앙값을 불러옵니다.", "");
       calculate();

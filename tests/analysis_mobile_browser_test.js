@@ -191,12 +191,13 @@ async function run() {
         ok: true,
         available: true,
         benchmark: {
-          period: "2026-04-01",
+          period: "2026-07-01",
+          vacancy_period: "2026-04-01",
           region_code: "42",
           region_name: "강원 조사권역",
           region_level: "province",
-          property_type: "small_retail",
-          property_type_name: "소규모 상가",
+          property_type: "officetel",
+          property_type_name: "오피스텔",
           income_yield: 5.2,
           vacancy_rate: 10,
           stability_score: 90,
@@ -209,7 +210,7 @@ async function run() {
         source: {
           provider: "한국부동산원 R-ONE",
           status: "ready",
-          notice: "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계를 이용한 대체 투자상품 참고 비교입니다.",
+          notice: "수익률은 오피스텔 통계이며 공실은 소규모 상가 전국 전체 평균입니다.",
         },
       });
     }
@@ -665,11 +666,11 @@ async function run() {
       && Math.abs(rentalResult.calculation.invested - 4250) < 0.01
       && rentalResult.vacancyMonths === ""
       && rentalResult.vacancyRate === "10.0"
-      && rentalResult.vacancyHint.includes("R-ONE 평균 1.2개월")
+      && rentalResult.vacancyHint.includes("전국 전체 평균 1.2개월")
       && rentalResult.positioning.includes("수익개선 검토")
-      && rentalResult.positioning.includes("지역 평균 가정")
-      && rentalResult.positioning.includes("동일 자산군이 아닌")
-      && rentalResult.positioning.includes("2026년 2분기")
+      && rentalResult.positioning.includes("전국 전체 평균")
+      && rentalResult.positioning.includes("오피스텔 통계")
+      && rentalResult.positioning.includes("2026년 7월")
       && rentalResult.peerCount === 2
       && rentalResult.calculation.vacancySource === "rone",
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");

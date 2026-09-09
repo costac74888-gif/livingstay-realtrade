@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-07"
+SCHEMA_VERSION = "2026-09-09-08"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -3474,6 +3474,7 @@ def _run_init_db():
     CREATE TABLE IF NOT EXISTS rone_rental_benchmarks (
         id BIGSERIAL PRIMARY KEY,
         period DATE NOT NULL,
+        vacancy_period DATE NOT NULL,
         region_code TEXT NOT NULL,
         region_name TEXT NOT NULL,
         region_level TEXT NOT NULL,
@@ -3505,6 +3506,9 @@ def _run_init_db():
         ALTER COLUMN source_hash SET NOT NULL
     """)
     cur.execute("ALTER TABLE rone_rental_benchmarks ADD COLUMN IF NOT EXISTS source_checked_at TIMESTAMPTZ")
+    cur.execute("ALTER TABLE rone_rental_benchmarks ADD COLUMN IF NOT EXISTS vacancy_period DATE")
+    cur.execute("UPDATE rone_rental_benchmarks SET vacancy_period = COALESCE(vacancy_period, period)")
+    cur.execute("ALTER TABLE rone_rental_benchmarks ALTER COLUMN vacancy_period SET NOT NULL")
     cur.execute("""
     DO $$ BEGIN
         IF EXISTS (

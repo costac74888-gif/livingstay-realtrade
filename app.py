@@ -3326,8 +3326,8 @@ def get_rental_market_price():
 def get_rental_benchmark():
     """선택 건물에 적용할 최신 R-ONE 임대수익·공실 기준값."""
     building_id = (request.args.get("building_id") or "").strip()
-    property_type = (request.args.get("property_type") or "small_retail").strip()
-    allowed_types = {"office", "medium_retail", "small_retail", "collective_retail"}
+    property_type = (request.args.get("property_type") or "officetel").strip()
+    allowed_types = {"officetel"}
     if not building_id.isdigit():
         return jsonify({"ok": False, "reason": "분석할 건물을 먼저 선택해 주세요."}), 400
     if property_type not in allowed_types:
@@ -3362,7 +3362,7 @@ def get_rental_benchmark():
             cur.execute("""
                 SELECT period, region_code, region_name, region_level,
                        property_type, property_type_name,
-                       income_yield, vacancy_rate, source_checked_at, collected_at
+                       income_yield, vacancy_rate, vacancy_period, source_checked_at, collected_at
                 FROM rone_rental_benchmarks
                 WHERE property_type = %s
                   AND region_level = %s
@@ -3384,7 +3384,7 @@ def get_rental_benchmark():
                 "source": {
                     "provider": "한국부동산원 R-ONE",
                     "status": "awaiting_data",
-                    "notice": "R-ONE 기준자료가 준비되면 지역 평균 공실률을 자동 적용합니다.",
+                    "notice": "R-ONE 기준자료가 준비되면 전국 전체 공실률을 자동 적용합니다.",
                 },
             })
 
@@ -3410,6 +3410,7 @@ def get_rental_benchmark():
             "available": True,
             "benchmark": {
                 "period": benchmark["period"].isoformat(),
+                "vacancy_period": benchmark["vacancy_period"].isoformat(),
                 "region_code": benchmark["region_code"],
                 "region_name": benchmark["region_name"],
                 "region_level": benchmark["region_level"],
@@ -3427,7 +3428,7 @@ def get_rental_benchmark():
                 "checked_at": benchmark["source_checked_at"],
                 "collected_at": benchmark["collected_at"],
                 "is_exact_asset_type": False,
-                "notice": "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계이며, 분기 소득수익률을 단순 연환산한 대체 투자상품 참고 비교입니다.",
+                "notice": "수익률은 유사 수익형 부동산인 오피스텔 통계이며, 공실 미입력 시 소규모 상가 전국 전체 공실률을 대체 평균으로 적용합니다.",
             },
         })
     except Exception:
