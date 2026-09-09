@@ -15,7 +15,7 @@
   var ids = [
     "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
     "rentalVacancyMonths", "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
-    "rentalManagementCost", "rentalOtherCost", "rentalLoanAmount",
+    "rentalManagementCost", "rentalOtherCost", "rentalLoanAmount", "rentalBasisTotal",
     "rentalLoanRate", "rentalLoanYears",
   ];
   function n(id) {
@@ -101,26 +101,29 @@
     if (!box) return;
     var benchmarkYield = rentalBenchmark && Number(rentalBenchmark.income_yield);
     var benchmarkVacancy = rentalBenchmark && Number(rentalBenchmark.vacancy_rate);
-    if (!Number.isFinite(yieldValue) || !Number.isFinite(months)
-        || !Number.isFinite(benchmarkYield) || !Number.isFinite(benchmarkVacancy)) {
+    if (!Number.isFinite(benchmarkYield) || !Number.isFinite(benchmarkVacancy)) {
       box.className = "analysis-card rental-positioning pending";
       box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>시장가 수익률과 최근 1년 공실 기준을 함께 확인합니다.</p></div><div class="positioning-pending">판정 보류 · 현재 시장가와 R-ONE 기준자료가 모두 확인되어야 위치를 판정할 수 있습니다.</div>';
       return;
     }
-    var vacancyRate = months / 12 * 100;
+    var hasPosition = Number.isFinite(yieldValue) && Number.isFinite(months);
+    var vacancyRate = hasPosition ? months / 12 * 100 : benchmarkVacancy;
     var stable = 100 - vacancyRate;
     var benchmarkStable = 100 - benchmarkVacancy;
     var yieldSpan = Math.max(2, Math.abs(benchmarkYield) * 0.8);
     var stableSpan = Math.max(12, benchmarkVacancy * 1.5);
-    var x = Math.max(8, Math.min(92, 50 + (yieldValue - benchmarkYield) / yieldSpan * 42));
-    var y = Math.max(8, Math.min(92, 50 - (stable - benchmarkStable) / stableSpan * 42));
+    var x = hasPosition ? Math.max(8, Math.min(92, 50 + (yieldValue - benchmarkYield) / yieldSpan * 42)) : 50;
+    var y = hasPosition ? Math.max(8, Math.min(92, 50 - (stable - benchmarkStable) / stableSpan * 42)) : 50;
     var highYield = yieldValue >= benchmarkYield;
     var highStable = stable >= benchmarkStable;
-    var verdict = !userEntered
+    var verdict = !hasPosition ? "내 조건 입력 대기"
+      : !userEntered
       ? (highYield ? "시장 대비 고수익 후보" : "수익개선 검토")
       : highYield && highStable ? "고수익·안정형"
         : highYield ? "고수익·위험형" : highStable ? "안정·저수익형" : "수익개선 필요형";
-    var source = userEntered
+    var source = !hasPosition
+      ? "R-ONE 오피스텔 수익률과 전국 공실 기준을 먼저 표시합니다."
+      : userEntered
       ? "공실 기준: 사용자 입력 · 수익률 비교: " + benchmarkSource
       : "공실 기준: 소규모 상가 전국 전체 평균 · 수익률 비교: " + benchmarkSource;
     var comparison = "오피스텔 평균 수익률 " + benchmarkYield.toFixed(2) + "% · 적용 공실률 "
@@ -134,8 +137,14 @@
       return '<i class="positioning-peer" style="left:' + left + '%;top:' + top
         + '%" title="' + escapeHtml(item.region_name || "비교지역") + '"></i>';
     }).join("");
-    box.className = "analysis-card rental-positioning";
-    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 오피스텔 수익률 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i></div><div class="positioning-legend"><span>R-ONE 비교지역</span><strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>' + (userEntered ? "사용자 입력" : "전국 전체 평균") + '</span></div></div>';
+    var selectedDot = hasPosition
+      ? '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i>' : "";
+    var selectedSummary = hasPosition
+      ? '<strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>'
+        + (userEntered ? "사용자 입력" : "전국 전체 평균") + '</span>'
+      : '<strong>우측에 매입가와 임대조건을 입력하세요</strong><span>입력 즉시 내 건물 위치 표시</span>';
+    box.className = "analysis-card rental-positioning" + (hasPosition ? "" : " awaiting-input");
+    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 오피스텔 수익률 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + selectedDot + '</div><div class="positioning-legend"><span>R-ONE 비교지역</span>' + selectedSummary + '</div></div>';
   }
   async function loadRentalBenchmark(id, seq) {
     rentalBenchmark = null; rentalBenchmarkItems = []; benchmarkSource = ""; benchmarkNotice = "";
@@ -182,6 +191,8 @@
     var acquisition = acquisitionTax + brokerFee;
     var tax = n("rentalPropertyTax");
     var costs = tax + n("rentalManagementCost") + n("rentalOtherCost");
+    var basisTotal = costs;
+    if ($("rentalBasisTotal")) $("rentalBasisTotal").value = basisTotal ? money(basisTotal, 1).replace("만원", "") : "";
     var loan = n("rentalLoanAmount");
     if (resolvedMonths == null) {
       $("rentalResults").innerHTML = '<div class="rental-calculation-warning"><b>공실 기준이 필요합니다</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 전국 전체 평균이 연결되어야 수익률을 계산합니다.</span></div>';
@@ -451,7 +462,6 @@
     });
   });
   $("rentalLoanMethod").addEventListener("change", calculate);
-  $("rentalCalculate").addEventListener("click", calculate);
   $("rentalReset").addEventListener("click", function () {
     taxManuallyEdited = false;
     marketPriceManuallyEdited = false;
