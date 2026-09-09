@@ -160,9 +160,10 @@ expect(
   "모바일 실렌더링 검증용 0% 기준선 또는 대표 라벨 충돌 회피 계약이 없습니다.",
 );
 expect(
-  js.includes('id="transactionsBtn"') && js.includes("#txTableWrap")
-    && js.includes("실거래 전부보기") && css.includes("repeat(4,minmax(0,1fr))"),
-  "상세·실거래·인쇄·공유 4개 버튼이 나란히 배치되지 않았습니다.",
+  js.includes('id="favoriteBtn"') && js.includes('data-report-action="favorite"')
+    && js.includes("관심저장") && js.includes("/api/favorites/mine")
+    && css.includes("repeat(4,minmax(0,1fr))"),
+  "세 분석의 상세·관심저장·인쇄·공유 4개 버튼이 나란히 배치되지 않았습니다.",
 );
 expect(
   html.includes("③ 가격 부담") && html.includes("(관광수요 낮음 / 가격 높음)")

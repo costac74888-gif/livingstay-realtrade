@@ -159,7 +159,8 @@
       $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 결과가 표시됩니다.</div></div>'
         + (building ? '<div class="analysis-report-common-actions operation-empty-actions" id="operationReportActions"></div>' : "");
       if (building) window.livingstayAnalysisReportActions(
-        $("operationReportActions"), buildingId(), operationName()
+        $("operationReportActions"), buildingId(), operationName(),
+        building && (building.road_address || building.jibun_address)
       );
       return;
     }
@@ -181,7 +182,10 @@
       + '<div class="detail-metric"><small>자료 처리</small><strong>자동분석</strong></div></div>'
       + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>'
       + '<div class="analysis-report-common-actions" id="operationReportActions"></div>';
-    window.livingstayAnalysisReportActions($("operationReportActions"), buildingId(), name);
+    window.livingstayAnalysisReportActions(
+      $("operationReportActions"), buildingId(), name,
+      building && (building.road_address || building.jibun_address)
+    );
   }
   function renderChart() {
     var occ = number($("operationOcc").value);

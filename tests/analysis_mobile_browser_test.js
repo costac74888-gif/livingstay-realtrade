@@ -146,6 +146,8 @@ async function run() {
   let comparisonItemCount = 6;
   let rentalMarketRequest = "";
   let uploadHasOccupancyBasis = true;
+  let favoriteItems = [];
+  let favoriteMutations = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
@@ -257,7 +259,22 @@ async function run() {
       processed_file_count: 1,
       retained: false,
     });
-    if (url.pathname === "/api/favorites/mine") return json(route, { items: [] });
+    if (url.pathname === "/api/favorites/mine") {
+      const method = route.request().method();
+      if (method === "GET") return json(route, { items: favoriteItems });
+      const body = route.request().postDataJSON();
+      favoriteMutations.push({ method, body });
+      if (method === "POST") {
+        favoriteItems = [{
+          building_id: body.building_id,
+          building_name: body.building_name,
+          address: body.address,
+        }];
+      } else if (method === "DELETE") {
+        favoriteItems = [];
+      }
+      return json(route, { ok: true });
+    }
     if (url.pathname.endsWith("/photos")) return json(route, {
       photos: [
         { url: "/missing-analysis-photo.jpg" },
@@ -339,7 +356,7 @@ async function run() {
       && result.quadrants[3].labelLeft < result.quadrants[3].left + result.quadrants[3].width,
       "①·④ 설명문구가 해당 사분면 안에 표시되지 않았습니다.");
     expect(result.detailSections.some((text) => text.includes("현재 수요·상대가격 위치"))
-      && result.detailButtons.join("|") === "상세 페이지|실거래 전부보기|인쇄|공유",
+      && result.detailButtons.join("|") === "상세 페이지|관심저장|인쇄|공유",
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
     expect(result.photo.state === "loaded" && result.photo.src.startsWith("data:image/svg+xml"),
       "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
@@ -463,7 +480,7 @@ async function run() {
     }));
     expect(operationActionsBeforeInput.count === 4
       && operationActionsBeforeInput.labels.includes("상세 페이지")
-      && operationActionsBeforeInput.labels.includes("실거래 전부보기")
+      && operationActionsBeforeInput.labels.includes("관심저장")
       && operationActionsBeforeInput.labels.includes("인쇄")
       && operationActionsBeforeInput.labels.includes("공유"),
       "숙박운영 자료 입력 전 공통 4개 버튼이 표시되지 않았습니다.");
@@ -706,31 +723,67 @@ async function run() {
       && Math.abs(userVacancy.calculation.vacancyRate - 25) < 0.01,
       "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
     await expectSinglePageReport(page, "rental", "임대수익분석", false);
+    await page.click("#propertyTab");
+    await page.fill("#buildingSearch", "선택 테스트");
+    await page.waitForSelector("#searchResults .search-result");
+    await page.click("#searchResults .search-result");
+    const pendingBuilding = await page.evaluate(() => ({
+      status: document.getElementById("buildingSelectionStatus").textContent,
+      disabled: document.getElementById("buildingSelectionApply").disabled,
+    }));
+    expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
+      "검색 결과를 건물 선택 버튼으로 확정하는 흐름이 없습니다.");
+    await page.click("#buildingSelectionApply");
     for (const tab of [
       { id: "propertyTab", mode: null },
       { id: "rentalTab", mode: "rental" },
       { id: "operationTab", mode: "operation" },
     ]) {
       await page.click(`#${tab.id}`);
-      await page.fill("#buildingSearch", "선택 테스트");
-      await page.waitForSelector("#searchResults .search-result");
-      await page.click("#searchResults .search-result");
-      const pendingBuilding = await page.evaluate(() => ({
-        status: document.getElementById("buildingSelectionStatus").textContent,
-        disabled: document.getElementById("buildingSelectionApply").disabled,
-      }));
-      expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
-        `${tab.id}에서 검색 결과를 건물 선택 버튼으로 확정하는 흐름이 없습니다.`);
-      await page.click("#buildingSelectionApply");
       await page.waitForFunction((expectedMode) => {
         const query = new URLSearchParams(location.search);
         return query.get("building_id") === "101" && query.get("mode") === expectedMode;
       }, tab.mode);
       await page.waitForFunction(() =>
         document.getElementById("buildingSelectionStatus").textContent.includes("선택 건물 · 선택 테스트 자산"));
+      if (tab.id === "propertyTab") {
+        await page.waitForFunction(() =>
+          document.querySelector("#detailCard .detail-name")?.textContent === "선택 테스트 자산");
+      } else if (tab.id === "rentalTab") {
+        await page.waitForFunction(() =>
+          document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
+      } else {
+        await page.waitForFunction(() =>
+          document.getElementById("operationBusinessName").value === "선택 테스트 자산");
+      }
     }
+    const recentSelection = await page.evaluate(() => {
+      const items = JSON.parse(localStorage.getItem("hs_recent_buildings") || "[]");
+      return {
+        first: items[0],
+        quickText: document.getElementById("quickBuildings").textContent,
+      };
+    });
+    expect(String(recentSelection.first?.id) === "101"
+      && recentSelection.first?.name === "선택 테스트 자산"
+      && recentSelection.first?.addr.includes("강원특별자치도 속초시")
+      && recentSelection.quickText.includes("최근 조회"),
+      "세 분석의 공통 건물 선택이 최근 조회 목록에 저장되지 않았습니다.");
     await page.click("#propertyTab");
     await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
+    await page.click("#favoriteBtn");
+    await page.waitForFunction(() => document.getElementById("favoriteBtn").textContent === "관심해제");
+    expect(favoriteMutations.length === 1
+      && favoriteMutations[0].method === "POST"
+      && String(favoriteMutations[0].body.building_id) === "101",
+      "부동산투자분석의 관심저장 버튼이 선택 건물을 저장하지 않았습니다.");
+    await page.click("#rentalTab");
+    await page.waitForFunction(() =>
+      document.querySelector('#rentalReportActions [data-report-action="favorite"]')?.textContent === "관심해제");
+    await page.click("#operationTab");
+    await page.waitForFunction(() =>
+      document.querySelector('#operationReportActions [data-report-action="favorite"]')?.textContent === "관심해제");
+    await page.click("#propertyTab");
     const transactionTrend = await page.evaluate(() => {
       const card = document.getElementById("transactionTrendCard");
       const canvas = document.getElementById("transactionTrendChart");

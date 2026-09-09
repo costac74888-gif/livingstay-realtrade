@@ -240,7 +240,8 @@
     };
     if (loadedBuildingId) window.livingstayAnalysisReportActions(
       $("rentalReportActions"), loadedBuildingId,
-      loadedBuilding && (loadedBuilding.display_building_name || loadedBuilding.building_name)
+       loadedBuilding && (loadedBuilding.display_building_name || loadedBuilding.building_name),
+       loadedBuilding && (loadedBuilding.road_address || loadedBuilding.jibun_address)
     );
   }
   function updateEstimatedTax() {
