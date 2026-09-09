@@ -88,7 +88,7 @@ expect(
   "한 장 보고서 출력 또는 홈앤스테이 분석 링크 공유 기능이 없습니다.",
 );
 expect(
-  js.includes("/photos") && js.includes("/streetview?view=building-v8")
+  js.includes("/photos") && js.includes("/streetview?view=building-v9")
     && html.includes("유사자산 대비 가격 =")
     && html.includes("사분면 기준선 ="),
   "건물 사진 또는 보고서 산정 근거가 없습니다.",

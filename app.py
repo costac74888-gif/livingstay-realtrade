@@ -1037,6 +1037,7 @@ def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
         height = None
     if height is None and floors is not None:
         height = floors * 3.0
+    low_rise = floors is not None and floors <= 3
     ideal_distance = min(50.0, max(22.0, (height or 45.0) * 0.4))
 
     queries = (
@@ -1092,6 +1093,11 @@ def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
         if current is None or candidate[:2] < current[:2]:
             unique[key_value] = candidate
     ranked = sorted(unique.values(), key=lambda item: item[:2])
+    if low_rise:
+        # 저층 건물은 주소 좌표에 가장 가까운 좁은 골목 파노라마가 실제 출입구와
+        # 외벽을 담는 경우가 많다. 원거리 후보를 우선하면 옆 건물이나 맞은편
+        # 상가만 남을 수 있으므로 가까운 고유 파노라마 2곳을 먼저 평가한다.
+        return [item[4] for item in sorted(ranked, key=lambda item: item[2])[:2]]
     # 건물 바로 앞·좁은 골목으로 추정되는 지점은 충분한 원거리 후보가 있을 때 제외한다.
     distant = [item for item in ranked if item[2] >= 18.0]
     pool = distant if len(distant) >= 2 else ranked

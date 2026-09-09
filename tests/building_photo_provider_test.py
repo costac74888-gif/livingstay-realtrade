@@ -138,6 +138,43 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         self.assertEqual(len({item["pano_id"] for item in selected}), 2)
 
     @patch("app._google_streetview_metadata")
+    def test_low_rise_keeps_close_frontage_panorama(self, metadata):
+        # 로얄장 실측 거리 구성: 정답 정면은 8~9m, 오답 골목·맞은편은 18~26m.
+        candidates = [
+            {
+                "status": "OK", "pano_id": "front-a",
+                "copyright": "© Google", "date": "2018-04",
+                "lat": 37.500075, "lng": 127.0,
+            },
+            {
+                "status": "OK", "pano_id": "front-b",
+                "copyright": "© Google", "date": "2018-04",
+                "lat": 37.499918, "lng": 127.0,
+            },
+            {
+                "status": "OK", "pano_id": "wrong-alley",
+                "copyright": "© Google", "date": "2018-04",
+                "lat": 37.500162, "lng": 127.0,
+            },
+            {
+                "status": "OK", "pano_id": "opposite-shop",
+                "copyright": "© Google", "date": "2018-04",
+                "lat": 37.500237, "lng": 127.0,
+            },
+            None,
+        ]
+        metadata.side_effect = candidates
+
+        selected = _streetview_capture_points(
+            37.5, 127.0, "key", floor_count=2
+        )
+
+        self.assertEqual(
+            {item["pano_id"] for item in selected},
+            {"front-a", "front-b"},
+        )
+
+    @patch("app._google_streetview_metadata")
     def test_capture_point_metadata_queries_run_concurrently(self, metadata):
         import threading
         import time
