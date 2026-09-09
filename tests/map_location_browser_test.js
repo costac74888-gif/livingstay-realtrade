@@ -231,6 +231,32 @@ async function run() {
         ],
       });
     }
+    if (
+      url.pathname === "/api/buildings-cluster"
+      && url.searchParams.get("level") === "sgg"
+      && url.searchParams.get("q") === BUILDING_NAME
+    ) {
+      return json(route, {
+        items: [
+          {
+            name: "경기도 구리시",
+            lat: 37.5943,
+            lng: 127.1296,
+            total: 1,
+            by_type: { 생활: 1 },
+            visitor_count: 49460000,
+          },
+          {
+            name: "경기도 화성시",
+            lat: 37.1995,
+            lng: 126.8312,
+            total: 1,
+            by_type: { 생활: 1 },
+            visitor_count: 114430000,
+          },
+        ],
+      });
+    }
     if (url.pathname === "/api/favorites") {
       return json(route, {
         total: 1,
@@ -263,6 +289,25 @@ async function run() {
       serverFavKeys = new Set([`${buildingName}|${buildingAddress}`]);
       renderFavChips();
     }, { buildingName: BUILDING_NAME, buildingAddress: BUILDING_ADDRESS });
+
+    if (process.env.DUPLICATE_SEARCH_ONLY === "1") {
+      await openSearchPanel();
+      await page.locator("#inputQ").fill(BUILDING_NAME);
+      await page.locator("#btnSearch").click();
+      await page.waitForFunction(() =>
+        document.querySelectorAll('.map-cluster-badge[data-cluster-level="sgg"]').length === 2,
+      );
+      const duplicateSearchRegions = await page
+        .locator('.map-cluster-badge[data-cluster-level="sgg"]')
+        .allTextContents();
+      expect(
+        duplicateSearchRegions.some((text) => text.includes("경기도 구리시"))
+          && duplicateSearchRegions.some((text) => text.includes("경기도 화성시")),
+        "동명 건물 검색 후 구리시·화성시 결과 카드가 함께 표시되지 않았습니다.",
+      );
+      console.log("OK  실제 Chromium 동명검색 구리시·화성시 지역카드 흐름");
+      return;
+    }
 
     await openSearchPanel();
     expect(

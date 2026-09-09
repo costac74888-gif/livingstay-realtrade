@@ -2409,6 +2409,7 @@ async function loadMapMarkers(filters = {}, opts = {}){
   const previousCustomOverlays = _beginMapLayerSwap();
   const bounds = new kakao.maps.LatLngBounds();
   let placed = 0;
+  let followupSearchCluster = null;
 
   // 유효 좌표만 필터링
   // 겹침 우선순위: 생활 > 관광 > 복합 > 일반 > 에어비앤비 > 한옥 > 농어촌민박 > 캠핑 > 준공전 > 미분류
@@ -2525,12 +2526,22 @@ async function loadMapMarkers(filters = {}, opts = {}){
         const fittedLevel = Number(kakaoMap.getLevel());
         if (Number.isFinite(fittedLevel)) {
           kakaoMap.setLevel(Math.min(14, fittedLevel + 1));
+          // 서로 먼 동명 검색 결과는 개별 숫자 원형 대신 검색어가 적용된
+          // 시군구 카드로 표시한다. 같은 도 안의 구리·화성도 각각 보여야 하므로
+          // 더 넓은 줌이어도 시도 카드로 합치지 않는다.
+          if (kakaoMap.getLevel() >= CLUSTER_SGG_MIN_LEVEL) {
+            followupSearchCluster = "sgg";
+          }
         }
       }
     }
     updateMarkerLabels();
     applyMapLocationTarget();
     _finishMapLayerSwap(previousCustomOverlays);
+    if (followupSearchCluster) {
+      _currentMapMode = followupSearchCluster;
+      void loadClusterOverlays(followupSearchCluster, filters);
+    }
     console.log(`[MAP] 마커 ${placed}개 표시 (필터: ${qs || "없음"})`);
     if (placed === 1 && filters.q && validItems[0]?.building_name) {
       const normalizeSearchText = (value) => String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
@@ -2662,6 +2673,9 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       .join("");
 
     const el = document.createElement("div");
+    el.className = "map-cluster-badge";
+    el.dataset.clusterLevel = clusterLevel;
+    el.dataset.clusterName = item.name || "";
     el.style.cssText =
       "background:#fff;border:1.5px solid #cdd3da;border-radius:8px;" +
       "box-shadow:0 2px 8px rgba(0,0,0,.18);padding:5px 9px 4px;" +

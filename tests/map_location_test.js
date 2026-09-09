@@ -40,8 +40,10 @@ expect(
   source.includes("if (placed === 1) kakaoMap.setLevel(3)") &&
     !source.includes("if (placed <= 2) kakaoMap.setLevel(3)") &&
     source.includes("else if (filters.q)") &&
-    source.includes("kakaoMap.setLevel(Math.min(14, fittedLevel + 1))"),
-  "서로 먼 동명 건물 2곳을 검색할 때 중간 지점만 확대하는 동작이 남아 있습니다.",
+    source.includes("kakaoMap.setLevel(Math.min(14, fittedLevel + 1))") &&
+    source.includes('followupSearchCluster = "sgg"') &&
+    source.includes("void loadClusterOverlays(followupSearchCluster, filters)"),
+  "서로 먼 동명 건물 검색에서 시군구 결과 카드가 표시되지 않습니다.",
 );
 expect(
   css.includes(".map-location-target") &&
