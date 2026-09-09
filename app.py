@@ -28410,6 +28410,26 @@ _MEMBER_SELECTS = {
                 office_address, reg_number, biz_reg_number, website_url,
                 preferred_region, preferred_building, kakao_chat_url
         FROM applications WHERE status = 'submitted'
+        UNION ALL
+        SELECT -pa.id AS id, 'pending' AS member_type,
+               COALESCE(pa.contact_name, '-') AS name, pa.contact_email AS email,
+               pa.company_name AS group_label, pa.contact_phone AS phone, pa.status,
+               'presale'::text AS applicant_type, pa.created_at,
+               NULL::timestamp AS approved_at,
+               NULL::text AS admin_tag, NULL::integer AS points, NULL::text AS admin_memo,
+               CASE pa.applicant_role
+                 WHEN 'owner' THEN '건축주'
+                 WHEN 'developer' THEN '시행사'
+                 ELSE COALESCE(pa.applicant_role, '')
+               END AS category,
+               NULL::text AS subdomain_slug, 'email'::text AS provider,
+               mb.road_address AS office_address, NULL::text AS reg_number,
+               NULL::text AS biz_reg_number, pa.homepage_url AS website_url,
+               NULL::text AS preferred_region, mb.building_name AS preferred_building,
+               NULL::text AS kakao_chat_url
+        FROM presale_applications pa
+        JOIN master_buildings mb ON mb.id = pa.master_building_id
+        WHERE pa.status IN ('submitted', 'reviewing')
     """,
 }
 
@@ -28460,7 +28480,9 @@ def admin_members_list():
     pending_type_counts = {
         "agent": 0,
         "operator": 0,
+        "lodging_operator": 0,
         "loan_consultant": 0,
+        "presale": 0,
     }
     for r in cur.fetchall():
         if r["applicant_type"] in pending_type_counts:

@@ -7072,7 +7072,7 @@
     const AD_PRODUCT_LABEL = { building_slot: "담당건물 추가", priority_exposure: "우선노출" };
     const AD_STATUS_BADGE = { "대기": "wait", "완료": "ok", "만료": "no" };
     const MEMBER_STATUS_BADGE = {
-      active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"],
+      active: ["정상", "ok"], approved: ["정상", "ok"], submitted: ["승인대기", "wait"], reviewing: ["검토중", "wait"],
       suspended: ["정지", "no"], deleted: ["탈퇴", "no"],
       withdrawn: ["탈퇴", "no"], inactive: ["비활성", "no"],
     };
@@ -7195,7 +7195,7 @@
           let sub = pendingBtn.querySelector(".member-tier-sub");
           if (!sub) { sub = document.createElement("div"); sub.className = "member-tier-sub"; pendingBtn.appendChild(sub); }
           const pc = d.pending_type_counts;
-          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">중개사 ${Number(pc.agent) || 0} · 운영지원업체 ${Number(pc.operator) || 0} · 숙박시설 운영자 ${Number(pc.lodging_operator) || 0} · 대출상담사 ${Number(pc.loan_consultant) || 0}</div>`;
+          sub.innerHTML = `<div style="font-size:11px; color:var(--ink-soft); margin-top:2px;">중개사 ${Number(pc.agent) || 0} · 운영지원업체 ${Number(pc.operator) || 0} · 숙박시설 운영자 ${Number(pc.lodging_operator) || 0} · 대출상담사 ${Number(pc.loan_consultant) || 0} · 분양사 ${Number(pc.presale) || 0}</div>`;
         }
       }
       // 대출상담사 탭 서브텍스트 — 세부유형 분포
@@ -7221,7 +7221,7 @@
       const rows = (d.items || []).map((r) => {
         const typeShort = MEMBER_TYPE_SHORT[r.member_type] || r.member_type;
         const badge = r.member_type === "pending"
-          ? `<span class="dg-badge dg-badge-wait" style="white-space:nowrap;">대기${r.applicant_type === "agent" ? "·중개" : (r.applicant_type === "operator" ? "·운영" : (r.applicant_type === "loan_consultant" ? "·대출" : ""))}</span>`
+          ? `<span class="dg-badge dg-badge-wait" style="white-space:nowrap;">대기${r.applicant_type === "agent" ? "·중개" : (r.applicant_type === "operator" ? "·운영" : (r.applicant_type === "loan_consultant" ? "·대출" : (r.applicant_type === "lodging_operator" ? "·숙박" : (r.applicant_type === "presale" ? "·분양" : ""))))}</span>`
           : `<span style="white-space:nowrap;">${dgEscape(typeShort)}</span>`;
         let st = MEMBER_STATUS_BADGE[r.status] || [r.status || "-", ""];
         const isPartner = MEMBER_PARTNER_TYPES.includes(r.member_type);
@@ -7230,7 +7230,10 @@
         if (isReReview) {
           st = (r.admin_memo || "").includes("[본인수정]") ? ["정보변경 재검토", "wait"] : ["승인대기", "wait"];
         }
-        const docsBtn = (isPartner || r.member_type === "pending")
+        const isPresalePending = r.member_type === "pending" && r.applicant_type === "presale";
+        const docsBtn = isPresalePending
+          ? `<button class="dg-icon-btn" onclick="memberPresaleDocument(${-Number(r.id)})">증빙</button>`
+          : (isPartner || r.member_type === "pending")
           ? `<button class="dg-icon-btn" onclick="memberDocs('${r.member_type}', ${r.id})">서류</button>`
           : "";
         let dashBtn = "";
@@ -7241,7 +7244,10 @@
         } else if (r.member_type === "loan_consultant") {
           dashBtn = `<a class="dg-icon-btn" href="/admin/preview/loan_consultant/${r.id}" target="_blank" rel="noopener">마이페이지</a>`;
         }
-        const actions = r.member_type === "pending"
+        const actions = isPresalePending
+          ? `<button class="dg-icon-btn dg-approve" onclick="memberPresaleApprove(${-Number(r.id)}, this)">승인</button>
+             <button class="dg-icon-btn dg-reject" onclick="memberPresaleReject(${-Number(r.id)}, this)">반려</button> ${docsBtn}`
+          : r.member_type === "pending"
           ? `<button class="dg-icon-btn" onclick="memberApplicationDetail(${r.id})">상세</button>
              <button class="dg-icon-btn dg-approve" onclick="memberApprove(${r.id}, this)">승인</button>
              <button class="dg-icon-btn dg-reject" onclick="memberReject(${r.id}, this)">반려</button> ${docsBtn}`
@@ -7290,7 +7296,7 @@
           }
         }
         return `<tr>
-          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" /></td>
+          <td style="text-align:center;"><input type="checkbox" class="member-check" data-type="${dgEscape(r.member_type)}" data-id="${r.id}" data-status="${dgEscape(r.status || "")}" ${isPresalePending ? 'disabled title="분양사 신청은 개별 승인해주세요."' : ""} /></td>
           <td>${r.member_type !== "pending" ? `<a href="#" class="member-name-link" onclick="showMemberDetail('${r.member_type}', ${r.id}); return false;">${dgEscape(r.name || "-")}</a>` : dgEscape(r.name || "-")}</td>
           <td>${dgEscape(r.email || "-")}</td>
           <td style="white-space:nowrap;font-size:12px;">${dgEscape(r.phone || "-")}</td>
@@ -7372,6 +7378,55 @@
         btn.addEventListener("click", () => { membersState.page = Number(btn.dataset.pg); loadMembers(); });
       });
       wireMemberSelection();
+    }
+
+    async function memberPresaleDocument(applicationId) {
+      try {
+        const res = await fetch(`/api/admin/presale/applications/${applicationId}/document?doc=evidence`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) throw new Error(data.message || "증빙을 열지 못했습니다.");
+        window.open(data.url, "_blank", "noopener");
+      } catch (e) {
+        alert(e.message || "증빙을 열지 못했습니다.");
+      }
+    }
+
+    async function memberPresaleApprove(applicationId, btn) {
+      if (!confirm("이 분양사를 승인하고 해당 건물에 안내 배너를 공개할까요?")) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/presale/applications/${applicationId}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "approve" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.message || "승인하지 못했습니다.");
+        await loadMembers();
+      } catch (e) {
+        alert(e.message || "승인하지 못했습니다.");
+        btn.disabled = false;
+      }
+    }
+
+    async function memberPresaleReject(applicationId, btn) {
+      const reason = prompt("신청자에게 안내할 반려 사유를 입력해주세요.");
+      if (reason === null) return;
+      if (!reason.trim()) { alert("반려 사유를 입력해주세요."); return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/admin/presale/applications/${applicationId}/review`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "reject", reason: reason.trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.message || "반려하지 못했습니다.");
+        await loadMembers();
+      } catch (e) {
+        alert(e.message || "반려하지 못했습니다.");
+        btn.disabled = false;
+      }
     }
 
     // ---- 일괄 선택/액션 바 ----
