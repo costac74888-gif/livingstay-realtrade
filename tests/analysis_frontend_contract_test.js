@@ -43,6 +43,12 @@ expect(
   "화면·인쇄 실거래 그래프, 최근 거래표 또는 건물명·날짜 출력 파일명이 없습니다.",
 );
 expect(
+  html.indexOf('id="transactionTrendCard"') < html.indexOf('id="detailCard"')
+    && css.includes('grid-template-areas:"position detail" "trend detail"')
+    && css.includes('grid-template-areas:"position" "detail" "trend"'),
+  "데스크톱 실거래 추이 그래프가 포지셔닝 그래프 아래 왼쪽 열에 배치되지 않았습니다.",
+);
+expect(
   html.includes("세 가지 분석 한눈에 보기")
     && html.includes("관광수요와 유사자산 가격으로 투자 매력을 확인합니다.")
     && html.includes("월세·비용·대출을 반영한 실제 수익을 확인합니다.")

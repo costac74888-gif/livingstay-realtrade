@@ -313,12 +313,22 @@ async function run() {
       const layout = window.__analysisChartLayout;
       const wrap = document.querySelector(".chart-wrap").getBoundingClientRect();
       const canvas = document.getElementById("scatterChart").getBoundingClientRect();
+       const trendRect = document.getElementById("transactionTrendCard").getBoundingClientRect();
+       const positionCardRect = document.querySelector(".workspace > .chart-card").getBoundingClientRect();
+       const detailCardRect = document.getElementById("detailCard").getBoundingClientRect();
        const yAxis = document.querySelector(".y-axis-guide");
        const yAxisRect = yAxis.getBoundingClientRect();
       return {
         layout,
         wrap: { w: wrap.width, h: wrap.height },
         canvas: { left: canvas.left - wrap.left, top: canvas.top - wrap.top, right: canvas.right - wrap.left, bottom: canvas.bottom - wrap.top },
+         trendPlacement: {
+           insideWorkspace: document.getElementById("transactionTrendCard").parentElement.id === "workspace",
+           belowPositioning: trendRect.top >= positionCardRect.bottom - 1,
+           sameLeftColumn: Math.abs(trendRect.left - positionCardRect.left) < 1
+             && Math.abs(trendRect.right - positionCardRect.right) < 1,
+           afterDetail: trendRect.top >= detailCardRect.bottom - 1,
+         },
          yAxis: {
            width: yAxisRect.width,
            titleWritingMode: getComputedStyle(yAxis.querySelector("strong")).writingMode,
@@ -347,6 +357,12 @@ async function run() {
          expect(result.layout.baseline.x < result.wrap.w * 0.53
            && result.layout.axis.xMax - 50 > (50 - result.layout.axis.xMin) * 1.7,
           `${width}px 관광수요 중심선이 모바일 그래프의 왼쪽으로 충분히 이동하지 않았습니다.`);
+        expect(result.trendPlacement.insideWorkspace && result.trendPlacement.afterDetail,
+          `${width}px 실거래 추이 그래프가 상세 패널 다음 순서로 표시되지 않았습니다.`);
+      } else {
+        expect(result.trendPlacement.insideWorkspace && result.trendPlacement.belowPositioning
+          && result.trendPlacement.sameLeftColumn,
+          "데스크톱 실거래 추이 그래프가 포지셔닝 그래프 아래 왼쪽 공간에 배치되지 않았습니다.");
      }
     expect(result.baselineText[0] === "50" && result.baselineText[1] === "0%", "관광수요 50점·유사자산 가격 0% 기준선 표시가 다릅니다.");
     const { baseline, points, labels } = result.layout;
@@ -813,10 +829,19 @@ async function run() {
       const card = document.getElementById("transactionTrendCard");
       const canvas = document.getElementById("transactionTrendChart");
       const rect = canvas.getBoundingClientRect();
+       const cardRect = card.getBoundingClientRect();
+       const positionRect = document.querySelector(".workspace > .chart-card").getBoundingClientRect();
+       const detailRect = document.getElementById("detailCard").getBoundingClientRect();
       return {
         visible: getComputedStyle(card).display !== "none",
         width: rect.width,
         height: rect.height,
+         layout: {
+           insideWorkspace: card.parentElement.id === "workspace",
+           belowPositioning: cardRect.top >= positionRect.bottom - 1,
+           sameLeftColumn: Math.abs(cardRect.left - positionRect.left) < 1 && Math.abs(cardRect.right - positionRect.right) < 1,
+           afterDetailOnMobile: cardRect.top >= detailRect.bottom - 1,
+         },
         months: window.__analysisTransactionTrend?.months || 0,
         area: window.__analysisTransactionTrend?.area || "",
         options: Array.from(document.getElementById("transactionAreaSelect").options).map(option => option.value),
@@ -828,6 +853,9 @@ async function run() {
     });
     expect(transactionTrend.visible && transactionTrend.width > 240
       && transactionTrend.height >= 200 && transactionTrend.months > 0
+       && transactionTrend.layout.insideWorkspace
+       && transactionTrend.layout.belowPositioning
+       && transactionTrend.layout.afterDetailOnMobile
       && transactionTrend.area === "100.0"
       && transactionTrend.options.join("|") === "80.0|100.0"
       && transactionTrend.lineLabel === "거래금액(만원)"
