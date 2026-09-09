@@ -19,6 +19,7 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     title: document.getElementById("printReportTitle").textContent,
     graphImage: document.querySelector("#printGraph .print-chart-image")?.getAttribute("src") || "",
     exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
+    mapLayout: window.__analysisPrintMapLayout || null,
   }));
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
@@ -26,6 +27,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   expect(report.display === "block" && report.mode === mode && report.zones === 5
     && report.title.includes(titleText) && !report.exampleIncluded
     && (!graphRequired || report.graphImage.startsWith("data:image/png"))
+    && (mode !== "property" || (report.mapLayout
+      && report.mapLayout.preparedWidth >= 200
+      && report.mapLayout.preparedHeight >= 155))
     && pages === 1,
   `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
 }
@@ -48,6 +52,7 @@ function chromiumExecutable() {
 function item(id, name, sido, sgg, growth, price, quadrant, representative = false) {
   return {
     building_id: id, name, sido, sgg, address: `${sido} ${sgg}`,
+    lat: 37.2636, lng: 127.0286,
     lodging_type: "생활숙박시설", tourism_growth: null,
     tourism_demand_index: 50 + growth, peer_price_gap: price, quadrant,
     peer_price_median: 200, building_period_price_median: 200 * (1 + price / 100),

@@ -33,6 +33,8 @@ expect(
     && js.includes("price_per_sqm_median") && js.includes("transactionTrendChart=new Chart")
     && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
     && printJs.includes('"홈앤스테이_"+name+"_"+day+"_부동산투자보고서"')
+    && printJs.includes("print-map-preparing") && printJs.includes("map.relayout")
+    && css.includes(".print-map-preparing #printMap")
     && printJs.includes("livingstayPrintAnalysisReport") && css.includes("writing-mode:vertical-rl"),
   "화면·인쇄 실거래 그래프, 최근 거래표 또는 건물명·날짜 출력 파일명이 없습니다.",
 );
