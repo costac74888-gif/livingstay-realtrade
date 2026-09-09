@@ -86,13 +86,13 @@
       <div id="txTrendEmpty" class="tx-trend-empty" hidden>검색 조건에 해당하는 실거래 추세가 없습니다.</div>
     </div>
     <div class="tx-trend-legend" aria-hidden="true">
-      <span><i class="tx-trend-bar"></i>거래건수</span>
-      <span><i class="tx-trend-line"></i>거래금액(억)</span>
+      <span id="txTrendBarLegend"><i class="tx-trend-bar"></i>거래건수</span>
+      <span id="txTrendLineLegend"><i class="tx-trend-line"></i>거래금액(억)</span>
     </div>
   </section>
 
   <div class="results-head" style="margin-top:18px;">
-    <h2>실거래 목록<span class="count" id="resultCount"></span></h2>
+    <h2><span id="txListTitle">실거래 목록</span><span class="count" id="resultCount"></span></h2>
   </div>
   <div id="board"><div class="loading">불러오는 중…</div></div>
   <div class="pager" id="pager"></div>
@@ -168,7 +168,7 @@
 <script>
   let regionTree = {};
   const FAV_KEY = "livingstay_favorites"; // 마이그레이션 호환용 — 직접 쓰기는 하지 않음
-  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", transaction_scope:"unit", page:1, size:20, favOnly:false, favKey:null };
+  const state = { si_do:"", sgg_nm:"", umd_nm:"", q:"", year:"all", lodging_type:"", transaction_scope:"unit", building_id:"", page:1, size:20, favOnly:false, favKey:null };
 
   // 로그인 회원의 관심키(building_name|address) 인메모리 캐시
   // 비로그인 → 항상 빈 Set
@@ -361,11 +361,17 @@
           year:state.year, lodging_type:state.lodging_type,
           transaction_scope:state.transaction_scope,
         });
+        if (state.building_id) params.set("building_id", state.building_id);
         const response = await fetch(`/api/monthly-trend?${params}`);
         if (!response.ok) throw new Error("trend fetch failed");
         const data = await response.json();
         items = data.items || [];
         granularity = data.granularity || "month";
+        const buildingName = state.building_id && data.building_name ? data.building_name : "";
+        document.getElementById("txTrendTitle").textContent = buildingName ? `${buildingName} 실거래추세` : "실거래추세";
+        document.getElementById("txListTitle").textContent = buildingName ? `${buildingName} 실거래 목록` : "실거래 목록";
+        document.getElementById("txTrendBarLegend").lastChild.textContent = buildingName ? "거래량" : "거래건수";
+        document.getElementById("txTrendLineLegend").lastChild.textContent = buildingName ? "평균 거래금액(만원)" : "거래금액(억)";
       }
     } catch (error) {
       if (token !== txTrendRequestToken) return;
@@ -389,22 +395,25 @@
       ? String(item.ym || "").replace(/^\d{2}/, "")
       : String(item.ym || "").slice(2).replace("-", "/"));
     const counts = items.map(item => Number(item.count || 0));
-    const sums = items.map(item => Math.round(Number(item.sum_price || 0) / 10000));
+    const singleBuilding = Boolean(state.building_id);
+    const amounts = items.map(item => singleBuilding
+      ? Number(item.avg_price || 0)
+      : Math.round(Number(item.sum_price || 0) / 10000));
     if (txTrendChart) txTrendChart.destroy();
     txTrendChart = new Chart(canvas, {
       data:{
         labels,
         datasets:[
-          {type:"bar",label:"거래건수",data:counts,yAxisID:"y",backgroundColor:"#B4863F",borderRadius:3,order:2},
-          {type:"line",label:"거래금액(억)",data:sums,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,order:1},
+          {type:"bar",label:singleBuilding?"거래량":"거래건수",data:counts,yAxisID:"y",backgroundColor:"#B4863F",borderRadius:3,order:2},
+          {type:"line",label:singleBuilding?"평균 거래금액(만원)":"거래금액(억)",data:amounts,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,order:1},
         ],
       },
       options:{
         responsive:true,maintainAspectRatio:false,
         interaction:{mode:"index",intersect:false},
         plugins:{legend:{display:false},tooltip:{callbacks:{label:context => context.dataset.type === "line"
-          ? ` 거래금액 ${context.parsed.y.toLocaleString("ko-KR")}억`
-          : ` 거래건수 ${context.parsed.y.toLocaleString("ko-KR")}건`}}},
+          ? ` ${singleBuilding?"평균 거래금액":"거래금액"} ${context.parsed.y.toLocaleString("ko-KR")}${singleBuilding?"만원":"억"}`
+          : ` ${singleBuilding?"거래량":"거래건수"} ${context.parsed.y.toLocaleString("ko-KR")}건`}}},
         scales:{
           x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45,minRotation:0,autoSkip:true,maxTicksLimit:18}},
           y:{position:"left",beginAtZero:true,ticks:{font:{size:10},precision:0},grid:{color:"#EEF1F3"}},
@@ -611,15 +620,25 @@
     state.page = 1;
     loadBoard();
   }
-  document.getElementById("btnSearch").addEventListener("click", runSearch);
-  document.getElementById("inputQ").addEventListener("keydown", e=>{ if (e.key === "Enter") runSearch(); });
+  document.getElementById("btnSearch").addEventListener("click", ()=>{
+    state.building_id = "";
+    runSearch();
+  });
+  document.getElementById("inputQ").addEventListener("keydown", e=>{
+    if (e.key === "Enter") {
+      state.building_id = "";
+      runSearch();
+    }
+  });
 
   (async function init(){
     await loadRegions();
     await loadYears();
     renderFavChips();
     // B패널 "이 건물 전체 실거래 보기"에서 넘어온 경우 ?q= 값으로 자동 검색 1회 실행.
-    const urlQ = new URLSearchParams(location.search).get("q");
+    const initialParams = new URLSearchParams(location.search);
+    const urlQ = initialParams.get("q");
+    state.building_id = initialParams.get("building_id") || "";
     if (urlQ){
       const input = document.getElementById("inputQ");
       if (input) input.value = urlQ;

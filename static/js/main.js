@@ -6283,11 +6283,11 @@ function buildingPanelSkeleton(buildingId){
     </section>
 
     <section class="side-card" id="bTrendCard">
-      <div class="side-card-title">실거래추세 <span class="side-sub" id="bTrendGranularityNote"></span></div>
+      <div class="side-card-title"><span id="bTrendTitle">실거래추세</span> <span class="side-sub" id="bTrendGranularityNote"></span></div>
       <div class="side-chart-wrap"><canvas id="bTrendChart"></canvas></div>
       <div class="side-legend">
-        <span><i class="lg-bar"></i>거래건수</span>
-        <span><i class="lg-line"></i>거래금액(억)</span>
+        <span><i class="lg-bar"></i>거래량</span>
+        <span><i class="lg-line"></i>평균 거래금액(만원)</span>
       </div>
       <div id="bTrendEmpty" class="side-empty" style="display:none;">실거래 내역이 없습니다.</div>
     </section>
@@ -6298,7 +6298,7 @@ function buildingPanelSkeleton(buildingId){
     </section>
 
     <section class="side-card" id="bTxCard">
-      <div class="side-card-title">실거래목록 <span class="side-sub" id="bTxTotalLabel"></span></div>
+      <div class="side-card-title"><span id="bTxTitle">실거래목록</span> <span class="side-sub" id="bTxTotalLabel"></span></div>
       <div id="bTxTableWrap" style="overflow-x:auto;"><div class="side-empty">불러오는 중…</div></div>
       <div id="bTxMoreWrap" style="display:none; text-align:center; margin-top:12px;">
         <button id="bTxMore" class="side-more" style="width:auto; padding:7px 18px; margin-top:0;">더보기</button>
@@ -6741,7 +6741,8 @@ async function loadBuildingHeader(id){
   // 실거래목록 하단 "이 건물 전체 실거래 보기" — 건물명이 있을 때만 노출.
   const txAllLink = document.getElementById("bTxAllLink");
   if (txAllLink && b.building_name){
-    txAllLink.href = "/transactions?q=" + encodeURIComponent(b.building_name);
+    txAllLink.href = "/transactions?q=" + encodeURIComponent(b.building_name)
+      + "&building_id=" + encodeURIComponent(b.id);
     txAllLink.style.display = "inline-block";
   }
 
@@ -8110,6 +8111,12 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
     const data = await res.json();
     items = data.items || [];
     granularity = data.granularity || "month";
+    const trendTitle = document.getElementById("bTrendTitle");
+    const txTitle = document.getElementById("bTxTitle");
+    if (data.building_name) {
+      if (trendTitle) trendTitle.textContent = `${data.building_name} 실거래추세`;
+      if (txTitle) txTitle.textContent = `${data.building_name} 실거래목록`;
+    }
   } catch(e){ console.error("[상세] 추세 로드 실패:", e); return; }
   if (!isCurrent()) return;
 
@@ -8127,15 +8134,15 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
     ? i.ym.slice(2).replace("-", "")
     : i.ym.slice(2).replace("-", "/"));
   const counts = items.map(i => i.count);
-  const sums = items.map(i => Math.round((i.sum_price || 0) / 10000));
+  const amounts = items.map(i => Number(i.avg_price || 0));
 
   buildingDetailChart = new Chart(canvas, {
     data: {
       labels,
       datasets: [
-        { type:"bar", label:"거래건수", data:counts, yAxisID:"y",
+        { type:"bar", label:"거래량", data:counts, yAxisID:"y",
           backgroundColor:"#B4863F", borderRadius:3, order:2 },
-        { type:"line", label:"거래금액(억)", data:sums, yAxisID:"y1",
+        { type:"line", label:"평균 거래금액(만원)", data:amounts, yAxisID:"y1",
           borderColor:"#378ADD", backgroundColor:"#378ADD", borderWidth:2,
           pointRadius:2, tension:.3, order:1 },
       ],
@@ -8146,8 +8153,8 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
       plugins:{
         legend:{ display:false },
         tooltip:{ callbacks:{ label:(c)=> c.dataset.type === "line"
-          ? ` 거래금액 ${c.parsed.y.toLocaleString('ko-KR')}억`
-          : ` 거래건수 ${c.parsed.y.toLocaleString('ko-KR')}건` } },
+          ? ` 평균 거래금액 ${c.parsed.y.toLocaleString('ko-KR')}만원`
+          : ` 거래량 ${c.parsed.y.toLocaleString('ko-KR')}건` } },
       },
       scales:{
         x:{ grid:{ display:false }, ticks:{ font:{ size:9 } } },

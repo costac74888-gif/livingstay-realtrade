@@ -4822,6 +4822,9 @@ def _trend_bucket_items(agg, now):
             "ym": q,
             "count": qagg.get(q, {}).get("cnt", 0),
             "sum_price": qagg.get(q, {}).get("sum_price", 0),
+            "avg_price": round(
+                qagg.get(q, {}).get("sum_price", 0) / qagg.get(q, {}).get("cnt", 1)
+            ) if qagg.get(q, {}).get("cnt", 0) else 0,
         } for q in quarters]
         return items, "quarter"
 
@@ -4829,6 +4832,9 @@ def _trend_bucket_items(agg, now):
         "ym": ym,
         "count": agg.get(ym, {}).get("cnt", 0),
         "sum_price": agg.get(ym, {}).get("sum_price", 0),
+        "avg_price": round(
+            agg.get(ym, {}).get("sum_price", 0) / agg.get(ym, {}).get("cnt", 1)
+        ) if agg.get(ym, {}).get("cnt", 0) else 0,
     } for ym in months]
     return items, "month"
 
@@ -4922,6 +4928,7 @@ def get_monthly_trend():
     #   - 셋 중 하나라도 NULL이면 예외적으로 건물명 매칭('-' 플레이스홀더는 제외).
     # 정수가 아닌 값은 무시하고 전체 집계로 폴백해 500(정수 캐스팅 오류)을 막는다.
     building_id = request.args.get("building_id", "").strip()
+    selected_building_name = None
     if building_id.isdigit():
         conn = get_conn()
         cur = conn.cursor()
@@ -4932,6 +4939,7 @@ def get_monthly_trend():
         b = cur.fetchone()
         cur.close()
         conn.close()
+        selected_building_name = (b["building_name"] if b else None) or None
         if b and b["sgg_cd"] and b["umd_nm"] and b["jibun"]:
             where.append("sgg_cd = %s AND umd_nm = %s AND jibun = %s")
             params += [b["sgg_cd"], b["umd_nm"], b["jibun"]]
@@ -4973,6 +4981,7 @@ def get_monthly_trend():
     return jsonify({
         "items": items, "granularity": granularity,
         "transaction_scope": scope,
+        "building_name": selected_building_name,
     })
 
 

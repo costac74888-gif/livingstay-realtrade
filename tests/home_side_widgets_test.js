@@ -174,6 +174,14 @@ expect(sideFavoriteCallSites.length === 1 && main.includes("async function loadS
   "관심물건 위젯 데이터 로드 호출부가 남아 있습니다.");
 expect(main.includes("function loadDataLab"), "데이터랩 전환 로더가 없습니다.");
 expect(
+  main.includes('id="bTrendTitle"') &&
+  main.includes('id="bTxTitle"') &&
+  main.includes('label:"거래량"') &&
+  main.includes('label:"평균 거래금액(만원)"') &&
+  main.includes('"&building_id=" + encodeURIComponent(b.id)'),
+  "홈의 선택 건물 실거래 그래프·목록에 건물명 또는 평균 거래금액 연결이 없습니다."
+);
+expect(
   index.indexOf('id="trendChart"') < index.indexOf('id="sideTxList"') &&
   index.indexOf('id="sideTxList"') < index.indexOf('id="dataLabNav"') &&
   index.indexOf('id="recentRow"') < index.indexOf('<aside class="side-panel">'),

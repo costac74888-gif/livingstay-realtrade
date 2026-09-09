@@ -12,8 +12,10 @@ expect(
   "실거래추세 그래프가 실거래 목록 위에 배치되지 않았습니다.",
 );
 expect(
-  html.includes('label:"거래건수"') &&
-    html.includes('label:"거래금액(억)"') &&
+  html.includes('label:singleBuilding?"거래량":"거래건수"') &&
+    html.includes('label:singleBuilding?"평균 거래금액(만원)":"거래금액(억)"') &&
+    html.includes('state.building_id = initialParams.get("building_id") || ""') &&
+    html.includes('buildingName ? `${buildingName} 실거래추세`') &&
     html.includes("loadTrendChart(state.favOnly ? items : null)"),
   "실거래 목록의 건수·금액 그래프 또는 검색 연동이 없습니다.",
 );
@@ -25,7 +27,9 @@ expect(
   html.includes("q:state.q") &&
     html.includes("transaction_scope:state.transaction_scope") &&
     app.includes('q = request.args.get("q", "").strip()') &&
-    app.includes('lodging_type = request.args.get("lodging_type", "").strip()'),
+    app.includes('lodging_type = request.args.get("lodging_type", "").strip()') &&
+    app.includes('"avg_price": round(') &&
+    app.includes('"building_name": selected_building_name'),
   "실거래추세가 목록의 검색조건을 함께 사용하지 않습니다.",
 );
 
