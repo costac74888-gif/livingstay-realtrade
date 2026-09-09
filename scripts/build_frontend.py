@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -25,6 +26,21 @@ RELEASE_TOKEN = "__FRONTEND_RELEASE__"
 SCRIPT_RE = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
 SOURCE_JS_RE = re.compile(r"/static/js/(?P<name>[A-Za-z0-9_.-]+)\.js(?P<query>\?[^\"']*)?")
 VENDOR_CHART_URL = "/vendor/chart.umd.js"
+
+
+def run_building_photo_selection_preflight() -> None:
+    """승인된 높이별 정면 표본이 어긋나면 릴리스 생성 전에 중단한다."""
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "tests.building_photo_provider_test.BuildingPhotoProviderTest."
+            "test_approved_height_fixtures_keep_the_target_frontage",
+        ],
+        cwd=ROOT,
+        check=True,
+    )
 
 
 def minify(source: Path, target: Path) -> None:
@@ -171,6 +187,7 @@ def cleanup_old_releases(current_release: str) -> None:
 
 
 def main() -> None:
+    run_building_photo_selection_preflight()
     if not TERSER.is_file():
         raise SystemExit("Terser가 없습니다. 먼저 npm ci를 실행하세요.")
 

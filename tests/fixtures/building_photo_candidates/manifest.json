@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "privacy": "Synthetic fixtures only; no people, addresses, provider keys, or provider imagery.",
+  "samples": [
+    {
+      "name": "low-rise",
+      "floors": 2,
+      "height_m": null,
+      "approved": {"pano_id": "low-front", "north_m": 20, "east_m": 0, "file": "low_approved.png"},
+      "distractor": {"pano_id": "low-opposite", "north_m": -31, "east_m": 0, "file": "low_opposite.png"}
+    },
+    {
+      "name": "mid-rise",
+      "floors": 6,
+      "height_m": null,
+      "approved": {"pano_id": "mid-front", "north_m": 0, "east_m": 26, "file": "mid_approved.png"},
+      "distractor": {"pano_id": "mid-side", "north_m": 32, "east_m": 0, "file": "mid_side.png"}
+    },
+    {
+      "name": "high-rise",
+      "floors": 18,
+      "height_m": 54,
+      "approved": {"pano_id": "high-front", "north_m": -32, "east_m": 0, "file": "high_approved.png"},
+      "distractor": {"pano_id": "high-opposite", "north_m": 22, "east_m": 0, "file": "high_opposite.png"}
+    }
+  ]
+}

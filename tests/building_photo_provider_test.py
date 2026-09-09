@@ -1,5 +1,8 @@
 import unittest
 import io
+import json
+import math
+from pathlib import Path
 from unittest.mock import Mock, patch
 from PIL import Image
 
@@ -19,6 +22,8 @@ from app import (
 
 
 class BuildingPhotoProviderTest(unittest.TestCase):
+    FIXTURE_DIR = Path(__file__).parent / "fixtures" / "building_photo_candidates"
+
     def setUp(self):
         self.record_patch = patch("app._record_streetview_evaluation")
         self.record_evaluation = self.record_patch.start()
@@ -233,6 +238,108 @@ class BuildingPhotoProviderTest(unittest.TestCase):
             buffer.getvalue(), 27, 0, include_ocr=False, target_distance_m=20
         )
         self.assertGreater(nearby, opposite)
+
+    @patch("sync_building_photos._claim_daily_slot", return_value=1)
+    @patch("app.requests.get")
+    def test_approved_height_fixtures_keep_the_target_frontage(
+        self, get, _claim
+    ):
+        manifest = json.loads(
+            (self.FIXTURE_DIR / "manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("no people", manifest["privacy"])
+        self.assertEqual(
+            [sample["name"] for sample in manifest["samples"]],
+            ["low-rise", "mid-rise", "high-rise"],
+        )
+
+        for index, sample in enumerate(manifest["samples"]):
+            with self.subTest(height=sample["name"]):
+                candidates = (sample["approved"], sample["distractor"])
+                fixture_bytes = {
+                    candidate["pano_id"]: (
+                        self.FIXTURE_DIR / candidate["file"]
+                    ).read_bytes()
+                    for candidate in candidates
+                }
+
+                def fixture_response(_url, *, params, timeout):
+                    self.assertEqual(timeout, (3.05, 8))
+                    response = Mock()
+                    response.status_code = 200
+                    response.headers = {"Content-Type": "image/png"}
+                    response.content = fixture_bytes[params["pano"]]
+                    return response
+
+                get.side_effect = fixture_response
+                approved_visual_score = _streetview_image_score(
+                    fixture_bytes[sample["approved"]["pano_id"]],
+                    26,
+                    0,
+                    include_ocr=False,
+                    target_distance_m=26,
+                )
+                distractor_visual_score = _streetview_image_score(
+                    fixture_bytes[sample["distractor"]["pano_id"]],
+                    26,
+                    0,
+                    include_ocr=False,
+                    target_distance_m=26,
+                )
+                self.assertGreater(
+                    approved_visual_score,
+                    distractor_visual_score,
+                    f"{sample['name']} 승인 정면의 중앙 외관 신호가 사라짐",
+                )
+                building_lat = 37.5 + index * 0.01
+                building = {
+                    "lat": building_lat,
+                    "lng": 127.0,
+                    "grnd_flr_cnt": sample["floors"],
+                    "heit": sample["height_m"],
+                    "building_name": "승인표본",
+                    "road_address": "합성 테스트",
+                }
+                capture_points = [
+                    {
+                        "pano_id": candidate["pano_id"],
+                        "lat": building_lat + candidate["north_m"] / 111320.0,
+                        "lng": 127.0
+                        + candidate["east_m"]
+                        / (111320.0 * math.cos(math.radians(building_lat))),
+                        "status": "OK",
+                    }
+                    for candidate in candidates
+                ]
+                camera_bearings = [
+                    _bearing_degrees(
+                        building_lat,
+                        127.0,
+                        point["lat"],
+                        point["lng"],
+                    )
+                    for point in capture_points
+                ]
+                bearing_gap = abs(
+                    (camera_bearings[1] - camera_bearings[0] + 180) % 360 - 180
+                )
+                self.assertGreaterEqual(
+                    bearing_gap,
+                    89,
+                    f"{sample['name']} 방해 후보가 맞은편·측면 위치가 아님",
+                )
+
+                selected = _fetch_best_streetview_image(
+                    building, "fixture-key", capture_points
+                )
+
+                self.assertIsNotNone(selected)
+                self.assertEqual(
+                    selected[1],
+                    fixture_bytes[sample["approved"]["pano_id"]],
+                    f"{sample['name']}에서 맞은편·옆 건물이 선택됨",
+                )
+                self.assertEqual(selected[2], "image/png")
 
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
     @patch("app._streetview_image_score")
