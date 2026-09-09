@@ -11905,8 +11905,8 @@ def agent_leads():
     return jsonify(_agent_leads_data(session["agent_id"]))
 
 
-# 매물의뢰 상태 진행 순서 — 순방향만 허용(건너뛰기 가능, 역방향 금지). 관리자 API로는 변경 불가.
-_LEAD_STATUS_ORDER = {"submitted": 0, "in_progress": 1, "done": 2}
+# 담당 중개사가 수정할 수 있는 매물의뢰 상태. 철회 상태는 별도 최종 상태로 유지한다.
+_LEAD_EDITABLE_STATUSES = {"submitted", "in_progress", "done"}
 
 _DEAL_TYPE_COUNT_COLUMN = {
     "매매": "sale_count",
@@ -11919,18 +11919,18 @@ _DEAL_TYPE_COUNT_COLUMN = {
 @app.route("/api/agent/leads/<int:lead_id>/status", methods=["PUT"])
 @require_agent
 def agent_lead_update_status(lead_id):
-    """내게 배정된 매물의뢰의 상태 변경 — submitted → in_progress → done 순방향만.
-    in_progress 전환 시 전속단지 매물현황(+1), done 전환 시(-1) 자동 반영 —
+    """내게 배정된 매물의뢰의 상태를 신규·처리중·완료 중 하나로 수정한다.
+    in_progress 진입·이탈 시 전속단지 매물현황을 자동 반영 —
     [매물현황 수정]에서 수기로 등록한 값과 같은 컬럼을 공유해 합산된다."""
     agent_id = session["agent_id"]
     data = request.get_json(force=True, silent=True) or {}
     new_status = (data.get("status") or "").strip()
-    if new_status not in _LEAD_STATUS_ORDER:
+    if new_status not in _LEAD_EDITABLE_STATUSES:
         return jsonify({"ok": False, "message": "잘못된 상태값입니다."}), 400
     conn = get_conn()
     cur = conn.cursor()
     try:
-        # 행 잠금(FOR UPDATE)으로 동시 요청을 직렬화 — 순방향-only 규칙이 경쟁 상황에서도 깨지지 않게 한다.
+        # 행 잠금(FOR UPDATE)으로 상태 변경과 매물현황 증감을 한 트랜잭션으로 직렬화한다.
         cur.execute("""
             SELECT routed_agent_id, status, master_building_id, deal_type
             FROM listing_requests WHERE id = %s FOR UPDATE
@@ -11946,19 +11946,22 @@ def agent_lead_update_status(lead_id):
         if row["status"] == "철회됨":
             conn.rollback()
             return jsonify({"ok": False, "message": "철회된 의뢰는 다시 처리할 수 없습니다."}), 400
-        cur_rank = _LEAD_STATUS_ORDER.get(row["status"], 0)
-        if _LEAD_STATUS_ORDER[new_status] <= cur_rank:
+        old_status = row["status"]
+        if old_status == new_status:
             conn.rollback()
-            return jsonify({"ok": False, "message": "상태는 순방향(신규→처리중→완료)으로만 변경할 수 있습니다."}), 400
-        cur.execute("UPDATE listing_requests SET status = %s WHERE id = %s", [new_status, lead_id])
+            return jsonify({"ok": True, "status": new_status})
+        cur.execute(
+            "UPDATE listing_requests SET status = %s, updated_at = NOW() WHERE id = %s",
+            [new_status, lead_id],
+        )
 
         col = _DEAL_TYPE_COUNT_COLUMN.get(row["deal_type"])
-        if col and new_status == "in_progress":
+        if col and old_status != "in_progress" and new_status == "in_progress":
             cur.execute(
                 f"UPDATE agent_buildings SET {col} = {col} + 1 WHERE agent_id=%s AND master_building_id=%s",
                 [agent_id, row["master_building_id"]],
             )
-        elif col and new_status == "done":
+        elif col and old_status == "in_progress" and new_status != "in_progress":
             cur.execute(
                 f"UPDATE agent_buildings SET {col} = GREATEST({col} - 1, 0) WHERE agent_id=%s AND master_building_id=%s",
                 [agent_id, row["master_building_id"]],

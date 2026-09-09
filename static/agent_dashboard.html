@@ -170,7 +170,7 @@
         단지로 등록한 단지에 신규 의뢰가 들어오면 이 목록에 자동으로
         나타납니다.
         <ul>
-          <li><b>신규</b> → <b>처리 시작</b> 버튼으로 상담 시작 → <b>완료 처리</b> 순으로 상태를 바꿔주세요</li>
+          <li><b>신규·처리중·완료</b> 버튼으로 현재 처리 상태를 언제든 수정할 수 있습니다</li>
           <li>연락처 등 개인정보는 상담 목적 외로 저장·전달하지 마세요</li>
           <li>배정 표시(단지 배정/지역 배정)는 어떤 등급으로 매칭됐는지를 나타냅니다</li>
         </ul>
@@ -591,14 +591,16 @@ function leadStatusBadge(status){
   const s = LEAD_STATUS[status] || { label: status || "-", bg: "#EEE", color: "#555" };
   return `<span style="display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; background:${s.bg}; color:${s.color};">${esc(s.label)}</span>`;
 }
-// 현재 상태에 따라 다음 단계 버튼만 노출: 신규→"처리 시작", 처리중→"완료 처리", 완료→없음
 function leadActionBtn(l){
   if (PREVIEW_MODE) return "";
-  if (l.status === "submitted")
-    return `<button class="btn btn-sm" data-lead-act="in_progress" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">처리 시작</button>`;
-  if (l.status === "in_progress")
-    return `<button class="btn btn-sm btn-primary" data-lead-act="done" data-lead-id="${l.id}" style="font-size:12px; padding:4px 12px;">완료 처리</button>`;
-  return "";
+  const actions = [
+    ["submitted", "신규"],
+    ["in_progress", "처리중"],
+    ["done", "완료"],
+  ];
+  return `<div style="display:flex; gap:5px; flex-wrap:wrap; justify-content:flex-end;">${actions.map(([status, label]) =>
+    `<button class="btn btn-sm${status === "done" ? " btn-primary" : ""}" data-lead-act="${status}" data-lead-id="${l.id}" style="font-size:12px; padding:4px 10px;"${l.status === status ? " disabled aria-current=\"true\"" : ""}>${label}</button>`
+  ).join("")}</div>`;
 }
 function focusRequestedLead(kind){
   if (!REQUESTED_LEAD_ID || REQUESTED_TAB !== `leads-${kind}`) return;
@@ -650,7 +652,7 @@ document.getElementById("leadList").addEventListener("click", async (e) => {
   if (!btn) return;
   const act = btn.getAttribute("data-lead-act");
   const id = btn.getAttribute("data-lead-id");
-  const label = act === "done" ? "완료 처리" : "처리 시작";
+  const label = { submitted: "신규", in_progress: "처리중", done: "완료" }[act] || act;
   if (!window.confirm(`이 매물의뢰를 '${label}' 상태로 변경할까요?`)) return;
   btn.disabled = true;
   try {
