@@ -43,6 +43,7 @@
   <section class="analysis-mode-bar" aria-label="자산분석 그래프 종류"><h2>자산분석 그래프</h2></section>
   <section id="operationInputs" class="analysis-card operation-inputs hidden" aria-label="숙박 운영자료 입력">
     <div class="operation-rental-notice" role="note"><span><b>장기임대(월세)인 경우에는 ‘임대수익분석’을 활용하세요.</b> 월세·보증금·대출·보유비용을 반영한 수익률을 계산할 수 있습니다.</span><button class="am-btn" id="operationRentalGuide" type="button">임대수익분석으로 이동</button></div>
+    <div id="operationBuildingIdentity" class="analysis-building-identity hidden" aria-live="polite"></div>
     <div class="operation-room">
       <span class="eyebrow">OFFICIAL ROOM COUNT</span>
       <h2>영업신고 숙박업소</h2>
@@ -90,6 +91,7 @@
       <div><span class="eyebrow">UNIT RENTAL RETURN</span><h2 id="rentalBuildingName">분석할 건물을 선택해 주세요</h2></div>
       <span class="rental-badge">호실 단위 분석</span>
     </div>
+    <div id="rentalBuildingIdentity" class="analysis-card analysis-building-identity hidden" aria-live="polite"></div>
     <div class="rental-workspace">
     <section id="rentalPositioning" class="analysis-card rental-positioning" aria-live="polite">
       <div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장 기준 임대 포지셔닝</h3><p>R-ONE 비교지역과 현재 시장 기준선을 먼저 확인한 뒤, 내 임대 조건을 같은 축 위에 놓습니다.</p></div>

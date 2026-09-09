@@ -331,6 +331,7 @@
     if (!id) {
       building = null; benchmarks = []; region = ""; subregion = "";
       window.__operationAnalysisBuilding = null;
+      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), null);
       $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
       $("operationBusinessName").value = "";
       $("operationRoomCountInput").value = "";
@@ -352,6 +353,7 @@
       region = results[1] && results[1].sido || "";
       subregion = results[1] && results[1].sgg || "";
       $("operationBusinessName").value = building.display_building_name || building.building_name || "";
+      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), building);
       setBuildingStatus(building.display_building_name || building.building_name || "선택 건물", true);
       renderLodgingOptions();
       renderChart();

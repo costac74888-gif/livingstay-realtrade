@@ -368,6 +368,7 @@
     if (!id) {
       loadedBuildingId = "";
       loadedBuilding = null;
+      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), null);
       rentalBenchmark = null;
       rentalBenchmarkItems = [];
       benchmarkSource = "";
@@ -411,6 +412,7 @@
         loadedBuilding = data;
         window.__rentalAnalysisBuilding = data;
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
+        if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), data);
         if (window.setAnalysisBuildingStatus) {
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
         }

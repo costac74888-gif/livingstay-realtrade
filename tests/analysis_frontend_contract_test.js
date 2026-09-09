@@ -152,6 +152,15 @@ expect(
   "관심단지 또는 최근 조회가 홈 지도 검색영역과 같은 기준으로 동기화되지 않았습니다.",
 );
 expect(
+  html.includes('id="rentalBuildingIdentity"')
+    && html.includes('id="operationBuildingIdentity"')
+    && js.includes("livingstayRenderAnalysisBuildingIdentity")
+    && rentalJs.includes('livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), data)')
+    && operationJs.includes('livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), building)')
+    && css.includes(".analysis-building-identity"),
+  "임대수익·숙박운영분석에 선택 건물 사진·주소 안내가 없습니다.",
+);
+expect(
   html.includes("가격 부담") && html.includes("기타 단지")
     && js.includes('sameRegion(i)?"#168f91"')
     && js.includes("i.is_representative?8:c.raw.incomplete?4.5:4")
