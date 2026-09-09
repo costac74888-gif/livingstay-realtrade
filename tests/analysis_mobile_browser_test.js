@@ -104,6 +104,8 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
       item(202, "수요프리미엄대표", "부산광역시", "해운대구", 25, 24, "수요 프리미엄", true),
       item(203, "저가수요확인대표", "전라남도", "목포시", -22, -25, "저가·수요 확인 필요", true),
       item(204, "수요대비저평가대표", "제주특별자치도", "제주시", 23, -22, "수요 대비 저평가 후보", true),
+      item(205, "저평가 비교 자산 A", "경기도", "수원시", 20, -38, "수요 대비 저평가 후보"),
+      item(206, "저평가 비교 자산 B", "서울특별시", "서초구", 35, -5, "수요 대비 저평가 후보"),
     ],
   };
   for (let id = 401; id <= 408; id += 1) {
@@ -143,7 +145,7 @@ async function run() {
   const errors = [];
   let incompleteSelected = false;
   let incompleteFinalTrajectory = false;
-  let comparisonItemCount = 6;
+  let comparisonItemCount = 8;
   let rentalMarketRequest = "";
   let uploadHasOccupancyBasis = true;
   let favoriteItems = [];
@@ -362,6 +364,29 @@ async function run() {
       "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
     expect(result.recommendations.length > 0 && result.recommendations.length <= 5,
       "가격 매력 후보 TOP 5에 수요 대비 저평가 후보가 표시되지 않았습니다.");
+    if (width === 1280) {
+      const recommendationOrder = async () => page.evaluate(() =>
+        Array.from(document.querySelectorAll("#recommendationRows tr[data-id]")).map((row) => ({
+          id: row.dataset.id,
+          tourism: Number(row.cells[4].textContent),
+          peer: Number(row.cells[5].textContent.replace("%", "")),
+        })));
+      const tourismDescending = await recommendationOrder();
+      expect(tourismDescending.map((row) => row.id).join("|") === "206|204|205",
+        `관광수요 지수 기본 내림차순이 적용되지 않았습니다: ${JSON.stringify(tourismDescending)}`);
+      await page.selectOption("#recommendationSort", "peer_price_gap");
+      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|206",
+        "유사자산 대비 가격 선택 시 저평가 우선 오름차순이 적용되지 않았습니다.");
+      await page.click("#recommendationSortDesc");
+      const peerDescending = await recommendationOrder();
+      expect(peerDescending.map((row) => row.id).join("|") === "206|204|205"
+        && await page.getAttribute("#recommendationSortDesc", "aria-pressed") === "true",
+        "유사자산 대비 가격 내림차순 버튼이 적용되지 않았습니다.");
+      await page.click("#recommendationSortAsc");
+      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|206"
+        && await page.getAttribute("#recommendationSortAsc", "aria-pressed") === "true",
+        "유사자산 대비 가격 오름차순 버튼이 적용되지 않았습니다.");
+    }
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
     expect(Math.abs(baseline.y - baseline.quadrantBottom[0]) < 0.6 && Math.abs(baseline.y - baseline.quadrantBottom[1]) < 0.6,
@@ -410,7 +435,7 @@ async function run() {
       }
       }
     }
-    expect(await page.locator("#assetRows tr:visible").count() === 6
+    expect(await page.locator("#assetRows tr:visible").count() === 8
       && await page.locator("#tableExpandBtn").evaluate((node) => node.classList.contains("hidden")),
     "10개 이하 건물 비교 목록에서 펼침 버튼이 숨겨지지 않았습니다.");
     expect(!(await page.locator(".table-card thead").textContent()).includes("위치"),
