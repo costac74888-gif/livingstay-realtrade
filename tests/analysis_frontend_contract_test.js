@@ -20,7 +20,9 @@ expect(
     && operationJs.includes('id="operationReportActions"')
     && js.includes("livingstayAnalysisReportActions")
     && printJs.includes('mode==="rental"') && printJs.includes("임대조건 요약")
-    && printJs.includes("운영 핵심지표"),
+    && printJs.includes("운영 핵심지표")
+    && operationJs.includes("quadrantBoxes")
+    && operationJs.includes("operation-empty-actions"),
   "세 분석의 공통 상세·실거래·인쇄·공유 버튼 또는 분석별 한 장 보고서 구성이 없습니다.",
 );
 expect(

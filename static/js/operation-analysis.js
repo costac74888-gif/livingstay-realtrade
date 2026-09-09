@@ -156,7 +156,11 @@
   }
   function renderDetail(selected) {
     if (!selected) {
-      $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 보고서와 공유 버튼이 표시됩니다.</div></div>';
+      $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 결과가 표시됩니다.</div></div>'
+        + (building ? '<div class="analysis-report-common-actions operation-empty-actions" id="operationReportActions"></div>' : "");
+      if (building) window.livingstayAnalysisReportActions(
+        $("operationReportActions"), buildingId(), operationName()
+      );
       return;
     }
     var lodging = selectedLodging();
@@ -245,6 +249,23 @@
           var context = chart.ctx;
           var x = chart.scales.x.getPixelForValue(baseAdr);
           var y = chart.scales.y.getPixelForValue(baseOcc);
+          var area = chart.chartArea;
+          var quadrants = chart.canvas.parentElement.querySelectorAll(".operation-quadrant");
+          var boxes = [
+            [area.left, area.top, x - area.left, y - area.top],
+            [x, area.top, area.right - x, y - area.top],
+            [area.left, y, x - area.left, area.bottom - y],
+            [x, y, area.right - x, area.bottom - y],
+          ];
+          quadrants.forEach(function (quadrant, index) {
+            var box = boxes[index];
+            quadrant.style.left = box[0] + "px";
+            quadrant.style.top = box[1] + "px";
+            quadrant.style.right = "auto";
+            quadrant.style.bottom = "auto";
+            quadrant.style.width = box[2] + "px";
+            quadrant.style.height = box[3] + "px";
+          });
           context.save();
           context.strokeStyle = "#526a7d";
           context.fillStyle = "#526a7d";
@@ -284,6 +305,16 @@
             baselinePixelY: chart.scales.y.getPixelForValue(baseOcc),
             chartCenterX: (chart.chartArea.left + chart.chartArea.right) / 2,
             chartCenterY: (chart.chartArea.top + chart.chartArea.bottom) / 2,
+            quadrantBoxes: Array.from(
+              chart.canvas.parentElement.querySelectorAll(".operation-quadrant")
+            ).map(function (quadrant) {
+              return {
+                left: parseFloat(quadrant.style.left),
+                top: parseFloat(quadrant.style.top),
+                width: parseFloat(quadrant.style.width),
+                height: parseFloat(quadrant.style.height),
+              };
+            }),
           };
         },
       }],

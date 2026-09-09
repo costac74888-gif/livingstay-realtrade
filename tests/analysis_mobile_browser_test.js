@@ -401,6 +401,16 @@ async function run() {
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
     await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("200실"));
+    const operationActionsBeforeInput = await page.evaluate(() => ({
+      count: document.querySelectorAll("#operationReportActions .am-btn").length,
+      labels: document.getElementById("operationReportActions")?.textContent || "",
+    }));
+    expect(operationActionsBeforeInput.count === 4
+      && operationActionsBeforeInput.labels.includes("상세 페이지")
+      && operationActionsBeforeInput.labels.includes("실거래 전부보기")
+      && operationActionsBeforeInput.labels.includes("인쇄")
+      && operationActionsBeforeInput.labels.includes("공유"),
+      "숙박운영 자료 입력 전 공통 4개 버튼이 표시되지 않았습니다.");
     await page.setInputFiles("#operationFiles", {
       name: "operation.csv",
       mimeType: "text/csv",
@@ -488,7 +498,14 @@ async function run() {
       && Math.abs(operationResult.operationLayout.baselinePixelX
         - operationResult.operationLayout.chartCenterX) < 0.6
       && Math.abs(operationResult.operationLayout.baselinePixelY
-        - operationResult.operationLayout.chartCenterY) < 0.6,
+        - operationResult.operationLayout.chartCenterY) < 0.6
+      && operationResult.operationLayout.quadrantBoxes.length === 4
+      && Math.abs(operationResult.operationLayout.quadrantBoxes[0].left
+        + operationResult.operationLayout.quadrantBoxes[0].width
+        - operationResult.operationLayout.baselinePixelX) < 0.6
+      && Math.abs(operationResult.operationLayout.quadrantBoxes[0].top
+        + operationResult.operationLayout.quadrantBoxes[0].height
+        - operationResult.operationLayout.baselinePixelY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
     await expectSinglePageReport(page, "operation", "숙박운영분석", true);
     await page.click("#operationRentalGuide");
