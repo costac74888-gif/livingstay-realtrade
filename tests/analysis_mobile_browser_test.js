@@ -627,6 +627,17 @@ async function run() {
     expect(transactionTrend.visible && transactionTrend.width > 240
       && transactionTrend.height >= 200 && transactionTrend.months > 0,
       `모바일 실거래 추이 그래프가 정상 표시되지 않았습니다. ${JSON.stringify(transactionTrend)}`);
+    const selectedTransactions = await page.evaluate(() => ({
+      visible: !document.getElementById("selectedTransactionCard").classList.contains("hidden"),
+      title: document.getElementById("selectedTransactionTitle").textContent,
+      rows: Array.from(document.querySelectorAll("#selectedTransactionRows tr")).map((row) => row.textContent),
+      beforeRecommendations: !!(document.getElementById("selectedTransactionCard")
+        .compareDocumentPosition(document.getElementById("recommendationCard")) & Node.DOCUMENT_POSITION_FOLLOWING),
+    }));
+    expect(selectedTransactions.visible && selectedTransactions.title.includes("선택 테스트 자산")
+      && selectedTransactions.rows.length > 0 && selectedTransactions.rows.length <= 5
+      && selectedTransactions.rows[0].includes("만원") && selectedTransactions.beforeRecommendations,
+      `선택 건물 최근 실거래표가 그래프와 가격 매력 후보 사이에 표시되지 않았습니다. ${JSON.stringify(selectedTransactions)}`);
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
     await page.emulateMedia({ media: "print" });
     const printReport = await page.evaluate(() => {

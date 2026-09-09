@@ -72,6 +72,10 @@
     <div class="transaction-trend-wrap"><canvas id="transactionTrendChart" aria-label="선택 건물 실거래 추이 그래프"></canvas></div>
     <div class="transaction-trend-legend"><span><i class="price"></i>㎡당 중앙가격</span><span><i class="count"></i>거래 건수</span></div>
   </section>
+  <section class="analysis-card selected-transaction-card hidden" id="selectedTransactionCard" aria-label="선택 건물 최근 실거래">
+    <div class="selected-transaction-head"><div><h2 id="selectedTransactionTitle">선택 건물 최근 실거래 5건</h2><p>분석 그래프에 반영된 정확 연결 호실 거래입니다.</p></div><a id="selectedTransactionMore" class="am-btn" href="#">전체 실거래 보기</a></div>
+    <div class="selected-transaction-scroll"><table><thead><tr><th>계약일</th><th>전용면적</th><th>층</th><th>거래금액</th><th>유형</th></tr></thead><tbody id="selectedTransactionRows"></tbody></table></div>
+  </section>
   <section class="analysis-card recommendation-card" id="recommendationCard"><div class="recommendation-head"><h2>가격 매력 후보 TOP 5</h2><span><i>①</i> 수요 대비 저평가 후보 중심</span></div><div class="recommendation-scroll"><table><thead><tr><th>순위</th><th>단지명</th><th>지역</th><th>숙박유형</th><th>관광수요 지수</th><th>유사자산 대비</th><th>선택기간 거래</th><th>현황</th></tr></thead><tbody id="recommendationRows"></tbody></table></div></section>
   <section class="analysis-card table-card">
     <div class="table-head"><h2>건물 비교 목록</h2><span id="tableCount">—</span></div>

@@ -25,8 +25,12 @@ expect(
 );
 expect(
   html.includes('id="transactionTrendChart"') && html.includes('id="printTransactionTable"')
+    && html.indexOf('id="selectedTransactionCard"') > html.indexOf('id="transactionTrendCard"')
+    && html.indexOf('id="selectedTransactionCard"') < html.indexOf('id="recommendationCard"')
+    && js.includes("renderSelectedTransactions") && js.includes("selectedTransactionRows")
     && js.includes("price_per_sqm_median") && js.includes("transactionTrendChart=new Chart")
     && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
+    && printJs.includes('"홈앤스테이_"+name+"_"+day+"_부동산투자보고서"')
     && printJs.includes("livingstayPrintAnalysisReport") && css.includes("writing-mode:vertical-rl"),
   "화면·인쇄 실거래 그래프, 최근 거래표 또는 건물명·날짜 출력 파일명이 없습니다.",
 );
