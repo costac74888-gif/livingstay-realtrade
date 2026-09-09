@@ -70,9 +70,9 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
     methodology: {},
     trajectory_methodology: { price: "월별 ㎡당 중앙값", tourism: "거래월 관광자료", missing: "관광자료 누락은 회색 표시" },
     trajectory: [
-      { month: "202601", tourism_month: "202601", tourism_value: -8, price_change: -5, price_per_sqm_median: 410, previous_price_per_sqm_median: 431.6, transaction_count: 2, transactions: [{ deal_date: "2026-01-03", price: 41000, area: 100, price_per_sqm: 410 }] },
+      { month: "202601", tourism_month: "202601", tourism_value: -8, price_change: -5, price_per_sqm_median: 410, previous_price_per_sqm_median: 431.6, transaction_count: 2, transactions: [{ deal_date: "2026-01-03", price: 41000, area: 100, price_per_sqm: 410 }, { deal_date: "2026-01-18", price: 32000, area: 80, price_per_sqm: 400 }] },
       { month: "202603", tourism_month: null, tourism_value: null, price_change: 12, price_per_sqm_median: 459.2, previous_price_per_sqm_median: 410, transaction_count: 1, transactions: [{ deal_date: "2026-03-10", price: 45920, area: 100, price_per_sqm: 459.2 }] },
-      { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, price_per_sqm: 541.9 }] },
+      { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, price_per_sqm: 541.9 }, { deal_date: "2026-06-27", price: 36000, area: 80, price_per_sqm: 450 }] },
     ],
     items: [
       item(SELECTED_ID, "선택 테스트 자산", "강원특별자치도", "속초시", 14, 18, "수요 프리미엄"),
@@ -644,11 +644,32 @@ async function run() {
         width: rect.width,
         height: rect.height,
         months: window.__analysisTransactionTrend?.months || 0,
+        area: window.__analysisTransactionTrend?.area || "",
+        options: Array.from(document.getElementById("transactionAreaSelect").options).map(option => option.value),
+        lineLabel: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.label,
+        lineValues: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.data || [],
       };
     });
     expect(transactionTrend.visible && transactionTrend.width > 240
-      && transactionTrend.height >= 200 && transactionTrend.months > 0,
+      && transactionTrend.height >= 200 && transactionTrend.months > 0
+      && transactionTrend.area === "100.0"
+      && transactionTrend.options.join("|") === "80.0|100.0"
+      && transactionTrend.lineLabel === "거래금액(만원)"
+      && transactionTrend.lineValues.includes(41000)
+      && !transactionTrend.lineValues.includes(410),
       `모바일 실거래 추이 그래프가 정상 표시되지 않았습니다. ${JSON.stringify(transactionTrend)}`);
+    await page.selectOption("#transactionAreaSelect", "80.0");
+    await page.waitForFunction(() => window.__analysisTransactionTrend?.area === "80.0");
+    const selectedAreaTrend = await page.evaluate(() => ({
+      subtitle: document.getElementById("transactionTrendSubtitle").textContent,
+      rows: Array.from(document.querySelectorAll("#selectedTransactionRows tr")).map(row => row.textContent),
+      values: Chart.getChart("transactionTrendChart").data.datasets.find(dataset => dataset.type === "line").data,
+    }));
+    expect(selectedAreaTrend.subtitle.includes("80.0㎡")
+      && selectedAreaTrend.rows.every(row => row.includes("80㎡"))
+      && selectedAreaTrend.values.includes(32000)
+      && selectedAreaTrend.values.includes(36000),
+      `전유면적 선택이 그래프와 최근 거래표에 함께 반영되지 않았습니다. ${JSON.stringify(selectedAreaTrend)}`);
     const selectedTransactions = await page.evaluate(() => ({
       visible: !document.getElementById("selectedTransactionCard").classList.contains("hidden"),
       title: document.getElementById("selectedTransactionTitle").textContent,

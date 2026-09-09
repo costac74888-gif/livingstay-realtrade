@@ -68,9 +68,9 @@
    <aside class="analysis-card detail-card" id="detailCard"><div class="detail-empty"><div><strong>건물을 선택해 주세요</strong>산점도의 점 또는 아래 표의 행을 선택하면<br>주소·거래·자료 출처를 자세히 보여드립니다.</div></div></aside>
   </section>
   <section class="analysis-card transaction-trend-card hidden" id="transactionTrendCard" aria-label="선택 건물 실거래 추이">
-    <div class="card-head"><div><h2>실거래 추이</h2><p id="transactionTrendSubtitle">선택 건물의 월별 ㎡당 중앙가격과 거래 건수입니다.</p></div></div>
+    <div class="card-head transaction-trend-head"><div><h2 id="transactionTrendTitle">실거래 추이</h2><p id="transactionTrendSubtitle">선택 건물의 전유면적별 거래금액과 거래량입니다.</p></div><label id="transactionAreaField" class="transaction-area-field hidden">전유면적<select id="transactionAreaSelect" aria-label="실거래 추이 전유면적 선택"></select></label></div>
     <div class="transaction-trend-wrap"><canvas id="transactionTrendChart" aria-label="선택 건물 실거래 추이 그래프"></canvas></div>
-    <div class="transaction-trend-legend"><span><i class="price"></i>㎡당 중앙가격</span><span><i class="count"></i>거래 건수</span></div>
+    <div class="transaction-trend-legend"><span><i class="price"></i>거래금액(만원)</span><span><i class="count"></i>거래량</span></div>
   </section>
   <section class="analysis-card selected-transaction-card hidden" id="selectedTransactionCard" aria-label="선택 건물 최근 실거래">
     <div class="selected-transaction-head"><div><h2 id="selectedTransactionTitle">선택 건물 최근 실거래 5건</h2><p>분석 그래프에 반영된 정확 연결 호실 거래입니다.</p></div><a id="selectedTransactionMore" class="am-btn" href="#">전체 실거래 보기</a></div>
