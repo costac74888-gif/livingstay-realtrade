@@ -1132,6 +1132,7 @@ def _streetview_image_score(
     heading_offset,
     building_name=None,
     road_address=None,
+    include_ocr=True,
 ):
     """위치·중앙 건물 노출·OCR 일치도를 0~1 점수로 합산한다."""
     distance_score = max(0.0, 1.0 - abs(float(distance_m) - 32.0) / 40.0)
@@ -1153,16 +1154,21 @@ def _streetview_image_score(
     except (OSError, ValueError):
         pass
 
-    expected_tokens = {
-        token.lower()
-        for token in re.findall(r"[가-힣A-Za-z0-9]{2,}", f"{building_name or ''} {road_address or ''}")
-        if len(token) >= 2
-    }
-    ocr_text = _streetview_ocr_text(image_bytes).lower()
-    ocr_score = (
-        sum(1 for token in expected_tokens if token in ocr_text) / len(expected_tokens)
-        if expected_tokens else 0.0
-    )
+    ocr_score = 0.0
+    if include_ocr:
+        expected_tokens = {
+            token.lower()
+            for token in re.findall(
+                r"[가-힣A-Za-z0-9]{2,}",
+                f"{building_name or ''} {road_address or ''}",
+            )
+            if len(token) >= 2
+        }
+        ocr_text = _streetview_ocr_text(image_bytes).lower()
+        ocr_score = (
+            sum(1 for token in expected_tokens if token in ocr_text) / len(expected_tokens)
+            if expected_tokens else 0.0
+        )
     return (
         distance_score * 0.25
         + angle_score * 0.15
@@ -1340,6 +1346,10 @@ def _fetch_best_streetview_image(
                 offset,
                 building.get("building_name"),
                 building.get("road_address"),
+                # 웹 요청에서 tesseract 프로세스를 후보마다 실행하면 동시 요청 시
+                # gunicorn worker가 고갈된다. 파노라마 위치·구도·노출 점수만으로
+                # 즉시 선택하고 OCR은 동기 응답 경로에서 실행하지 않는다.
+                include_ocr=False,
             )
             return score, upstream.content, content_type.split(";", 1)[0]
         except Exception:

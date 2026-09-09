@@ -210,6 +210,7 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         best = _fetch_best_streetview_image(building, "key", points)
         self.assertEqual(best[0], 0.72)
         self.assertEqual(get.call_count, 2)
+        self.assertFalse(score.call_args.kwargs["include_ocr"])
         self.record_evaluation.assert_called_once_with(2, 0, "base")
 
     @patch("sync_building_photos._claim_daily_slot", return_value=1)
