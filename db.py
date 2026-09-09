@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-03"
+SCHEMA_VERSION = "2026-09-09-05"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -3466,6 +3466,48 @@ def _run_init_db():
         value TEXT,                         -- 자유 형식(문자열/숫자)
         updated_at TIMESTAMP DEFAULT NOW()  -- 마지막 갱신 시각
     )
+    """)
+
+    # 한국부동산원 R-ONE 상업용부동산 임대동향 기준값.
+    # 서로 다른 분기의 소득수익률·공실률이 섞이지 않도록 한 행에 함께 저장한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS rone_rental_benchmarks (
+        id BIGSERIAL PRIMARY KEY,
+        period DATE NOT NULL,
+        region_code TEXT NOT NULL,
+        region_name TEXT NOT NULL,
+        region_level TEXT NOT NULL,
+        property_type TEXT NOT NULL,
+        property_type_name TEXT NOT NULL,
+        income_yield NUMERIC(9,4) NOT NULL,
+        vacancy_rate NUMERIC(9,4) NOT NULL,
+        source_stat_income_id TEXT NOT NULL,
+        source_stat_vacancy_id TEXT NOT NULL,
+        source_item_income_id TEXT NOT NULL,
+        source_item_vacancy_id TEXT NOT NULL,
+        source_published_at TIMESTAMPTZ NOT NULL,
+        source_hash TEXT NOT NULL,
+        collected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (region_level IN ('sgg','province','market','national')),
+        CHECK (income_yield > -100 AND income_yield < 100),
+        CHECK (vacancy_rate >= 0 AND vacancy_rate <= 100),
+        UNIQUE (period, region_code, property_type)
+    )
+    """)
+    # 초기 개발판에서 period가 TEXT였던 환경도 날짜 정렬이 보장되는 구조로 승격한다.
+    cur.execute("""
+        ALTER TABLE rone_rental_benchmarks
+        ALTER COLUMN period TYPE DATE USING period::date,
+        ALTER COLUMN source_stat_income_id SET NOT NULL,
+        ALTER COLUMN source_stat_vacancy_id SET NOT NULL,
+        ALTER COLUMN source_item_income_id SET NOT NULL,
+        ALTER COLUMN source_item_vacancy_id SET NOT NULL,
+        ALTER COLUMN source_published_at SET NOT NULL,
+        ALTER COLUMN source_hash SET NOT NULL
+    """)
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_rone_rental_benchmark_lookup
+    ON rone_rental_benchmarks (property_type, region_code, period DESC)
     """)
 
     # 중개사 의뢰 알림용 단축 링크 — 코드는 외부에 노출되므로 만료 시각을 함께 검증한다.

@@ -99,7 +99,8 @@
           <div class="rental-market-field"><label><span>현재 실거래 기준가</span><div><input id="rentalMarketPrice" type="number" min="0" step="1" placeholder="호실 면적을 먼저 선택"><b>만원</b></div><small id="rentalMarketPriceHint">선택 면적의 최근 실거래 중앙값을 자동으로 불러옵니다.</small></label><details id="rentalMarketEvidence" class="rental-market-evidence hidden"><summary id="rentalMarketEvidenceSummary">기준가 산정 거래 보기</summary><div id="rentalMarketEvidenceList"></div></details></div>
           <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
           <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
-          <label><span>예상 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" value="5"><b>%</b></div></label>
+           <label class="rental-vacancy-months"><span>최근 1년 공실 개월</span><div><input id="rentalVacancyMonths" type="number" min="0" max="12" step="0.1" placeholder="직접 입력 시 우선"><b>개월</b></div><small id="rentalVacancyMonthsHint">비워두면 서버가 제공한 R-ONE 평균을 사용합니다.</small></label>
+           <label><span>적용 공실률</span><div><input id="rentalVacancyRate" type="number" min="0" max="100" step="0.1" readonly placeholder="기준 확인 중"><b>%</b></div><small id="rentalVacancyRateHint">공실 개월 또는 지역 평균으로 자동계산</small></label>
           <label><span>취득세 등 (4.6%)</span><div><input id="rentalAcquisitionTax" type="number" min="0" step="0.1" readonly placeholder="매입가로 자동계산"><b>만원</b></div><small>본인 매입가 × 4.6%</small></label>
           <label><span>중개보수 (0.9%)</span><div><input id="rentalBrokerFee" type="number" min="0" step="0.1" readonly placeholder="매입가로 자동계산"><b>만원</b></div><small>본인 매입가 × 0.9%</small></label>
         </div>
@@ -123,9 +124,13 @@
       </div>
       <div class="rental-actions"><button class="am-btn" id="rentalReset" type="button">입력 초기화</button><button class="am-btn primary" id="rentalCalculate" type="button">임대수익 계산</button></div>
     </section>
-    <section class="rental-results" id="rentalResults" aria-live="polite">
+     <section class="rental-results" id="rentalResults" aria-live="polite">
       <article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>
     </section>
+     <section id="rentalPositioning" class="analysis-card rental-positioning" aria-live="polite">
+       <div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>내가 산 가격이 아닌 현재 시장가와, 1년 공실 데이터를 함께 놓고 임대수익의 위치를 읽습니다.</p></div>
+       <div class="positioning-pending">매입가·월세와 공실 기준을 입력하면 포지셔닝이 표시됩니다.</div>
+     </section>
     <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>
     <section class="methodology"><strong>임대수익 계산 기준</strong><div class="formula">순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>자기자본 수익률 = 대출 원리금 차감 후 현금흐름 ÷ 실투자금<br>DSCR = 순영업소득 ÷ 연간 대출 원리금</div><div>재산세 자동값은 비주거용 자산의 매입가를 이용한 투자 참고 추정치이며 실제 과세표준·토지지분·공부상 용도에 따라 달라집니다. 세무 신고나 대출심사를 대신하지 않습니다.</div></section>
   </section>

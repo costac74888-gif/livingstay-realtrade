@@ -186,6 +186,33 @@ async function run() {
         sqms: [18.1, 18.2, 18.3, 21.2, 32.5],
       });
     }
+    if (url.pathname === "/api/analysis/rental-benchmark") {
+      return json(route, {
+        ok: true,
+        available: true,
+        benchmark: {
+          period: "2026-Q2",
+          region_code: "42",
+          region_name: "강원 조사권역",
+          region_level: "province",
+          property_type: "small_retail",
+          property_type_name: "소규모 상가",
+          income_yield: 5.2,
+          vacancy_rate: 10,
+          stability_score: 90,
+          fallback_level: "province",
+        },
+        items: [
+          { region_name: "강원 조사권역", income_yield: 5.2, vacancy_rate: 10, stability_score: 90 },
+          { region_name: "인접 조사권역", income_yield: 4.8, vacancy_rate: 13, stability_score: 87 },
+        ],
+        source: {
+          provider: "한국부동산원 R-ONE",
+          status: "ready",
+          notice: "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계를 이용한 대체 투자상품 참고 비교입니다.",
+        },
+      });
+    }
     if (url.pathname === "/api/analysis/rental-market-price") {
       rentalMarketRequest = url.search;
       if (url.searchParams.get("area_sqm") === "99") {
@@ -617,6 +644,11 @@ async function run() {
       selectedTab: document.getElementById("rentalTab").getAttribute("aria-selected"),
       tax: document.getElementById("rentalPropertyTax").value,
       text: document.getElementById("rentalResults").textContent,
+      vacancyMonths: document.getElementById("rentalVacancyMonths").value,
+      vacancyRate: document.getElementById("rentalVacancyRate").value,
+      vacancyHint: document.getElementById("rentalVacancyMonthsHint").textContent,
+      positioning: document.getElementById("rentalPositioning").textContent,
+      peerCount: document.querySelectorAll("#rentalPositioning .positioning-peer").length,
       calculation: window.__rentalAnalysisResult,
     }));
     expect(rentalResult.visible && rentalResult.selectedTab === "true",
@@ -630,8 +662,29 @@ async function run() {
       "임대수익 전문용어 옆의 쉬운 설명이 누락됐습니다.");
     expect(Math.abs(rentalResult.calculation.annualRent - 600) < 0.01
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
-      && Math.abs(rentalResult.calculation.invested - 4250) < 0.01,
+      && Math.abs(rentalResult.calculation.invested - 4250) < 0.01
+      && rentalResult.vacancyMonths === ""
+      && rentalResult.vacancyRate === "10.0"
+      && rentalResult.vacancyHint.includes("R-ONE 평균 1.2개월")
+      && rentalResult.positioning.includes("수익개선 검토")
+      && rentalResult.positioning.includes("지역 평균 가정")
+      && rentalResult.positioning.includes("동일 자산군이 아닌")
+      && rentalResult.peerCount === 2
+      && rentalResult.calculation.vacancySource === "rone",
       "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
+    await page.fill("#rentalVacancyMonths", "3");
+    await page.click("#rentalCalculate");
+    const userVacancy = await page.evaluate(() => ({
+      rate: document.getElementById("rentalVacancyRate").value,
+      positioning: document.getElementById("rentalPositioning").textContent,
+      calculation: window.__rentalAnalysisResult,
+    }));
+    expect(userVacancy.rate === "25.0"
+      && userVacancy.positioning.includes("사용자 입력")
+      && userVacancy.positioning.includes("R-ONE")
+      && userVacancy.calculation.vacancySource === "user"
+      && Math.abs(userVacancy.calculation.vacancyRate - 25) < 0.01,
+      "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
     await expectSinglePageReport(page, "rental", "임대수익분석", false);
     for (const tab of [
       { id: "propertyTab", mode: null },
@@ -766,7 +819,8 @@ async function run() {
       "전체 초기화가 검색어·선택 건물·숙박운영 입력을 지우지 못했습니다.");
     await page.click("#rentalTab");
     expect(await page.inputValue("#rentalMonthlyRent") === ""
-      && await page.inputValue("#rentalVacancyRate") === "5",
+      && await page.inputValue("#rentalVacancyMonths") === ""
+      && await page.inputValue("#rentalVacancyRate") === "",
       "전체 초기화가 임대수익 입력을 기본값으로 되돌리지 못했습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");

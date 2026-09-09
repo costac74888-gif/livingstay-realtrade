@@ -8,9 +8,13 @@
   var areaLookupTimer = null;
   var taxManuallyEdited = false;
   var loadedBuilding = null;
+  var rentalBenchmark = null;
+  var rentalBenchmarkItems = [];
+  var benchmarkSource = "";
+  var benchmarkNotice = "";
   var ids = [
     "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
-    "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
+    "rentalVacancyMonths", "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
     "rentalManagementCost", "rentalOtherCost", "rentalLoanAmount",
     "rentalLoanRate", "rentalLoanYears",
   ];
@@ -18,6 +22,11 @@
     var value = $(id).value;
     if (id === "rentalUnitArea") value = value.replace(/\s*㎡\s*$/, "").trim();
     return value === "" || !Number.isFinite(Number(value)) ? 0 : Number(value);
+  }
+  function escapeHtml(value) {
+    var node = document.createElement("div");
+    node.textContent = value == null ? "" : String(value);
+    return node.innerHTML;
   }
   function money(value, digits) {
     return Number(value || 0).toLocaleString("ko-KR", {
@@ -70,18 +79,107 @@
       + label + '</b><em>' + (resultHelp[label] || "") + '</em></small><strong>'
       + value + '</strong><span>' + note + "</span></article>";
   }
+  function benchmarkMonths() {
+    if (!rentalBenchmark) return null;
+    if (Number.isFinite(Number(rentalBenchmark))) return Number(rentalBenchmark);
+    var values = [rentalBenchmark.vacancy_months, rentalBenchmark.average_vacancy_months,
+      rentalBenchmark.avg_vacancy_months, rentalBenchmark.r_one_vacancy_months];
+    for (var i = 0; i < values.length; i++) if (Number.isFinite(Number(values[i]))) return Number(values[i]);
+    var rate = rentalBenchmark.vacancy_rate || rentalBenchmark.average_vacancy_rate;
+    return Number.isFinite(Number(rate)) ? Number(rate) * 12 / 100 : null;
+  }
+  function renderPositioning(yieldValue, months, userEntered) {
+    var box = $("rentalPositioning");
+    if (!box) return;
+    var benchmarkYield = rentalBenchmark && Number(rentalBenchmark.income_yield);
+    var benchmarkVacancy = rentalBenchmark && Number(rentalBenchmark.vacancy_rate);
+    if (!Number.isFinite(yieldValue) || !Number.isFinite(months)
+        || !Number.isFinite(benchmarkYield) || !Number.isFinite(benchmarkVacancy)) {
+      box.className = "analysis-card rental-positioning pending";
+      box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>시장가 수익률과 최근 1년 공실 기준을 함께 확인합니다.</p></div><div class="positioning-pending">판정 보류 · 현재 시장가와 R-ONE 기준자료가 모두 확인되어야 위치를 판정할 수 있습니다.</div>';
+      return;
+    }
+    var vacancyRate = months / 12 * 100;
+    var stable = 100 - vacancyRate;
+    var benchmarkStable = 100 - benchmarkVacancy;
+    var yieldSpan = Math.max(2, Math.abs(benchmarkYield) * 0.8);
+    var stableSpan = Math.max(12, benchmarkVacancy * 1.5);
+    var x = Math.max(8, Math.min(92, 50 + (yieldValue - benchmarkYield) / yieldSpan * 42));
+    var y = Math.max(8, Math.min(92, 50 - (stable - benchmarkStable) / stableSpan * 42));
+    var highYield = yieldValue >= benchmarkYield;
+    var highStable = stable >= benchmarkStable;
+    var verdict = !userEntered
+      ? (highYield ? "시장 대비 고수익 후보" : "수익개선 검토")
+      : highYield && highStable ? "고수익·안정형"
+        : highYield ? "고수익·위험형" : highStable ? "안정·저수익형" : "수익개선 필요형";
+    var source = userEntered
+      ? "공실 기준: 사용자 입력 · 비교 기준: " + benchmarkSource
+      : "공실 기준: " + benchmarkSource + " 평균 가정";
+    var comparison = "지역 평균 수익률 " + benchmarkYield.toFixed(2) + "% · 공실률 "
+      + benchmarkVacancy.toFixed(1) + "%";
+    var peerDots = rentalBenchmarkItems.map(function (item) {
+      var itemYield = Number(item.income_yield);
+      var itemStable = Number(item.stability_score);
+      if (!Number.isFinite(itemYield) || !Number.isFinite(itemStable)) return "";
+      var left = Math.max(4, Math.min(96, 50 + (itemYield - benchmarkYield) / yieldSpan * 42));
+      var top = Math.max(4, Math.min(96, 50 - (itemStable - benchmarkStable) / stableSpan * 42));
+      return '<i class="positioning-peer" style="left:' + left + '%;top:' + top
+        + '%" title="' + escapeHtml(item.region_name || "비교지역") + '"></i>';
+    }).join("");
+    box.className = "analysis-card rental-positioning";
+    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 지역 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i></div><div class="positioning-legend"><span>R-ONE 비교지역</span><strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>' + (userEntered ? "사용자 입력" : "지역 평균 가정") + '</span></div></div>';
+  }
+  async function loadRentalBenchmark(id, seq) {
+    rentalBenchmark = null; rentalBenchmarkItems = []; benchmarkSource = ""; benchmarkNotice = "";
+    if (!id) return;
+    try {
+      var response = await fetch("/api/analysis/rental-benchmark?building_id=" + encodeURIComponent(id)
+        + "&property_type=small_retail", { credentials: "same-origin" });
+      var payload = response.ok ? await response.json() : null;
+      if (seq !== buildingSequence || String(id) !== loadedBuildingId) return;
+      var candidate = payload && payload.available !== false && (payload.benchmark || payload);
+      rentalBenchmark = candidate != null && (typeof candidate === "object" || typeof candidate === "number") ? candidate : null;
+      rentalBenchmarkItems = payload && Array.isArray(payload.items) ? payload.items : [];
+      var source = payload && (payload.source || candidate && candidate.source);
+      benchmarkSource = typeof source === "string" ? source : source && (source.provider + (candidate && candidate.period ? " · " + candidate.period : "")) || "";
+      benchmarkNotice = source && source.notice || "";
+      var months = benchmarkMonths();
+      $("rentalVacancyMonthsHint").textContent = months == null ? "R-ONE 평균을 확인할 수 없어 사용자 입력을 기다립니다." : "R-ONE 평균 " + months.toFixed(1) + "개월 · 직접 입력 시 사용자 값 우선";
+      calculate();
+    } catch (ignore) {
+      if (seq !== buildingSequence || String(id) !== loadedBuildingId) return;
+      rentalBenchmark = null;
+      $("rentalVacancyMonthsHint").textContent = "R-ONE 평균을 불러오지 못했습니다. 직접 입력할 수 있습니다.";
+      calculate();
+    }
+  }
   function calculate() {
     var purchase = n("rentalPurchasePrice");
     var market = n("rentalMarketPrice");
     var deposit = n("rentalDeposit");
     var rent = n("rentalMonthlyRent");
-    var vacancy = Math.min(100, Math.max(0, n("rentalVacancyRate"))) / 100;
+    var enteredMonths = $("rentalVacancyMonths").value.trim() === "" ? null : n("rentalVacancyMonths");
+    var resolvedMonths = enteredMonths != null ? Math.min(12, Math.max(0, enteredMonths)) : benchmarkMonths();
+    $("rentalVacancyRate").value = resolvedMonths == null ? "" : (resolvedMonths / 12 * 100).toFixed(1);
+    $("rentalVacancyRateHint").textContent = resolvedMonths == null
+      ? "공실 개월을 입력하거나 지역 평균을 불러와야 합니다."
+      : enteredMonths != null ? "사용자 입력 공실기간에서 자동계산" : "R-ONE 지역 평균 자동 적용";
+    var vacancy = resolvedMonths == null ? 0 : resolvedMonths / 12;
     var acquisitionTax = n("rentalAcquisitionTax");
     var brokerFee = n("rentalBrokerFee");
     var acquisition = acquisitionTax + brokerFee;
     var tax = n("rentalPropertyTax");
     var costs = tax + n("rentalManagementCost") + n("rentalOtherCost");
     var loan = n("rentalLoanAmount");
+    if (resolvedMonths == null) {
+      $("rentalResults").innerHTML = '<div class="rental-calculation-warning"><b>공실 기준이 필요합니다</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 지역 평균이 연결되어야 수익률을 계산합니다.</span></div>';
+      renderPositioning(NaN, null, false);
+      window.__rentalAnalysisResult = {
+        purchasePrice: purchase, vacancyMonths: null, vacancyRate: null,
+        vacancySource: "unavailable", benchmark: null, ready: false,
+      };
+      return;
+    }
     var debt = annualDebtService(
       loan, n("rentalLoanRate"), Math.max(1, n("rentalLoanYears")),
       $("rentalLoanMethod").value
@@ -97,18 +195,25 @@
     var marketYield = market > 0 ? noi / market * 100 : NaN;
     var dscr = debt.annual > 0 ? noi / debt.annual : null;
     $("rentalResults").innerHTML =
-      card("대출 후 월 순현금", money(cashFlow / 12, 1), "순영업소득에서 월 원리금 차감", "primary")
+      (resolvedMonths == null ? '<div class="rental-calculation-warning"><b>공실 기준 미반영 임시 계산</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 지역 평균이 연결되면 결과가 자동으로 갱신됩니다.</span></div>' : "")
+      + card("대출 후 월 순현금", money(cashFlow / 12, 1), "순영업소득에서 월 원리금 차감", "primary")
       + card("자기자본 수익률", percent(cashReturn), "실투자금 " + money(invested), cashReturn < 0 ? "warning" : "")
       + card("비용 반영 순수익률", percent(netYield), "순영업소득 " + money(noi) + "/년")
       + card("표면수익률", percent(grossYield), "공실·비용 차감 전")
       + card("현재 실거래 기준 수익률", market ? percent(marketYield) : "기준가 입력 필요", market ? "현재 기준가 " + money(market) : "최근 실거래 자동연결 예정")
       + card("월 대출 상환액", money(debt.monthly, 1), $("rentalLoanMethod").selectedOptions[0].text)
       + card("DSCR", dscr == null ? "대출 없음" : dscr.toFixed(2) + "배", dscr == null ? "대출상환 부담 없음" : (dscr >= 1.2 ? "임대수익 상환여력 양호" : "상환여력 주의"), dscr != null && dscr < 1.2 ? "warning" : "")
-      + card("연간 보유비용", money(costs), "보유세·관리비·수선비 합계");
+       + card("연간 보유비용", money(costs), "보유세·관리비·수선비 합계");
+    renderPositioning(market > 0 ? marketYield : NaN, resolvedMonths, enteredMonths != null);
     window.__rentalAnalysisResult = {
       purchasePrice: purchase, annualRent: annualRent, noi: noi, invested: invested,
       debtService: debt.annual, cashFlow: cashFlow, grossYield: grossYield,
       netYield: netYield, cashReturn: cashReturn, dscr: dscr,
+      marketYield: marketYield, vacancyMonths: resolvedMonths,
+      vacancyRate: resolvedMonths == null ? null : resolvedMonths / 12 * 100,
+      vacancySource: enteredMonths != null ? "user" : rentalBenchmark ? "rone" : "unavailable",
+      benchmark: rentalBenchmark,
+      ready: true,
     };
     if (loadedBuildingId) window.livingstayAnalysisReportActions(
       $("rentalReportActions"), loadedBuildingId,
@@ -239,6 +344,10 @@
     if (!id) {
       loadedBuildingId = "";
       loadedBuilding = null;
+      rentalBenchmark = null;
+      rentalBenchmarkItems = [];
+      benchmarkSource = "";
+      benchmarkNotice = "";
       window.__rentalAnalysisBuilding = null;
       $("rentalReportActions").classList.add("hidden");
       $("rentalReportActions").replaceChildren();
@@ -250,6 +359,7 @@
       $("rentalUnitAreaOptions").innerHTML = "";
       $("rentalMarketPrice").value = "";
       $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
+      $("rentalVacancyMonthsHint").textContent = "건물을 선택하면 R-ONE 지역 평균을 확인합니다.";
       $("rentalUnitAreaHint").textContent = "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
       setMarketStatus("건물과 호실 면적을 선택하면 최근 실거래 중앙값을 불러옵니다.", "");
       calculate();
@@ -281,6 +391,8 @@
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
         }
       }
+      await loadRentalBenchmark(id, seq);
+      if (seq !== buildingSequence) return;
       var items = areas && Array.isArray(areas.items) ? areas.items : [];
       $("rentalUnitAreaOptions").innerHTML = items.map(function (item) {
         var sqm = Number(item.sqm);
@@ -335,7 +447,8 @@
     clearMarketEvidence();
     clearTimeout(areaLookupTimer);
     ids.forEach(function (id) { $(id).value = ""; });
-    $("rentalVacancyRate").value = "5";
+    $("rentalVacancyMonths").value = "";
+    $("rentalVacancyRate").value = "";
     $("rentalManagementCost").value = "0";
     $("rentalOtherCost").value = "0";
     $("rentalLoanAmount").value = "0";

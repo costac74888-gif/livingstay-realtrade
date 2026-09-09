@@ -3321,6 +3321,124 @@ def get_rental_market_price():
         conn.close()
 
 
+@app.route("/api/analysis/rental-benchmark")
+@limiter.limit("60 per minute")
+def get_rental_benchmark():
+    """선택 건물에 적용할 최신 R-ONE 임대수익·공실 기준값."""
+    building_id = (request.args.get("building_id") or "").strip()
+    property_type = (request.args.get("property_type") or "small_retail").strip()
+    allowed_types = {"office", "medium_retail", "small_retail", "collective_retail"}
+    if not building_id.isdigit():
+        return jsonify({"ok": False, "reason": "분석할 건물을 먼저 선택해 주세요."}), 400
+    if property_type not in allowed_types:
+        return jsonify({"ok": False, "reason": "지원하지 않는 비교 자산 유형입니다."}), 400
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, sgg_cd, sgg_text, road_address, jibun_address
+            FROM master_buildings WHERE id = %s
+        """, [int(building_id)])
+        building = cur.fetchone()
+        if not building:
+            return jsonify({"ok": False, "reason": "선택한 건물을 찾을 수 없습니다."}), 404
+
+        sgg_code = str(building.get("sgg_cd") or "").strip()
+        province_code = sgg_code[:2] if len(sgg_code) >= 2 else ""
+        candidates = []
+        if sgg_code:
+            candidates.append(("sgg", sgg_code))
+        if province_code:
+            candidates.append(("province", province_code))
+        candidates.append(("national", "00"))
+
+        benchmark = None
+        fallback_level = None
+        for level, code in candidates:
+            cur.execute("""
+                SELECT period, region_code, region_name, region_level,
+                       property_type, property_type_name,
+                       income_yield, vacancy_rate, source_published_at, collected_at
+                FROM rone_rental_benchmarks
+                WHERE property_type = %s
+                  AND region_level = %s
+                  AND region_code = %s
+                ORDER BY period DESC
+                LIMIT 1
+            """, [property_type, level, code])
+            benchmark = cur.fetchone()
+            if benchmark:
+                fallback_level = level
+                break
+
+        if not benchmark:
+            return jsonify({
+                "ok": True,
+                "available": False,
+                "benchmark": None,
+                "items": [],
+                "source": {
+                    "provider": "한국부동산원 R-ONE",
+                    "status": "awaiting_data",
+                    "notice": "R-ONE 기준자료가 준비되면 지역 평균 공실률을 자동 적용합니다.",
+                },
+            })
+
+        period = benchmark["period"]
+        cur.execute("""
+            SELECT region_code, region_name, region_level, property_type_name,
+                   income_yield, vacancy_rate
+            FROM rone_rental_benchmarks
+            WHERE property_type = %s AND period = %s
+            ORDER BY region_name
+            LIMIT 80
+        """, [property_type, period])
+        items = [{
+            "region_code": row["region_code"],
+            "region_name": row["region_name"],
+            "region_level": row["region_level"],
+            "income_yield": float(row["income_yield"]),
+            "vacancy_rate": float(row["vacancy_rate"]),
+            "stability_score": round(100 - float(row["vacancy_rate"]), 2),
+        } for row in cur.fetchall()]
+        return jsonify({
+            "ok": True,
+            "available": True,
+            "benchmark": {
+                "period": benchmark["period"].isoformat(),
+                "region_code": benchmark["region_code"],
+                "region_name": benchmark["region_name"],
+                "region_level": benchmark["region_level"],
+                "property_type": benchmark["property_type"],
+                "property_type_name": benchmark["property_type_name"],
+                "income_yield": float(benchmark["income_yield"]),
+                "vacancy_rate": float(benchmark["vacancy_rate"]),
+                "stability_score": round(100 - float(benchmark["vacancy_rate"]), 2),
+                "fallback_level": fallback_level,
+            },
+            "items": items,
+            "source": {
+                "provider": "한국부동산원 R-ONE",
+                "status": "ready",
+                "published_at": benchmark["source_published_at"],
+                "collected_at": benchmark["collected_at"],
+                "is_exact_asset_type": False,
+                "notice": "생활숙박시설과 동일 자산군이 아닌 소규모 상가 통계를 이용한 대체 투자상품 참고 비교입니다.",
+            },
+        })
+    except Exception:
+        app.logger.exception("R-ONE 임대 기준값 조회 오류 building_id=%s", building_id)
+        return jsonify({
+            "ok": False,
+            "available": False,
+            "reason": "임대시장 기준자료를 불러오지 못했습니다.",
+        }), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/building/<int:building_id>/lodging-summary")
 @limiter.limit("60 per minute")
 def get_building_lodging_summary(building_id):
