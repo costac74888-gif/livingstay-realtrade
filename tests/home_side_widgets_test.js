@@ -178,6 +178,8 @@ expect(
   main.includes('id="bTxTitle"') &&
   main.includes('label:"거래량"') &&
   main.includes('label:"평균 거래금액(만원)"') &&
+  main.includes("Number(i.count || 0) > 0 ? Number(i.avg_price || 0) : null") &&
+  main.includes("spanGaps:true") &&
   main.includes('"&building_id=" + encodeURIComponent(b.id)'),
   "홈의 선택 건물 실거래 그래프·목록에 건물명 또는 평균 거래금액 연결이 없습니다."
 );

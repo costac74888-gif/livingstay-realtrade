@@ -397,7 +397,7 @@
     const counts = items.map(item => Number(item.count || 0));
     const singleBuilding = Boolean(state.building_id);
     const amounts = items.map(item => singleBuilding
-      ? Number(item.avg_price || 0)
+      ? (Number(item.count || 0) > 0 ? Number(item.avg_price || 0) : null)
       : Math.round(Number(item.sum_price || 0) / 10000));
     if (txTrendChart) txTrendChart.destroy();
     txTrendChart = new Chart(canvas, {
@@ -405,7 +405,7 @@
         labels,
         datasets:[
           {type:"bar",label:singleBuilding?"거래량":"거래건수",data:counts,yAxisID:"y",backgroundColor:"#B4863F",borderRadius:3,order:2},
-          {type:"line",label:singleBuilding?"평균 거래금액(만원)":"거래금액(억)",data:amounts,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,order:1},
+          {type:"line",label:singleBuilding?"평균 거래금액(만원)":"거래금액(억)",data:amounts,yAxisID:"y1",borderColor:"#378ADD",backgroundColor:"#378ADD",borderWidth:2,pointRadius:2,tension:.3,spanGaps:singleBuilding,order:1},
         ],
       },
       options:{

@@ -8134,7 +8134,7 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
     ? i.ym.slice(2).replace("-", "")
     : i.ym.slice(2).replace("-", "/"));
   const counts = items.map(i => i.count);
-  const amounts = items.map(i => Number(i.avg_price || 0));
+  const amounts = items.map(i => Number(i.count || 0) > 0 ? Number(i.avg_price || 0) : null);
 
   buildingDetailChart = new Chart(canvas, {
     data: {
@@ -8144,7 +8144,7 @@ async function loadBuildingTrend(id, buildingStatus, areaFilter=""){
           backgroundColor:"#B4863F", borderRadius:3, order:2 },
         { type:"line", label:"평균 거래금액(만원)", data:amounts, yAxisID:"y1",
           borderColor:"#378ADD", backgroundColor:"#378ADD", borderWidth:2,
-          pointRadius:2, tension:.3, order:1 },
+          pointRadius:2, tension:.3, spanGaps:true, order:1 },
       ],
     },
     options: {

@@ -14,6 +14,8 @@ expect(
 expect(
   html.includes('label:singleBuilding?"거래량":"거래건수"') &&
     html.includes('label:singleBuilding?"평균 거래금액(만원)":"거래금액(억)"') &&
+    html.includes("Number(item.count || 0) > 0 ? Number(item.avg_price || 0) : null") &&
+    html.includes("spanGaps:singleBuilding") &&
     html.includes('state.building_id = initialParams.get("building_id") || ""') &&
     html.includes('buildingName ? `${buildingName} 실거래추세`') &&
     html.includes("loadTrendChart(state.favOnly ? items : null)"),
