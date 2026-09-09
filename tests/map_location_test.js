@@ -45,12 +45,11 @@ expect(
 );
 expect(
   css.includes(".map-location-target") &&
-    css.includes("width:14px !important; height:14px !important") &&
-    css.includes("font-size:0 !important") &&
+    css.includes("width:34px !important; height:34px !important") &&
     css.includes("map-location-target-pulse") &&
     !css.includes(".map-location-target-pin") &&
     !css.includes("map-location-target-ring"),
-  "선택 건물 포인트가 실거래 점과 같은 14px 크기로 점멸하지 않습니다.",
+  "실거래가 없는 선택 건물도 실거래 원형과 같은 34px 크기로 점멸하지 않습니다.",
 );
 expect(
   source.includes("const LABEL_MAX_LEVEL = 5") &&
