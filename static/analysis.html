@@ -17,8 +17,8 @@
       <section class="print-zone print-overview"><h2>2.1 건물개요</h2><div id="printOverview"></div></section>
       <section class="print-zone print-graph"><h2 id="printGraphTitle">3.1 분석 그래프</h2><div id="printGraph"></div></section>
       <aside class="print-side">
-        <section class="print-zone print-tx-zone"><h2>3.2 실거래 추이</h2><div id="printTransactionTrend"></div><div id="printTransactionTable"></div></section>
-        <section class="print-zone print-map-zone"><h2>3.3 지도위치</h2><div id="printMap" class="print-map"><div class="print-empty">지도 위치를 준비하고 있습니다.</div></div><p id="printMapCaption"></p></section>
+        <section class="print-zone print-tx-zone"><h2 id="printSideTitle">3.2 실거래 추이</h2><div id="printTransactionTrend"></div><div id="printTransactionTable"></div></section>
+        <section class="print-zone print-map-zone"><h2 id="printMapTitle">3.3 지도위치</h2><div id="printMap" class="print-map"><div class="print-empty">지도 위치를 준비하고 있습니다.</div></div><p id="printMapCaption"></p></section>
       </aside>
       <section class="print-zone print-basis"><h2>4. 계산근거</h2><div id="printBasis"></div><aside class="print-caution"><b>주의사항</b><span>본 보고서는 공공데이터와 확인 가능한 입력자료를 바탕으로 한 참고자료이며 감정평가, 투자 권유, 수익 보장 또는 법률·세무 자문을 대신하지 않습니다. 자료 갱신 시점, 표본 수, 실제 건물 상태에 따라 결과가 달라질 수 있으므로 중요한 의사결정 전 원문과 현장을 별도로 확인하세요.</span></aside><div id="printReportLegend" class="print-report-legend"></div></section>
     </article>
@@ -122,6 +122,7 @@
     <section class="rental-results" id="rentalResults" aria-live="polite">
       <article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>
     </section>
+    <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>
     <section class="methodology"><strong>임대수익 계산 기준</strong><div class="formula">순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>자기자본 수익률 = 대출 원리금 차감 후 현금흐름 ÷ 실투자금<br>DSCR = 순영업소득 ÷ 연간 대출 원리금</div><div>재산세 자동값은 비주거용 자산의 매입가를 이용한 투자 참고 추정치이며 실제 과세표준·토지지분·공부상 용도에 따라 달라집니다. 세무 신고나 대출심사를 대신하지 않습니다.</div></section>
   </section>
   <section id="operationAnalysis" class="hidden">

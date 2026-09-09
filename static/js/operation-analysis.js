@@ -155,7 +155,10 @@
     }).join("");
   }
   function renderDetail(selected) {
-    if (!selected) return;
+    if (!selected) {
+      $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 보고서와 공유 버튼이 표시됩니다.</div></div>';
+      return;
+    }
     var lodging = selectedLodging();
     var name = operationName();
     var address = building && (building.road_address || building.jibun_address) || "주소 미확인";
@@ -172,7 +175,9 @@
       + '<div class="detail-metric"><small>OCC</small><strong>' + format(selected.occ, 1) + '%</strong></div>'
       + '<div class="detail-metric"><small>RevPAR</small><strong>' + format(selected.revpar, 0) + '원</strong></div>'
       + '<div class="detail-metric"><small>자료 처리</small><strong>자동분석</strong></div></div>'
-      + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>';
+      + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>'
+      + '<div class="analysis-report-common-actions" id="operationReportActions"></div>';
+    window.livingstayAnalysisReportActions($("operationReportActions"), buildingId(), name);
   }
   function renderChart() {
     var occ = number($("operationOcc").value);
@@ -290,6 +295,7 @@
     var sequence = ++loadSequence;
     if (!id) {
       building = null; benchmarks = []; region = ""; subregion = "";
+      window.__operationAnalysisBuilding = null;
       $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
       $("operationBusinessName").value = "";
       $("operationRoomCountInput").value = "";
@@ -306,6 +312,7 @@
     ]).then(function (results) {
       if (sequence !== loadSequence || !results[0]) return;
       building = results[0];
+      window.__operationAnalysisBuilding = building;
       benchmarks = results[1] && Array.isArray(results[1].items) ? results[1].items : [];
       region = results[1] && results[1].sido || "";
       subregion = results[1] && results[1].sgg || "";

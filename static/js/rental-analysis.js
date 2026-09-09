@@ -7,6 +7,7 @@
   var automaticMarketPrice = null;
   var areaLookupTimer = null;
   var taxManuallyEdited = false;
+  var loadedBuilding = null;
   var ids = [
     "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
     "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
@@ -109,6 +110,10 @@
       debtService: debt.annual, cashFlow: cashFlow, grossYield: grossYield,
       netYield: netYield, cashReturn: cashReturn, dscr: dscr,
     };
+    if (loadedBuildingId) window.livingstayAnalysisReportActions(
+      $("rentalReportActions"), loadedBuildingId,
+      loadedBuilding && (loadedBuilding.display_building_name || loadedBuilding.building_name)
+    );
   }
   function updateEstimatedTax() {
     if (taxManuallyEdited) return;
@@ -233,6 +238,10 @@
     var seq = ++buildingSequence;
     if (!id) {
       loadedBuildingId = "";
+      loadedBuilding = null;
+      window.__rentalAnalysisBuilding = null;
+      $("rentalReportActions").classList.add("hidden");
+      $("rentalReportActions").replaceChildren();
       marketPriceManuallyEdited = false;
       automaticMarketPrice = null;
       clearMarketEvidence();
@@ -265,6 +274,8 @@
       var areas = responses[1].ok ? await responses[1].json() : null;
       if (seq !== buildingSequence) return;
       if (data) {
+        loadedBuilding = data;
+        window.__rentalAnalysisBuilding = data;
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
         if (window.setAnalysisBuildingStatus) {
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");

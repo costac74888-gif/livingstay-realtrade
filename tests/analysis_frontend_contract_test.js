@@ -16,6 +16,14 @@ expect(
   "세 가지 분석 안내가 분석 화면 맨 위에 배치되지 않았습니다.",
 );
 expect(
+  html.includes('id="rentalReportActions"')
+    && operationJs.includes('id="operationReportActions"')
+    && js.includes("livingstayAnalysisReportActions")
+    && printJs.includes('mode==="rental"') && printJs.includes("임대조건 요약")
+    && printJs.includes("운영 핵심지표"),
+  "세 분석의 공통 상세·실거래·인쇄·공유 버튼 또는 분석별 한 장 보고서 구성이 없습니다.",
+);
+expect(
   html.includes('id="transactionTrendChart"') && html.includes('id="printTransactionTable"')
     && js.includes("price_per_sqm_median") && js.includes("transactionTrendChart=new Chart")
     && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
