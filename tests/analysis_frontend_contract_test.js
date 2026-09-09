@@ -137,7 +137,10 @@ expect(
   html.includes("가격 매력 후보 TOP 5") && html.includes("①</i> 수요 대비 저평가 후보 중심")
     && html.includes('id="recommendationRows"') && js.includes("renderRecommendations")
     && js.includes('i.quadrant==="수요 대비 저평가 후보"')
-    && js.includes("peer_price_gap"),
+    && js.includes("peer_price_gap")
+    && js.includes('class="recommendation-building-link"')
+    && js.includes('detailUrl="/building/"+encodeURIComponent(i.building_id)')
+    && css.includes(".recommendation-building-link"),
   "수요 대비 저평가 후보 중심 TOP 5가 없습니다.",
 );
 expect(
