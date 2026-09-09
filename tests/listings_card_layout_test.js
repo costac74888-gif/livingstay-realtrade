@@ -129,6 +129,15 @@ expect(
   "공개범위 탭 또는 제한공개 익명·공유 처리 연결이 없습니다."
 );
 expect(
+  listings.includes('const isMobileShare = !!navigator.share && window.matchMedia("(pointer: coarse)").matches') &&
+  listings.includes('copyShareUrl(url);') &&
+  listings.includes('showToast("공유창을 여는 중입니다")') &&
+  listings.includes('showToast("공유를 취소했습니다")') &&
+  listings.includes('copyShareUrl(url, "공유창을 열지 못해 링크를 복사했습니다")') &&
+  listings.includes('/^https?:\\/\\//i.test(configuredOrigin) ? configuredOrigin : location.origin'),
+  "PC 링크복사·모바일 공유창 또는 공유 실패 안내가 연결되지 않았습니다."
+);
+expect(
   wholeCardBlock.includes("const keyMoney = Number(item.key_money_krw || 0)") &&
   wholeCardBlock.includes("price - loan + keyMoney + (price * 0.061)") &&
   wholeCardBlock.indexOf('<div class="whole-metrics">') < wholeCardBlock.indexOf('<div class="whole-badges">') &&

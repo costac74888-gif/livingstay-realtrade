@@ -633,36 +633,50 @@
     _toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
   }
 
-  function shareItem(item){
-    const shareOrigin = (window.LIVINGSTAY_PUBLIC_BASE_URL || location.origin).replace(/\/+$/, "");
-    const shareUrl = item.is_limited_listing
-      ? new URL("/listings", shareOrigin)
-      : new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
-    shareUrl.searchParams.set("listing", String(item.id));
-    if (item.is_limited_listing) shareUrl.searchParams.set("disclosure_scope", "limited");
-    const url = shareUrl.toString();
-    const title = item.building_name || "직거래 매물";
-    const text  = `직거래 매물 - ${item.deal_type || ""} ${listingPriceText(item)}`;
-    if (navigator.share){
-      navigator.share({ title, text, url }).catch((error) => {
-        if (error && error.name === "AbortError") return;
-        if (!navigator.clipboard) {
-          window.prompt("아래 매물 링크를 복사하세요:", url);
-          return;
-        }
-        navigator.clipboard.writeText(url).then(
-          () => showToast("공유를 열지 못해 링크를 복사했습니다"),
-          () => window.prompt("아래 매물 링크를 복사하세요:", url)
-        );
-      });
-    } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(url).then(
-        () => showToast("링크가 복사되었습니다"),
+  function copyShareUrl(url, message){
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(url).then(
+        () => showToast(message || "매물 링크가 복사되었습니다"),
         () => window.prompt("아래 매물 링크를 복사하세요:", url)
       );
-    } else {
-      window.prompt("아래 매물 링크를 복사하세요:", url);
     }
+    window.prompt("아래 매물 링크를 복사하세요:", url);
+    return Promise.resolve();
+  }
+
+  function shareItem(item){
+    let url;
+    try {
+      const configuredOrigin = String(window.LIVINGSTAY_PUBLIC_BASE_URL || "").trim();
+      const shareOrigin = (/^https?:\/\//i.test(configuredOrigin) ? configuredOrigin : location.origin).replace(/\/+$/, "");
+      const shareUrl = item.is_limited_listing
+        ? new URL("/listings", shareOrigin)
+        : new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
+      shareUrl.searchParams.set("listing", String(item.id));
+      if (item.is_limited_listing) shareUrl.searchParams.set("disclosure_scope", "limited");
+      url = shareUrl.toString();
+    } catch (error) {
+      showToast("공유 링크를 만들지 못했습니다");
+      return;
+    }
+    const title = item.building_name || "직거래 매물";
+    const text  = `직거래 매물 - ${item.deal_type || ""} ${listingPriceText(item)}`;
+    const isMobileShare = !!navigator.share && window.matchMedia("(pointer: coarse)").matches;
+    if (!isMobileShare) {
+      copyShareUrl(url);
+      return;
+    }
+    showToast("공유창을 여는 중입니다");
+    navigator.share({ title, text, url }).then(
+      () => showToast("공유가 완료되었습니다"),
+      (error) => {
+        if (error && error.name === "AbortError") {
+          showToast("공유를 취소했습니다");
+          return;
+        }
+        copyShareUrl(url, "공유창을 열지 못해 링크를 복사했습니다");
+      }
+    );
   }
 
   // ── 지역 드롭다운 ───────────────────────────────────────────────────
