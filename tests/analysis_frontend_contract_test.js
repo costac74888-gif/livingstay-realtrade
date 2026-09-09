@@ -32,6 +32,7 @@ expect(
     && js.includes("renderSelectedTransactions") && js.includes("selectedTransactionRows")
     && html.includes('id="transactionAreaSelect"') && js.includes("allTransactions:transactions")
     && js.includes('label:"거래금액(만원)"') && js.includes("spanGaps:true")
+    && js.includes("amountPadding=Math.max(amountRange*.2") && printJs.includes("<th>층</th><th>거래금액</th>")
     && js.includes("Number(tx.price)") && js.includes("transactionTrendChart=new Chart")
     && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
     && printJs.includes('"홈앤스테이_"+name+"_"+day+"_부동산투자보고서"')

@@ -73,9 +73,9 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
     methodology: {},
     trajectory_methodology: { price: "월별 ㎡당 중앙값", tourism: "거래월 관광자료", missing: "관광자료 누락은 회색 표시" },
     trajectory: [
-      { month: "202601", tourism_month: "202601", tourism_value: -8, price_change: -5, price_per_sqm_median: 410, previous_price_per_sqm_median: 431.6, transaction_count: 2, transactions: [{ deal_date: "2026-01-03", price: 41000, area: 100, price_per_sqm: 410 }, { deal_date: "2026-01-18", price: 32000, area: 80, price_per_sqm: 400 }] },
+      { month: "202601", tourism_month: "202601", tourism_value: -8, price_change: -5, price_per_sqm_median: 410, previous_price_per_sqm_median: 431.6, transaction_count: 2, transactions: [{ deal_date: "2026-01-03", price: 41000, area: 100, floor: 12, price_per_sqm: 410 }, { deal_date: "2026-01-18", price: 32000, area: 80, floor: 8, price_per_sqm: 400 }] },
       { month: "202603", tourism_month: null, tourism_value: null, price_change: 12, price_per_sqm_median: 459.2, previous_price_per_sqm_median: 410, transaction_count: 1, transactions: [{ deal_date: "2026-03-10", price: 45920, area: 100, price_per_sqm: 459.2 }] },
-      { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, price_per_sqm: 541.9 }, { deal_date: "2026-06-27", price: 36000, area: 80, price_per_sqm: 450 }] },
+      { month: "202606", tourism_month: "202606", tourism_value: 14, price_change: 18, price_per_sqm_median: 541.9, previous_price_per_sqm_median: 459.2, transaction_count: 3, transactions: [{ deal_date: "2026-06-22", price: 54190, area: 100, floor: 16, price_per_sqm: 541.9 }, { deal_date: "2026-06-27", price: 36000, area: 80, floor: 10, price_per_sqm: 450 }] },
     ],
     items: [
       item(SELECTED_ID, "선택 테스트 자산", "강원특별자치도", "속초시", 14, 18, "수요 프리미엄"),
@@ -651,6 +651,8 @@ async function run() {
         options: Array.from(document.getElementById("transactionAreaSelect").options).map(option => option.value),
         lineLabel: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.label,
         lineValues: Chart.getChart(canvas)?.data.datasets.find(dataset => dataset.type === "line")?.data || [],
+        priceMin: Chart.getChart(canvas)?.options.scales.price.min,
+        priceMax: Chart.getChart(canvas)?.options.scales.price.max,
       };
     });
     expect(transactionTrend.visible && transactionTrend.width > 240
@@ -659,7 +661,9 @@ async function run() {
       && transactionTrend.options.join("|") === "80.0|100.0"
       && transactionTrend.lineLabel === "거래금액(만원)"
       && transactionTrend.lineValues.includes(41000)
-      && !transactionTrend.lineValues.includes(410),
+      && !transactionTrend.lineValues.includes(410)
+      && transactionTrend.priceMin < Math.min(...transactionTrend.lineValues.filter(Number.isFinite))
+      && transactionTrend.priceMax > Math.max(...transactionTrend.lineValues.filter(Number.isFinite)),
       `모바일 실거래 추이 그래프가 정상 표시되지 않았습니다. ${JSON.stringify(transactionTrend)}`);
     await page.selectOption("#transactionAreaSelect", "80.0");
     await page.waitForFunction(() => window.__analysisTransactionTrend?.area === "80.0");
@@ -698,6 +702,9 @@ async function run() {
         reportHeight: rect.height,
         recommendationDisplay: getComputedStyle(document.getElementById("recommendationCard")).display,
         exampleIncluded: document.getElementById("printBasis").textContent.includes("가상 산정 예시"),
+        transactionHeaders: Array.from(document.querySelectorAll("#printTransactionTable th")).map(th => th.textContent),
+        transactionRows: Array.from(document.querySelectorAll("#printTransactionTable tbody tr")).map(row => row.textContent),
+        transactionCellsNoWrap: Array.from(document.querySelectorAll("#printTransactionTable th,#printTransactionTable td")).every(cell => getComputedStyle(cell).whiteSpace === "nowrap"),
       };
     });
     const printPdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
@@ -708,6 +715,9 @@ async function run() {
       && printReport.reportHeight <= 1075
       && printReport.recommendationDisplay === "none"
       && !printReport.exampleIncluded
+      && printReport.transactionHeaders.join("|") === "계약일|면적|층|거래금액"
+      && printReport.transactionRows.every(row => row.includes("80㎡") && row.includes("층"))
+      && printReport.transactionCellsNoWrap
       && printPageCount === 1,
       `부동산투자분석 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${printPageCount} report=${JSON.stringify(printReport)}`);
     await page.emulateMedia({ media: "screen" });
