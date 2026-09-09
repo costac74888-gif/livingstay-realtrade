@@ -822,7 +822,7 @@ def _google_streetview_metadata(lat, lng, key, radius=50):
                 "source": "outdoor",
                 "key": key,
             },
-            timeout=20,
+            timeout=(3.05, 7),
         )
         metadata.raise_for_status()
         payload = metadata.json()
@@ -1039,30 +1039,47 @@ def _streetview_capture_points(lat, lng, key, floor_count=None, height_m=None):
         height = floors * 3.0
     ideal_distance = min(50.0, max(22.0, (height or 45.0) * 0.4))
 
-    found = []
-    for north_m, east_m, radius in (
+    queries = (
         (0, 0, 50),
         (ideal_distance, 0, 20),
         (-ideal_distance, 0, 20),
         (0, ideal_distance, 20),
         (0, -ideal_distance, 20),
-    ):
+    )
+
+    def fetch_capture_point(query):
+        north_m, east_m, radius = query
         query_lat, query_lng = _offset_coordinate(
             lat, lng, north_m=north_m, east_m=east_m
         )
         metadata = _google_streetview_metadata(query_lat, query_lng, key, radius=radius)
         if not metadata or metadata.get("status") != "OK":
-            continue
+            return None
         if _streetview_quality_rejection(metadata, lat, lng, max_distance_m=55):
-            continue
+            return None
         try:
             distance = _distance_meters(
                 metadata["lat"], metadata["lng"], lat, lng
             )
         except (TypeError, ValueError):
-            continue
+            return None
         camera_bearing = _bearing_degrees(lat, lng, metadata["lat"], metadata["lng"])
-        found.append((abs(distance - ideal_distance), -distance, distance, camera_bearing, metadata))
+        return (
+            abs(distance - ideal_distance),
+            -distance,
+            distance,
+            camera_bearing,
+            metadata,
+        )
+
+    # 서로 독립적인 주변 5개 지점 조회를 직렬로 기다리지 않는다. 정확도와
+    # 호출 수는 유지하면서 가장 느린 한 요청 정도의 시간만 기다린다.
+    with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+        found = [
+            result
+            for result in executor.map(fetch_capture_point, queries)
+            if result is not None
+        ]
 
     unique = {}
     for distance_gap, negative_distance, distance, camera_bearing, metadata in found:
@@ -1099,7 +1116,7 @@ def _streetview_ocr_text(image_bytes):
             ["tesseract", "stdin", "stdout", "-l", "kor+eng", "--psm", "11"],
             input=image_bytes,
             capture_output=True,
-            timeout=4,
+            timeout=2,
             check=False,
         )
         if result.returncode == 0:
@@ -1308,7 +1325,7 @@ def _fetch_best_streetview_image(
             upstream = requests.get(
                 "https://maps.googleapis.com/maps/api/streetview",
                 params=params,
-                timeout=20,
+                timeout=(3.05, 8),
             )
             content_type = str(upstream.headers.get("Content-Type") or "").lower()
             if not (

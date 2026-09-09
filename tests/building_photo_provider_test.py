@@ -137,6 +137,36 @@ class BuildingPhotoProviderTest(unittest.TestCase):
         self.assertEqual(metadata.call_count, 5)
         self.assertEqual(len({item["pano_id"] for item in selected}), 2)
 
+    @patch("app._google_streetview_metadata")
+    def test_capture_point_metadata_queries_run_concurrently(self, metadata):
+        import threading
+        import time
+
+        active = 0
+        peak = 0
+        lock = threading.Lock()
+
+        def slow_metadata(lat, lng, key, radius=50):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.03)
+            with lock:
+                active -= 1
+            return {
+                "status": "OK",
+                "pano_id": f"{lat:.6f}-{lng:.6f}",
+                "copyright": "© Google",
+                "date": "2025-01",
+                "lat": lat,
+                "lng": lng,
+            }
+
+        metadata.side_effect = slow_metadata
+        _streetview_capture_points(37.5, 127.0, "key", floor_count=20)
+        self.assertGreater(peak, 1)
+
     @patch("app._streetview_ocr_text", return_value="테스트호텔 서울 강남")
     def test_image_score_combines_exposure_location_and_ocr(self, _ocr):
         image = Image.new("RGB", (640, 480), "white")
