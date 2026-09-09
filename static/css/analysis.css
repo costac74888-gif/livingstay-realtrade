@@ -24,6 +24,25 @@
   .print-report *{box-shadow:none!important;animation:none!important;transition:none!important}
 }
 @media print{
+  @page{size:A4 portrait;margin:7mm}
+  html,body{width:210mm!important;height:297mm!important;overflow:hidden!important}
+  .print-report{display:block!important;width:196mm!important;height:283mm!important;overflow:hidden!important;margin:0 auto!important}
+  .print-page{display:grid!important;grid-template-columns:1.38fr .62fr!important;grid-template-rows:22mm 48mm 128mm 73mm!important;gap:3mm!important;width:196mm!important;height:283mm!important;overflow:hidden!important;break-after:auto!important}
+  .print-report-header{grid-column:1/-1;display:grid;grid-template-columns:20mm minmax(0,1fr) 56mm;gap:3mm;padding:0 1mm 2mm}
+  .print-report-header>img{width:18mm;height:18mm;max-height:none;border-radius:3mm;object-fit:cover}
+  .print-report-header h1{font-size:14pt;margin:1mm 0 0}.print-report-types{gap:1mm}.report-type{padding:1mm 1.7mm;font-size:5.7pt}
+  .print-overview{grid-column:1/-1}.print-overview>#printOverview{display:grid;grid-template-columns:minmax(0,1fr) 58mm;gap:3mm;height:calc(100% - 7mm)}
+  .print-overview-main{min-width:0}.print-building{padding-bottom:1.5mm}.print-building b{font-size:10pt}.print-building span{font-size:6.5pt}
+  .print-result-line{display:flex!important;flex-direction:column;align-items:flex-start;justify-content:center;gap:1.2mm;margin:0!important;padding:3mm 4mm;border:1.4px solid #2f80c9;border-radius:2.5mm;background:#edf6ff}
+  .print-result-line small{font-size:7pt!important;font-weight:900;color:#2f6fa7}.print-result-line strong{font-size:15pt!important;line-height:1.15;color:#126b52}.print-result-line span{font-size:7pt;line-height:1.35}
+  .print-metrics{grid-template-columns:repeat(4,1fr);gap:1mm;margin-top:2mm}.print-metrics article{padding:1.2mm 1.5mm}.print-metrics strong{font-size:7.7pt}.print-metrics span{display:none}
+  .print-graph{grid-column:1;grid-row:3;padding:2.5mm}.print-graph>#printGraph{height:calc(100% - 7mm)}.print-graph .chart-wrap,.print-graph .operation-chart-wrap{height:84mm}.print-graph .chart-frame{height:calc(100% - 6mm);grid-template-columns:10mm minmax(0,1fr)}.print-graph .y-axis-guide{padding-bottom:25mm}.print-graph .baseline-strip{display:none}
+  .print-map-zone{grid-column:2;grid-row:3;padding:2.5mm}.print-map{height:104mm!important}.print-map-zone>p{font-size:5.8pt;line-height:1.35}
+  .print-basis{grid-column:1/-1;grid-row:4;padding:2.5mm;font-size:6.2pt;line-height:1.35}.print-basis>h2{margin-bottom:1.5mm}.print-basis p{margin-bottom:1mm}.print-basis .formula{padding:1.7mm 2mm;font-size:5.8pt;line-height:1.32;max-height:31mm;overflow:hidden}
+  .print-caution{grid-template-columns:14mm 1fr;gap:1.5mm;margin-top:1.5mm;padding:1.5mm 2mm;font-size:5.6pt}
+  .print-report-legend{gap:1.5mm;margin-top:1.5mm}.print-report-legend .report-type{padding:1.4mm}.print-report-legend small{font-size:5pt}
+}
+@media print{
   html,body{height:auto!important;overflow:visible!important}
   .print-report{display:block!important;width:190mm!important;height:auto!important;overflow:visible!important}
   .print-page{display:grid;grid-template-rows:24mm 48mm 165mm;gap:4mm;height:279mm;overflow:hidden;break-after:page}.print-page:last-child{grid-template-rows:12mm 100mm 151mm;break-after:auto}
