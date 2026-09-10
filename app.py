@@ -30250,7 +30250,13 @@ def admin_me():
 @app.route("/api/admin/menu-access")
 def admin_menu_access():
     """공용 화면에서 관리자 전용 메뉴 노출 여부만 안전하게 반환한다."""
-    return jsonify({"is_admin": bool(session.get("admin"))})
+    public_account_active = any(
+        session.get(key)
+        for key in ("user_id", "agent_id", "operator_id", "loan_consultant_id")
+    )
+    return jsonify({
+        "is_admin": bool(session.get("admin")) and not public_account_active
+    })
 
 
 @app.route("/api/admin/members/<member_type>/<int:member_id>/login-history")
