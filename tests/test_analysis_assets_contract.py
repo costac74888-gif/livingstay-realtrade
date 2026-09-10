@@ -1,6 +1,7 @@
 import pathlib
 import unittest
 from unittest import mock
+from urllib.parse import parse_qs, urlsplit
 
 import app as application
 
@@ -71,12 +72,36 @@ class AnalysisAssetsContractTests(unittest.TestCase):
 
     def test_analysis_requires_login_and_reports_total_transaction_population(self):
         self.assertIn('"requires_login": True', self.endpoint)
-        self.assertIn('"agent_id", "operator_id", "loan_consultant_id"', self.endpoint)
+        self.assertIn('_analysis_session_or_share("property"', self.endpoint)
+        self.assertIn('"agent_id", "operator_id", "loan_consultant_id"', self.source)
         self.assertIn("total_transaction_count", self.endpoint)
         self.assertIn('"analysis_sample_transaction_count"', self.endpoint)
         self.assertIn("cohort.id = %s", self.endpoint)
         self.assertIn("building_id가 올바르지 않습니다.", self.endpoint)
         self.assertNotIn('where.append("mb.id = %s")', self.endpoint)
+
+    def test_signed_share_link_allows_only_its_building_and_mode(self):
+        client = application.app.test_client()
+        with client.session_transaction() as session:
+            session["user_id"] = 77
+        response = client.post("/api/analysis/share-link", json={
+            "building_id": 2753,
+            "mode": "property",
+        })
+        self.assertEqual(response.status_code, 200)
+        path = response.get_json()["path"]
+        query = parse_qs(urlsplit(path).query)
+        token = query["share"][0]
+        with application.app.test_request_context(
+            f"/api/analysis/assets?building_id=2753&share={token}"
+        ):
+            self.assertTrue(application._analysis_session_or_share("property", 2753))
+            self.assertFalse(application._analysis_session_or_share("property", 2754))
+            self.assertFalse(application._analysis_session_or_share("operation", 2753))
+        with application.app.test_request_context(
+            f"/api/analysis/assets?building_id=2753&share={token}x"
+        ):
+            self.assertFalse(application._analysis_session_or_share("property", 2753))
 
     def test_building_search_is_authenticated_and_name_first(self):
         search_start = self.source.index('@app.route("/api/analysis/building-search")')

@@ -118,7 +118,7 @@ expect(
 );
 expect(
   js.includes("window.print()") && js.includes("navigator.share")
-    && js.includes('location.origin+"/analysis?building_id="')
+    && js.includes("createShareUrl")
     && css.includes("@media print"),
   "한 장 보고서 출력 또는 홈앤스테이 분석 링크 공유 기능이 없습니다.",
 );
@@ -150,6 +150,13 @@ expect(
     && js.includes('window.addEventListener("storage"')
     && js.includes('window.addEventListener("pageshow"'),
   "관심단지 또는 최근 조회가 홈 지도 검색영역과 같은 기준으로 동기화되지 않았습니다.",
+);
+expect(
+  js.includes("/api/analysis/share-link")
+    && js.includes('q.set("share",shareToken)')
+    && js.includes("shared-analysis-view")
+    && js.includes("공유 링크가 만료되었거나 올바르지 않습니다."),
+  "비회원용 서명 공유 링크 또는 공유화면 범위 제한이 없습니다.",
 );
 expect(
   html.includes('id="rentalBuildingIdentity"')

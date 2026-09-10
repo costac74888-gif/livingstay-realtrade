@@ -31984,9 +31984,7 @@ def analysis_operation_upload():
 @limiter.limit("60 per minute")
 def analysis_operation_benchmarks():
     """선택 건물의 시도 안에서 실제 시군구 전체 운영지표만 반환한다."""
-    if not any(session.get(key) for key in (
-        "user_id", "agent_id", "operator_id", "loan_consultant_id",
-    )):
+    if not _analysis_session_or_share("operation"):
         return jsonify({"ok": False, "requires_login": True, "message": "로그인이 필요합니다."}), 401
     try:
         building_id = int(request.args.get("building_id", ""))
@@ -32367,6 +32365,57 @@ def _analysis_selected_trajectory(cur, building_id, period_months, tourism_axis)
     return points
 
 
+_ANALYSIS_SHARE_SECONDS = 60 * 60 * 24 * 90
+_ANALYSIS_SHARE_MODES = {"property", "rental", "operation"}
+
+
+def _analysis_share_signature(building_id, mode, expires_at):
+    secret = str(app.secret_key or app.config.get("SECRET_KEY") or "")
+    message = f"{int(building_id)}.{mode}.{int(expires_at)}"
+    return hmac.new(secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).hexdigest()[:40]
+
+
+def _analysis_share_valid(token, building_id, mode):
+    try:
+        token_id, token_mode, raw_expiry, signature = str(token or "").split(".", 3)
+        expires_at = int(raw_expiry)
+        expected_id = int(building_id)
+    except (TypeError, ValueError):
+        return False
+    if token_mode != mode or int(token_id) != expected_id or expires_at < int(time.time()):
+        return False
+    expected = _analysis_share_signature(expected_id, mode, expires_at)
+    return hmac.compare_digest(signature, expected)
+
+
+def _analysis_session_or_share(mode, building_id=None):
+    if any(session.get(key) for key in (
+        "user_id", "agent_id", "operator_id", "loan_consultant_id",
+    )):
+        return True
+    candidate_id = building_id if building_id is not None else request.args.get("building_id", "")
+    return _analysis_share_valid(request.args.get("share"), candidate_id, mode)
+
+
+@app.route("/api/analysis/share-link", methods=["POST"])
+@limiter.limit("30 per minute")
+def analysis_share_link():
+    if not _analysis_session_or_share("property"):
+        return jsonify({"ok": False, "requires_login": True, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        building_id = int(data.get("building_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+    mode = str(data.get("mode") or "property").strip()
+    if building_id <= 0 or mode not in _ANALYSIS_SHARE_MODES:
+        return jsonify({"ok": False, "message": "공유할 분석 화면이 올바르지 않습니다."}), 400
+    expires_at = int(time.time()) + _ANALYSIS_SHARE_SECONDS
+    token = f"{building_id}.{mode}.{expires_at}.{_analysis_share_signature(building_id, mode, expires_at)}"
+    query = urlencode({"building_id": building_id, **({"mode": mode} if mode != "property" else {}), "share": token})
+    return jsonify({"ok": True, "path": f"/analysis?{query}", "expires_at": expires_at})
+
+
 @app.route("/api/analysis/building-search")
 @limiter.limit("60 per minute")
 def analysis_building_search():
@@ -32425,9 +32474,8 @@ def analysis_building_search():
 @limiter.limit("30 per minute")
 def analysis_assets():
     """Authenticated, conservative building-level tourism × transaction comparison."""
-    if not any(session.get(key) for key in (
-        "user_id", "agent_id", "operator_id", "loan_consultant_id",
-    )):
+    raw_building_id = request.args.get("building_id", "").strip()
+    if not _analysis_session_or_share("property", raw_building_id):
         return jsonify({
             "ok": False,
             "requires_login": True,
@@ -32447,7 +32495,6 @@ def analysis_assets():
     sido = sido_core(request.args.get("sido", "").strip())
     sgg = "".join(request.args.get("sgg", "").strip().split())
     lodging_type = request.args.get("lodging_type", "").strip()
-    raw_building_id = request.args.get("building_id", "").strip()
     building_id = None
     tourism_axis = request.args.get("tourism_axis", "index").strip()
     if raw_building_id:

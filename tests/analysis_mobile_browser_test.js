@@ -277,6 +277,14 @@ async function run() {
       }
       return json(route, { ok: true });
     }
+    if (url.pathname === "/api/analysis/share-link") {
+      const body = request.postDataJSON();
+      const mode = body.mode === "property" ? "" : `&mode=${encodeURIComponent(body.mode)}`;
+      return json(route, {
+        ok: true,
+        path: `/analysis?building_id=${body.building_id}${mode}&share=test-signed-token`,
+      });
+    }
     if (url.pathname.endsWith("/photos")) return json(route, {
       photos: [
         { url: "/missing-analysis-photo.jpg" },

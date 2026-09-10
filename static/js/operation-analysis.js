@@ -343,7 +343,8 @@
       fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }).then(function (response) {
         return response.ok ? response.json() : null;
       }),
-      fetch("/api/analysis/operation-benchmarks?building_id=" + encodeURIComponent(id),
+      fetch("/api/analysis/operation-benchmarks?building_id=" + encodeURIComponent(id)
+        + (window.__analysisShareToken ? "&share=" + encodeURIComponent(window.__analysisShareToken) : ""),
         { credentials: "same-origin" }).then(function (response) { return response.ok ? response.json() : null; }),
     ]).then(function (results) {
       if (sequence !== loadSequence || !results[0]) return;
