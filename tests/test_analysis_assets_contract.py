@@ -28,6 +28,8 @@ class FakeAnalysisCursor:
             if len(params or []) != 7:
                 raise AssertionError("Regional filters must not narrow the nationwide peer cohort query")
             self.result = self.rows
+        elif normalized.startswith("SELECT DISTINCT ON (lr.master_building_id)"):
+            self.result = []
         else:
             raise AssertionError(f"Unexpected SQL in analysis integration test: {normalized}")
 
@@ -181,7 +183,21 @@ class AnalysisAssetsContractTests(unittest.TestCase):
         self.assertIn("_analysis_store_payload(", self.source)
         self.assertIn("SELECT CURRENT_DATE::text AS cache_date", self.endpoint)
         self.assertIn("transaction_cache_date, period_months, sido, sgg", self.endpoint)
-        self.assertIn('"peer-price-cohort-v1"', self.endpoint)
+        self.assertIn('"peer-price-cohort-v2-2000"', self.endpoint)
+
+    def test_candidate_tabs_use_bounded_conservative_rules(self):
+        self.assertIn("_ANALYSIS_MAX_ITEMS = 2000", self.source)
+        self.assertIn("_ANALYSIS_CANDIDATE_LIMIT = 100", self.source)
+        self.assertIn('"candidates": {', self.endpoint)
+        self.assertIn('"price": price_attraction', self.endpoint)
+        self.assertIn('"confidence": high_confidence', self.endpoint)
+        self.assertIn('"urgent": urgent_listings', self.endpoint)
+        self.assertIn('item["peer_price_gap"] <= -10', self.endpoint)
+        self.assertIn('item["transaction_count"] >= 3', self.endpoint)
+        self.assertIn('item["peer_building_count"] >= 5', self.endpoint)
+        self.assertIn("lr.disclosure_scope = 'public'", self.endpoint)
+        self.assertIn("lr.transaction_target = 'unit'", self.endpoint)
+        self.assertIn('"comparison_basis"', self.endpoint)
 
     def test_selected_trajectory_uses_monthly_unit_price_medians_without_imputation(self):
         self.assertIn("_analysis_selected_trajectory(", self.endpoint)

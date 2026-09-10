@@ -204,17 +204,20 @@ expect(
   "검증된 관광수요·유사자산 가격 사분면 문구가 반영되지 않았습니다.",
 );
 expect(
-  html.includes("가격 매력 후보 TOP 5") && html.includes("①</i> 수요 대비 저평가 후보 중심")
+  html.includes('data-candidate="price"') && html.includes('data-candidate="confidence"')
+    && html.includes('data-candidate="urgent"')
+    && html.includes("가격 매력") && html.includes("신뢰도 높은 저평가")
+    && html.includes("실거래 대비 급매")
     && html.includes('id="recommendationRows"') && html.includes('id="recommendationSort"')
     && html.includes('id="recommendationSortAsc"') && html.includes('id="recommendationSortDesc"')
+    && html.includes('id="candidateMore"') && html.includes("비교대상 산정기준 보기")
     && js.includes("recommendationSort") && js.includes("recommendationDir")
-    && js.includes("renderRecommendations")
-    && js.includes('i.quadrant==="수요 대비 저평가 후보"')
-    && js.includes("peer_price_gap")
+    && js.includes("candidateVisible+=5") && js.includes("candidateTab")
+    && js.includes("comparison_basis")
     && js.includes('class="recommendation-building-link"')
     && js.includes('detailUrl="/building/"+encodeURIComponent(i.building_id)')
-    && css.includes(".recommendation-building-link"),
-  "수요 대비 저평가 후보 중심 TOP 5가 없습니다.",
+    && css.includes(".candidate-tabs") && css.includes(".candidate-more"),
+  "투자 후보 3개 탭·5개씩 더보기·비교대상 산정기준 표시가 없습니다.",
 );
 expect(
   js.includes("loadSeq===0&&!state.payload")
@@ -232,9 +235,10 @@ expect(
   "비교기간이 부족한 건물의 회색 분산 표시가 없습니다.",
 );
 expect(
-  js.includes('i.quadrant==="수요 대비 저평가 후보"')
-    && js.includes("관광수요가 높고 유사자산보다 가격이 낮은 후보가 없습니다"),
-  "검증 기준에 맞는 가격 매력 후보의 빈 상태 안내가 없습니다.",
+  js.includes("현재 조건에 맞는 가격 매력 후보가 없습니다.")
+    && js.includes("현재 조건에 맞는 신뢰도 높은 저평가 후보가 없습니다.")
+    && js.includes("현재 확인 가능한 실거래 대비 급매가 없습니다."),
+  "투자 후보 탭별 빈 상태 안내가 없습니다.",
 );
 expect(
   css.includes(".analysis-tabs #propertyTab{background:#F9E8E5")
@@ -271,15 +275,15 @@ expect(
 );
 expect(
   !html.includes('data-sort="address"')
-    && html.includes('id="tableExpandBtn"')
-    && js.includes("tableExpanded:false")
-    && js.includes("updateTableVisibility")
-    && js.includes("rows.length-10")
-    && js.includes("index>=10")
-    && js.includes('"목록 접기"')
+    && !html.includes('id="assetRows"')
+    && !html.includes("건물 비교 목록")
+    && html.includes('id="comparisonAssetCount"')
+    && html.includes('id="comparisonBasis"')
+    && js.includes("eligible_buildings")
+    && js.includes("exact_transaction_count")
     && html.indexOf('id="methodology"') < html.indexOf('id="summaryGrid"')
     && !html.includes('id="rentalBuildingAddress"'),
-  "건물 비교표 주소 제거·10개 펼침/접기, 하단 산출 숫자 또는 임대분석 주소 제거가 반영되지 않았습니다.",
+  "개별 건물 비교표 제거·비교대상 산정기준 또는 임대분석 주소 제거가 반영되지 않았습니다.",
 );
 expect(
   html.includes("<h1>홈앤스테이 숙박자산 분석</h1>")

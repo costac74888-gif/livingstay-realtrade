@@ -111,6 +111,18 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
   for (let id = 401; id <= 408; id += 1) {
     payload.items.push(item(id, `추가 비교 자산 ${id}`, "경기도", "가평군", id - 400, (id - 404) * 2, "비교 자산"));
   }
+  payload.methodology.comparison_basis = {
+    period_months: 12, eligible_buildings: payload.items.length,
+    analyzed_buildings: payload.items.length, exact_transaction_count: 44,
+    pool_limit: 2000, peer_hierarchy: "시군구 동일유형 5개 → 시도 동일유형 10개 → 전국 동일유형 20개",
+  };
+  payload.candidates = {
+    price: payload.items.filter((entry) => [204, 205, 206, 401, 402, 403, 404, 405].includes(entry.building_id)),
+    confidence: payload.items.filter((entry) => [204, 205, 401, 402, 403, 404].includes(entry.building_id)),
+    urgent: payload.items.filter((entry) => [204, 205, 206].includes(entry.building_id)).map((entry, index) => ({
+      ...entry, listing_id: 900 + index, listing_price_gap: -20 + index * 5,
+    })),
+  };
   if (incompleteSelected) {
     payload.items[0].tourism_demand_index = null;
     payload.items[0].peer_price_gap = 0.8;
@@ -308,14 +320,18 @@ async function run() {
       await page.setViewportSize({ width, height: width === 1280 ? 900 : width === 390 ? 844 : 720 });
       const response = await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
-      await page.waitForFunction(() => {
-        const layout = window.__analysisChartLayout;
-        const photo = document.querySelector("#detailCard .detail-photo");
-        return layout && layout.ready && layout.baseline && layout.baseline.valueX === 50
-          && layout.labels && layout.labels.length === 4
-          && layout.points && layout.points.some((point) => point.selected)
-          && photo && photo.dataset.photoState === "loaded";
-      });
+      try {
+        await page.waitForFunction(() => {
+          const layout = window.__analysisChartLayout;
+          const photo = document.querySelector("#detailCard .detail-photo");
+          return layout && layout.ready && layout.baseline && layout.baseline.valueX === 50
+            && layout.labels && layout.labels.length === 4
+            && layout.points && layout.points.some((point) => point.selected)
+            && photo && photo.dataset.photoState === "loaded";
+        });
+      } catch (error) {
+        throw new Error(`${width}px 분석 화면 준비 실패: ${error.message}; 브라우저 오류: ${errors.join(" | ") || "없음"}`);
+      }
 
       const result = await page.evaluate(() => {
       const layout = window.__analysisChartLayout;
@@ -386,8 +402,8 @@ async function run() {
       "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
     expect(result.photo.state === "loaded" && result.photo.src.startsWith("data:image/svg+xml"),
       "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
-    expect(result.recommendations.length > 0 && result.recommendations.length <= 5,
-      "가격 매력 후보 TOP 5에 수요 대비 저평가 후보가 표시되지 않았습니다.");
+    expect(result.recommendations.length === 5,
+      "가격 매력 후보가 최초 5개로 표시되지 않았습니다.");
     if (width === 1280) {
       const recommendationOrder = async () => page.evaluate(() =>
         Array.from(document.querySelectorAll("#recommendationRows tr[data-id]")).map((row) => ({
@@ -396,18 +412,31 @@ async function run() {
           peer: Number(row.cells[5].textContent.replace("%", "")),
         })));
       const tourismDescending = await recommendationOrder();
-      expect(tourismDescending.map((row) => row.id).join("|") === "206|204|205",
+      expect(tourismDescending.map((row) => row.id).join("|") === "206|204|205|405|404",
         `관광수요 지수 기본 내림차순이 적용되지 않았습니다: ${JSON.stringify(tourismDescending)}`);
-      await page.selectOption("#recommendationSort", "peer_price_gap");
-      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|206",
+      await page.selectOption("#recommendationSort", "candidate_gap");
+      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|401|206|402",
         "유사자산 대비 가격 선택 시 저평가 우선 오름차순이 적용되지 않았습니다.");
+      await page.click("#candidateMore");
+      expect((await recommendationOrder()).length === 8,
+        "가격 매력 후보 더보기가 5개씩 확장되지 않았습니다.");
+      await page.click('[data-candidate="confidence"]');
+      expect((await recommendationOrder()).length === 5
+        && await page.getAttribute('[data-candidate="confidence"]', "aria-selected") === "true",
+        "신뢰도 높은 저평가 탭 전환 시 최초 5개로 초기화되지 않았습니다.");
+      await page.click('[data-candidate="urgent"]');
+      expect((await recommendationOrder()).length === 3,
+        "실거래 대비 급매 탭의 실제 후보 수가 표시되지 않았습니다.");
+      await page.click('[data-candidate="price"]');
+      expect((await recommendationOrder()).length === 5,
+        "가격 매력 탭으로 돌아왔을 때 최초 5개로 초기화되지 않았습니다.");
       await page.click("#recommendationSortDesc");
       const peerDescending = await recommendationOrder();
-      expect(peerDescending.map((row) => row.id).join("|") === "206|204|205"
+      expect(peerDescending.map((row) => row.id).join("|") === "405|404|403|402|206"
         && await page.getAttribute("#recommendationSortDesc", "aria-pressed") === "true",
         "유사자산 대비 가격 내림차순 버튼이 적용되지 않았습니다.");
       await page.click("#recommendationSortAsc");
-      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|206"
+      expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|401|206|402"
         && await page.getAttribute("#recommendationSortAsc", "aria-pressed") === "true",
         "유사자산 대비 가격 오름차순 버튼이 적용되지 않았습니다.");
     }
@@ -459,33 +488,14 @@ async function run() {
       }
       }
     }
-    expect(await page.locator("#assetRows tr:visible").count() === 8
-      && await page.locator("#tableExpandBtn").evaluate((node) => node.classList.contains("hidden")),
-    "10개 이하 건물 비교 목록에서 펼침 버튼이 숨겨지지 않았습니다.");
-    expect(!(await page.locator(".table-card thead").textContent()).includes("위치"),
-      "건물 비교표에 제거한 주소·위치 열이 다시 표시됐습니다.");
+    expect(await page.locator("#assetRows").count() === 0
+      && await page.locator("#tableExpandBtn").count() === 0,
+    "일반 사용자 화면에서 개별 건물 비교 목록이 제거되지 않았습니다.");
+    expect((await page.locator("#comparisonAssetCount").textContent()).includes("자산")
+      && await page.locator("#comparisonBasis").count() === 1,
+      "비교대상 숫자 또는 산정기준 보기 영역이 표시되지 않았습니다.");
     expect(await page.locator("#methodology #summaryGrid").count() === 1,
       "분석 요약 카드가 계산 기준과 산출근거 내부에 배치되지 않았습니다.");
-
-    comparisonItemCount = 12;
-    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 12);
-    const collapsedComparison = await page.evaluate(() => ({
-      visible: Array.from(document.querySelectorAll("#assetRows tr"))
-        .filter((row) => getComputedStyle(row).display !== "none").length,
-      button: document.getElementById("tableExpandBtn").textContent,
-      expanded: document.getElementById("tableExpandBtn").getAttribute("aria-expanded"),
-    }));
-    expect(collapsedComparison.visible === 10 && collapsedComparison.button.includes("나머지 2개")
-      && collapsedComparison.expanded === "false", "건물 비교 목록이 처음 10개로 접히지 않았습니다.");
-    await page.click("#tableExpandBtn");
-    expect(await page.locator("#assetRows tr:visible").count() === 12
-      && await page.getAttribute("#tableExpandBtn", "aria-expanded") === "true",
-    "건물 비교 목록의 나머지 항목이 펼쳐지지 않았습니다.");
-    await page.click("#tableExpandBtn");
-    expect(await page.locator("#assetRows tr:visible").count() === 10
-      && await page.getAttribute("#tableExpandBtn", "aria-expanded") === "false",
-    "건물 비교 목록이 다시 10개로 접히지 않았습니다.");
     comparisonItemCount = 6;
 
     incompleteSelected = true;
@@ -824,7 +834,7 @@ async function run() {
       && recentSelection.quickText.includes("최근 조회"),
       "세 분석의 공통 건물 선택이 최근 조회 목록에 저장되지 않았습니다.");
     await page.click("#propertyTab");
-    await page.waitForFunction(() => document.querySelectorAll("#assetRows tr").length === 6);
+    await page.waitForFunction(() => document.querySelectorAll("#recommendationRows tr[data-id]").length > 0);
     await page.click("#favoriteBtn");
     await page.waitForFunction(() => document.getElementById("favoriteBtn").textContent === "관심해제");
     const syncedQuickGroups = await page.evaluate(() =>

@@ -31867,7 +31867,8 @@ def tourism_heatmap_domestic():
 
 
 _ANALYSIS_PERIODS = (6, 12, 24)
-_ANALYSIS_MAX_ITEMS = 500
+_ANALYSIS_MAX_ITEMS = 2000
+_ANALYSIS_CANDIDATE_LIMIT = 100
 _APPROVED_OPERATION_BENCHMARKS = None
 
 
@@ -32565,7 +32566,7 @@ def analysis_assets():
         transaction_cache_key = hashlib.sha256(json.dumps(
             [
                 transaction_cache_date, period_months, sido, sgg,
-                lodging_type, building_id, "peer-price-cohort-v1",
+                lodging_type, building_id, "peer-price-cohort-v2-2000",
             ],
             ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")).hexdigest()
@@ -32857,6 +32858,50 @@ def analysis_assets():
                 tourism_baseline, price_baseline,
             )
             item["is_representative"] = False
+            item["listing_id"] = None
+            item["listing_price"] = None
+            item["listing_price_per_sqm"] = None
+            item["listing_price_gap"] = None
+        item_by_building_id = {
+            item["building_id"]: item for item in items
+        }
+        if item_by_building_id:
+            cur.execute("""
+                SELECT DISTINCT ON (lr.master_building_id)
+                       lr.id, lr.master_building_id, lr.price_krw, lr.area_sqm
+                FROM listing_requests lr
+                WHERE lr.master_building_id = ANY(%s)
+                  AND lr.deal_mode = 'direct'
+                  AND lr.deal_type = '매매'
+                  AND lr.transaction_target = 'unit'
+                  AND lr.disclosure_scope = 'public'
+                  AND lr.price_krw > 0 AND lr.area_sqm > 0
+                  AND COALESCE(lr.status, '') NOT IN (
+                      'withdrawn', '철회됨', '보류', 'rejected', '거절'
+                  )
+                ORDER BY lr.master_building_id,
+                         (lr.price_krw / NULLIF(lr.area_sqm, 0)) ASC,
+                         lr.id DESC
+            """, (list(item_by_building_id),))
+            for listing in cur.fetchall():
+                item = item_by_building_id.get(listing["master_building_id"])
+                if not item or item["peer_price_median"] is None:
+                    continue
+                listing_price = _analysis_float(listing["price_krw"])
+                listing_area = _analysis_float(listing["area_sqm"])
+                listing_price_per_sqm = (
+                    listing_price / listing_area
+                    if listing_price is not None and listing_area else None
+                )
+                listing_price_gap = _analysis_growth(
+                    listing_price_per_sqm, item["peer_price_median"]
+                )
+                item.update({
+                    "listing_id": listing["id"],
+                    "listing_price": listing_price,
+                    "listing_price_per_sqm": listing_price_per_sqm,
+                    "listing_price_gap": listing_price_gap,
+                })
         selected_item = next(
             (item for item in items if item["building_id"] == building_id),
             None,
@@ -32893,6 +32938,44 @@ def analysis_assets():
                     item["building_id"],
                 ))
                 representative["is_representative"] = True
+        price_attraction = sorted([
+            item for item in items
+            if item["quadrant"] == "수요 대비 저평가 후보"
+            and item["peer_price_gap"] is not None
+        ], key=lambda item: (
+            -item["tourism_demand_index"],
+            item["peer_price_gap"],
+            -item["transaction_count"],
+            item["building_id"],
+        ))[:_ANALYSIS_CANDIDATE_LIMIT]
+        high_confidence = sorted([
+            item for item in items
+            if item["quadrant"] == "수요 대비 저평가 후보"
+            and item["peer_price_gap"] is not None
+            and item["peer_price_gap"] <= -10
+            and item["transaction_count"] >= 3
+            and item["peer_building_count"] >= 5
+            and item["sample_level"] == "표본 양호"
+        ], key=lambda item: (
+            item["peer_price_gap"],
+            -item["tourism_demand_index"],
+            -item["transaction_count"],
+            item["building_id"],
+        ))[:_ANALYSIS_CANDIDATE_LIMIT]
+        urgent_listings = sorted([
+            item for item in items
+            if item["listing_id"] is not None
+            and item["listing_price_gap"] is not None
+            and item["listing_price_gap"] < 0
+        ], key=lambda item: (
+            item["listing_price_gap"],
+            -item["tourism_demand_index"]
+            if item["tourism_demand_index"] is not None else 1,
+            -item["transaction_count"],
+            item["building_id"],
+        ))[:_ANALYSIS_CANDIDATE_LIMIT]
+        for item in items:
+            item.pop("listing_id", None)
         # Cache writes are part of this read transaction. Commit only those
         # derived rows before the pooled connection is released.
         conn.commit()
@@ -32936,10 +33019,29 @@ def analysis_assets():
                 "missing": "필요한 관광 월자료가 모두 없으면 값을 만들지 않고 회색 누락점으로 표시",
             },
             "items": items,
+            "candidates": {
+                "price": price_attraction,
+                "confidence": high_confidence,
+                "urgent": urgent_listings,
+            },
+            "candidate_limit": _ANALYSIS_CANDIDATE_LIMIT,
             "methodology": {
                 "tourism": "한국관광 데이터랩 시군구 국내 방문자 수의 전국 백분위 지수",
                 "price": f"최근 {period_months}개월 건물 ㎡당 중앙가격과 유사자산 중앙가격의 차이",
-                "warning": "가격은 시군구·동일유형을 우선하고 표본이 부족하면 시도, 전국 동일유형 순으로 비교합니다. 건물별 중앙값을 한 번씩 사용하며 최대 500개 건물을 제공합니다.",
+                "warning": "가격은 시군구·동일유형을 우선하고 표본이 부족하면 시도, 전국 동일유형 순으로 비교합니다. 건물별 중앙값을 한 번씩 사용하며 최대 2,000개 건물을 분석하고 후보 탭별 최대 100개를 제공합니다.",
+                "comparison_basis": {
+                    "period_months": period_months,
+                    "eligible_buildings": len(items),
+                    "analyzed_buildings": sum(
+                        1 for item in items
+                        if item["peer_price_gap"] is not None
+                    ),
+                    "exact_transaction_count": sum(
+                        item["transaction_count"] for item in items
+                    ),
+                    "pool_limit": _ANALYSIS_MAX_ITEMS,
+                    "peer_hierarchy": "시군구 동일유형 5개 → 시도 동일유형 10개 → 전국 동일유형 20개",
+                },
             },
         })
     except psycopg2_errors.UndefinedTable:
