@@ -286,7 +286,6 @@ async function run() {
     if (url.pathname === `/api/building/${SELECTED_ID}`) return json(route, {
       building_name: "선택 테스트 자산", road_address: "강원특별자치도 속초시 테스트로 1",
       sido: "강원특별자치도", lodging_type: "생활숙박시설",
-      photos: [{ url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Crect width='4' height='3' fill='%2388aacc'/%3E%3C/svg%3E" }],
       lodging_room_total: 348,
       lodgings: [
         { biz_name: "테스트 호텔", room_count: 200 },

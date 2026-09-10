@@ -155,6 +155,8 @@ expect(
   html.includes('id="rentalBuildingIdentity"')
     && html.includes('id="operationBuildingIdentity"')
     && js.includes("livingstayRenderAnalysisBuildingIdentity")
+    && js.includes('"/photos",{credentials:"same-origin"}')
+    && js.includes('"/streetview?view=building-v9"')
     && rentalJs.includes('livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), data)')
     && operationJs.includes('livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), building)')
     && css.includes(".analysis-building-identity"),

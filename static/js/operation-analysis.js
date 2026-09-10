@@ -348,6 +348,7 @@
     ]).then(function (results) {
       if (sequence !== loadSequence || !results[0]) return;
       building = results[0];
+      building.building_id = building.building_id || building.id || Number(id);
       window.__operationAnalysisBuilding = building;
       benchmarks = results[1] && Array.isArray(results[1].items) ? results[1].items : [];
       region = results[1] && results[1].sido || "";

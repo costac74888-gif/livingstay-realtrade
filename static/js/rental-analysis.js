@@ -409,6 +409,7 @@
       var areas = responses[1].ok ? await responses[1].json() : null;
       if (seq !== buildingSequence) return;
       if (data) {
+        data.building_id = data.building_id || data.id || Number(id);
         loadedBuilding = data;
         window.__rentalAnalysisBuilding = data;
         $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
