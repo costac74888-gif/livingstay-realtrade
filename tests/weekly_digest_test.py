@@ -84,6 +84,13 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertNotIn("member@", body)
         self.assertIn("weekly-digest-admin-copy-", sender.call_args.kwargs["idempotency_key"])
 
+    @patch("weekly_digest.company_email", return_value="admin@example.test")
+    @patch("weekly_digest.send_email", return_value=(True, "발송 성공"))
+    def test_explicit_admin_resend_uses_a_new_idempotency_key(self, sender, _company):
+        digest._send_admin_digest_copy([], [], {}, None, force_resend=True)
+        key = sender.call_args.kwargs["idempotency_key"]
+        self.assertIn("-resend-", key)
+
     def test_iso_week_cycles_through_eight_feature_episodes(self):
         self.assertEqual(digest._weekly_feature_episode(date(2026, 1, 1)), 1)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 19)), 8)

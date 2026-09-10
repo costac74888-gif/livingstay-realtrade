@@ -1373,7 +1373,9 @@ def _send_admin_delivery_report(target_count, sent, errors, test=False):
     )
 
 
-def _send_admin_digest_copy(price_highs, most_traded, datalab_summary, feature_tip):
+def _send_admin_digest_copy(
+    price_highs, most_traded, datalab_summary, feature_tip, force_resend=False,
+):
     """개인 회원 데이터 없이 공통 주간 이메일 본문을 관리자에게도 보낸다."""
     subject = "[관리자 사본] " + _build_subject(0, datalab_summary, feature_tip)
     body = build_html(
@@ -1384,11 +1386,14 @@ def _send_admin_digest_copy(price_highs, most_traded, datalab_summary, feature_t
         signal_counts={},
     )
     now = datetime.now().astimezone()
+    idempotency_key = f"weekly-digest-admin-copy-{now:%G-W%V}"
+    if force_resend:
+        idempotency_key += f"-resend-{now:%Y%m%d%H%M%S}"
     return send_email(
         company_email(),
         subject,
         body,
-        idempotency_key=f"weekly-digest-admin-copy-{now:%G-W%V}",
+        idempotency_key=idempotency_key,
     )
 
 
@@ -1402,6 +1407,8 @@ def main():
                         help="회원 발송 없이 관리자 결과 보고 테스트메일만 발송")
     parser.add_argument("--admin-copy", action="store_true",
                         help="회원 발송 없이 관리자 주간 이메일 사본만 발송")
+    parser.add_argument("--force-resend", action="store_true",
+                        help="관리자 사본의 동일 주차 중복 방지를 해제해 명시적으로 재발송")
     args = parser.parse_args()
 
     dry_run    = args.dry_run
@@ -1439,6 +1446,7 @@ def main():
         if args.admin_copy:
             ok, msg = _send_admin_digest_copy(
                 price_highs, most_traded, datalab_summary, feature_tip,
+                force_resend=args.force_resend,
             )
             log.info("관리자 주간 이메일 사본: %s", msg)
             return 0 if ok else 1
