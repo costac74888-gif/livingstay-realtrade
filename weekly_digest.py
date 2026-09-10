@@ -22,13 +22,14 @@ import argparse
 import html
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import psycopg2
 import psycopg2.extras
 
 from addr_norm import normalize_jibun_prefix, normalize_road_prefix
 from email_util import send_email
+from admin_action_center import company_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1345,17 +1346,51 @@ def _build_subject(new_deal_count, datalab_summary, feature_tip):
     return f"[홈앤스테이] {headline}"
 
 
+def _send_admin_delivery_report(target_count, sent, errors, test=False):
+    """회원별 주소를 노출하지 않는 주간 발송 결과를 회사 문의 이메일로 보낸다."""
+    now = datetime.now().astimezone()
+    title = "테스트" if test else "주간 이메일 발송 결과"
+    subject = f"[홈앤스테이 관리자] {title} — 성공 {sent}건 / 실패 {errors}건"
+    body = f"""
+    <div style="font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;line-height:1.65;color:#222">
+      <h2 style="margin:0 0 16px">홈앤스테이 {html.escape(title)}</h2>
+      <p>실행시각: {html.escape(now.strftime('%Y-%m-%d %H:%M:%S %Z'))}</p>
+      <table style="border-collapse:collapse">
+        <tr><th style="text-align:left;padding:7px 18px 7px 0">발송 대상</th><td>{int(target_count):,}건</td></tr>
+        <tr><th style="text-align:left;padding:7px 18px 7px 0">발송 성공</th><td>{int(sent):,}건</td></tr>
+        <tr><th style="text-align:left;padding:7px 18px 7px 0">발송 실패</th><td>{int(errors):,}건</td></tr>
+      </table>
+      <p style="color:#777;font-size:12px">개인정보 보호를 위해 회원 이메일 주소는 보고서에 포함하지 않습니다.</p>
+    </div>"""
+    return send_email(
+        company_email(),
+        subject,
+        body,
+        idempotency_key=(
+            f"weekly-digest-admin-test-{now:%Y%m%d%H%M}"
+            if test else f"weekly-digest-admin-{now:%G-W%V}"
+        ),
+    )
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="홈앤스테이 주간 소식 이메일 발송")
     parser.add_argument("--dry-run",  action="store_true", help="발송 없이 로그만 출력")
     parser.add_argument("--user-id",  type=int, default=None, help="특정 회원 ID (테스트용)")
+    parser.add_argument("--test-admin-report", action="store_true",
+                        help="회원 발송 없이 관리자 결과 보고 테스트메일만 발송")
     args = parser.parse_args()
 
     dry_run    = args.dry_run
     target_uid = args.user_id
     week_ago   = (date.today() - timedelta(days=7)).isoformat()
+
+    if args.test_admin_report:
+        ok, msg = _send_admin_delivery_report(1, 1, 0, test=True)
+        log.info("관리자 테스트 보고: %s", msg)
+        return 0 if ok else 1
 
     conn = get_conn()
     try:
@@ -1592,7 +1627,16 @@ def main():
         conn.close()
 
     log.info("완료: 발송=%d, 오류=%d", sent, errors)
+    if not dry_run and target_uid is None:
+        report_ok, report_msg = _send_admin_delivery_report(
+            len(users), sent, errors,
+        )
+        if report_ok:
+            log.info("관리자 주간 결과 보고 발송 완료")
+        else:
+            log.warning("관리자 주간 결과 보고 실패 — %s", report_msg)
+    return 0 if errors == 0 else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

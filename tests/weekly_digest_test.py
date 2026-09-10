@@ -58,6 +58,18 @@ class _ConsumptionConnection:
 
 
 class WeeklyDigestTests(unittest.TestCase):
+    @patch("weekly_digest.company_email", return_value="admin@example.test")
+    @patch("weekly_digest.send_email", return_value=(True, "발송 성공"))
+    def test_admin_report_contains_counts_without_member_addresses(self, sender, _company):
+        ok, _ = digest._send_admin_delivery_report(27, 26, 1)
+        self.assertTrue(ok)
+        recipient, subject, body = sender.call_args.args
+        self.assertEqual(recipient, "admin@example.test")
+        self.assertIn("성공 26건 / 실패 1건", subject)
+        self.assertIn("발송 대상</th><td>27건", body)
+        self.assertNotIn("member@", body)
+        self.assertIn("idempotency_key", sender.call_args.kwargs)
+
     def test_iso_week_cycles_through_eight_feature_episodes(self):
         self.assertEqual(digest._weekly_feature_episode(date(2026, 1, 1)), 1)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 19)), 8)
