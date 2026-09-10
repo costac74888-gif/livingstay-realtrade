@@ -32777,6 +32777,68 @@ def analysis_assets():
                 ),
             })
 
+        # 공유·직접 링크의 선택 건물은 최근 거래 표본이 없어도 기본정보를 먼저
+        # 보여준다. 분석값은 만들지 않고 명시적으로 자료 부족 상태를 유지한다.
+        if building_id and not any(item["building_id"] == building_id for item in items):
+            cur.execute("""
+                SELECT id, building_name, road_address, jibun_address,
+                       lodging_type, lat, lng,
+                       regexp_replace(split_part(trim(COALESCE(sgg_text, '')), ' ', 1),
+                         '(특별자치도|특별자치시|특별시|광역시|도|시)$', '') AS sido,
+                       regexp_replace(trim(regexp_replace(COALESCE(sgg_text, ''),
+                         '^\\S+\\s*', '')), '\\s+', '', 'g') AS sgg
+                FROM master_buildings
+                WHERE id = %s
+                LIMIT 1
+            """, (building_id,))
+            selected_master = cur.fetchone()
+            if selected_master:
+                selected_master = dict(selected_master)
+                demand = tourism_demand.get(
+                    (selected_master["sido"], selected_master["sgg"])
+                ) or {}
+                items.append({
+                    "building_id": selected_master["id"],
+                    "name": selected_master["building_name"],
+                    "address": (
+                        selected_master["road_address"]
+                        or selected_master["jibun_address"] or ""
+                    ),
+                    "sido": selected_master["sido"],
+                    "sgg": selected_master["sgg"],
+                    "lodging_type": selected_master["lodging_type"],
+                    "lat": _analysis_float(selected_master["lat"]),
+                    "lng": _analysis_float(selected_master["lng"]),
+                    "tourism_demand_index": demand.get("index"),
+                    "tourism_growth": demand.get("growth"),
+                    "tourism_comparison_complete": bool(
+                        demand.get("comparison_complete")
+                    ),
+                    "tourism_visitor_count": demand.get("visitor_count"),
+                    "tourism_period": demand.get("source_period"),
+                    "peer_price_gap": None,
+                    "peer_price_median": None,
+                    "building_period_price_median": None,
+                    "peer_building_count": 0,
+                    "peer_scope": None,
+                    "transaction_count": 0,
+                    "previous_transaction_count": 0,
+                    "latest_price": None,
+                    "price_per_sqm": None,
+                    "peak_gap": None,
+                    "last_deal_date": None,
+                    "sample_level": "실거래 자료 부족",
+                    "tourism_source": (
+                        "한국관광 데이터랩 · 시군구 국내 방문자 수 전국 백분위"
+                        if demand.get("index") is not None
+                        else "연결 가능한 시군구 관광 원자료 없음"
+                    ),
+                    "price_source": (
+                        f"국토교통부 실거래가 · 최근 {period_months}개월 "
+                        "정확 매칭 실거래 없음"
+                    ),
+                })
+
         tourism_key = "tourism_demand_index"
         comparable_items = [
             item for item in items

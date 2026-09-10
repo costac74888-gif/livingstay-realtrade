@@ -73,6 +73,8 @@ class AnalysisAssetsContractTests(unittest.TestCase):
     def test_analysis_requires_login_and_reports_total_transaction_population(self):
         self.assertIn('"requires_login": True', self.endpoint)
         self.assertIn('_analysis_session_or_share("property"', self.endpoint)
+        self.assertIn('"sample_level": "실거래 자료 부족"', self.endpoint)
+        self.assertIn("WHERE id = %s", self.endpoint)
         self.assertIn('"agent_id", "operator_id", "loan_consultant_id"', self.source)
         self.assertIn("total_transaction_count", self.endpoint)
         self.assertIn('"analysis_sample_transaction_count"', self.endpoint)
