@@ -54,11 +54,14 @@ from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEA
 BJDONG_CSV = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
 MAX_DB_RECONNECT_ATTEMPTS = 3
 DB_RECONNECT_DELAY_SEC = 5.0
-# 대량 수집은 한 건을 장시간 붙잡지 않는다. building_registry 내부에서 이미
-# 짧은 연결 재시도를 수행하므로, 실패 건은 미완료로 남기고 다음 실행에서 재처리한다.
-PROVIDER_RETRY_MAX = 0
-PROVIDER_RETRY_BASE_SEC = 0.0
-PROVIDER_RETRY_MAX_SEC = 0.0
+# 연결 장애 때 서로 다른 건물을 연속 실패시키지 않고 같은 요청을 충분히 기다려
+# 재시도한다. 모두 실패하면 체크포인트를 열어 둔 채 즉시 중단하여 API 장애 중
+# 수만 건을 빠르게 소진하거나 관리자가 반복 실행하게 만들지 않는다.
+PROVIDER_RETRY_MAX = 3
+PROVIDER_RETRY_BASE_SEC = 15.0
+PROVIDER_RETRY_MAX_SEC = 60.0
+PROVIDER_CONNECT_TIMEOUT_SEC = 15
+PROVIDER_READ_TIMEOUT_SEC = 30
 
 
 class _DatabaseReconnectExhausted(RuntimeError):
@@ -527,7 +530,8 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 plat_gb, bun, ji = parse_jibun(b["jibun"])
                 rows = _fetch_title_rows(
                     b["sgg_cd"], bjd, plat_gb, bun, ji,
-                    timeout=(3, 8), retry_max=0,
+                    timeout=(PROVIDER_CONNECT_TIMEOUT_SEC, PROVIDER_READ_TIMEOUT_SEC),
+                    retry_max=0,
                 )
                 consec_err = 0  # 성공적으로 응답 받음
                 api_response_count += 1
@@ -677,7 +681,14 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     f"{type(e).__name__}: {_mask_key(e)}"
                 )[:500]
                 print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
-                if consec_err >= 10:
+                if _is_transient_provider_error(e):
+                    print(
+                        f"[중단] 외부 API 연결 재시도 {PROVIDER_RETRY_MAX}회 실패 — "
+                        "체크포인트를 유지하고 종료합니다.",
+                        flush=True,
+                    )
+                    stop_for_errors = True
+                elif consec_err >= 10:
                     print("[중단] 외부 API 오류 10건 연속 — 체크포인트를 유지하고 종료합니다.", flush=True)
                     stop_for_errors = True
 
@@ -694,7 +705,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
         if stop_for_errors:
             message = (
-                "건축HUB 표제부 API 재접속이 반복 실패하여 중단했습니다. "
+                "건축HUB 표제부 API 연결 복구가 반복 실패하여 중단했습니다. "
                 f"마지막 오류: {last_item_error or '원인 미상'} "
                 "(실패한 행은 완료 처리하지 않았으므로 복구 후 재실행할 수 있습니다.)"
             )

@@ -302,8 +302,8 @@ class BackfillReconnectTests(unittest.TestCase):
         )
         replacement_conn.commit.assert_called_once_with()
 
-    def test_provider_timeout_fails_fast_and_keeps_checkpoint_open(self):
-        """외부 API 장애는 같은 건물을 장시간 재시도하지 않고 재실행 대상으로 남긴다."""
+    def test_provider_timeout_retries_with_backoff_then_keeps_checkpoint_open(self):
+        """외부 API 장애는 같은 건물을 대기 재시도한 뒤 즉시 안전 중단한다."""
         conn = MagicMock()
         conn.closed = 0
         cur = MagicMock()
@@ -321,11 +321,11 @@ class BackfillReconnectTests(unittest.TestCase):
             patch.object(
                 title_info, "_fetch_title_rows",
                 side_effect=RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
-            ),
+            ) as fetch,
             patch.object(title_info, "_read_status", return_value=status),
             patch.object(title_info, "_write_status", side_effect=capture_status),
             patch.object(title_info, "refresh_auto_building_names") as refresh,
-            patch.object(title_info.time, "sleep"),
+            patch.object(title_info.time, "sleep") as sleep,
         ):
             with self.assertRaises(title_info._ProviderFailure) as raised:
                 title_info._run_with_open_connection(
@@ -339,14 +339,22 @@ class BackfillReconnectTests(unittest.TestCase):
                 )
 
         failure = raised.exception
-        self.assertEqual(failure.counts, (0, 0, 0, 10))
-        self.assertIn("재접속이 반복 실패", str(failure))
+        self.assertEqual(failure.counts, (0, 0, 0, 1))
+        self.assertIn("연결 복구가 반복 실패", str(failure))
+        self.assertEqual(fetch.call_count, 4)
+        for call in fetch.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], (15, 30))
+            self.assertEqual(call.kwargs["retry_max"], 0)
+        self.assertEqual(
+            [call.args[0] for call in sleep.call_args_list],
+            [15.0, 30.0, 60.0],
+        )
         self.assertEqual(cur.execute.call_count, 1)  # 대상 조회 외 완료 UPDATE 없음
         self.assertFalse(conn.commit.called)
         refresh.assert_not_called()
-        self.assertEqual(writes[-1]["processed"], 10)
+        self.assertEqual(writes[-1]["processed"], 1)
         self.assertEqual(writes[-1]["total"], 10)
-        self.assertEqual(writes[-1]["err"], 10)
+        self.assertEqual(writes[-1]["err"], 1)
         self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
 
 
