@@ -138,10 +138,19 @@ expect(
     && html.includes("사분면 기준선 ="),
   "건물 사진 또는 보고서 산정 근거가 없습니다.",
 );
-expect(menu.includes('href="/analysis">📊 자산분석</a>'), "모바일 전체 메뉴에 📊 자산분석 링크가 없습니다.");
 expect(
-  fs.readFileSync("static/js/header.js", "utf8").includes('<span class="hnav-label">📊 자산분석</span>'),
-  "PC 상단 메뉴에 📊 자산분석 링크가 없습니다.",
+  menu.includes('id="menuAdminAnalysis" href="/analysis" style="display:none;"')
+    && menu.includes('fetch("/api/admin/menu-access"')
+    && menu.includes('data.is_admin')
+    && menu.includes('analysisLink.style.removeProperty("display")'),
+  "모바일 전체 메뉴의 자산분석 링크가 운영관리자에게만 표시되지 않습니다.",
+);
+expect(
+  fs.readFileSync("static/js/header.js", "utf8").includes('id="adminAnalysisNav" href="/analysis" style="display:none;"')
+    && fs.readFileSync("static/js/header.js", "utf8").includes('fetch("/api/admin/menu-access"')
+    && fs.readFileSync("static/js/header.js", "utf8").includes("data.is_admin")
+    && fs.readFileSync("static/js/header.js", "utf8").includes('analysisNav.style.removeProperty("display")'),
+  "PC 상단 메뉴의 자산분석 링크가 운영관리자에게만 표시되지 않습니다.",
 );
 expect(
   html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")

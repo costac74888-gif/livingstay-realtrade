@@ -77,7 +77,7 @@
           '<button type="button" class="hnav-btn" id="myPriceBtnMenu">🏨 <span class="hnav-label">내건물시세</span></button>' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
-          '<a class="hnav-btn" href="/analysis"><span class="hnav-label">📊 자산분석</span></a>' +
+          '<a class="hnav-btn" id="adminAnalysisNav" href="/analysis" style="display:none;"><span class="hnav-label">📊 자산분석</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
         '</nav>' +
@@ -87,6 +87,19 @@
       // 햄버거 → /menu 안에 동일 항목이 있으므로 헤더에서는 숨긴다(CSS .partner-cta).
       '<a class="partner-cta" href="/partner">🤝 파트너등록</a>' +
     '</div>';
+
+  // 자산분석은 운영관리자 전용 메뉴다. 공유 링크 직접 열람은 유지하되,
+  // 공용 헤더에서는 관리자 세션이 서버에서 확인된 경우에만 노출한다.
+  fetch("/api/admin/menu-access", { credentials: "same-origin" })
+    .then(function (response) {
+      if (!response.ok) return null;
+      return response.json();
+    })
+    .then(function (data) {
+      var analysisNav = document.getElementById("adminAnalysisNav");
+      if (analysisNav && data && data.is_admin) analysisNav.style.removeProperty("display");
+    })
+    .catch(function () { /* 확인 실패 시 숨김 상태 유지 */ });
 
   // ---- 로그인/회원가입 모달 (auth.js가 제어) — 없을 때만 body에 주입(중복 방지) ----
   if (!document.getElementById("authModal")) {

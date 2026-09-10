@@ -97,3 +97,4 @@
 - [자동검사 외부 알림 차단](test-notification-isolation.md) — 임시 신청을 만드는 자동검사는 실제 이메일·SMS를 절대 발송하지 않도록 최하위 발송 함수에서 차단한다.
 - [관리자 액션센터 알림 정책](admin-action-center-policy.md) — 관리자 업무 기준화면은 통합 액션센터; 긴급은 즉시, 일반은 일일 요약하며 수신자는 회사소개 문의 이메일을 따른다.
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
+- [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 운영 앱 메뉴는 관리자에게만 노출하되 서명된 비회원 공유 링크의 직접 열람은 유지한다.

@@ -30247,6 +30247,12 @@ def admin_me():
                     "is_super": row["role"] == "super_admin"})
 
 
+@app.route("/api/admin/menu-access")
+def admin_menu_access():
+    """공용 화면에서 관리자 전용 메뉴 노출 여부만 안전하게 반환한다."""
+    return jsonify({"is_admin": bool(session.get("admin"))})
+
+
 @app.route("/api/admin/members/<member_type>/<int:member_id>/login-history")
 @require_admin
 def admin_member_login_history(member_type, member_id):
