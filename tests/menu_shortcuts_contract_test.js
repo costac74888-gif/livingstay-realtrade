@@ -11,7 +11,6 @@ const orderedLabels = [
   "내건물시세",
   "직거래매물",
   "실거래목록",
-  "자산분석",
   "마이페이지",
   "알림",
   "채팅",
@@ -33,12 +32,6 @@ expect(
   "모바일 바로가기가 2열 버튼과 전체 폭 이용안내로 구성되지 않았습니다.",
 );
 
-expect(
-  menu.includes('id="menuAdminAnalysis" href="/analysis" style="display:none;"')
-    && menu.includes('fetch("/api/admin/menu-access"')
-    && menu.includes("data.is_admin")
-    && menu.includes('analysisLink.style.removeProperty("display")'),
-  "자산분석 바로가기가 운영관리자 확인 전 노출됩니다.",
-);
+expect(!menu.includes('href="/analysis"'), "공용 햄버거 메뉴에 자산분석이 남아 있습니다.");
 
 console.log("menu shortcut layout checks passed");

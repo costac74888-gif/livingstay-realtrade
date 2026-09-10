@@ -40,7 +40,6 @@
       <button type="button" class="menu-link menu-link-primary menu-action-link" id="menuMyPriceShortcut">🏨 내건물시세</button>
       <a class="menu-link" href="/listings">🏠 직거래매물</a>
       <a class="menu-link" href="/transactions">📋 실거래목록</a>
-      <a class="menu-link" id="menuAdminAnalysis" href="/analysis" style="display:none;">📊 자산분석</a>
       <a class="menu-link" href="/mypage" id="menuMypageLink" style="display:none;">👤 마이페이지</a>
       <button type="button" class="menu-link menu-action-link" id="menuAlertShortcut">🔔 알림</button>
       <button type="button" class="menu-link menu-action-link" id="menuChatShortcut">💬 채팅</button>
@@ -120,17 +119,6 @@
 /* 전체 메뉴 페이지 — 상태 표시는 auth.js가 쏘는 livingstay:auth 이벤트를 단일 소스로 사용.
    로그인 버튼은 헤더의 #authLoginBtn(로그인 모달), 로그아웃은 헤더의 로그아웃과 동일 API 사용. */
 (function(){
-  fetch("/api/admin/menu-access", { credentials: "same-origin" })
-    .then(function(response){
-      if (!response.ok) return null;
-      return response.json();
-    })
-    .then(function(data){
-      var analysisLink = document.getElementById("menuAdminAnalysis");
-      if (analysisLink && data && data.is_admin) analysisLink.style.removeProperty("display");
-    })
-    .catch(function(){ /* 확인 실패 시 숨김 상태 유지 */ });
-
   function renderState(loggedIn, user){
     var nameEl = document.getElementById("menuUserName");
     var emailEl = document.getElementById("menuUserEmail");
