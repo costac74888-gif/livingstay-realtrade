@@ -237,6 +237,12 @@ expect(
   "검증 기준에 맞는 가격 매력 후보의 빈 상태 안내가 없습니다.",
 );
 expect(
+  css.includes(".analysis-tabs #propertyTab{background:#F9E8E5")
+    && css.includes(".analysis-tabs #rentalTab{background:#E4F3F0")
+    && css.includes(".analysis-tabs #operationTab{background:#E5F0FA"),
+  "자산분석 3개 버튼의 파스텔 빨강·초록·파랑 구분이 없습니다.",
+);
+expect(
   html.includes('id="propertyTab"') && html.includes('id="operationTab"')
     && html.includes('id="rentalTab"')
     && html.indexOf("부동산투자분석") < html.indexOf("임대수익분석")
