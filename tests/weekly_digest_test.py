@@ -70,6 +70,20 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertNotIn("member@", body)
         self.assertIn("idempotency_key", sender.call_args.kwargs)
 
+    @patch("weekly_digest.company_email", return_value="admin@example.test")
+    @patch("weekly_digest.send_email", return_value=(True, "발송 성공"))
+    def test_admin_receives_same_weekly_digest_without_member_data(self, sender, _company):
+        ok, _ = digest._send_admin_digest_copy(
+            [], [], {"report_rate": 61.1}, {"title": "이번 주 기능", "episode": 5},
+        )
+        self.assertTrue(ok)
+        recipient, subject, body = sender.call_args.args
+        self.assertEqual(recipient, "admin@example.test")
+        self.assertTrue(subject.startswith("[관리자 사본] [홈앤스테이]"))
+        self.assertIn("관리자님", body)
+        self.assertNotIn("member@", body)
+        self.assertIn("weekly-digest-admin-copy-", sender.call_args.kwargs["idempotency_key"])
+
     def test_iso_week_cycles_through_eight_feature_episodes(self):
         self.assertEqual(digest._weekly_feature_episode(date(2026, 1, 1)), 1)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 19)), 8)

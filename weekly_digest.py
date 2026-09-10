@@ -1373,6 +1373,25 @@ def _send_admin_delivery_report(target_count, sent, errors, test=False):
     )
 
 
+def _send_admin_digest_copy(price_highs, most_traded, datalab_summary, feature_tip):
+    """개인 회원 데이터 없이 공통 주간 이메일 본문을 관리자에게도 보낸다."""
+    subject = "[관리자 사본] " + _build_subject(0, datalab_summary, feature_tip)
+    body = build_html(
+        "관리자", [], {}, [], [],
+        price_highs, most_traded,
+        datalab_summary, feature_tip,
+        f"{SITE_URL}/admin", 0,
+        signal_counts={},
+    )
+    now = datetime.now().astimezone()
+    return send_email(
+        company_email(),
+        subject,
+        body,
+        idempotency_key=f"weekly-digest-admin-copy-{now:%G-W%V}",
+    )
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1381,6 +1400,8 @@ def main():
     parser.add_argument("--user-id",  type=int, default=None, help="특정 회원 ID (테스트용)")
     parser.add_argument("--test-admin-report", action="store_true",
                         help="회원 발송 없이 관리자 결과 보고 테스트메일만 발송")
+    parser.add_argument("--admin-copy", action="store_true",
+                        help="회원 발송 없이 관리자 주간 이메일 사본만 발송")
     args = parser.parse_args()
 
     dry_run    = args.dry_run
@@ -1414,6 +1435,13 @@ def main():
                 ],
             ],
         )
+
+        if args.admin_copy:
+            ok, msg = _send_admin_digest_copy(
+                price_highs, most_traded, datalab_summary, feature_tip,
+            )
+            log.info("관리자 주간 이메일 사본: %s", msg)
+            return 0 if ok else 1
 
         # 발송 대상 회원 조회
         uid_filter = "AND u.id = %s" if target_uid else ""
@@ -1628,6 +1656,13 @@ def main():
 
     log.info("완료: 발송=%d, 오류=%d", sent, errors)
     if not dry_run and target_uid is None:
+        copy_ok, copy_msg = _send_admin_digest_copy(
+            price_highs, most_traded, datalab_summary, feature_tip,
+        )
+        if copy_ok:
+            log.info("관리자 주간 이메일 사본 발송 완료")
+        else:
+            log.warning("관리자 주간 이메일 사본 발송 실패 — %s", copy_msg)
         report_ok, report_msg = _send_admin_delivery_report(
             len(users), sent, errors,
         )
