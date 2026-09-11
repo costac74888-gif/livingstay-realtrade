@@ -206,6 +206,41 @@ def _minified_assets_enabled():
     return _frontend_release() is not None
 
 
+_BOT_HARD_BLOCK = (
+    # 명백한 크롤러·스크래퍼·HTTP 클라이언트
+    "scrapy",
+    "wget",
+    "curl",
+    "python-requests",
+    "python-urllib",
+    "java/",
+    "apache-httpclient",
+    "go-http-client",
+    "axios",
+    "node-fetch",
+    "got/",
+    "undici",
+    "webinfoutil",
+    # 헤드리스 브라우저와 SEO·모니터링 봇
+    "headlesschrome",
+    "phantomjs",
+    "playwright",
+    "puppeteer",
+    "semrush",
+    "ahrefsbot",
+    "mj12bot",
+    "dotbot",
+    "petalbot",
+)
+
+
+def _is_hard_blocked_bot(user_agent):
+    """페이지를 제공하지 않을 정도로 자동화가 명확한 User-Agent인지 판정한다."""
+    normalized = str(user_agent or "").strip().lower()
+    # bare "node"도 운영 표본에서 확인된 비브라우저 HTTP 클라이언트다.
+    return normalized == "node" or any(marker in normalized for marker in _BOT_HARD_BLOCK)
+
+
 def _inject_asset_version(html):
     def versioned(match):
         asset_path = match.group(2)
@@ -366,7 +401,11 @@ Compress(app)   # gzip 응답 압축 (API JSON + HTML 전체)
 
 @app.before_request
 def _block_unminified_frontend_sources():
-    """배포 모드에서는 원본 JS와 raw HTML의 정적 직접 접근을 막는다."""
+    """자동화 요청과 배포 모드의 원본 정적 소스 직접 접근을 차단한다."""
+    # 페이지뷰 저장만 막으면 헤드리스 봇이 HTML·API를 계속 받아 서버와 GA4를
+    # 동시에 오염시킨다. SEO에 필요한 Googlebot/Naver 계열은 목록에 넣지 않는다.
+    if _is_hard_blocked_bot(request.headers.get("User-Agent")):
+        return "", 204
     if not _minified_assets_enabled():
         return None
     path = request.path
@@ -500,11 +539,17 @@ def ratelimit_handler(e):
 # 코드에 평문 salt를 박지 않으려고 FLASK_SECRET_KEY를 재사용(이미 시크릿). 없으면 폴백.
 _PAGE_VIEW_SALT = os.environ.get("FLASK_SECRET_KEY", "") or "livingstay_pageview_salt_v1"
 _PAGE_VIEW_BOT_MARKERS = (
-    "bot",
-    "crawl",
-    "spider",
-    "slurp",
-    "facebookexternalhit",
+    # 기존
+    "bot", "crawl", "spider", "slurp", "facebookexternalhit",
+    # 크롤러·스크래퍼
+    "scrapy", "wget", "curl", "python-requests", "python-urllib",
+    "java/", "apache-httpclient", "go-http-client", "axios",
+    "node-fetch", "got/", "undici", "node", "webinfoutil",
+    # 헤드리스 브라우저
+    "headlesschrome", "phantomjs", "playwright", "puppeteer",
+    # SEO·모니터링 봇
+    "semrush", "ahrefsbot", "mj12bot", "dotbot", "petalbot",
+    "bingbot", "yandexbot", "baiduspider",
 )
 
 

@@ -492,6 +492,12 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
         "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/152 Safari/537.36"
     ):
         return "일반 모바일 브라우저 UA가 자동화 요청으로 오판됨"
+    if client.get("/", headers={"User-Agent": "undici"}).status_code != 204:
+        return "관측된 undici 자동화 요청이 204로 조기 차단되지 않음"
+    if client.get(
+        "/", headers={"User-Agent": "Googlebot/2.1 (+https://www.google.com/bot.html)"}
+    ).status_code != 200:
+        return "검색 노출에 필요한 Googlebot 요청이 함께 차단됨"
     response = client.get("/api/admin/user-stats")
     if response.status_code != 200:
         return "이용자 현황 집계 기준값을 불러오지 못함"

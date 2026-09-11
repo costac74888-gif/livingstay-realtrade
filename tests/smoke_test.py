@@ -245,12 +245,21 @@ def run_live(base_url):
     import requests  # noqa: E402
 
     verify = _ca_bundle()
+    # 앱은 명백한 비브라우저 HTTP 클라이언트 UA를 조기 차단한다. 라이브 스모크는
+    # 실제 사용자가 받는 렌더 경로를 검사하므로 브라우저 UA로 요청한다.
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 "
+            "HomeAndStaySmoke/1.0"
+        )
+    }
     print(f"모드: 라이브 (HTTP) — base: {base_url}")
     failures = []
     for path, expected_ct in CHECKS:
         url = base_url + path
         try:
-            resp = requests.get(url, timeout=15, verify=verify)
+            resp = requests.get(url, timeout=15, verify=verify, headers=headers)
         except requests.RequestException as e:
             failures.append(f"{path}: 요청 실패 ({e})")
             continue
@@ -272,7 +281,9 @@ def run_live(base_url):
         print(f"OK  {path}  ({resp.status_code}, {content_type})")
 
     try:
-        home_html = requests.get(base_url + "/", timeout=15, verify=verify).text
+        home_html = requests.get(
+            base_url + "/", timeout=15, verify=verify, headers=headers
+        ).text
     except requests.RequestException as e:
         failures.append(f"릴리스 JS 경로 확인 실패 ({e})")
         return failures
@@ -283,7 +294,9 @@ def run_live(base_url):
             failures.append(f"홈페이지에 {name}.min.js 릴리스 경로 없음")
             continue
         try:
-            resp = requests.get(base_url + path, timeout=15, verify=verify)
+            resp = requests.get(
+                base_url + path, timeout=15, verify=verify, headers=headers
+            )
         except requests.RequestException as e:
             failures.append(f"{path}: 요청 실패 ({e})")
             continue
