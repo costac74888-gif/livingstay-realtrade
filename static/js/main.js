@@ -5083,11 +5083,11 @@ function openBuyRequestModal(buildingId, buildingName){
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">전유면적</div>
         <input id="brAreaSqm" type="number" min="0.1" max="10000" step="0.1" inputmode="decimal" required placeholder="예) 17.6㎡" style="${FLD} margin-bottom:12px;" />
         <div style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:5px;">연락처</div>
-        <div id="brPhoneInputWrap" style="margin-bottom:6px;">
+        <div id="brPhoneInputWrap" class="br-phone-input-wrap" style="margin-bottom:6px;">
           <input id="brPhone" type="tel" maxlength="13" placeholder="010-1234-5678" style="${FLD} margin-bottom:6px;" />
-          <div style="display:flex; gap:6px; margin-bottom:6px;">
-            <input id="brPhoneCode" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호 6자리" style="${FLD} flex:1; min-width:90px; font-size:16px;" />
-            <button type="button" id="brSendCode" class="side-more" style="white-space:nowrap; margin-top:0; padding:8px 10px; flex-shrink:0; font-size:12.5px;">인증번호 받기</button>
+          <div class="br-phone-code-row" style="margin-bottom:6px;">
+            <input id="brPhoneCode" class="br-phone-code-input" type="text" inputmode="numeric" maxlength="6" placeholder="인증번호" aria-label="인증번호 6자리" style="${FLD} font-size:16px;" />
+            <button type="button" id="brSendCode" class="side-more br-send-code-button" style="margin-top:0; font-size:12.5px;">인증번호 받기</button>
           </div>
           <button type="button" id="brVerifyCode" class="btn-search" style="width:100%; padding:9px; display:none; font-size:13px;">인증 확인</button>
         </div>
