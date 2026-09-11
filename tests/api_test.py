@@ -5239,6 +5239,8 @@ def _check_listing_hold_and_disclosure_controls(client):
         if (held_meta.get("title"), held_meta.get("description")) != (
                 building_meta.get("title"), building_meta.get("description")):
             failures.append("listing controls: 보류 매물이 공유 메타데이터에 노출됨")
+        if any("직거래" in str(building_meta.get(key) or "") for key in ("title", "description")):
+            failures.append("listing controls: 상세페이지 공유 메타데이터에 직거래 문구가 남아 있음")
         if client.post(f"/api/listing-requests/{listing_id}/resume").status_code != 200:
             failures.append("listing controls: 공개 노출 점검 후 보류해제 실패")
 

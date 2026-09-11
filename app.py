@@ -318,10 +318,10 @@ def _building_share_meta(building_id, listing_id=None):
         address = _share_text(building.get("address"), 130)
         if not building_name:
             return meta
-        meta["title"] = f"{building_name} 직거래 매물 | 홈앤스테이"
+        meta["title"] = f"{building_name} 매물 | 홈앤스테이"
         meta["description"] = (
-            f"{address} · {building_name}의 직거래 매물과 실거래가를 확인하세요."
-            if address else f"{building_name}의 직거래 매물과 실거래가를 확인하세요."
+            f"{address} · {building_name}의 매물과 실거래가를 확인하세요."
+            if address else f"{building_name}의 매물과 실거래가를 확인하세요."
         )
         if not listing_id:
             return meta
@@ -343,10 +343,10 @@ def _building_share_meta(building_id, listing_id=None):
             listing.get("area_sqm"), listing.get("yield_rate"), listing.get("price_krw_max"),
         ), 90)
         if summary:
-            meta["title"] = f"{building_name} {summary} 직거래 매물 | 홈앤스테이"
+            meta["title"] = f"{building_name} {summary} 매물 | 홈앤스테이"
             meta["description"] = (
-                f"{address} · {summary} 직거래 매물입니다."
-                if address else f"{building_name} {summary} 직거래 매물입니다."
+                f"{address} · {summary} 매물입니다."
+                if address else f"{building_name} {summary} 매물입니다."
             )
 
         return meta
