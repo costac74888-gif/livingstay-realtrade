@@ -47,6 +47,7 @@ from app import (  # noqa: E402
     _building_share_meta,
     _canonical_sido_name,
     _create_short_link,
+    _is_hard_blocked_bot,
     _notify_lead_agents,
     _should_store_page_view,
     app,
@@ -485,6 +486,12 @@ def _daily_count(payload, series_key, day):
 
 def check_user_stats_aggregate_windows_and_view_writers(client):
     """날짜 경계·철회 매물·두 page_views 기록 경로를 실제 행으로 검증한다."""
+    if not _is_hard_blocked_bot("undici"):
+        return "관측된 undici 자동화 UA가 응답 단계에서 차단되지 않음"
+    if _is_hard_blocked_bot(
+        "Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 Chrome/152 Safari/537.36"
+    ):
+        return "일반 모바일 브라우저 UA가 자동화 요청으로 오판됨"
     response = client.get("/api/admin/user-stats")
     if response.status_code != 200:
         return "이용자 현황 집계 기준값을 불러오지 못함"
