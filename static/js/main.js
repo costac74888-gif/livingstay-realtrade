@@ -6256,7 +6256,7 @@ function _setupBuildingPanels(type){
       activateTab(tabs[nextIndex]);
     });
   });
-  const first = tabBar?.querySelector('.b-detail-tab[data-panel="operations"]');
+  const first = tabBar?.querySelector('.b-detail-tab[data-panel="property"]');
   if (first) activateTab(first);
 }
 
@@ -6281,8 +6281,8 @@ function buildingPanelSkeleton(buildingId){
     </section>
     <section class="side-card b-tourism-data-card" id="bTourismDataCard" style="display:none;"></section>
     <div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보" style="display:none;">
-      <button type="button" id="bTabOperations" class="b-detail-tab active" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="true" tabindex="0">운영정보</button>
-      <button type="button" id="bTabProperty" class="b-detail-tab" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button>
+      <button type="button" id="bTabProperty" class="b-detail-tab active" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="true" tabindex="0">부동산정보</button>
+      <button type="button" id="bTabOperations" class="b-detail-tab" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button>
     </div>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
     <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>

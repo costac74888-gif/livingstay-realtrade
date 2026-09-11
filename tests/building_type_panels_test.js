@@ -11,6 +11,12 @@ expect(main.includes('firstValid("booking_url")') && main.includes('firstValid("
 expect(!main.includes('|| firstValid("gocamping_url")'), "고캠핑 정보 링크가 예약 URL 우선순위에 남아 있습니다.");
 expect(main.includes('data-panel="operations"') && main.includes('data-panel="property"'), "운영정보/부동산정보 탭이 없습니다.");
 expect(
+  main.indexOf('id="bTabProperty" class="b-detail-tab active"') <
+  main.indexOf('id="bTabOperations" class="b-detail-tab"') &&
+  main.includes("const first = tabBar?.querySelector('.b-detail-tab[data-panel=\"property\"]');"),
+  "공유 상세페이지의 기본 탭이 부동산정보 우선으로 설정되지 않았습니다.",
+);
+expect(
   css.includes('.b-detail-tab[data-panel="operations"]') &&
   css.includes('.b-detail-tab[data-panel="property"]') &&
   css.includes('background:#EAF3FB') &&
