@@ -144,6 +144,16 @@ expect(
   modal.includes("else showListingForm()"),
   "기존 휴대폰 인증 계정 건너뛰기 또는 사업주 신고번호 인증 흐름이 없습니다."
 );
+expect(
+  modal.includes('id="lrGateAccountNotice"') &&
+  modal.includes('user.account_type !== "user"') &&
+  modal.includes('agent: "중개사"') &&
+  modal.includes('(accountLabels[user.account_type] || "파트너")') &&
+  modal.includes("계정으로 로그인되어 있습니다.") &&
+  modal.includes("매물 내놓기는 일반회원 계정에서 이용할 수 있습니다.") &&
+  modal.includes("showPhoneGate(user);"),
+  "파트너 로그인을 일반회원 로그인으로 오인하지 않도록 안내하는 흐름이 없습니다."
+);
 const targetSwitchAt = modal.indexOf('transactionTarget = nextTarget;');
 const targetSwitchEnd = modal.indexOf("\n      });\n    });", targetSwitchAt);
 const targetSwitchBlock = modal.slice(targetSwitchAt, targetSwitchEnd);

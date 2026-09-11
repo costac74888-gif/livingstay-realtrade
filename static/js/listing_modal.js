@@ -139,6 +139,7 @@
           '<div style="font-size:17px;font-weight:800;color:var(--ink,#16202e);">휴대폰 인증</div>' +
           '<p style="margin:8px 0 18px;color:var(--ink-soft,#6b7684);font-size:13px;line-height:1.55;">매물 등록은 휴대폰 인증이 필요합니다.<br>인증된 계정 전화번호만 매물 연락처로 사용됩니다.</p>' +
           '<div id="lrGateLoading" style="font-size:13px;color:var(--ink-soft,#6b7684);">인증 상태를 확인하고 있습니다.</div>' +
+          '<div id="lrGateAccountNotice" style="display:none;padding:12px 13px;border:1px solid #f0d5a8;border-radius:8px;background:#fff9ef;color:#76551f;font-size:12.5px;line-height:1.6;"></div>' +
           '<div id="lrGateFields" style="display:none;"><input id="lrGatePhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="010-1234-5678" style="' + inputStyle() + '">' +
           '<button type="button" id="lrGateSendCode" style="width:100%;margin-top:8px;border:0;border-radius:8px;padding:11px;background:var(--brass,#b4863f);color:#fff;font:700 13px inherit;cursor:pointer;">인증번호 받기</button>' +
           '<div id="lrGateCodeWrap" style="display:none;margin-top:12px;"><div style="display:flex;gap:7px;"><input id="lrGateCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="인증번호 6자리" style="' + inputStyle("flex:1;") + '"><button type="button" id="lrGateVerify" style="white-space:nowrap;border:0;border-radius:8px;padding:10px 13px;background:#4A7A18;color:#fff;font:700 13px inherit;cursor:pointer;">확인</button></div></div>' +
@@ -721,12 +722,27 @@
       gateMessage.style.color = ok ? "#28733f" : "#b42318";
       gateMessage.style.display = text ? "block" : "none";
     }
-    function showPhoneGate() {
+    function showPhoneGate(user) {
       $("#lrAuthLoading").style.display = "none";
       form.style.display = "none";
       phoneGate.style.display = "block";
       businessGate.style.display = "none";
       $("#lrGateLoading").style.display = "none";
+      var accountNotice = $("#lrGateAccountNotice");
+      if (user && user.logged_in && user.account_type && user.account_type !== "user") {
+        var accountLabels = {
+          agent: "중개사",
+          operator: "운영지원업체",
+          loan_consultant: "대출상담사"
+        };
+        accountNotice.textContent =
+          "현재 " + (accountLabels[user.account_type] || "파트너") +
+          " 계정으로 로그인되어 있습니다. 매물 내놓기는 일반회원 계정에서 이용할 수 있습니다.";
+        accountNotice.style.display = "block";
+        $("#lrGateFields").style.display = "none";
+        return;
+      }
+      accountNotice.style.display = "none";
       $("#lrGateFields").style.display = "block";
       $("#lrGatePhone").focus();
     }
@@ -919,9 +935,9 @@
             else showListingForm();
             return;
           }
-          showPhoneGate();
+          showPhoneGate(user);
         })
-        .catch(showPhoneGate);
+        .catch(function () { showPhoneGate(null); });
     }
 
     function photoIdsFor(items) {
