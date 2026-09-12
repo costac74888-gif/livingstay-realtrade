@@ -302,12 +302,13 @@ class BackfillReconnectTests(unittest.TestCase):
         )
         replacement_conn.commit.assert_called_once_with()
 
-    def test_provider_timeout_retries_with_backoff_then_keeps_checkpoint_open(self):
-        """외부 API 장애는 같은 건물을 대기 재시도한 뒤 즉시 안전 중단한다."""
+    def test_provider_timeout_skips_failed_item_and_continues_next_building(self):
+        """한 건의 외부 API 장애가 이후 건물의 백필을 막지 않는다."""
         conn = MagicMock()
         conn.closed = 0
         cur = MagicMock()
-        targets = [_building(i) for i in range(1, 11)]
+        cur.rowcount = 1
+        targets = [_building(1), _building(2)]
         cur.fetchall.return_value = targets
         bjdong = MagicMock()
         bjdong.find_bjdong_cd.return_value = "10100"
@@ -320,12 +321,71 @@ class BackfillReconnectTests(unittest.TestCase):
         with (
             patch.object(
                 title_info, "_fetch_title_rows",
-                side_effect=RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+                side_effect=[
+                    RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+                    RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+                    RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+                    RuntimeError("ReadTimeout: apis.data.go.kr timed out"),
+                    [],
+                ],
             ) as fetch,
             patch.object(title_info, "_read_status", return_value=status),
             patch.object(title_info, "_write_status", side_effect=capture_status),
-            patch.object(title_info, "refresh_auto_building_names") as refresh,
+            patch.object(title_info, "refresh_auto_building_names", return_value=0) as refresh,
             patch.object(title_info.time, "sleep") as sleep,
+        ):
+            result = title_info._run_with_open_connection(
+                only_missing=True,
+                sleep=0,
+                status_key="title-info-status",
+                run_id="provider-run",
+                bjdong=bjdong,
+                conn=conn,
+                cur=cur,
+            )
+
+        self.assertEqual(result, (0, 1, 0, 1))
+        self.assertEqual(fetch.call_count, 5)
+        for call in fetch.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], (15, 30))
+            self.assertEqual(call.kwargs["retry_max"], 0)
+        self.assertEqual(
+            [call.args[0] for call in sleep.call_args_list if call.args[0] > 0],
+            [15.0, 30.0, 60.0],
+        )
+        self.assertEqual(cur.execute.call_count, 2)  # 대상 조회 + 둘째 건물 완료 UPDATE
+        conn.commit.assert_called_once_with()
+        refresh.assert_called_once_with(conn)
+        self.assertEqual(writes[-1]["processed"], 2)
+        self.assertEqual(writes[-1]["total"], 2)
+        self.assertEqual(writes[-1]["err"], 1)
+        self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
+
+    def test_provider_timeout_stops_after_ten_consecutive_failed_buildings(self):
+        """공급자 전체 장애 때는 오류 건을 무한히 소진하지 않는다."""
+        conn = MagicMock()
+        conn.closed = 0
+        cur = MagicMock()
+        cur.fetchall.return_value = [_building(i) for i in range(1, 11)]
+        bjdong = MagicMock()
+        bjdong.find_bjdong_cd.return_value = "10100"
+        status = {"run_id": "provider-run", "state": "running"}
+        writes = []
+
+        with (
+            patch.object(
+                title_info,
+                "_fetch_title_rows",
+                side_effect=RuntimeError("ConnectTimeout: apis.data.go.kr timed out"),
+            ) as fetch,
+            patch.object(title_info, "_read_status", return_value=status),
+            patch.object(
+                title_info,
+                "_write_status",
+                side_effect=lambda _key, payload, _run_id: writes.append(dict(payload)),
+            ),
+            patch.object(title_info, "refresh_auto_building_names") as refresh,
+            patch.object(title_info.time, "sleep"),
         ):
             with self.assertRaises(title_info._ProviderFailure) as raised:
                 title_info._run_with_open_connection(
@@ -338,24 +398,12 @@ class BackfillReconnectTests(unittest.TestCase):
                     cur=cur,
                 )
 
-        failure = raised.exception
-        self.assertEqual(failure.counts, (0, 0, 0, 1))
-        self.assertIn("연결 복구가 반복 실패", str(failure))
-        self.assertEqual(fetch.call_count, 4)
-        for call in fetch.call_args_list:
-            self.assertEqual(call.kwargs["timeout"], (15, 30))
-            self.assertEqual(call.kwargs["retry_max"], 0)
-        self.assertEqual(
-            [call.args[0] for call in sleep.call_args_list],
-            [15.0, 30.0, 60.0],
-        )
-        self.assertEqual(cur.execute.call_count, 1)  # 대상 조회 외 완료 UPDATE 없음
+        self.assertEqual(raised.exception.counts, (0, 0, 0, 10))
+        self.assertEqual(fetch.call_count, 40)
+        self.assertEqual(writes[-1]["processed"], 10)
+        self.assertEqual(writes[-1]["err"], 10)
         self.assertFalse(conn.commit.called)
         refresh.assert_not_called()
-        self.assertEqual(writes[-1]["processed"], 1)
-        self.assertEqual(writes[-1]["total"], 10)
-        self.assertEqual(writes[-1]["err"], 1)
-        self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
 
 
 if __name__ == "__main__":
