@@ -374,3 +374,31 @@ mtime_ms = 1788592002103
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/632c30e6-c169-4cec-812b-cdba7ea33583/9b6c4c73-272c-4fe8-a9ad-0c3d72999080"
 storage_version_token = "1788592007586942"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "qznQBYKB-W0oobne7la_D"
+uri = "file://exports/homeandstay_3_analysis_patent_summary_20260912.docx"
+type = "word_document"
+title = "홈앤스테이 3대 분석시스템 특허출원 요약서 (DOCX)"
+description = "수정·검토 가능한 변리사 전달용 요약 초안입니다."
+logical_id = "1f86a748-69be-4511-a7e5-69dc8de624ec"
+content_hash = "sha256:599d5344cf6df14a9e983357071739fd2de3dc7c0f05cf153b406e1f87659317"
+size = 48298
+mtime_ms = 1789171549962
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1f86a748-69be-4511-a7e5-69dc8de624ec/66b3700e-3c3a-4003-93ca-5a89e397508a"
+storage_version_token = "1789171704523399"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "hxGSPG7kqVtH5ymz9fSfy"
+uri = "file://exports/homeandstay_3_analysis_patent_summary_20260912.pdf"
+type = "pdf"
+title = "홈앤스테이 3대 분석시스템 특허출원 요약서 (PDF)"
+description = "9쪽 분량의 열람·공유용 PDF입니다."
+logical_id = "5d705e70-426a-48bf-b9d3-9ae793390897"
+content_hash = "sha256:7aaf7405a188e8845ac34d82dbef4a445dfdd68f499a93d661f15b60f5de212b"
+size = 31426
+mtime_ms = 1789171550026
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/5d705e70-426a-48bf-b9d3-9ae793390897/ec69f1a0-45ea-4dc3-adfa-172b09dbd065"
+storage_version_token = "1789171705865846"
+content_type = "application/pdf"
