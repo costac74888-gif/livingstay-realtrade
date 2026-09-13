@@ -22,7 +22,10 @@ import argparse
 import html
 import logging
 import re
+import time
 from datetime import date, datetime, timedelta
+from urllib.parse import quote, urlparse
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import psycopg2.extras
@@ -42,6 +45,51 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 _dev_domain  = os.environ.get("REPLIT_DEV_DOMAIN", "")
 _fallback    = f"https://{_dev_domain}" if _dev_domain else "https://livingstay-realtrade.replit.app"
 SITE_URL     = os.environ.get("SITE_URL", _fallback).rstrip("/")
+KST = ZoneInfo("Asia/Seoul")
+CLAIM_STALE_AFTER = timedelta(minutes=30)
+MAX_DELIVERY_ATTEMPTS = 3
+EXPERIMENT_START = date.fromisoformat(
+    os.environ.get("WEEKLY_EMAIL_EXPERIMENT_START", "2026-09-15")
+)
+
+
+def kst_today(now=None):
+    """오늘 날짜는 배치 서버의 로컬 timezone이 아닌 Asia/Seoul을 사용한다."""
+    current = now or datetime.now(tz=KST)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=KST)
+    return current.astimezone(KST).date()
+
+
+def week_start_for(value):
+    if isinstance(value, datetime):
+        value = value.date()
+    value = value if isinstance(value, date) else date.fromisoformat(str(value))
+    return value - timedelta(days=value.weekday())
+
+
+def cohort_for_user(user_id):
+    """회원 ID 자체로 나누므로 실행 날짜나 DB 조회 순서에 영향을 받지 않는다."""
+    return "tue" if int(user_id) % 2 == 0 else "thu"
+
+
+def experiment_week(value):
+    """실험 시작 주를 1주차로 하는 ISO 주차(1..8, 그 밖은 None)."""
+    current_week = week_start_for(value)
+    start_week = week_start_for(EXPERIMENT_START)
+    index = (current_week - start_week).days // 7 + 1
+    return index if 1 <= index <= 8 else None
+
+
+def scheduled_cohort(value=None):
+    """화/목만 자동 발송하고, 다른 요일에는 None을 반환한다."""
+    weekday = (value or kst_today()).weekday()
+    return {1: "tue", 3: "thu"}.get(weekday)
+
+
+def experiment_report_date():
+    """보고서는 8주차 목요일 이후 7일 관찰창이 끝난 9주차 목요일부터 가능하다."""
+    return week_start_for(EXPERIMENT_START) + timedelta(days=7 * 8 + 3)
 
 
 def get_conn():
@@ -1161,11 +1209,57 @@ def _zone4(feature_tip):
     </a>"""
 
 
+def _instrument_tracking(html_body, tracking_token):
+    """회원별 링크를 opaque token redirect로 감싼다.
+
+    외부 사이트 링크는 추적 대상으로 만들지 않는다. 내부 링크만 상대 경로로
+    저장해 redirect가 임의의 외부 URL을 열 수 없게 한다. 이메일 open은
+    프록시·캐시가 이미지를 대신 요청할 수 있어 근사치라는 점도 의도적으로
+    문서화한다.
+    """
+    if not tracking_token:
+        return html_body
+    site = urlparse(SITE_URL)
+    token = quote(str(tracking_token), safe="")
+
+    def replace(match):
+        raw = html.unescape(match.group(1))
+        parsed = urlparse(raw)
+        if parsed.path.rstrip("/") == "/unsubscribe":
+            return match.group(0)
+        if parsed.scheme or parsed.netloc:
+            if parsed.netloc and parsed.netloc != site.netloc:
+                return match.group(0)
+            path = parsed.path or "/"
+        elif raw.startswith("/") and not raw.startswith("//"):
+            path = parsed.path or "/"
+        else:
+            return match.group(0)
+        target = path
+        if parsed.query:
+            target += "?" + parsed.query
+        if parsed.fragment:
+            target += "#" + parsed.fragment
+        redirect_url = (
+            f"{SITE_URL}/email/click?token={token}&url="
+            f"{quote(target, safe='')}"
+        )
+        return f'href="{html.escape(redirect_url, quote=True)}"'
+
+    tracked = re.sub(r'href="([^"]+)"', replace, html_body, flags=re.IGNORECASE)
+    pixel = (
+        f'<img src="{SITE_URL}/email/open?token={token}" width="1" height="1" '
+        'alt="" style="display:block;border:0;width:1px;height:1px;" />'
+    )
+    return tracked.replace("</body>", pixel + "</body>")
+
+
 def build_html(user_name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
                price_highs, most_traded,
                datalab_summary, feature_tip,
-                unsubscribe_url, alert_off_count=0, signal_counts=None):
+                 unsubscribe_url, alert_off_count=0, signal_counts=None,
+                 tracking_token=None):
     z0  = _zone0(datalab_summary)
     z1  = _zone1_1(favs, deals_by_fav, signal_counts, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
@@ -1202,7 +1296,7 @@ def build_html(user_name, favs, deals_by_fav,
     </td>
   </tr>""" if z4 else ""
 
-    return f"""<!DOCTYPE html>
+    rendered = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -1327,6 +1421,7 @@ def build_html(user_name, favs, deals_by_fav,
 </table>
 </body>
 </html>"""
+    return _instrument_tracking(rendered, tracking_token)
 
 
 def _build_subject(new_deal_count, datalab_summary, feature_tip):
@@ -1346,7 +1441,249 @@ def _build_subject(new_deal_count, datalab_summary, feature_tip):
     return f"[홈앤스테이] {headline}"
 
 
-def _send_admin_delivery_report(target_count, sent, errors, test=False):
+def _claim_delivery(cur, user_id, week_start, cohort):
+    """한 회원·주차를 원자적으로 선점한다. sent는 절대 갱신하지 않는다."""
+    cur.execute(
+        """
+        INSERT INTO weekly_email_deliveries
+            (user_id, week_start, cohort, status, attempts, claimed_at, claim_token)
+        VALUES (%s, %s, %s, 'sending', 1, NOW(), gen_random_uuid())
+        ON CONFLICT (user_id, week_start) DO UPDATE
+           SET status = 'sending', attempts = weekly_email_deliveries.attempts + 1,
+               claimed_at = NOW(), failed_at = NULL, error_message = NULL,
+               claim_token = gen_random_uuid(),
+               updated_at = NOW()
+         WHERE weekly_email_deliveries.status <> 'sent'
+           AND ((weekly_email_deliveries.status = 'failed'
+                 AND COALESCE(weekly_email_deliveries.error_message, '')
+                     NOT LIKE 'stale sending lease expired%'
+                 AND weekly_email_deliveries.attempts < %s)
+             OR (weekly_email_deliveries.status = 'sending'
+                 AND weekly_email_deliveries.claimed_at <
+                     NOW() - (%s * INTERVAL '1 minute')
+                 AND weekly_email_deliveries.attempts < %s))
+        RETURNING id, tracking_token, claim_token, attempts
+        """,
+        (user_id, week_start, cohort, MAX_DELIVERY_ATTEMPTS,
+         int(CLAIM_STALE_AFTER.total_seconds() // 60), MAX_DELIVERY_ATTEMPTS),
+    )
+    return cur.fetchone()
+
+
+def _finish_delivery(cur, delivery_id, claim_token, ok, message=None, subject=None):
+    """수락된 메일만 sent로 확정하고, 실패는 재시도 가능한 원장으로 남긴다."""
+    if ok:
+        cur.execute(
+            """UPDATE weekly_email_deliveries
+               SET status='sent', sent_at=NOW(), subject=COALESCE(%s, subject),
+                   error_message=NULL, updated_at=NOW()
+             WHERE id=%s AND claim_token=%s AND status='sending'""",
+            (subject, delivery_id, claim_token),
+        )
+    else:
+        cur.execute(
+            """UPDATE weekly_email_deliveries
+               SET status='failed', failed_at=NOW(), subject=COALESCE(%s, subject),
+                   error_message=%s, updated_at=NOW()
+             WHERE id=%s AND claim_token=%s AND status='sending'""",
+            (subject, str(message or "email delivery failed")[:500], delivery_id, claim_token),
+        )
+    return cur.rowcount == 1
+
+
+def calculate_experiment_report(rows):
+    """DB 행을 개인정보 없이 cohort별 8주 실험 요약으로 변환한다."""
+    result = {}
+    for cohort in ("tue", "thu"):
+        subset = [r for r in rows if r.get("cohort") == cohort]
+        targeted = len(subset)
+        sent = sum(1 for r in subset if r.get("status") == "sent")
+        failed = sum(1 for r in subset if r.get("status") == "failed")
+        # SQL report rows alias the seven-day-window booleans as these fields.
+        # Keeping the aliases also makes this calculator useful in pure tests.
+        opens = sum(1 for r in subset if int(r.get("open_count") or 0) > 0)
+        clicks = sum(1 for r in subset if int(r.get("click_count") or 0) > 0)
+        attempts = sum(int(r.get("attempts") or 0) for r in subset)
+        result[cohort] = {
+            "targeted": targeted, "sent": sent, "failed": failed,
+            "unique_opens": opens, "unique_clicks": clicks,
+            "open_rate": opens / sent if sent else 0.0,
+            "click_rate": clicks / sent if sent else 0.0,
+            "attempts": attempts,
+        }
+    return result
+
+
+def _choose_experiment_winner(metrics):
+    """클릭률 우선, 동률일 때 오픈률, 완전 동률은 tue를 선택한다."""
+    tue, thu = metrics["tue"], metrics["thu"]
+    return "tue" if (tue["click_rate"], tue["open_rate"]) >= (
+        thu["click_rate"], thu["open_rate"]
+    ) else "thu"
+
+
+def _claim_report(cur, experiment_start):
+    key = f"weekly-email-ab-{experiment_start.isoformat()}"
+    cur.execute(
+        """
+        INSERT INTO weekly_email_reports
+            (experiment_start, report_key, status, attempts, claimed_at, claim_token)
+        VALUES (%s, %s, 'sending', 1, NOW(), gen_random_uuid())
+        ON CONFLICT (report_key) DO UPDATE
+           SET status='sending', attempts=weekly_email_reports.attempts + 1,
+               claimed_at=NOW(), claim_token=gen_random_uuid(),
+               error_message=NULL, updated_at=NOW()
+         WHERE (weekly_email_reports.status='failed')
+            OR (weekly_email_reports.status='sending'
+                AND weekly_email_reports.claimed_at < NOW() - INTERVAL '30 minutes')
+        RETURNING id, claim_token, attempts
+        """,
+        (experiment_start, key),
+    )
+    return cur.fetchone()
+
+
+def _finish_report(cur, report_id, claim_token, ok, message=None):
+    if ok:
+        cur.execute(
+            """UPDATE weekly_email_reports
+                  SET status='sent', sent_at=NOW(), updated_at=NOW(),
+                      error_message=NULL
+                WHERE id=%s AND claim_token=%s AND status='sending'""",
+            (report_id, claim_token),
+        )
+    else:
+        cur.execute(
+            """UPDATE weekly_email_reports
+                  SET status='failed', error_message=%s, updated_at=NOW()
+                WHERE id=%s AND claim_token=%s AND status='sending'""",
+            (str(message or "report failed")[:500], report_id, claim_token),
+        )
+    return cur.rowcount == 1
+
+
+def _send_experiment_report(conn, today):
+    """8주차 목요일부터 보고서를 확인한다. 실패 원장만 다음 목요일 재시도한다."""
+    if today.weekday() != 3:
+        return False, "not report day"
+    start_week = week_start_for(EXPERIMENT_START)
+    if today < experiment_report_date():
+        return False, "experiment incomplete"
+    cur = conn.cursor()
+    # A provider timeout is ambiguous after the lease has been stale for
+    # longer than the claim window. Fence that old worker and make the row
+    # terminal rather than retrying outside the provider's idempotency window.
+    cur.execute(
+        """
+        UPDATE weekly_email_deliveries
+           SET status='failed', failed_at=NOW(),
+               error_message='stale sending lease expired; not retryable',
+               claimed_at=NULL, claim_token=gen_random_uuid(), updated_at=NOW()
+         WHERE week_start >= %s AND week_start < %s
+           AND status='sending'
+           AND (claimed_at IS NULL
+                OR claimed_at < NOW() - INTERVAL '30 minutes')
+        """,
+        (start_week, start_week + timedelta(days=56)),
+    )
+    cur.execute(
+        """
+        SELECT
+          EXISTS (
+            SELECT 1
+              FROM weekly_email_deliveries
+             WHERE week_start >= %s AND week_start < %s
+               AND status = 'sent'
+               AND (sent_at IS NULL OR sent_at + INTERVAL '7 days' > NOW())
+          ) AS immature_sent,
+          EXISTS (
+            SELECT 1
+              FROM weekly_email_deliveries
+             WHERE week_start >= %s AND week_start < %s
+               AND status = 'sending'
+          ) AS any_sending
+        """,
+        (start_week, start_week + timedelta(days=56),
+         start_week, start_week + timedelta(days=56)),
+    )
+    readiness = cur.fetchone() or {}
+    if readiness.get("immature_sent") or readiness.get("any_sending"):
+        conn.rollback()
+        return False, "pending"
+    claim = _claim_report(cur, start_week)
+    if not claim:
+        conn.commit()
+        return False, "already sent or exhausted"
+    cur.execute(
+        """SELECT cohort, status, attempts,
+                      CASE WHEN status='sent'
+                                AND first_opened_at IS NOT NULL
+                                AND first_opened_at >= sent_at
+                                AND first_opened_at <= sent_at + INTERVAL '7 days'
+                           THEN 1 ELSE 0 END AS open_count,
+                      CASE WHEN status='sent'
+                                AND first_clicked_at IS NOT NULL
+                                AND first_clicked_at >= sent_at
+                                AND first_clicked_at <= sent_at + INTERVAL '7 days'
+                           THEN 1 ELSE 0 END AS click_count
+             FROM weekly_email_deliveries
+            WHERE week_start >= %s AND week_start < %s""",
+        (start_week, start_week + timedelta(days=56)),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    metrics = calculate_experiment_report(rows)
+    winner = _choose_experiment_winner(metrics)
+    parts = [
+        "<div style=\"font-family:sans-serif\"><h2>주간 이메일 A/B 실험 결과</h2>",
+        "<p>회원 이메일 주소와 user_id를 포함하지 않은 집계 보고서입니다.</p>",
+    ]
+    for cohort in ("tue", "thu"):
+        m = metrics[cohort]
+        parts.append(
+            f"<h3>{cohort.upper()} cohort</h3><p>"
+            f"대상 {m['targeted']} / 성공 {m['sent']} / 실패 {m['failed']} · "
+            f"오픈 {m['unique_opens']} ({m['open_rate']:.1%}) · "
+            f"클릭 {m['unique_clicks']} ({m['click_rate']:.1%}) · "
+            f"시도 {m['attempts']}</p>"
+        )
+    parts.append(f"<p>우승 cohort: <strong>{winner.upper()}</strong></p></div>")
+    # Re-check the fenced report lease directly before the provider call.
+    cur.execute(
+        """SELECT id FROM weekly_email_reports
+            WHERE id=%s AND claim_token=%s AND status='sending'
+            FOR UPDATE""",
+        (claim["id"], claim["claim_token"]),
+    )
+    if not cur.fetchone():
+        conn.rollback()
+        return False, "report claim was fenced by another worker"
+    ok, message = send_email(
+        company_email(),
+        "[홈앤스테이] 주간 이메일 A/B 실험 8주 결과",
+        "".join(parts),
+        idempotency_key=f"weekly-email-ab-report-{start_week.isoformat()}",
+    )
+    finished = _finish_report(
+        cur, claim["id"], claim["claim_token"], ok, message,
+    )
+    conn.commit()
+    if not finished:
+        return False, "report claim was fenced by another worker"
+    return ok, message
+
+
+def _run_report_only(today):
+    """Post-window scheduled invocations never create member/admin deliveries."""
+    conn = get_conn()
+    try:
+        ok, message = _send_experiment_report(conn, today)
+        log.info("8주 실험 보고서 전용 실행: %s", message)
+        return 0 if ok or message in {"already sent or exhausted", "pending"} else 1
+    finally:
+        conn.close()
+
+
+def _send_admin_delivery_report(target_count, sent, errors, test=False, cohort=None):
     """회원별 주소를 노출하지 않는 주간 발송 결과를 회사 문의 이메일로 보낸다."""
     now = datetime.now().astimezone()
     title = "테스트" if test else "주간 이메일 발송 결과"
@@ -1362,19 +1699,21 @@ def _send_admin_delivery_report(target_count, sent, errors, test=False):
       </table>
       <p style="color:#777;font-size:12px">개인정보 보호를 위해 회원 이메일 주소는 보고서에 포함하지 않습니다.</p>
     </div>"""
+    cohort_key = cohort or "all"
     return send_email(
         company_email(),
         subject,
         body,
         idempotency_key=(
             f"weekly-digest-admin-test-{now:%Y%m%d%H%M}"
-            if test else f"weekly-digest-admin-{now:%G-W%V}"
+            if test else f"weekly-digest-admin-{now:%G-W%V}-{cohort_key}"
         ),
     )
 
 
 def _send_admin_digest_copy(
     price_highs, most_traded, datalab_summary, feature_tip, force_resend=False,
+    cohort=None,
 ):
     """개인 회원 데이터 없이 공통 주간 이메일 본문을 관리자에게도 보낸다."""
     subject = "[관리자 사본] " + _build_subject(0, datalab_summary, feature_tip)
@@ -1386,7 +1725,8 @@ def _send_admin_digest_copy(
         signal_counts={},
     )
     now = datetime.now().astimezone()
-    idempotency_key = f"weekly-digest-admin-copy-{now:%G-W%V}"
+    cohort = cohort or scheduled_cohort(kst_today()) or "manual"
+    idempotency_key = f"weekly-digest-admin-copy-{now:%G-W%V}-{cohort}"
     if force_resend:
         idempotency_key += f"-resend-{now:%Y%m%d%H%M%S}"
     return send_email(
@@ -1395,6 +1735,202 @@ def _send_admin_digest_copy(
         body,
         idempotency_key=idempotency_key,
     )
+
+
+def _personalize_recipient(cur, user, week_ago):
+    """Load one member's digest data; callers can fail this recipient only."""
+    uid = user["id"]
+    cur.execute("""
+        SELECT uf.building_name, uf.address,
+               COALESCE(uf.master_building_id, bid.id, bid2.id) AS master_building_id
+        FROM user_favorites uf
+        LEFT JOIN LATERAL (
+            SELECT mb.id FROM transactions t2
+            JOIN master_buildings mb ON mb.sgg_cd=t2.sgg_cd AND mb.umd_nm=t2.umd_nm
+             AND mb.jibun=t2.jibun
+            WHERE ((uf.building_name IS NULL AND t2.building_name IS NULL)
+                   OR t2.building_name=uf.building_name)
+              AND t2.address=uf.address
+            ORDER BY (mb.building_name=uf.building_name) DESC NULLS LAST, mb.id LIMIT 1
+        ) bid ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT mb.id FROM master_buildings mb
+            WHERE mb.road_address=uf.address
+               OR REPLACE(mb.umd_nm || mb.jibun, ' ', '')=REPLACE(uf.address, ' ', '')
+            ORDER BY (mb.building_name=uf.building_name) DESC NULLS LAST, mb.id LIMIT 1
+        ) bid2 ON TRUE
+        WHERE uf.user_id=%s ORDER BY uf.created_at DESC, uf.id DESC
+    """, (uid,))
+    favorite_rows = [dict(r) for r in cur.fetchall()]
+    _resolve_building_ids(cur, favorite_rows)
+    favs = [(r["building_name"], r["address"], r["master_building_id"])
+            for r in favorite_rows]
+
+    alert_off_count = 0
+    if favs:
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM (
+                SELECT building_name, address FROM user_favorites WHERE user_id=%s
+                EXCEPT
+                SELECT building_name, address FROM user_alert_subscriptions WHERE user_id=%s
+            ) sub
+        """, (uid, uid))
+        alert_off_count = (cur.fetchone() or {}).get("cnt", 0) or 0
+
+    deals_by_fav = {}
+    if favs:
+        names, addresses = [f[0] for f in favs], [f[1] for f in favs]
+        cur.execute("""
+            SELECT DISTINCT ON (t.building_name, t.address)
+                   t.building_name, t.address, t.price, t.deal_date,
+                   t.sgg_cd, t.umd_nm, t.jibun, mb.id AS building_id
+              FROM transactions t
+              LEFT JOIN master_buildings mb ON mb.sgg_cd=t.sgg_cd
+               AND REPLACE(mb.umd_nm, ' ', '')=REPLACE(t.umd_nm, ' ', '')
+               AND mb.jibun=t.jibun
+             WHERE t.building_name=ANY(%s) AND t.address=ANY(%s)
+               AND t.transaction_scope='unit' AND t.deal_date >= %s
+             ORDER BY t.building_name, t.address, t.deal_date DESC
+        """, (names, addresses, week_ago))
+        valid = {(f[0], f[1]) for f in favs}
+        deals_by_fav = {
+            (r["building_name"], r["address"]): dict(r)
+            for r in cur.fetchall()
+            if (r["building_name"], r["address"]) in valid
+        }
+
+    signal_counts = {
+        "deal": len(deals_by_fav), "urgent": 0, "new_listing": 0,
+        "permit_new": 0, "permit_closed": 0, "permit_status": 0, "permit_room": 0,
+    }
+    favorite_ids = [f[2] for f in favs if f[2] is not None]
+    if favorite_ids:
+        cur.execute("""
+            SELECT COALESCE(ul.tier, '') AS tier, COUNT(*) AS cnt
+              FROM urgent_listing_alert_logs ul
+              JOIN listing_requests lr ON lr.id=ul.listing_request_id
+             WHERE ul.user_id=%s AND ul.created_at >= %s
+               AND lr.master_building_id=ANY(%s)
+             GROUP BY COALESCE(ul.tier, '')
+        """, (uid, week_ago, favorite_ids))
+        for row in cur.fetchall():
+            if row["tier"] in ("gold", "silver", "urgent"):
+                signal_counts["urgent"] += int(row["cnt"] or 0)
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM new_listing_alert_logs nl
+            JOIN listing_requests lr ON lr.id=nl.listing_request_id
+            WHERE nl.user_id=%s AND nl.created_at >= %s
+              AND lr.master_building_id=ANY(%s)
+        """, (uid, week_ago, favorite_ids))
+        signal_counts["new_listing"] = int((cur.fetchone() or {}).get("cnt") or 0)
+        cur.execute("""
+            SELECT pcl.change_summary
+              FROM permit_change_alert_deliveries pcd
+              JOIN permit_change_alert_logs pcl ON pcl.id=pcd.permit_change_alert_log_id
+             WHERE pcd.user_id=%s AND pcd.created_at >= %s
+               AND pcl.master_building_id=ANY(%s)
+        """, (uid, week_ago, favorite_ids))
+        for row in cur.fetchall():
+            summary = dict(row.get("change_summary") or {})
+            for source_key, target_key in (
+                ("new", "permit_new"), ("closed", "permit_closed"),
+                ("status", "permit_status"), ("room", "permit_room"),
+            ):
+                signal_counts[target_key] += int(summary.get(source_key) or 0)
+
+    cur.execute("""
+        SELECT lr.id, lr.status, lr.master_building_id, mb.building_name
+          FROM listing_requests lr LEFT JOIN master_buildings mb ON mb.id=lr.master_building_id
+         WHERE lr.user_id=%s AND lr.status NOT IN ('cancelled','completed')
+         ORDER BY lr.created_at DESC LIMIT 5
+    """, (uid,))
+    listing_reqs = [dict(r) for r in cur.fetchall()]
+    cur.execute("""
+        SELECT br.id, br.status, br.master_building_id, mb.building_name
+          FROM buy_requests br LEFT JOIN master_buildings mb ON mb.id=br.master_building_id
+         WHERE br.user_id=%s AND br.status NOT IN ('cancelled','completed')
+         ORDER BY br.created_at DESC LIMIT 5
+    """, (uid,))
+    buy_reqs = [dict(r) for r in cur.fetchall()]
+    _resolve_building_ids(cur, [*deals_by_fav.values(), *listing_reqs, *buy_reqs])
+    n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
+    return {
+        "favs": favs, "deals_by_fav": deals_by_fav,
+        "listing_reqs": listing_reqs, "buy_reqs": buy_reqs,
+        "alert_off_count": alert_off_count, "signal_counts": signal_counts,
+        "new_deal_count": n_deals,
+    }
+
+
+def _send_claimed_recipient(
+    conn, cur, user, delivery, subject, favs, deals_by_fav, listing_reqs,
+    buy_reqs, price_highs, most_traded, datalab_summary, feature_tip,
+    unsubscribe_url, alert_off_count, signal_counts, week_start, cohort,
+):
+    """Render/send one already-claimed recipient and fence every DB mutation."""
+    uid = user["id"]
+    try:
+        html_body = build_html(
+            user["name"], favs, deals_by_fav, listing_reqs, buy_reqs,
+            price_highs, most_traded, datalab_summary, feature_tip,
+            unsubscribe_url, alert_off_count, signal_counts=signal_counts,
+            tracking_token=delivery["tracking_token"],
+        )
+        cur.execute(
+            """UPDATE weekly_email_deliveries
+                  SET subject=%s, updated_at=NOW()
+                WHERE id=%s AND claim_token=%s AND status='sending'""",
+            (subject, delivery["id"], delivery["claim_token"]),
+        )
+        if cur.rowcount != 1:
+            conn.rollback()
+            return False, "delivery claim was fenced by another worker"
+        conn.commit()
+        ok = False
+        msg = ""
+        remaining = max(1, MAX_DELIVERY_ATTEMPTS - int(delivery["attempts"]) + 1)
+        for retry_no in range(remaining):
+            outcome = send_email(
+                user["email"], subject, html_body,
+                # tracking_token is stable across failed/stale claims and is
+                # also the provider idempotency key.
+                idempotency_key=f"weekly-email-{delivery['tracking_token']}",
+                detailed=True,
+            )
+            if len(outcome) == 3:
+                ok, msg, provider_outcome = outcome
+            else:
+                ok, msg = outcome
+                provider_outcome = "accepted" if ok else "definitive_failure"
+            accepted = bool(ok or provider_outcome == "accepted")
+            finished = _finish_delivery(
+                cur, delivery["id"], delivery["claim_token"],
+                accepted, msg, subject,
+            )
+            conn.commit()
+            if not finished:
+                return False, "delivery claim was fenced by another worker"
+            if accepted:
+                return True, msg
+            if retry_no + 1 < remaining:
+                time.sleep(min(2 ** retry_no, 2))
+                delivery = _claim_delivery(cur, uid, week_start, cohort)
+                conn.commit()
+                if not delivery:
+                    return False, "delivery claim unavailable for retry"
+        return False, msg
+    except Exception as exc:
+        # The recipient owns this exact lease; an old worker cannot mark a
+        # newer claim failed because _finish_delivery fences on claim_token.
+        try:
+            _finish_delivery(
+                cur, delivery["id"], delivery["claim_token"],
+                False, str(exc),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        return False, str(exc)
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
@@ -1409,16 +1945,42 @@ def main():
                         help="회원 발송 없이 관리자 주간 이메일 사본만 발송")
     parser.add_argument("--force-resend", action="store_true",
                         help="관리자 사본의 동일 주차 중복 방지를 해제해 명시적으로 재발송")
+    parser.add_argument("--cohort", choices=("tue", "thu"),
+                        help="발송 cohort (tue=짝수 회원, thu=홀수 회원)")
+    parser.add_argument("--scheduled", action="store_true",
+                        help="Asia/Seoul 기준 화·목에 해당 cohort만 발송")
     args = parser.parse_args()
 
     dry_run    = args.dry_run
     target_uid = args.user_id
-    week_ago   = (date.today() - timedelta(days=7)).isoformat()
-
+    today      = kst_today()
     if args.test_admin_report:
         ok, msg = _send_admin_delivery_report(1, 1, 0, test=True)
         log.info("관리자 테스트 보고: %s", msg)
         return 0 if ok else 1
+    is_manual_preview = target_uid is not None
+    if not is_manual_preview:
+        if today < week_start_for(EXPERIMENT_START):
+            log.info("A/B 실험 시작 전이라 주간 이메일을 발송하지 않습니다.")
+            return 0
+        if today >= experiment_report_date():
+            if args.scheduled and today.weekday() == 3:
+                return _run_report_only(today)
+            log.info("A/B 실험 기간이 끝나 주간 회원 발송을 건너뜁니다.")
+            return 0
+        if experiment_week(today) is None:
+            log.info("A/B 실험 주차가 아니므로 주간 이메일을 발송하지 않습니다.")
+            return 0
+    selected_cohort = args.cohort
+    if args.scheduled or (target_uid is None and not args.cohort):
+        selected_cohort = selected_cohort or scheduled_cohort(today)
+        if not selected_cohort:
+            log.info("오늘은 주간 이메일 발송일이 아닙니다 (Asia/Seoul).")
+            return 0
+    elif target_uid is not None and selected_cohort is None:
+        selected_cohort = cohort_for_user(target_uid)
+    week_ago   = (today - timedelta(days=7)).isoformat()
+    week_start = week_start_for(today)
 
     conn = get_conn()
     try:
@@ -1462,9 +2024,11 @@ def main():
             WHERE COALESCE(weekly_email_enabled, FALSE) = TRUE
               AND email IS NOT NULL AND email <> ''
               AND COALESCE(status, 'active') <> 'withdrawn'
+              AND (%s = 'tue' AND MOD(u.id, 2) = 0
+                   OR %s = 'thu' AND MOD(u.id, 2) = 1)
               {uid_filter}
             ORDER BY id
-        """, uid_params)
+        """, (selected_cohort, selected_cohort, *uid_params))
         users = cur.fetchall()
         log.info("발송 대상 회원 %d명", len(users))
 
@@ -1473,185 +2037,66 @@ def main():
             uid   = user["id"]
             email = user["email"]
             name  = user["name"]
+            delivery = None
+            subject = None
+            try:
+                if not dry_run:
+                    delivery = _claim_delivery(
+                        cur, uid, week_start, selected_cohort,
+                    )
+                    conn.commit()
+                    if not delivery:
+                        log.info("  - %s (이미 발송됨/다른 작업자가 처리 중)", email)
+                        continue
+                personalized = _personalize_recipient(cur, user, week_ago)
+                subject = _build_subject(
+                    personalized["new_deal_count"],
+                    datalab_summary, feature_tip,
+                )
+                unsubscribe_token = user.get("unsubscribe_token") or ""
+                unsubscribe_url = (
+                    f"{SITE_URL}/unsubscribe?token={unsubscribe_token}"
+                    if unsubscribe_token else f"{SITE_URL}/mypage"
+                )
+                if dry_run:
+                    log.info(
+                        "  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
+                        "의뢰 listing=%d buy=%d | 데이터랩 신고율=%s | 기능팁=%s",
+                        email, len(personalized["favs"]),
+                        personalized["new_deal_count"],
+                        len(personalized["listing_reqs"]),
+                        len(personalized["buy_reqs"]),
+                        datalab_summary.get("report_rate"),
+                        feature_tip.get("episode") if feature_tip else "-",
+                    )
+                    sent += 1
+                    continue
 
-            # 관심단지 — /api/favorites/mine 과 동일한 3단계 LATERAL JOIN으로 building_id 결정
-            # (저장 시점 master_building_id가 NULL인 기존 데이터도 거래·주소 역매칭으로 복구)
-            cur.execute("""
-                SELECT uf.building_name, uf.address,
-                       COALESCE(uf.master_building_id, bid.id, bid2.id) AS master_building_id
-                FROM user_favorites uf
-                LEFT JOIN LATERAL (
-                    SELECT mb.id
-                    FROM transactions t2
-                    JOIN master_buildings mb
-                      ON mb.sgg_cd = t2.sgg_cd AND mb.umd_nm = t2.umd_nm
-                     AND mb.jibun = t2.jibun
-                    WHERE ((uf.building_name IS NULL AND t2.building_name IS NULL)
-                           OR t2.building_name = uf.building_name)
-                      AND t2.address = uf.address
-                    ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
-                    LIMIT 1
-                ) bid ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT mb.id
-                    FROM master_buildings mb
-                    WHERE mb.road_address = uf.address
-                       OR REPLACE(mb.umd_nm || mb.jibun, ' ', '') = REPLACE(uf.address, ' ', '')
-                    ORDER BY (mb.building_name = uf.building_name) DESC NULLS LAST, mb.id
-                    LIMIT 1
-                ) bid2 ON TRUE
-                WHERE uf.user_id = %s
-                ORDER BY uf.created_at DESC, uf.id DESC
-            """, (uid,))
-            favorite_rows = [dict(r) for r in cur.fetchall()]
-            _resolve_building_ids(cur, favorite_rows)
-            favs = [(r["building_name"], r["address"], r["master_building_id"])
-                    for r in favorite_rows]
-
-            # 알림 꺼진 관심단지 수 (user_alert_subscriptions 미등록)
-            alert_off_count = 0
-            if favs:
-                cur.execute("""
-                    SELECT COUNT(*) AS cnt FROM (
-                        SELECT building_name, address FROM user_favorites WHERE user_id = %s
-                        EXCEPT
-                        SELECT building_name, address FROM user_alert_subscriptions WHERE user_id = %s
-                    ) sub
-                """, (uid, uid))
-                alert_off_count = (cur.fetchone() or {}).get("cnt", 0) or 0
-
-            # 관심단지별 최근 실거래 (건물명+주소 매칭, 최신 1건)
-            deals_by_fav: dict = {}
-            if favs:
-                fav_names   = [f[0] for f in favs]
-                fav_addrs   = [f[1] for f in favs]
-                cur.execute("""
-                    SELECT DISTINCT ON (t.building_name, t.address)
-                        t.building_name, t.address, t.price, t.deal_date,
-                        t.sgg_cd, t.umd_nm, t.jibun,
-                        mb.id AS building_id
-                    FROM transactions t
-                    LEFT JOIN master_buildings mb
-                           ON mb.sgg_cd = t.sgg_cd
-                          AND REPLACE(mb.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
-                          AND mb.jibun = t.jibun
-                    WHERE t.building_name = ANY(%s)
-                      AND t.address       = ANY(%s)
-                      AND t.transaction_scope = 'unit'
-                      AND t.deal_date    >= %s
-                    ORDER BY t.building_name, t.address, t.deal_date DESC
-                """, (fav_names, fav_addrs, week_ago))
-                for r in cur.fetchall():
-                    # 건물명+주소가 모두 일치하는 것만 저장
-                    key = (r["building_name"], r["address"])
-                    if key in set((f[0], f[1]) for f in favs):
-                        deals_by_fav[key] = dict(r)
-
-            # 최근 7일 통합 알림 신호. 각 로그의 회원별 전달 이력만 집계한다.
-            signal_counts = {
-                "deal": len(deals_by_fav), "urgent": 0,
-                "new_listing": 0, "permit_new": 0, "permit_closed": 0,
-                "permit_status": 0, "permit_room": 0,
-            }
-            favorite_ids = [f[2] for f in favs if f[2] is not None]
-            if favorite_ids:
-                cur.execute("""
-                    SELECT COALESCE(ul.tier, '') AS tier, COUNT(*) AS cnt
-                      FROM urgent_listing_alert_logs ul
-                      JOIN listing_requests lr ON lr.id=ul.listing_request_id
-                     WHERE ul.user_id=%s
-                       AND ul.created_at >= %s
-                       AND lr.master_building_id = ANY(%s)
-                     GROUP BY COALESCE(ul.tier, '')
-                """, (uid, week_ago, favorite_ids))
-                for row in cur.fetchall():
-                    if row["tier"] in ('gold', 'silver', 'urgent'):
-                        signal_counts["urgent"] += int(row["cnt"] or 0)
-                cur.execute("""
-                    SELECT COUNT(*) AS cnt
-                      FROM new_listing_alert_logs nl
-                      JOIN listing_requests lr ON lr.id=nl.listing_request_id
-                     WHERE nl.user_id=%s
-                       AND nl.created_at >= %s
-                       AND lr.master_building_id = ANY(%s)
-                """, (uid, week_ago, favorite_ids))
-                signal_counts["new_listing"] = int((cur.fetchone() or {}).get("cnt") or 0)
-                cur.execute("""
-                    SELECT pcl.change_summary
-                      FROM permit_change_alert_deliveries pcd
-                      JOIN permit_change_alert_logs pcl
-                        ON pcl.id=pcd.permit_change_alert_log_id
-                     WHERE pcd.user_id=%s
-                       AND pcd.created_at >= %s
-                       AND pcl.master_building_id = ANY(%s)
-                """, (uid, week_ago, favorite_ids))
-                for row in cur.fetchall():
-                    summary = dict(row.get("change_summary") or {})
-                    signal_counts["permit_new"] += int(summary.get("new") or 0)
-                    signal_counts["permit_closed"] += int(summary.get("closed") or 0)
-                    signal_counts["permit_status"] += int(summary.get("status") or 0)
-                    signal_counts["permit_room"] += int(summary.get("room") or 0)
-
-            # 진행 중 매물의뢰
-            cur.execute("""
-                SELECT lr.id, lr.status, lr.master_building_id,
-                       mb.building_name
-                FROM listing_requests lr
-                LEFT JOIN master_buildings mb ON mb.id = lr.master_building_id
-                WHERE lr.user_id = %s
-                  AND lr.status NOT IN ('cancelled', 'completed')
-                ORDER BY lr.created_at DESC
-                LIMIT 5
-            """, (uid,))
-            listing_reqs = [dict(r) for r in cur.fetchall()]
-
-            # 진행 중 매수의뢰
-            cur.execute("""
-                SELECT br.id, br.status, br.master_building_id,
-                       mb.building_name
-                FROM buy_requests br
-                LEFT JOIN master_buildings mb ON mb.id = br.master_building_id
-                WHERE br.user_id = %s
-                  AND br.status NOT IN ('cancelled', 'completed')
-                ORDER BY br.created_at DESC
-                LIMIT 5
-            """, (uid,))
-            buy_reqs = [dict(r) for r in cur.fetchall()]
-            _resolve_building_ids(
-                cur,
-                [*deals_by_fav.values(), *listing_reqs, *buy_reqs],
-            )
-
-            # 이메일 제목 구성: 관심단지 새 실거래 → 가격변동 TOP1 → 기능 소개 → 기본.
-            n_deals = sum(1 for f in favs if deals_by_fav.get((f[0], f[1])))
-            subject = _build_subject(n_deals, datalab_summary, feature_tip)
-
-            # UUID 토큰이 있는 회원은 이메일에서 바로 수신거부할 수 있다.
-            # 토큰이 없는 과거 행은 마이페이지 설정으로 안전하게 안내한다.
-            unsubscribe_token = user.get("unsubscribe_token") or ""
-            unsubscribe_url = (
-                f"{SITE_URL}/unsubscribe?token={unsubscribe_token}"
-                if unsubscribe_token else f"{SITE_URL}/mypage"
-            )
-            html_body = build_html(
-                name, favs, deals_by_fav,
-                listing_reqs, buy_reqs,
-                price_highs, most_traded,
-                datalab_summary, feature_tip,
-                unsubscribe_url, alert_off_count,
-                signal_counts=signal_counts,
-            )
-
+                ok, msg = _send_claimed_recipient(
+                    conn, cur, user, delivery, subject,
+                    personalized["favs"], personalized["deals_by_fav"],
+                    personalized["listing_reqs"], personalized["buy_reqs"],
+                    price_highs, most_traded, datalab_summary, feature_tip,
+                    unsubscribe_url, personalized["alert_off_count"],
+                    personalized["signal_counts"], week_start, selected_cohort,
+                )
+            except Exception as exc:
+                conn.rollback()
+                ok, msg = False, str(exc)
+                if delivery:
+                    try:
+                        _finish_delivery(
+                            cur, delivery["id"], delivery["claim_token"],
+                            False, msg, subject,
+                        )
+                        conn.commit()
+                    except Exception:
+                        conn.rollback()
             if dry_run:
-                log.info("  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
-                           "의뢰 listing=%d buy=%d | 데이터랩 신고율=%s | 기능팁=%s",
-                         email, len(favs), n_deals,
-                          len(listing_reqs), len(buy_reqs), datalab_summary.get("report_rate"),
-                           feature_tip.get("episode") if feature_tip else "-")
-                sent += 1
+                if not ok:
+                    errors += 1
+                    log.warning("  [DRY-RUN] ✗ %s — %s", email, msg)
                 continue
-
-            ok, msg = send_email(email, subject, html_body)
             if ok:
                 sent += 1
                 log.info("  ✓ %s", email)
@@ -1666,18 +2111,29 @@ def main():
     if not dry_run and target_uid is None:
         copy_ok, copy_msg = _send_admin_digest_copy(
             price_highs, most_traded, datalab_summary, feature_tip,
+            cohort=selected_cohort,
         )
         if copy_ok:
             log.info("관리자 주간 이메일 사본 발송 완료")
         else:
             log.warning("관리자 주간 이메일 사본 발송 실패 — %s", copy_msg)
         report_ok, report_msg = _send_admin_delivery_report(
-            len(users), sent, errors,
+            len(users), sent, errors, cohort=selected_cohort,
         )
         if report_ok:
             log.info("관리자 주간 결과 보고 발송 완료")
         else:
             log.warning("관리자 주간 결과 보고 실패 — %s", report_msg)
+        # Report delivery has its own ledger and can be retried on subsequent
+        # Thursday runs without resending any member emails.
+        try:
+            report_conn = get_conn()
+            try:
+                _send_experiment_report(report_conn, today)
+            finally:
+                report_conn.close()
+        except Exception:
+            log.warning("8주 실험 보고서 처리 실패", exc_info=True)
     return 0 if errors == 0 else 1
 
 

@@ -183,14 +183,13 @@ defaultBucketID = "replit-objstore-53e4a388-4065-4e16-9794-963b8aab532e"
 [[workflows.workflow]]
 name = "Weekly Digest"
 author = "agent"
-schedule = "0 1 * * 5"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python weekly_digest.py"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" SITE_URL=\"https://homenstay.com\" python -u weekly_digest.py --scheduled"
 
 [[workflows.workflow]]
 name = "Deal Alert Digest"

@@ -18,6 +18,14 @@ description: Non-obvious behaviors of configureWorkflow/removeWorkflow when stop
   workspace it only runs while the repl is awake, and multiple auto-start workflows will contend
   for the same external API on wake.
 
+- Do not change an existing Autoscale web artifact to the Scheduled deployment target just to add
+  cron work. Run the scheduled job as a separate artifact/deployment; a legacy single-artifact
+  project may need migration first.
+  **Why:** a deployment target belongs to one artifact, so replacing Autoscale with Scheduled
+  stops serving the website.
+  **How to apply:** prepare and verify the batch code first, promote its production schema, then
+  create a separate scheduled artifact after informed migration approval.
+
 - ORPHAN PROCESSES accumulate across restarts and are the first thing to suspect when
   (a) code edits don't take effect / routes randomly 404, or (b) every DB query & HTTP request
   times out (rc=124). Two flavors seen: `gunicorn --reuse-port` leaves old MASTERS bound to

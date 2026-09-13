@@ -11,6 +11,9 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import weekly_digest as digest
+os.environ.setdefault("SKIP_STARTUP_SCHEMA_INIT", "1")
+import app as app_module
+from app import _email_target_is_safe
 
 
 class _CandidateCursor:
@@ -57,7 +60,184 @@ class _ConsumptionConnection:
         pass
 
 
+class _ClaimCursor:
+    def __init__(self):
+        self.query = ""
+        self.params = None
+
+    def execute(self, query, params):
+        self.query = query
+        self.params = params
+
+    def fetchone(self):
+        return {
+            "id": 10, "tracking_token": "opaque-token",
+            "claim_token": "lease-token", "attempts": 1,
+        }
+
+
+class _FinishCursor:
+    rowcount = 1
+
+    def __init__(self):
+        self.query = ""
+        self.params = None
+
+    def execute(self, query, params):
+        self.query = query
+        self.params = params
+
+
+class _ReportClaimCursor:
+    def __init__(self):
+        self.query = ""
+        self.params = None
+
+    def execute(self, query, params):
+        self.query = query
+        self.params = params
+
+    def fetchone(self):
+        return {"id": 22, "claim_token": "report-lease", "attempts": 1}
+
+
+class _CommitConnection:
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
 class WeeklyDigestTests(unittest.TestCase):
+    def test_kst_cohort_and_eight_week_assignment_are_stable(self):
+        self.assertEqual(digest.cohort_for_user(2), "tue")
+        self.assertEqual(digest.cohort_for_user(3), "thu")
+        self.assertEqual(digest.experiment_week(date(2026, 9, 15)), 1)
+        self.assertEqual(digest.experiment_week(date(2026, 11, 2)), 8)
+        self.assertIsNone(digest.experiment_week(date(2026, 11, 9)))
+        self.assertIsNone(digest.experiment_week(digest.experiment_report_date()))
+        self.assertEqual(digest.scheduled_cohort(date(2026, 9, 15)), "tue")
+        self.assertEqual(digest.scheduled_cohort(date(2026, 9, 17)), "thu")
+        self.assertIsNone(digest.scheduled_cohort(date(2026, 9, 16)))
+
+    def test_tracking_wraps_internal_links_but_not_unsubscribe(self):
+        body = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {"report_rate": 42.5}, None,
+            "https://example.test/unsubscribe?token=abc",
+            tracking_token="00000000-0000-0000-0000-000000000001",
+        )
+        self.assertIn("/email/open?token=", body)
+        self.assertIn("/email/click?token=", body)
+        self.assertIn('href="https://example.test/unsubscribe?token=abc"', body)
+
+    def test_experiment_report_counts_unique_events_and_rates(self):
+        metrics = digest.calculate_experiment_report([
+            {"cohort": "tue", "status": "sent", "attempts": 1,
+             "open_count": 2, "click_count": 1},
+            {"cohort": "tue", "status": "failed", "attempts": 3,
+             "open_count": 0, "click_count": 0},
+            {"cohort": "thu", "status": "sent", "attempts": 2,
+             "open_count": 1, "click_count": 0},
+        ])
+        self.assertEqual(metrics["tue"]["targeted"], 2)
+        self.assertEqual(metrics["tue"]["unique_opens"], 1)
+        self.assertEqual(metrics["tue"]["unique_clicks"], 1)
+        self.assertEqual(metrics["tue"]["attempts"], 4)
+        self.assertEqual(metrics["tue"]["click_rate"], 1.0)
+        self.assertEqual(digest._choose_experiment_winner(metrics), "tue")
+
+    def test_report_waits_until_week_nine_thursday(self):
+        self.assertEqual(digest.experiment_report_date(), date(2026, 11, 12))
+        self.assertLess(date(2026, 11, 5), digest.experiment_report_date())
+
+    def test_claim_sql_excludes_sent_and_has_retry_guards(self):
+        cursor = _ClaimCursor()
+        claim = digest._claim_delivery(cursor, 4, date(2026, 9, 14), "tue")
+        self.assertEqual(claim["attempts"], 1)
+        self.assertIn("status <> 'sent'", cursor.query)
+        self.assertIn("status = 'failed'", cursor.query)
+        self.assertIn("claimed_at", cursor.query)
+        self.assertIn("attempts < %s", cursor.query)
+        self.assertEqual(cursor.params[-1], digest.MAX_DELIVERY_ATTEMPTS)
+
+    def test_finish_sql_is_fenced_by_claim_token(self):
+        cursor = _FinishCursor()
+        digest._finish_delivery(cursor, 10, "lease-token", True, "ok", "subject")
+        self.assertIn("claim_token=%s", cursor.query)
+        self.assertIn("status='sending'", cursor.query)
+        self.assertEqual(cursor.params[-1], "lease-token")
+
+    def test_claim_sql_refreshes_and_returns_fence_token(self):
+        source_path = os.path.join(os.path.dirname(__file__), "..", "weekly_digest.py")
+        with open(source_path, encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertIn("claim_token = gen_random_uuid()", source)
+        self.assertIn("RETURNING id, tracking_token, claim_token, attempts", source)
+
+    def test_report_claim_and_finish_are_fenced(self):
+        cursor = _ReportClaimCursor()
+        claim = digest._claim_report(cursor, date(2026, 9, 14))
+        self.assertEqual(claim["claim_token"], "report-lease")
+        self.assertIn("claim_token", cursor.query)
+        self.assertIn("gen_random_uuid()", cursor.query)
+        finish_cursor = _FinishCursor()
+        digest._finish_report(finish_cursor, 22, "report-lease", True)
+        self.assertIn("claim_token=%s", finish_cursor.query)
+        self.assertIn("status='sending'", finish_cursor.query)
+        self.assertEqual(finish_cursor.params[-1], "report-lease")
+
+    def test_report_schema_has_fencing_token_migration(self):
+        db_path = os.path.join(os.path.dirname(__file__), "..", "db.py")
+        with open(db_path, encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertIn("claim_token UUID NOT NULL DEFAULT gen_random_uuid()", source)
+        self.assertIn("ALTER TABLE weekly_email_reports", source)
+
+    @patch("weekly_digest.send_email")
+    @patch("weekly_digest.build_html", side_effect=RuntimeError("personalization render"))
+    def test_claimed_recipient_failure_is_finished_without_provider_call(
+        self, _render, sender,
+    ):
+        cursor = _FinishCursor()
+        ok, message = digest._send_claimed_recipient(
+            _CommitConnection(), cursor,
+            {"id": 4, "email": "member@example.test", "name": "회원"},
+            {"id": 10, "tracking_token": "stable-token",
+             "claim_token": "lease-token", "attempts": 1},
+            "[subject]", [], {}, [], [], [], [], {}, None,
+            "https://example.test/unsubscribe", 0, {}, date(2026, 9, 14), "tue",
+        )
+        self.assertFalse(ok)
+        self.assertIn("personalization render", message)
+        sender.assert_not_called()
+        self.assertIn("claim_token=%s", cursor.query)
+
+    def test_report_sql_uses_equal_seven_day_event_window(self):
+        with open(digest.__file__, encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertIn("first_opened_at <= sent_at + INTERVAL '7 days'", source)
+        self.assertIn("first_clicked_at <= sent_at + INTERVAL '7 days'", source)
+        self.assertIn("AS immature_sent", source)
+        self.assertIn("AS any_sending", source)
+        self.assertIn("stale sending lease expired; not retryable", source)
+        self.assertIn("status='failed'", source)
+
+    def test_email_target_validator_rejects_open_redirect_shapes(self):
+        self.assertTrue(_email_target_is_safe("/building/12?q=x"))
+        for target in ("https://evil.test/", "//evil.test/", r"/\\evil.test",
+                       "/\x00evil", "javascript:alert(1)"):
+            self.assertFalse(_email_target_is_safe(target), target)
+
+    def test_tracking_routes_are_page_view_and_default_limit_exempt(self):
+        with app_module.app.test_request_context("/email/open"):
+            self.assertTrue(app_module._rate_limit_exempt())
+            response = app_module.Response("ok", status=200)
+            with patch.object(app_module, "_record_page_view") as recorder:
+                app_module._log_page_view(response)
+            recorder.assert_not_called()
+
     @patch("weekly_digest.company_email", return_value="admin@example.test")
     @patch("weekly_digest.send_email", return_value=(True, "발송 성공"))
     def test_admin_report_contains_counts_without_member_addresses(self, sender, _company):

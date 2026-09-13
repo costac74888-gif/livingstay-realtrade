@@ -34,6 +34,7 @@ import secrets as _secrets
 from concurrent.futures import ThreadPoolExecutor, wait
 from functools import wraps
 from urllib.parse import quote, unquote, urlencode, urlparse
+from uuid import UUID
 import requests
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -510,7 +511,17 @@ def _rate_limit_exempt():
     개별 @limiter.limit 데코레이터가 붙은 쓰기성 API에는 영향 없다(별개 카운터).
     """
     p = request.path
-    return p.startswith("/static/") or p == "/api/health"
+    return (
+        p.startswith("/static/")
+        or p == "/api/health"
+        # Mailbox image/link proxies share a small set of egress IPs; do not
+        # let them consume the normal page/API budget. Engagement SQL updates
+        # remain token-gated and the routes have a generous explicit limit.
+        or p in {
+            "/email/open", "/email/pixel", "/email/click",
+            "/api/email/open", "/api/email/click",
+        }
+    )
 
 
 def _log_safe(v, maxlen):
@@ -635,7 +646,10 @@ def _log_page_view(resp):
             path = request.path or "/"
             excluded = any(
                 path == p or path.startswith(p + "/")
-                for p in ("/api", "/admin", "/static")
+                for p in (
+                    "/api", "/admin", "/static",
+                    "/email/open", "/email/pixel", "/email/click",
+                )
             )
             # 정적 자산(favicon.ico, .js, .css 등)도 페이지 조회가 아니므로 제외
             is_asset = "." in path.rsplit("/", 1)[-1]
@@ -8216,6 +8230,97 @@ def unsubscribe_weekly_email():
         status=400,
         mimetype="text/html",
     )
+
+
+def _no_store(response):
+    response.headers["Cache-Control"] = "no-store, no-cache, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+def _email_target_is_safe(target):
+    """Only a relative, same-site path may be used by the email redirect."""
+    if not isinstance(target, str) or not target.startswith("/") or target.startswith("//"):
+        return False
+    if "\\" in target or any(ord(ch) < 32 for ch in target):
+        return False
+    parsed = urlparse(target)
+    return not parsed.scheme and not parsed.netloc
+
+
+@app.route("/email/open")
+@app.route("/email/pixel")
+@app.route("/api/email/open")
+@limiter.limit("600 per minute", override_defaults=True)
+def weekly_email_open():
+    """1x1 open marker. Opens are approximate because mailbox proxies may fetch it."""
+    token = request.args.get("token", "").strip()
+    try:
+        UUID(token)
+    except (ValueError, TypeError, AttributeError):
+        token = ""
+    if token:
+        conn = get_conn()
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """UPDATE weekly_email_deliveries
+                      SET open_count=open_count+1,
+                          first_opened_at=COALESCE(first_opened_at, NOW()),
+                          last_opened_at=NOW(), updated_at=NOW()
+                    WHERE tracking_token=%s::uuid AND status='sent'""",
+                (token,),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            if cur is not None:
+                cur.close()
+            conn.close()
+    response = Response(
+        b"\x47\x49\x46\x38\x39\x61\x01\x00\x01\x00\x80\x00\x00"
+        b"\x00\x00\x00\xff\xff\xff\x21\xf9\x04\x01\x00\x00\x00\x00"
+        b"\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00\x3b",
+        mimetype="image/gif",
+    )
+    return _no_store(response)
+
+
+@app.route("/email/click")
+@app.route("/api/email/click")
+@limiter.limit("120 per minute", override_defaults=True)
+def weekly_email_click():
+    """Same-site click redirect; absolute URLs and protocol-relative URLs are rejected."""
+    token = request.args.get("token", "").strip()
+    target = request.args.get("url", request.args.get("target", ""))
+    try:
+        UUID(token)
+    except (ValueError, TypeError, AttributeError):
+        token = ""
+    if not token or not _email_target_is_safe(target):
+        return _no_store(Response("잘못된 링크입니다.", status=400, mimetype="text/plain"))
+    conn = get_conn()
+    cur = None
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """UPDATE weekly_email_deliveries
+                  SET click_count=click_count+1,
+                      first_clicked_at=COALESCE(first_clicked_at, NOW()),
+                      last_clicked_at=NOW(), updated_at=NOW()
+                WHERE tracking_token=%s::uuid AND status='sent'""",
+            (token,),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()
+    return _no_store(redirect(target))
 
 
 @app.route("/transactions")

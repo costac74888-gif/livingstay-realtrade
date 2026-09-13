@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-08"
+SCHEMA_VERSION = "2026-09-09-11"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -3569,6 +3569,96 @@ def _run_init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
     )
+    """)
+    # 주간 이메일 A/B 실험 전달 원장. user_id + week_start가 발송의
+    # 멱등 키이며, sending은 프로세스가 죽었을 때 stale claim으로 회수한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS weekly_email_deliveries (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        week_start DATE NOT NULL,
+        cohort TEXT NOT NULL CHECK (cohort IN ('tue', 'thu')),
+        status TEXT NOT NULL DEFAULT 'sending'
+            CHECK (status IN ('sending', 'sent', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
+        claimed_at TIMESTAMP,
+        sent_at TIMESTAMP,
+        failed_at TIMESTAMP,
+        error_message TEXT,
+        subject TEXT,
+        tracking_token UUID NOT NULL DEFAULT gen_random_uuid(),
+        claim_token UUID NOT NULL DEFAULT gen_random_uuid(),
+        open_count INTEGER NOT NULL DEFAULT 0 CHECK (open_count >= 0),
+        first_opened_at TIMESTAMP,
+        last_opened_at TIMESTAMP,
+        click_count INTEGER NOT NULL DEFAULT 0 CHECK (click_count >= 0),
+        first_clicked_at TIMESTAMP,
+        last_clicked_at TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, week_start),
+        UNIQUE (tracking_token)
+    )
+    """)
+    # Earlier experiment rows may predate the fencing token; backfill only the
+    # new opaque lease column and make future claims non-null.
+    cur.execute("""
+        ALTER TABLE weekly_email_deliveries
+        ADD COLUMN IF NOT EXISTS claim_token UUID DEFAULT gen_random_uuid()
+    """)
+    cur.execute("""
+        UPDATE weekly_email_deliveries
+           SET claim_token = gen_random_uuid()
+         WHERE claim_token IS NULL
+    """)
+    cur.execute("""
+        ALTER TABLE weekly_email_deliveries
+        ALTER COLUMN claim_token SET DEFAULT gen_random_uuid(),
+        ALTER COLUMN claim_token SET NOT NULL
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_weekly_email_deliveries_week_cohort
+        ON weekly_email_deliveries (week_start, cohort, status)
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_weekly_email_deliveries_tracking
+        ON weekly_email_deliveries (tracking_token)
+    """)
+    # 별도 원장이라 멤버 전달 상태와 독립적으로 실패한 관리자 보고만 재시도한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS weekly_email_reports (
+        id BIGSERIAL PRIMARY KEY,
+        experiment_start DATE NOT NULL,
+        report_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'sending'
+            CHECK (status IN ('sending', 'sent', 'failed')),
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        claimed_at TIMESTAMP,
+        claim_token UUID NOT NULL DEFAULT gen_random_uuid(),
+        sent_at TIMESTAMP,
+        error_message TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """)
+    # Report claims use the same fencing discipline as member deliveries.
+    cur.execute("""
+        ALTER TABLE weekly_email_reports
+        ADD COLUMN IF NOT EXISTS claim_token UUID DEFAULT gen_random_uuid()
+    """)
+    cur.execute("""
+        UPDATE weekly_email_reports
+           SET claim_token = gen_random_uuid()
+         WHERE claim_token IS NULL
+    """)
+    cur.execute("""
+        ALTER TABLE weekly_email_reports
+        ALTER COLUMN claim_token SET DEFAULT gen_random_uuid(),
+        ALTER COLUMN claim_token SET NOT NULL
+    """)
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_weekly_email_reports_retry
+        ON weekly_email_reports (experiment_start, status, claimed_at)
     """)
     cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_weekly_feature_tips_active_episode
