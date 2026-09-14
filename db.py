@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-12"
+SCHEMA_VERSION = "2026-09-09-13"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1333,7 +1333,7 @@ def _run_init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
         approved_by INTEGER REFERENCES admin_users(id),  -- 승인한 관리자 (admin_users.id 참조 FK)
-        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         weekly_email_opted_at TIMESTAMP,
         weekly_email_updated_at TIMESTAMP,
         weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
@@ -1361,12 +1361,19 @@ def _run_init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS office_phone TEXT")    # 사무실 유선전화(선택)
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS office_address TEXT")  # 사무소 소재지(선택)
-    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
-    cur.execute("UPDATE agents SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
-    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute(
+        "UPDATE agents SET weekly_email_enabled = TRUE "
+        "WHERE weekly_email_updated_at IS NULL"
+    )
+    cur.execute(
+        "UPDATE agents SET weekly_email_enabled = FALSE "
+        "WHERE weekly_email_enabled IS NULL AND weekly_email_updated_at IS NOT NULL"
+    )
+    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_email_enabled SET DEFAULT TRUE")
     cur.execute("ALTER TABLE agents ALTER COLUMN weekly_email_enabled SET NOT NULL")
     cur.execute("UPDATE agents SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
     cur.execute("ALTER TABLE agents ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")
@@ -1487,7 +1494,7 @@ def _run_init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
         approved_by INTEGER REFERENCES admin_users(id),  -- 승인한 관리자 (admin_users.id 참조 FK)
-        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         weekly_email_opted_at TIMESTAMP,
         weekly_email_updated_at TIMESTAMP,
         weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
@@ -1513,12 +1520,19 @@ def _run_init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
     # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
-    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
-    cur.execute("UPDATE operators SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
-    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute(
+        "UPDATE operators SET weekly_email_enabled = TRUE "
+        "WHERE weekly_email_updated_at IS NULL"
+    )
+    cur.execute(
+        "UPDATE operators SET weekly_email_enabled = FALSE "
+        "WHERE weekly_email_enabled IS NULL AND weekly_email_updated_at IS NOT NULL"
+    )
+    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_email_enabled SET DEFAULT TRUE")
     cur.execute("ALTER TABLE operators ALTER COLUMN weekly_email_enabled SET NOT NULL")
     cur.execute("UPDATE operators SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
     cur.execute("ALTER TABLE operators ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")
@@ -1596,7 +1610,7 @@ def _run_init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
         approved_by INTEGER REFERENCES admin_users(id),
-        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         weekly_email_opted_at TIMESTAMP,
         weekly_email_updated_at TIMESTAMP,
         weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
@@ -1611,12 +1625,19 @@ def _run_init_db():
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
     # 취급지역 (전국/수도권/시도 — 허용값은 app.py LOAN_SERVICE_REGIONS). NULL이면 화면에서 '전국'으로 표시
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS service_region TEXT")
-    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE")
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
-    cur.execute("UPDATE loan_consultants SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
-    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute(
+        "UPDATE loan_consultants SET weekly_email_enabled = TRUE "
+        "WHERE weekly_email_updated_at IS NULL"
+    )
+    cur.execute(
+        "UPDATE loan_consultants SET weekly_email_enabled = FALSE "
+        "WHERE weekly_email_enabled IS NULL AND weekly_email_updated_at IS NOT NULL"
+    )
+    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_email_enabled SET DEFAULT TRUE")
     cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_email_enabled SET NOT NULL")
     cur.execute("UPDATE loan_consultants SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
     cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")

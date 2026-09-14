@@ -212,7 +212,7 @@ class PartnerApiIntegrationTests(unittest.TestCase):
             self.assertEqual(client.get(route).status_code, 200)
             first = client.post(route, json={"master_building_id": self.mb_a})
             self.assertEqual(first.status_code, 200)
-            self.assertFalse(first.get_json()["weekly_email_enabled"])
+            self.assertTrue(first.get_json()["weekly_email_enabled"])
             duplicate = client.post(route, json={"master_building_id": self.mb_a})
             self.assertEqual(duplicate.status_code, 200)
             self.assertTrue(duplicate.get_json()["idempotent"])

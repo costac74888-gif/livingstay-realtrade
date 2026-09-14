@@ -186,6 +186,10 @@ class PartnerFavoritesWeeklyTests(unittest.TestCase):
         query = cursor.queries[0]
         self.assertIn("status='approved'", query)
         self.assertIn("weekly_email_enabled=TRUE", query)
+        self.assertIn("FROM agents", query)
+        self.assertIn("FROM operators", query)
+        self.assertIn("FROM loan_consultants", query)
+        self.assertEqual(query.count("status='approved'"), 3)
         self.assertIn("recipient_type", query)
 
     def test_claim_is_owner_aware_and_fenced(self):
@@ -248,7 +252,9 @@ class PartnerFavoritesWeeklyTests(unittest.TestCase):
             self.assertIn("partnerFavoriteSearch", source)
             self.assertIn("/buildings/search?q=", source)
             self.assertNotIn("partnerFavoriteBuildingId", source)
-            self.assertIn("동의 체크를 직접 켜야", source)
+            self.assertIn("승인된 파트너는 주간 정보를 기본으로 받습니다.", source)
+            self.assertIn("아래 토글로 언제든지 끌 수 있으며", source)
+            self.assertNotIn("동의 체크를 직접 켜야", source)
             self.assertIn("favorites/${id}", source)
 
 

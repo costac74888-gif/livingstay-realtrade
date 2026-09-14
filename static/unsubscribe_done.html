@@ -25,10 +25,26 @@
     <div class="icon">✅</div>
     <h1>수신거부가 완료되었습니다</h1>
     <p>주간 소식 이메일이 더 이상 발송되지 않습니다.<br>
-       다시 받아보시려면 마이페이지 → 관심단지 탭에서<br>
+       다시 받아보시려면 계정 설정에서<br>
        <b>주간 소식 이메일 받기</b>를 켜주세요.</p>
     <a class="btn" href="/">홈으로 돌아가기</a>
-    <a class="link" href="/mypage">마이페이지에서 설정 변경 →</a>
+    <a class="link" id="emailSettingsLink" href="/mypage">이메일 설정 변경 →</a>
   </div>
+  <script>
+    (() => {
+      const type = new URLSearchParams(location.search).get("type") || "user";
+      const paths = {
+        user: "/mypage",
+        agent: "/agent/dashboard",
+        operator: "/operator/dashboard",
+        loan_consultant: "/loan-consultant/dashboard",
+      };
+      const link = document.getElementById("emailSettingsLink");
+      link.href = paths[type] || paths.user;
+      link.textContent = type === "user"
+        ? "마이페이지에서 설정 변경 →"
+        : "파트너 대시보드에서 설정 변경 →";
+    })();
+  </script>
 </body>
 </html>

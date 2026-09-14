@@ -24,7 +24,7 @@ class TransactionSyncBootContractTests(unittest.TestCase):
             'ALTER TABLE transactions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP',
             source,
         )
-        self.assertIn('SCHEMA_VERSION = "2026-09-09-12"', source)
+        self.assertIn('SCHEMA_VERSION = "2026-09-09-13"', source)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ def main():
 
     require(db, [
         "ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS area_sqm NUMERIC",
-        'SCHEMA_VERSION = "2026-09-09-03"',
+        'SCHEMA_VERSION = "2026-09-09-13"',
     ], "매수의뢰 면적 스키마")
     require(main_js, [
         'id="brAreaSqm"',
