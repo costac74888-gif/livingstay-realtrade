@@ -6118,6 +6118,14 @@ function _renderApprovedRosterOperatingInfo(b){
 
 const STRUCTURE_A_TYPES = [];
 const STRUCTURE_B_TYPES = ["생활", "에어비앤비", "캠핑", "농어촌민박", "한옥", "일반", "관광"];
+const COMPOSITE_BUILDING_TYPES = new Set(["복합", "복합용도"]);
+function isTabbedBuildingType(type){
+  const normalized = String(type || "").trim();
+  if (!normalized || normalized === "mixed_use_excluded") return false;
+  return STRUCTURE_B_TYPES.includes(normalized)
+    || COMPOSITE_BUILDING_TYPES.has(normalized)
+    || normalized.split("·").filter(Boolean).length > 1;
+}
 let _buildingDetailRequestToken = 0;
 let _buildingTrendRequestSeq = 0;
 let _buildingTxRequestSeq = 0;
@@ -6203,7 +6211,7 @@ function _reservationBar(b, includeConnection = true){
 }
 
 function _setupBuildingPanels(type){
-  const isB = STRUCTURE_B_TYPES.includes(type);
+  const isB = isTabbedBuildingType(type);
   const ids = {
     operations: [
       "bCampCard", "bNonCampingOperationsCard",
@@ -6855,12 +6863,12 @@ async function loadBuildingHeader(id){
   renderPhotoSlider(buildingPhotos);
   const inlineTypeTabs = document.getElementById("bInlineTypeTabs");
   if (inlineTypeTabs) {
-    inlineTypeTabs.style.display = STRUCTURE_B_TYPES.includes(b.lodging_type) ? "" : "none";
+    inlineTypeTabs.style.display = isTabbedBuildingType(b.lodging_type) ? "" : "none";
   }
   _setupBuildingPanels(b.lodging_type);
   const reservationCard = document.getElementById("bReservationCard");
   if (reservationCard) {
-    if (STRUCTURE_B_TYPES.includes(b.lodging_type)) {
+    if (isTabbedBuildingType(b.lodging_type)) {
       reservationCard.innerHTML = _reservationBar(b);
       reservationCard.style.display = reservationCard.innerHTML ? "" : "none";
     } else {
@@ -7709,7 +7717,7 @@ async function loadBuildingHeader(id){
            alt="숙박업등록 1위 — 생활형숙박시설 숙박업등록부터 위탁운영 무료 상담 신청">
     </a>`;
   if (isPreCompletion) {
-    adminCard.innerHTML = (STRUCTURE_B_TYPES.includes(b.lodging_type) ? `
+    adminCard.innerHTML = (isTabbedBuildingType(b.lodging_type) ? `
       <div class="side-card-title">영업신고 <span class="side-sub">행정운영</span></div>
       <div style="font-size:12.5px;color:var(--ink);">
         영업 중 ${lodgings.length.toLocaleString("ko-KR")}개 사업장 신고 완료
@@ -7839,7 +7847,7 @@ async function loadBuildingHeader(id){
 
   const lodgingOperatorTypes = ["캠핑", "에어비앤비", "농어촌민박", "한옥", "생활"];
   const showTransactions = STRUCTURE_A_TYPES.includes(b.lodging_type)
-    || STRUCTURE_B_TYPES.includes(b.lodging_type);
+    || isTabbedBuildingType(b.lodging_type);
   ["bAreaFilterCard", "bTrendCard", "bTxCard"].forEach(cardId => {
     const card = document.getElementById(cardId);
     if (card) card.style.display = showTransactions ? "" : "none";
