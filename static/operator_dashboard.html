@@ -82,6 +82,7 @@
     <button class="agent-tab" data-tab="ota">OTA 링크 신청</button>
     <button class="agent-tab" data-tab="region">담당 지역</button>
     <button class="agent-tab" data-tab="billing">뱃지기한</button>
+    <button class="agent-tab" data-tab="favorites">관심단지</button>
   </div>
 
   <!-- 탭: 받은 상담 (기본 탭) -->
@@ -116,6 +117,25 @@
         </ul>
       </div>
       <div id="bldList"><div class="side-empty">불러오는 중…</div></div>
+    </div>
+  </div>
+
+  <!-- 탭: 관심단지/주간 이메일 (담당 단지·지역과 별도) -->
+  <div class="agent-tabpanel" data-tabpanel="favorites">
+    <div class="panel-card">
+      <div class="side-card-title">관심단지 · 주간 이메일</div>
+      <div class="agent-guide">담당 단지·담당 지역과 별도로 거래 소식을 받을 단지를 최대 <b>30개</b>까지 선택합니다.</div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <label for="partnerFavoriteSearch" style="font-size:13px;">건물 검색</label>
+        <input id="partnerFavoriteSearch" type="search" class="admin-input" style="width:220px;" placeholder="건물명 2자 이상" autocomplete="off">
+        <span id="partnerFavoriteCount" class="side-sub"></span>
+      </div>
+      <div id="partnerFavoriteSearchResults" style="max-height:220px;overflow-y:auto;margin-bottom:8px;"></div>
+      <div class="agent-guide" style="margin-top:8px;">주간 이메일은 아래 동의 체크를 직접 켜야 발송됩니다. 관심단지를 추가하거나 삭제해도 동의 상태는 바뀌지 않습니다.</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0 12px;">
+        <input id="partnerWeeklyEmail" type="checkbox"> 매주 관심단지 실거래·공통 소식 이메일 받기
+      </label>
+      <div id="partnerFavoritesList"><div class="side-empty">불러오는 중…</div></div>
     </div>
   </div>
 
@@ -331,6 +351,51 @@ async function api(url, opts){
   return { ok: res.ok, data };
 }
 
+async function loadPartnerFavorites(){
+  const box = document.getElementById("partnerFavoritesList");
+  const {ok, data} = await api("/api/operator/favorites");
+  if (!ok){ box.innerHTML = `<div class="side-empty">${esc(data.message || "관심단지를 불러오지 못했습니다.")}</div>`; return; }
+  const items = data.items || [];
+  document.getElementById("partnerFavoriteCount").textContent = `${items.length}/30`;
+  document.getElementById("partnerWeeklyEmail").checked = !!data.weekly_email_enabled;
+  box.innerHTML = items.length ? items.map(f => `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 2px;border-bottom:1px solid #F0EBDF;">
+      <a href="/building/${f.master_building_id}" target="_blank" rel="noopener" style="font-weight:700;color:var(--ink);text-decoration:none;">${esc(f.building_name || "-")}</a>
+      <span style="font-size:12px;color:var(--ink-soft);">${esc(f.sgg_text || f.road_address || "")}</span><span style="flex:1"></span>
+      <button class="side-more" style="width:auto;margin-top:0;padding:5px 12px;font-size:12px;color:var(--brick);" onclick="removePartnerFavorite(${f.master_building_id})">삭제</button>
+    </div>`).join("") : `<div class="side-empty">등록한 관심단지가 없습니다.</div>`;
+}
+async function addPartnerFavorite(id){
+  const {ok, data} = await api("/api/operator/favorites", {method:"POST", body:JSON.stringify({master_building_id:id})});
+  if (!ok){ alert(data.message || "관심단지를 추가하지 못했습니다."); return; }
+  document.getElementById("partnerFavoriteSearch").value = "";
+  document.getElementById("partnerFavoriteSearchResults").innerHTML = "";
+  await loadPartnerFavorites();
+}
+async function removePartnerFavorite(id){
+  const {ok, data} = await api(`/api/operator/favorites/${id}`, {method:"DELETE"});
+  if (!ok) alert(data.message || "관심단지를 삭제하지 못했습니다."); else await loadPartnerFavorites();
+}
+let partnerFavoriteSearchTimer;
+document.getElementById("partnerFavoriteSearch").addEventListener("input", () => {
+  clearTimeout(partnerFavoriteSearchTimer);
+  partnerFavoriteSearchTimer = setTimeout(async () => {
+    const q = document.getElementById("partnerFavoriteSearch").value.trim();
+    const box = document.getElementById("partnerFavoriteSearchResults");
+    if (q.length < 2){ box.innerHTML = ""; return; }
+    const {ok, data} = await api("/api/operator/buildings/search?q=" + encodeURIComponent(q));
+    if (!ok){ box.innerHTML = `<div class="side-empty">검색에 실패했습니다.</div>`; return; }
+    box.innerHTML = (data.items || []).map(b => `
+      <button type="button" class="side-more" style="display:block;width:100%;text-align:left;margin:3px 0;padding:8px 10px;"
+              onclick="addPartnerFavorite(${b.id})">${esc(b.building_name || "-")} <span style="color:var(--ink-soft);font-size:11px;">${esc([b.sgg_text,b.umd_nm].filter(Boolean).join(" "))}</span></button>
+    `).join("") || `<div class="side-empty">검색 결과가 없습니다.</div>`;
+  }, 250);
+});
+document.getElementById("partnerWeeklyEmail").addEventListener("change", async e => {
+  const {ok, data} = await api("/api/operator/weekly-email", {method:"PUT", body:JSON.stringify({enabled:e.target.checked})});
+  if (!ok){ e.target.checked = !e.target.checked; alert(data.message || "설정을 저장하지 못했습니다."); }
+});
+
 function renderVisibility(){
   const on = ME.is_visible !== false;
   const btn = document.getElementById("btnToggleVisible");
@@ -444,6 +509,7 @@ document.querySelectorAll(".agent-tab").forEach(btn => {
     if (btn.dataset.tab === "ota") loadOta();
     if (btn.dataset.tab === "region") loadOpRegions();
     if (btn.dataset.tab === "billing") loadOpBilling();
+    if (btn.dataset.tab === "favorites") loadPartnerFavorites();
   });
 });
 
@@ -888,6 +954,7 @@ document.getElementById("btnLogout").addEventListener("click", async () => {
 
 load();
 loadOpLeads();
+loadPartnerFavorites();
 </script>
   <script src="/static/js/pw_toggle.js"></script>
 </body>

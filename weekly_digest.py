@@ -2,7 +2,7 @@
 """
 홈앤스테이 주간 소식 이메일 발송
 ===================================
-대상  : weekly_email_enabled = TRUE 인 일반 회원 전체 (관심단지 유무 무관)
+대상  : weekly_email_enabled = TRUE 인 일반 회원 + 승인된 파트너
 Zone 0   : 이번 주 핵심 수치 (데이터가 없으면 생략)
 Zone 1-1 : 관심단지 신규 실거래 (없으면 CTA 버튼)
 Zone 1-2 : 매물의뢰 / 매수의뢰 진행 현황 (없으면 CTA 버튼)
@@ -20,6 +20,7 @@ import os
 import sys
 import argparse
 import html
+import hashlib
 import logging
 import re
 import time
@@ -71,6 +72,18 @@ def week_start_for(value):
 def cohort_for_user(user_id):
     """회원 ID 자체로 나누므로 실행 날짜나 DB 조회 순서에 영향을 받지 않는다."""
     return "tue" if int(user_id) % 2 == 0 else "thu"
+
+
+def cohort_for_partner(partner_type, partner_id):
+    """파트너 유형·ID를 stable digest로 나눈다 (Python hash() 금지)."""
+    key = f"{str(partner_type).strip().lower()}:{int(partner_id)}".encode("utf-8")
+    return "tue" if int.from_bytes(hashlib.sha256(key).digest()[:8], "big") % 2 == 0 else "thu"
+
+
+def cohort_for_recipient(recipient_type, recipient_id):
+    return cohort_for_user(recipient_id) if recipient_type == "user" else cohort_for_partner(
+        recipient_type, recipient_id
+    )
 
 
 def experiment_week(value):
@@ -1441,8 +1454,52 @@ def _build_subject(new_deal_count, datalab_summary, feature_tip):
     return f"[홈앤스테이] {headline}"
 
 
-def _claim_delivery(cur, user_id, week_start, cohort):
-    """한 회원·주차를 원자적으로 선점한다. sent는 절대 갱신하지 않는다."""
+def _claim_delivery(cur, user_id, week_start, cohort, recipient_type="user"):
+    """한 수신자·주차를 원자적으로 선점한다. sent는 절대 갱신하지 않는다.
+
+    user 경로는 기존 SQL/원장과 완전히 호환하고, 파트너는 owner FK와
+    recipient_type을 함께 기록한다.
+    """
+    if recipient_type != "user":
+        owner_column = {
+            "agent": "agent_id", "operator": "operator_id",
+            "loan_consultant": "loan_consultant_id",
+        }.get(recipient_type)
+        if not owner_column:
+            raise ValueError("unknown recipient type")
+        cur.execute(
+            f"""
+            INSERT INTO weekly_email_deliveries
+                ({owner_column}, recipient_type, week_start, cohort, status,
+                 attempts, claimed_at, claim_token)
+            VALUES (%s, %s, %s, %s, 'sending', 1, NOW(), gen_random_uuid())
+            ON CONFLICT DO NOTHING
+            RETURNING id, tracking_token, claim_token, attempts
+            """,
+            (user_id, recipient_type, week_start, cohort),
+        )
+        claim = cur.fetchone()
+        if claim:
+            return claim
+        # Existing failed/stale rows are reclaimed with the same fence rules.
+        cur.execute(
+            f"""
+            UPDATE weekly_email_deliveries
+               SET status='sending', attempts=attempts + 1, claimed_at=NOW(),
+                   failed_at=NULL, error_message=NULL,
+                   claim_token=gen_random_uuid(), updated_at=NOW()
+             WHERE {owner_column}=%s AND recipient_type=%s AND week_start=%s
+               AND status <> 'sent'
+               AND ((status='failed' AND COALESCE(error_message,'')
+                     NOT LIKE 'stale sending lease expired%' AND attempts < %s)
+                OR (status='sending' AND claimed_at < NOW() -
+                    (%s * INTERVAL '1 minute') AND attempts < %s))
+             RETURNING id, tracking_token, claim_token, attempts
+            """,
+            (user_id, recipient_type, week_start, MAX_DELIVERY_ATTEMPTS,
+             int(CLAIM_STALE_AFTER.total_seconds() // 60), MAX_DELIVERY_ATTEMPTS),
+        )
+        return cur.fetchone()
     cur.execute(
         """
         INSERT INTO weekly_email_deliveries
@@ -1740,6 +1797,7 @@ def _send_admin_digest_copy(
 def _personalize_recipient(cur, user, week_ago):
     """Load one member's digest data; callers can fail this recipient only."""
     uid = user["id"]
+    recipient_type = user.get("recipient_type", "user")
     cur.execute("""
         SELECT uf.building_name, uf.address,
                COALESCE(uf.master_building_id, bid.id, bid2.id) AS master_building_id
@@ -1862,13 +1920,107 @@ def _personalize_recipient(cur, user, week_ago):
     }
 
 
+def _personalize_partner_recipient(cur, partner, week_ago):
+    """파트너 관심단지 UNION 활성 담당 단지뱃지 범위만 개인화한다."""
+    kind = partner["recipient_type"]
+    owner_column = {
+        "agent": "agent_id", "operator": "operator_id",
+        "loan_consultant": "loan_consultant_id",
+    }[kind]
+    assigned_table = {
+        "agent": "agent_buildings", "operator": "operator_buildings",
+        "loan_consultant": "loan_consultant_buildings",
+    }[kind]
+    cur.execute(
+        f"""
+        WITH scope AS (
+            SELECT master_building_id
+              FROM partner_favorites
+             WHERE {owner_column}=%s
+            UNION
+            SELECT master_building_id
+              FROM {assigned_table}
+             WHERE {owner_column}=%s
+               AND has_priority_badge=TRUE
+               AND (premium_expires_at IS NULL OR premium_expires_at > NOW())
+        )
+        SELECT mb.id AS master_building_id, mb.building_name,
+               COALESCE(mb.road_address, mb.jibun, mb.sgg_text) AS address
+          FROM scope s JOIN master_buildings mb ON mb.id=s.master_building_id
+         ORDER BY mb.building_name, mb.id
+        """,
+        (partner["id"], partner["id"]),
+    )
+    scoped = [dict(r) for r in cur.fetchall()]
+    favs = [(r["building_name"], r["address"], r["master_building_id"]) for r in scoped]
+    deals_by_fav = {}
+    building_ids = [r["master_building_id"] for r in scoped]
+    if building_ids:
+        cur.execute(
+            """
+            WITH candidates AS (
+                SELECT mb.id AS building_id,
+                       t.id AS transaction_id, t.building_name, t.address, t.price, t.deal_date,
+                       t.sgg_cd, t.umd_nm, t.jibun,
+                       (
+                           SELECT COUNT(*)
+                             FROM master_buildings mb_loc
+                            WHERE mb_loc.sgg_cd=t.sgg_cd
+                              AND REPLACE(mb_loc.umd_nm, ' ', '') =
+                                  REPLACE(t.umd_nm, ' ', '')
+                              AND mb_loc.jibun=t.jibun
+                       ) AS location_match_count,
+                       regexp_replace(COALESCE(t.building_name, ''), E'\\s+', '', 'g')
+                           AS transaction_building_name,
+                       regexp_replace(COALESCE(mb.building_name, ''), E'\\s+', '', 'g')
+                           AS master_building_name
+                  FROM transactions t
+                  JOIN master_buildings mb
+                    ON mb.id=ANY(%s)
+                   AND mb.sgg_cd=t.sgg_cd
+                   AND REPLACE(mb.umd_nm, ' ', '')=REPLACE(t.umd_nm, ' ', '')
+                   AND mb.jibun=t.jibun
+                 WHERE t.transaction_scope='unit'
+                   AND t.deal_date >= %s
+            )
+            SELECT DISTINCT ON (building_id) building_id,
+                   t.building_name, t.address, t.price, t.deal_date,
+                   t.sgg_cd, t.umd_nm, t.jibun
+              FROM candidates t
+             WHERE (
+                       t.transaction_building_name <> ''
+                   AND t.transaction_building_name=t.master_building_name
+                   )
+                OR t.location_match_count=1
+             ORDER BY building_id, t.deal_date DESC, t.transaction_id DESC
+            """,
+            (building_ids, week_ago),
+        )
+        deals_by_id = {int(r["building_id"]): dict(r) for r in cur.fetchall()}
+        deals_by_fav = {
+            (f[0], f[1]): deals_by_id[f[2]]
+            for f in favs if f[2] in deals_by_id
+        }
+    return {
+        "favs": favs, "deals_by_fav": deals_by_fav,
+        "listing_reqs": [], "buy_reqs": [], "alert_off_count": 0,
+        "signal_counts": {
+            "deal": len(deals_by_fav), "urgent": 0, "new_listing": 0,
+            "permit_new": 0, "permit_closed": 0, "permit_status": 0, "permit_room": 0,
+        },
+        "new_deal_count": len(deals_by_fav),
+    }
+
+
 def _send_claimed_recipient(
     conn, cur, user, delivery, subject, favs, deals_by_fav, listing_reqs,
     buy_reqs, price_highs, most_traded, datalab_summary, feature_tip,
     unsubscribe_url, alert_off_count, signal_counts, week_start, cohort,
+    recipient_type=None,
 ):
     """Render/send one already-claimed recipient and fence every DB mutation."""
     uid = user["id"]
+    recipient_type = recipient_type or user.get("recipient_type", "user")
     try:
         html_body = build_html(
             user["name"], favs, deals_by_fav, listing_reqs, buy_reqs,
@@ -1876,6 +2028,34 @@ def _send_claimed_recipient(
             unsubscribe_url, alert_off_count, signal_counts=signal_counts,
             tracking_token=delivery["tracking_token"],
         )
+        # 수신거부가 claim 이후에 발생한 경우 provider 제출 직전에 다시
+        # 확인한다. 테스트용 최소 커서에는 조회 API가 없으므로 생략한다.
+        if hasattr(cur, "fetchone"):
+            if recipient_type == "user":
+                eligibility_sql = (
+                    "SELECT COALESCE(weekly_email_enabled, FALSE) AS enabled "
+                    "FROM users WHERE id=%s AND COALESCE(status, 'active') <> 'withdrawn'"
+                )
+                eligibility_params = (uid,)
+            else:
+                owner_table = {
+                    "agent": "agents", "operator": "operators",
+                    "loan_consultant": "loan_consultants",
+                }.get(recipient_type)
+                eligibility_sql = (
+                    f"SELECT weekly_email_enabled AS enabled FROM {owner_table} "
+                    "WHERE id=%s AND status='approved'"
+                )
+                eligibility_params = (uid,)
+            cur.execute(eligibility_sql, eligibility_params)
+            eligibility = cur.fetchone()
+            if not eligibility or not eligibility.get("enabled"):
+                _finish_delivery(
+                    cur, delivery["id"], delivery["claim_token"],
+                    False, "recipient is no longer eligible",
+                )
+                conn.commit()
+                return False, "recipient is no longer eligible"
         cur.execute(
             """UPDATE weekly_email_deliveries
                   SET subject=%s, updated_at=NOW()
@@ -1914,7 +2094,9 @@ def _send_claimed_recipient(
                 return True, msg
             if retry_no + 1 < remaining:
                 time.sleep(min(2 ** retry_no, 2))
-                delivery = _claim_delivery(cur, uid, week_start, cohort)
+                delivery = _claim_delivery(
+                    cur, uid, week_start, cohort, recipient_type,
+                )
                 conn.commit()
                 if not delivery:
                     return False, "delivery claim unavailable for retry"
@@ -1931,6 +2113,60 @@ def _send_claimed_recipient(
         except Exception:
             conn.rollback()
         return False, str(exc)
+
+
+def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
+    """일반회원과 승인된 파트너를 같은 발송 입력 형태로 정규화한다."""
+    cur.execute(
+        """
+        SELECT 'user' AS recipient_type, id, email,
+               COALESCE(name, email) AS name,
+               COALESCE(unsubscribe_token::text, '') AS unsubscribe_token,
+               COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled
+          FROM users
+         WHERE COALESCE(weekly_email_enabled, FALSE)=TRUE
+           AND email IS NOT NULL AND email <> ''
+           AND COALESCE(status, 'active') <> 'withdrawn'
+           AND (%s IS NULL OR id=%s)
+        UNION ALL
+        SELECT 'agent', id, email, COALESCE(owner_name, email),
+               COALESCE(weekly_unsubscribe_token::text, ''),
+               weekly_email_enabled
+          FROM agents
+         WHERE weekly_email_enabled=TRUE AND status='approved'
+           AND email IS NOT NULL AND email <> ''
+           AND %s IS NULL
+        UNION ALL
+        SELECT 'operator', id, email, COALESCE(owner_name, email),
+               COALESCE(weekly_unsubscribe_token::text, ''),
+               weekly_email_enabled
+          FROM operators
+         WHERE weekly_email_enabled=TRUE AND status='approved'
+           AND email IS NOT NULL AND email <> ''
+           AND %s IS NULL
+        UNION ALL
+        SELECT 'loan_consultant', id, email, COALESCE(owner_name, email),
+               COALESCE(weekly_unsubscribe_token::text, ''),
+               weekly_email_enabled
+          FROM loan_consultants
+         WHERE weekly_email_enabled=TRUE AND status='approved'
+           AND email IS NOT NULL AND email <> ''
+           AND %s IS NULL
+        ORDER BY recipient_type, id
+        """,
+        (target_uid, target_uid, target_uid, target_uid, target_uid),
+    )
+    rows = []
+    for raw in cur.fetchall():
+        row = dict(raw)
+        # Keep provider input conservative; malformed addresses are excluded
+        # without logging the PII value.
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", str(row.get("email") or "")):
+            continue
+        row["cohort"] = cohort_for_recipient(row["recipient_type"], row["id"])
+        if row["cohort"] == selected_cohort:
+            rows.append(row)
+    return rows
 
 
 # ── 메인 ─────────────────────────────────────────────────────────────────────
@@ -2018,28 +2254,14 @@ def main():
             log.info("관리자 주간 이메일 사본: %s", msg)
             return 0 if ok else 1
 
-        # 발송 대상 회원 조회
-        uid_filter = "AND u.id = %s" if target_uid else ""
-        uid_params = (target_uid,) if target_uid else ()
-        cur.execute(f"""
-            SELECT id, email, COALESCE(name, email) AS name,
-                   COALESCE(user_type, 'general') AS user_type,
-                   COALESCE(unsubscribe_token::text, '') AS unsubscribe_token
-            FROM users u
-            WHERE COALESCE(weekly_email_enabled, FALSE) = TRUE
-              AND email IS NOT NULL AND email <> ''
-              AND COALESCE(status, 'active') <> 'withdrawn'
-              AND (%s = 'tue' AND MOD(u.id, 2) = 0
-                   OR %s = 'thu' AND MOD(u.id, 2) = 1)
-              {uid_filter}
-            ORDER BY id
-        """, (selected_cohort, selected_cohort, *uid_params))
-        users = cur.fetchall()
-        log.info("발송 대상 회원 %d명", len(users))
+        # 일반회원과 승인된 파트너를 동일한 발송 입력으로 정규화한다.
+        users = _get_weekly_recipients(cur, selected_cohort, target_uid)
+        log.info("발송 대상 %d명(일반회원+파트너)", len(users))
 
         sent = errors = 0
         for user in users:
             uid   = user["id"]
+            recipient_type = user.get("recipient_type", "user")
             email = user["email"]
             name  = user["name"]
             delivery = None
@@ -2047,22 +2269,32 @@ def main():
             try:
                 if not dry_run:
                     delivery = _claim_delivery(
-                        cur, uid, week_start, selected_cohort,
+                        cur, uid, week_start, selected_cohort, recipient_type,
                     )
                     conn.commit()
                     if not delivery:
                         log.info("  - %s (이미 발송됨/다른 작업자가 처리 중)", email)
                         continue
-                personalized = _personalize_recipient(cur, user, week_ago)
+                personalized = (
+                    _personalize_recipient(cur, user, week_ago)
+                    if recipient_type == "user"
+                    else _personalize_partner_recipient(cur, user, week_ago)
+                )
                 subject = _build_subject(
                     personalized["new_deal_count"],
                     datalab_summary, feature_tip,
                 )
                 unsubscribe_token = user.get("unsubscribe_token") or ""
-                unsubscribe_url = (
-                    f"{SITE_URL}/unsubscribe?token={unsubscribe_token}"
-                    if unsubscribe_token else f"{SITE_URL}/mypage"
-                )
+                if unsubscribe_token and recipient_type != "user":
+                    unsubscribe_url = (
+                        f"{SITE_URL}/unsubscribe?type={quote(recipient_type)}"
+                        f"&token={quote(unsubscribe_token)}"
+                    )
+                else:
+                    unsubscribe_url = (
+                        f"{SITE_URL}/unsubscribe?token={unsubscribe_token}"
+                        if unsubscribe_token else f"{SITE_URL}/mypage"
+                    )
                 if dry_run:
                     log.info(
                         "  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
@@ -2084,6 +2316,7 @@ def main():
                     price_highs, most_traded, datalab_summary, feature_tip,
                     unsubscribe_url, personalized["alert_off_count"],
                     personalized["signal_counts"], week_start, selected_cohort,
+                    recipient_type=recipient_type,
                 )
             except Exception as exc:
                 conn.rollback()

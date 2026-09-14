@@ -8198,17 +8198,31 @@ def mypage_page():
 def unsubscribe_weekly_email():
     """원클릭 수신거부 — 이메일 링크의 토큰만으로 로그인 없이 처리."""
     token = request.args.get("token", "").strip()
+    recipient_type = (request.args.get("type") or "").strip()
     success = False
     if token:
         conn = get_conn()
         cur = conn.cursor()
         try:
-            cur.execute(
-                "UPDATE users SET weekly_email_enabled = FALSE, "
-                "updated_weekly_email_at = NOW() "
-                "WHERE unsubscribe_token = %s::uuid RETURNING id",
-                (token,),
-            )
+            # 기존 일반회원 링크는 type 없이 그대로 동작한다. 파트너 링크는
+            # type을 함께 요구해 서로 다른 테이블의 UUID가 우연히 충돌해도
+            # 다른 계정의 수신 설정을 바꾸지 않는다.
+            if recipient_type in ("agent", "operator", "loan_consultant"):
+                table = {"agent": "agents", "operator": "operators",
+                         "loan_consultant": "loan_consultants"}[recipient_type]
+                cur.execute(
+                    f"UPDATE {table} SET weekly_email_enabled=FALSE, "
+                    "weekly_email_updated_at=NOW() "
+                    "WHERE weekly_unsubscribe_token = %s::uuid RETURNING id",
+                    (token,),
+                )
+            elif recipient_type in ("", "user"):
+                cur.execute(
+                    "UPDATE users SET weekly_email_enabled = FALSE, "
+                    "updated_weekly_email_at = NOW() "
+                    "WHERE unsubscribe_token = %s::uuid RETURNING id",
+                    (token,),
+                )
             if cur.fetchone():
                 success = True
             conn.commit()
@@ -9153,7 +9167,8 @@ def auth_me():
             for sess_key, table, acct_type, name_col, org_col in active_biz:
                 sid = session.get(sess_key)
                 cur.execute(
-                    f"SELECT {name_col} AS name, email, {org_col} AS org_name"
+                    f"SELECT {name_col} AS name, email, {org_col} AS org_name, "
+                    "weekly_email_enabled"
                     f" FROM {table} WHERE id = %s AND status = 'approved'",
                     (sid,),
                 )
@@ -9165,6 +9180,7 @@ def auth_me():
                         "name": row.get("name"),
                         "email": row.get("email"),
                         "org_name": row.get("org_name"),
+                        "weekly_email_enabled": bool(row.get("weekly_email_enabled")),
                     })
         finally:
             cur.close()
@@ -10661,7 +10677,8 @@ def _agent_me_data(agent_id):
         cur.execute("""
             SELECT office_name, owner_name, phone, photo_url, intro_text, intro_title, subdomain_slug,
                    email, reg_number, biz_reg_number, status, office_address, office_phone,
-                   COALESCE(is_visible, TRUE) AS is_visible
+                   COALESCE(is_visible, TRUE) AS is_visible,
+                   weekly_email_enabled
             FROM agents WHERE id = %s
         """, [agent_id])
         me = cur.fetchone()
@@ -16368,7 +16385,8 @@ def operator_me():
         cur.execute("""
             SELECT company_name, owner_name, category, phone, photo_url, logo_url, intro_text, subdomain_slug,
                    email, biz_reg_number, status,
-                   COALESCE(is_visible, TRUE) AS is_visible
+                    COALESCE(is_visible, TRUE) AS is_visible,
+                    weekly_email_enabled
             FROM operators WHERE id = %s
         """, [operator_id])
         me = cur.fetchone()
@@ -16675,6 +16693,293 @@ def require_loan_consultant(f):
     return wrapper
 
 
+# ------------------------------------------------------------
+# 파트너 관심단지/주간 이메일 — 세 파트너 계정은 각각 독립 테이블과
+# 세션 키를 가지므로, 공통 구현도 owner FK를 명시적으로 선택한다.
+# ------------------------------------------------------------
+_PARTNER_ACCOUNT_CONFIG = {
+    "agent": {
+        "table": "agents", "session_key": "agent_id", "owner_column": "agent_id",
+        "name_column": "office_name", "decorator": require_agent,
+    },
+    "operator": {
+        "table": "operators", "session_key": "operator_id", "owner_column": "operator_id",
+        "name_column": "company_name", "decorator": require_operator,
+    },
+    "loan_consultant": {
+        "table": "loan_consultants", "session_key": "loan_consultant_id",
+        "owner_column": "loan_consultant_id", "name_column": "office_name",
+        "decorator": require_loan_consultant,
+    },
+}
+
+
+def _partner_favorite_owner(kind):
+    config = _PARTNER_ACCOUNT_CONFIG[kind]
+    owner_id = session.get(config["session_key"])
+    if not owner_id:
+        return None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"SELECT id, {config['name_column']} AS display_name, email, status, "
+            "weekly_email_enabled, weekly_unsubscribe_token "
+            f"FROM {config['table']} WHERE id=%s",
+            [owner_id],
+        )
+        return cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _partner_favorites_data(cur, kind, owner_id):
+    owner_column = _PARTNER_ACCOUNT_CONFIG[kind]["owner_column"]
+    cur.execute(
+        f"""
+        SELECT pf.id AS favorite_id, pf.master_building_id,
+               mb.building_name, mb.road_address, mb.sgg_text, mb.umd_nm,
+               mb.jibun, mb.lodging_type, mb.lodging_subtype,
+               pf.created_at, pf.updated_at
+          FROM partner_favorites pf
+          JOIN master_buildings mb ON mb.id=pf.master_building_id
+         WHERE pf.{owner_column}=%s
+         ORDER BY pf.created_at DESC, pf.id DESC
+        """,
+        [owner_id],
+    )
+    return [dict(row) for row in cur.fetchall()]
+
+
+def _partner_favorite_response(cur, kind, owner):
+    return {
+        "ok": True,
+        "items": _partner_favorites_data(cur, kind, owner["id"]),
+        "count": None,
+        "max": 30,
+        "weekly_email_enabled": bool(owner.get("weekly_email_enabled")),
+    }
+
+
+def _partner_favorites_list(kind):
+    owner = _partner_favorite_owner(kind)
+    if not owner:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if owner.get("status") != "approved":
+        return jsonify({"ok": False, "message": "승인된 파트너 계정만 이용할 수 있습니다."}), 403
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        payload = _partner_favorite_response(cur, kind, owner)
+        payload["count"] = len(payload["items"])
+        return jsonify(payload)
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _partner_favorites_add(kind):
+    owner = _partner_favorite_owner(kind)
+    if not owner:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if owner.get("status") != "approved":
+        return jsonify({"ok": False, "message": "승인된 파트너 계정만 이용할 수 있습니다."}), 403
+    data = request.get_json(force=True, silent=True) or {}
+    # POST는 building id만 받는다. 이름/address 등 클라이언트 조작 값은
+    # 절대 저장하지 않고 canonical master_buildings에서 다시 읽는다.
+    if not isinstance(data, dict) or set(data) != {"master_building_id"}:
+        return jsonify({"ok": False, "message": "master_building_id만 입력할 수 있습니다."}), 400
+    mbid = data.get("master_building_id")
+    if isinstance(mbid, bool) or not isinstance(mbid, int) or mbid <= 0:
+        return jsonify({"ok": False, "message": "master_building_id가 올바르지 않습니다."}), 400
+    config = _PARTNER_ACCOUNT_CONFIG[kind]
+    owner_column = config["owner_column"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 같은 계정의 동시 추가가 30개 상한을 우회하지 않도록 트랜잭션
+        # advisory lock을 사용한다.
+        cur.execute("SELECT pg_advisory_xact_lock(%s, %s)", [931_001, owner["id"]])
+        cur.execute("SELECT id, building_name, road_address, sgg_text, umd_nm, jibun, lodging_type, lodging_subtype FROM master_buildings WHERE id=%s", [mbid])
+        building = cur.fetchone()
+        if not building:
+            conn.rollback()
+            return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+        cur.execute(f"SELECT id FROM partner_favorites WHERE {owner_column}=%s AND master_building_id=%s", [owner["id"], mbid])
+        duplicate = cur.fetchone()
+        favorite_id = duplicate["id"] if duplicate else None
+        if not duplicate:
+            cur.execute(f"SELECT COUNT(*) AS c FROM partner_favorites WHERE {owner_column}=%s", [owner["id"]])
+            if int((cur.fetchone() or {}).get("c") or 0) >= 30:
+                conn.rollback()
+                return jsonify({"ok": False, "message": "관심단지는 최대 30개까지 등록할 수 있습니다."}), 409
+            cur.execute(
+                f"INSERT INTO partner_favorites ({owner_column}, master_building_id) "
+                "VALUES (%s, %s) RETURNING id",
+                [owner["id"], mbid],
+            )
+            favorite_id = cur.fetchone()["id"]
+        conn.commit()
+        cur.execute(f"SELECT weekly_email_enabled FROM {config['table']} WHERE id=%s", [owner["id"]])
+        enabled = bool((cur.fetchone() or {}).get("weekly_email_enabled"))
+        item = dict(building)
+        item["favorite_id"] = favorite_id
+        return jsonify({"ok": True, "idempotent": bool(duplicate), "favorite": item,
+                        "weekly_email_enabled": enabled})
+    except psycopg2_errors.UniqueViolation:
+        conn.rollback()
+        # A duplicate from a concurrent request is still idempotent.
+        cur.execute(f"SELECT id FROM partner_favorites WHERE {owner_column}=%s AND master_building_id=%s", [owner["id"], mbid])
+        row = cur.fetchone()
+        if row:
+            return jsonify({"ok": True, "idempotent": True, "favorite_id": row["id"]})
+        return jsonify({"ok": False, "message": "관심단지를 등록하지 못했습니다."}), 409
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _partner_favorites_remove(kind, master_building_id):
+    owner = _partner_favorite_owner(kind)
+    if not owner:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if owner.get("status") != "approved":
+        return jsonify({"ok": False, "message": "승인된 파트너 계정만 이용할 수 있습니다."}), 403
+    if (isinstance(master_building_id, bool)
+            or not isinstance(master_building_id, int)
+            or master_building_id <= 0):
+        return jsonify({"ok": False, "message": "master_building_id가 올바르지 않습니다."}), 400
+    owner_column = _PARTNER_ACCOUNT_CONFIG[kind]["owner_column"]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"DELETE FROM partner_favorites "
+            f"WHERE master_building_id=%s AND {owner_column}=%s RETURNING id",
+            [master_building_id, owner["id"]],
+        )
+        if not cur.fetchone():
+            conn.rollback()
+            return jsonify({"ok": False, "message": "관심단지를 찾을 수 없습니다."}), 404
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _partner_weekly_email(kind):
+    owner = _partner_favorite_owner(kind)
+    if not owner:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    if owner.get("status") != "approved":
+        return jsonify({"ok": False, "message": "승인된 파트너 계정만 이용할 수 있습니다."}), 403
+    if request.method == "GET":
+        return jsonify({"ok": True, "weekly_email_enabled": bool(owner.get("weekly_email_enabled"))})
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    raw = data.get("enabled")
+    if not isinstance(raw, bool):
+        return jsonify({"ok": False, "message": "enabled 값은 true/false여야 합니다."}), 400
+    config = _PARTNER_ACCOUNT_CONFIG[kind]
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""UPDATE {config['table']}
+                   SET weekly_email_enabled=%s,
+                       weekly_email_opted_at=CASE WHEN %s
+                           THEN COALESCE(weekly_email_opted_at, NOW())
+                           ELSE weekly_email_opted_at END,
+                       weekly_email_updated_at=NOW()
+                 WHERE id=%s RETURNING weekly_email_enabled""",
+            [raw, raw, owner["id"]],
+        )
+        updated = cur.fetchone()
+        conn.commit()
+        return jsonify({"ok": True, "weekly_email_enabled": bool(updated["weekly_email_enabled"])})
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.route("/api/agent/favorites", methods=["GET", "POST", "DELETE"])
+@require_agent
+def agent_favorites():
+    if request.method == "GET":
+        return _partner_favorites_list("agent")
+    if request.method == "POST":
+        return _partner_favorites_add("agent")
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    return _partner_favorites_remove("agent", data.get("master_building_id"))
+
+
+@app.route("/api/agent/favorites/<int:master_building_id>", methods=["DELETE"])
+@require_agent
+def agent_favorite_remove(master_building_id):
+    return _partner_favorites_remove("agent", master_building_id)
+
+
+@app.route("/api/operator/favorites", methods=["GET", "POST", "DELETE"])
+@require_operator
+def operator_favorites():
+    if request.method == "GET":
+        return _partner_favorites_list("operator")
+    if request.method == "POST":
+        return _partner_favorites_add("operator")
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    return _partner_favorites_remove("operator", data.get("master_building_id"))
+
+
+@app.route("/api/operator/favorites/<int:master_building_id>", methods=["DELETE"])
+@require_operator
+def operator_favorite_remove(master_building_id):
+    return _partner_favorites_remove("operator", master_building_id)
+
+
+@app.route("/api/loan-consultant/favorites", methods=["GET", "POST", "DELETE"])
+@require_loan_consultant
+def loan_consultant_favorites():
+    if request.method == "GET":
+        return _partner_favorites_list("loan_consultant")
+    if request.method == "POST":
+        return _partner_favorites_add("loan_consultant")
+    data = request.get_json(force=True, silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    return _partner_favorites_remove("loan_consultant", data.get("master_building_id"))
+
+
+@app.route("/api/loan-consultant/favorites/<int:master_building_id>", methods=["DELETE"])
+@require_loan_consultant
+def loan_consultant_favorite_remove(master_building_id):
+    return _partner_favorites_remove("loan_consultant", master_building_id)
+
+
+@app.route("/api/agent/weekly-email", methods=["GET", "PUT"])
+@require_agent
+def agent_weekly_email():
+    return _partner_weekly_email("agent")
+
+
+@app.route("/api/operator/weekly-email", methods=["GET", "PUT"])
+@require_operator
+def operator_weekly_email():
+    return _partner_weekly_email("operator")
+
+
+@app.route("/api/loan-consultant/weekly-email", methods=["GET", "PUT"])
+@require_loan_consultant
+def loan_consultant_weekly_email():
+    return _partner_weekly_email("loan_consultant")
+
+
 @app.route("/loan-consultant/<slug>")
 def loan_consultant_profile_page(slug):
     """대출상담사 공개 프로필 페이지. Flask는 정적 룰(/loan-consultant/login, /loan-consultant/dashboard)을 우선 매칭하므로 충돌 없음."""
@@ -16817,8 +17122,9 @@ def loan_consultant_me():
         cur.execute("""
             SELECT office_name, owner_name, phone, intro_text, subdomain_slug,
                    consultant_products, kakao_chat_url, service_region,
-                   email, license_number, biz_reg_number, logo_url, status,
-                   COALESCE(is_visible, TRUE) AS is_visible
+                    email, license_number, biz_reg_number, logo_url, status,
+                    COALESCE(is_visible, TRUE) AS is_visible,
+                    weekly_email_enabled
             FROM loan_consultants WHERE id = %s
         """, [lc_id])
         me = cur.fetchone()

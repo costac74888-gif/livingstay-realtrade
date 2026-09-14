@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-11"
+SCHEMA_VERSION = "2026-09-09-12"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -1332,7 +1332,11 @@ def _run_init_db():
         intro_text TEXT,                    -- 자기소개(선택)
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
-        approved_by INTEGER REFERENCES admin_users(id)   -- 승인한 관리자 (admin_users.id 참조 FK)
+        approved_by INTEGER REFERENCES admin_users(id),  -- 승인한 관리자 (admin_users.id 참조 FK)
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_opted_at TIMESTAMP,
+        weekly_email_updated_at TIMESTAMP,
+        weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
     )
     """)
     # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
@@ -1357,6 +1361,18 @@ def _run_init_db():
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS office_phone TEXT")    # 사무실 유선전화(선택)
     cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS office_address TEXT")  # 사무소 소재지(선택)
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
+    cur.execute("ALTER TABLE agents ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
+    cur.execute("UPDATE agents SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
+    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_email_enabled SET NOT NULL")
+    cur.execute("UPDATE agents SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
+    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")
+    cur.execute("ALTER TABLE agents ALTER COLUMN weekly_unsubscribe_token SET NOT NULL")
+    cur.execute("DROP INDEX IF EXISTS uq_agents_weekly_unsubscribe_token")
+    cur.execute("CREATE UNIQUE INDEX uq_agents_weekly_unsubscribe_token ON agents (weekly_unsubscribe_token)")
 
     # 중개사별 담당(취육) 건물 + 매물 수 (B화면/중개사 개별페이지에서 사용 예정)
     cur.execute("""
@@ -1470,7 +1486,11 @@ def _run_init_db():
         status TEXT DEFAULT 'pending',      -- pending | approved | rejected | suspended
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
-        approved_by INTEGER REFERENCES admin_users(id)   -- 승인한 관리자 (admin_users.id 참조 FK)
+        approved_by INTEGER REFERENCES admin_users(id),  -- 승인한 관리자 (admin_users.id 참조 FK)
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_opted_at TIMESTAMP,
+        weekly_email_updated_at TIMESTAMP,
+        weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
     )
     """)
     # 기존에 이미 만들어진 DB에도 안전하게 컬럼 추가 (데이터 보존)
@@ -1493,6 +1513,18 @@ def _run_init_db():
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS is_visible BOOLEAN DEFAULT TRUE")
     # 유료 우선노출용 점수 (현재 미사용, 기본 0 — loan_consultants.priority_score와 동일 패턴)
     cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
+    cur.execute("ALTER TABLE operators ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
+    cur.execute("UPDATE operators SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
+    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_email_enabled SET NOT NULL")
+    cur.execute("UPDATE operators SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
+    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")
+    cur.execute("ALTER TABLE operators ALTER COLUMN weekly_unsubscribe_token SET NOT NULL")
+    cur.execute("DROP INDEX IF EXISTS uq_operators_weekly_unsubscribe_token")
+    cur.execute("CREATE UNIQUE INDEX uq_operators_weekly_unsubscribe_token ON operators (weekly_unsubscribe_token)")
     # 업종명 정리: '위탁운영' → '위탁' (idempotent — 이미 '위탁'이면 아무 일도 안 일어남)
     cur.execute("UPDATE operators SET category='위탁' WHERE category='위탁운영'")
 
@@ -1563,7 +1595,11 @@ def _run_init_db():
         admin_tag TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         approved_at TIMESTAMP,
-        approved_by INTEGER REFERENCES admin_users(id)
+        approved_by INTEGER REFERENCES admin_users(id),
+        weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        weekly_email_opted_at TIMESTAMP,
+        weekly_email_updated_at TIMESTAMP,
+        weekly_unsubscribe_token UUID NOT NULL DEFAULT gen_random_uuid()
     )
     """)
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS logo_url TEXT")  # 파트너 로고(이번엔 스키마만 준비)
@@ -1575,6 +1611,18 @@ def _run_init_db():
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS priority_score INTEGER DEFAULT 0")
     # 취급지역 (전국/수도권/시도 — 허용값은 app.py LOAN_SERVICE_REGIONS). NULL이면 화면에서 '전국'으로 표시
     cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS service_region TEXT")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_enabled BOOLEAN NOT NULL DEFAULT FALSE")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_opted_at TIMESTAMP")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_email_updated_at TIMESTAMP")
+    cur.execute("ALTER TABLE loan_consultants ADD COLUMN IF NOT EXISTS weekly_unsubscribe_token UUID DEFAULT gen_random_uuid()")
+    cur.execute("UPDATE loan_consultants SET weekly_email_enabled = FALSE WHERE weekly_email_enabled IS NULL")
+    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_email_enabled SET DEFAULT FALSE")
+    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_email_enabled SET NOT NULL")
+    cur.execute("UPDATE loan_consultants SET weekly_unsubscribe_token = gen_random_uuid() WHERE weekly_unsubscribe_token IS NULL")
+    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_unsubscribe_token SET DEFAULT gen_random_uuid()")
+    cur.execute("ALTER TABLE loan_consultants ALTER COLUMN weekly_unsubscribe_token SET NOT NULL")
+    cur.execute("DROP INDEX IF EXISTS uq_loan_consultants_weekly_unsubscribe_token")
+    cur.execute("CREATE UNIQUE INDEX uq_loan_consultants_weekly_unsubscribe_token ON loan_consultants (weekly_unsubscribe_token)")
 
     # 대출상담사별 담당 건물 (agent_buildings/operator_buildings와 동일 패턴)
     cur.execute("""
@@ -1600,6 +1648,38 @@ def _run_init_db():
         CONSTRAINT loan_consultant_service_areas_unique UNIQUE (loan_consultant_id, region_name)
     )
     """)
+    # 파트너 대시보드 관심단지. owner FK는 다형성을 흉내내지 않고 세 컬럼을
+    # 명시해 삭제 전파와 ID 무결성을 DB에서 보장한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS partner_favorites (
+        id BIGSERIAL PRIMARY KEY,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+        operator_id INTEGER REFERENCES operators(id) ON DELETE CASCADE,
+        loan_consultant_id INTEGER REFERENCES loan_consultants(id) ON DELETE CASCADE,
+        master_building_id INTEGER NOT NULL REFERENCES master_buildings(id) ON DELETE CASCADE,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        CONSTRAINT partner_favorites_one_owner
+            CHECK (num_nonnulls(agent_id, operator_id, loan_consultant_id) = 1)
+    )
+    """)
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS operator_id INTEGER REFERENCES operators(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS loan_consultant_id INTEGER REFERENCES loan_consultants(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS master_building_id INTEGER REFERENCES master_buildings(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW()")
+    cur.execute("ALTER TABLE partner_favorites ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()")
+    cur.execute("ALTER TABLE partner_favorites DROP CONSTRAINT IF EXISTS partner_favorites_one_owner")
+    cur.execute("""
+        ALTER TABLE partner_favorites ADD CONSTRAINT partner_favorites_one_owner
+        CHECK (num_nonnulls(agent_id, operator_id, loan_consultant_id) = 1)
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_partner_favorites_agent_building ON partner_favorites (agent_id, master_building_id) WHERE agent_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_partner_favorites_operator_building ON partner_favorites (operator_id, master_building_id) WHERE operator_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_partner_favorites_loan_consultant_building ON partner_favorites (loan_consultant_id, master_building_id) WHERE loan_consultant_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_partner_favorites_agent ON partner_favorites (agent_id, created_at DESC) WHERE agent_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_partner_favorites_operator ON partner_favorites (operator_id, created_at DESC) WHERE operator_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_partner_favorites_loan_consultant ON partner_favorites (loan_consultant_id, created_at DESC) WHERE loan_consultant_id IS NOT NULL")
     # 기존 단일 취급지역(service_region) 값을 다중선택 테이블로 1회 이관(idempotent)
     cur.execute("""
         INSERT INTO loan_consultant_service_areas (loan_consultant_id, region_name)
@@ -3570,12 +3650,17 @@ def _run_init_db():
         updated_at TIMESTAMP DEFAULT NOW()
     )
     """)
-    # 주간 이메일 A/B 실험 전달 원장. user_id + week_start가 발송의
+    # 주간 이메일 A/B 실험 전달 원장. owner + week_start가 발송의
     # 멱등 키이며, sending은 프로세스가 죽었을 때 stale claim으로 회수한다.
     cur.execute("""
     CREATE TABLE IF NOT EXISTS weekly_email_deliveries (
         id BIGSERIAL PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE,
+        operator_id INTEGER REFERENCES operators(id) ON DELETE CASCADE,
+        loan_consultant_id INTEGER REFERENCES loan_consultants(id) ON DELETE CASCADE,
+        recipient_type TEXT NOT NULL DEFAULT 'user'
+            CHECK (recipient_type IN ('user', 'agent', 'operator', 'loan_consultant')),
         week_start DATE NOT NULL,
         cohort TEXT NOT NULL CHECK (cohort IN ('tue', 'thu')),
         status TEXT NOT NULL DEFAULT 'sending'
@@ -3596,10 +3681,63 @@ def _run_init_db():
         last_clicked_at TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        UNIQUE (user_id, week_start),
-        UNIQUE (tracking_token)
+        UNIQUE (tracking_token),
+        CONSTRAINT weekly_email_deliveries_owner_check CHECK (
+            (recipient_type = 'user' AND user_id IS NOT NULL
+             AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'agent' AND agent_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'operator' AND operator_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'loan_consultant' AND loan_consultant_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+        )
     )
     """)
+    # 기존 user 행은 recipient_type/user_id를 유지하며, 이전 단일 UNIQUE
+    # 제약은 partial index로 동일한 멱등성을 보존한다.
+    cur.execute("ALTER TABLE weekly_email_deliveries ADD COLUMN IF NOT EXISTS agent_id INTEGER REFERENCES agents(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE weekly_email_deliveries ADD COLUMN IF NOT EXISTS operator_id INTEGER REFERENCES operators(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE weekly_email_deliveries ADD COLUMN IF NOT EXISTS loan_consultant_id INTEGER REFERENCES loan_consultants(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE weekly_email_deliveries ALTER COLUMN user_id DROP NOT NULL")
+    cur.execute("ALTER TABLE weekly_email_deliveries ADD COLUMN IF NOT EXISTS recipient_type TEXT NOT NULL DEFAULT 'user'")
+    cur.execute("UPDATE weekly_email_deliveries SET recipient_type = 'user' WHERE recipient_type IS NULL")
+    # Keep the original user uniqueness constraint; partner rows use the
+    # owner-specific partial indexes below.
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                 WHERE conname = 'weekly_email_deliveries_user_id_week_start_key'
+            ) THEN
+                ALTER TABLE weekly_email_deliveries
+                    ADD CONSTRAINT weekly_email_deliveries_user_id_week_start_key
+                    UNIQUE (user_id, week_start);
+            END IF;
+        END $$;
+    """)
+    cur.execute("ALTER TABLE weekly_email_deliveries DROP CONSTRAINT IF EXISTS weekly_email_deliveries_owner_check")
+    cur.execute("""
+        ALTER TABLE weekly_email_deliveries ADD CONSTRAINT weekly_email_deliveries_owner_check
+        CHECK (
+            (recipient_type = 'user' AND user_id IS NOT NULL
+             AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'agent' AND agent_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'operator' AND operator_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+            OR (recipient_type = 'loan_consultant' AND loan_consultant_id IS NOT NULL
+                AND num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)
+        )
+    """)
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_email_deliveries_user_week ON weekly_email_deliveries (user_id, week_start) WHERE recipient_type = 'user' AND user_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_email_deliveries_agent_week ON weekly_email_deliveries (agent_id, week_start) WHERE recipient_type = 'agent' AND agent_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_email_deliveries_operator_week ON weekly_email_deliveries (operator_id, week_start) WHERE recipient_type = 'operator' AND operator_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_weekly_email_deliveries_loan_consultant_week ON weekly_email_deliveries (loan_consultant_id, week_start) WHERE recipient_type = 'loan_consultant' AND loan_consultant_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_weekly_email_deliveries_agent ON weekly_email_deliveries (agent_id, week_start) WHERE agent_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_weekly_email_deliveries_operator ON weekly_email_deliveries (operator_id, week_start) WHERE operator_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_weekly_email_deliveries_loan_consultant ON weekly_email_deliveries (loan_consultant_id, week_start) WHERE loan_consultant_id IS NOT NULL")
     # Earlier experiment rows may predate the fencing token; backfill only the
     # new opaque lease column and make future claims non-null.
     cur.execute("""
