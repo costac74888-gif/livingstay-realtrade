@@ -1988,6 +1988,11 @@ def main():
 
         # 공통 데이터 (전체 회원이 동일하게 받음)
         price_highs, most_traded = _get_ranking(cur)
+        # _get_datalab_summary()는 별도 DB 연결을 사용한다. 운영 스키마 DDL이
+        # 대기 중일 때 첫 연결의 ACCESS SHARE 잠금을 계속 쥐고 있으면,
+        # 두 번째 연결이 DDL 뒤에서 기다리는 교착성 잠금 대기가 생긴다.
+        # 순위 조회는 읽기 전용이므로 여기서 트랜잭션을 끝내 잠금을 해제한다.
+        conn.commit()
         datalab_summary          = _get_datalab_summary()
         feature_tip              = _get_active_feature_tip(cur)
         _resolve_building_ids(
