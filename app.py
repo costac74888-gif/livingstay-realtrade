@@ -31724,10 +31724,15 @@ def admin_building_request_approve_name(req_id):
 def admin_user_stats():
     """회원 활동·가입·페이지뷰를 운영 대시보드용으로 집계한다.
 
-    모든 기간은 서버의 CURRENT_DATE를 기준으로 계산하고, 일별 CTE가 0건인
-    날짜도 채워 30행을 항상 반환한다. 기존 page_views는 보존하되 TOP5만
-    알려진 봇 UA를 제외한다.
+    모든 기간은 서버의 CURRENT_DATE를 기준으로 계산한다. 추이 기간은
+    30일·90일·1년·최초 가입일부터 전체를 지원하고, 활동이 없는 날짜도
+    채운다. 기존 page_views는 보존하되 TOP5만 알려진 봇 UA를 제외한다.
     """
+    range_key = str(request.args.get("range") or "30d").strip().lower()
+    range_days = {"30d": 30, "90d": 90, "1y": 365}
+    if range_key not in {*range_days, "all"}:
+        return jsonify({"ok": False, "message": "지원하지 않는 조회 기간입니다."}), 400
+
     conn = get_conn()
     cur = conn.cursor()
     try:
@@ -31799,32 +31804,53 @@ def admin_user_stats():
         summary.update(dict(cur.fetchone()))
 
         cur.execute("""
+            SELECT
+                CURRENT_DATE AS today,
+                LEAST(
+                    COALESCE(MIN(created_at)::date, CURRENT_DATE),
+                    CURRENT_DATE
+                ) AS first_joined_on
+            FROM users
+        """)
+        date_bounds = dict(cur.fetchone())
+        today = date_bounds["today"]
+        if range_key == "all":
+            trend_start = date_bounds["first_joined_on"]
+        else:
+            trend_start = today - timedelta(days=range_days[range_key] - 1)
+
+        cur.execute("""
             WITH days AS (
                 SELECT generate_series(
-                    CURRENT_DATE - INTERVAL '29 days',
+                    %s::date,
                     CURRENT_DATE,
                     INTERVAL '1 day'
                 )::date AS day
+            ),
+            baseline AS (
+                SELECT COUNT(*) AS count
+                FROM users
+                WHERE created_at < %s::date
             ),
             active AS (
                 SELECT last_login_at::date AS day, COUNT(*) AS count
                 FROM users
                 WHERE COALESCE(status, 'active') = 'active'
-                  AND last_login_at >= CURRENT_DATE - INTERVAL '29 days'
+                  AND last_login_at >= %s::date
                   AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
                 GROUP BY last_login_at::date
             ),
             new_users AS (
                 SELECT created_at::date AS day, COUNT(*) AS count
                 FROM users
-                WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+                WHERE created_at >= %s::date
                   AND created_at < CURRENT_DATE + INTERVAL '1 day'
                 GROUP BY created_at::date
             ),
             listings AS (
                 SELECT created_at::date AS day, COUNT(*) AS count
                 FROM listing_requests
-                WHERE created_at >= CURRENT_DATE - INTERVAL '29 days'
+                WHERE created_at >= %s::date
                   AND created_at < CURRENT_DATE + INTERVAL '1 day'
                   AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
                 GROUP BY created_at::date
@@ -31833,17 +31859,23 @@ def admin_user_stats():
                 to_char(days.day, 'YYYY-MM-DD') AS day,
                 COALESCE(active.count, 0) AS active,
                 COALESCE(new_users.count, 0) AS new_users,
-                COALESCE(listings.count, 0) AS listings
+                COALESCE(listings.count, 0) AS listings,
+                baseline.count + SUM(COALESCE(new_users.count, 0)) OVER (
+                    ORDER BY days.day
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) AS total_users
             FROM days
+            CROSS JOIN baseline
             LEFT JOIN active ON active.day = days.day
             LEFT JOIN new_users ON new_users.day = days.day
             LEFT JOIN listings ON listings.day = days.day
             ORDER BY days.day
-        """)
+        """, (trend_start, trend_start, trend_start, trend_start, trend_start))
         daily_rows = [dict(row) for row in cur.fetchall()]
         daily_active = [{"date": row["day"], "count": int(row["active"])} for row in daily_rows]
         daily_new = [{"date": row["day"], "count": int(row["new_users"])} for row in daily_rows]
         daily_listing = [{"date": row["day"], "count": int(row["listings"])} for row in daily_rows]
+        daily_total_users = [{"date": row["day"], "count": int(row["total_users"])} for row in daily_rows]
 
         cur.execute("""
             SELECT
@@ -31911,6 +31943,10 @@ def admin_user_stats():
             "daily_active": daily_active,
             "daily_new": daily_new,
             "daily_listing": daily_listing,
+            "daily_total_users": daily_total_users,
+            "trend_range": range_key,
+            "trend_start": trend_start.isoformat(),
+            "trend_end": today.isoformat(),
             "segment_counts": segment_counts,
             "page_views": {
                 "pv_today": pv_today,

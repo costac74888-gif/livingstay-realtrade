@@ -334,7 +334,8 @@ def check_user_stats_admin_api(client):
     required = {
         "mau", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
         "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_new",
-        "daily_listing", "segment_counts", "page_views",
+        "daily_listing", "daily_total_users", "trend_range", "trend_start", "trend_end",
+        "segment_counts", "page_views",
     }
     if not required <= set(data):
         return f"이용자 현황 API 필수 필드 누락: {sorted(required - set(data))}"
@@ -342,12 +343,28 @@ def check_user_stats_admin_api(client):
                 "listing_this_week", "mau_prev", "wau_prev", "dau_prev"):
         if not isinstance(data[key], int) or data[key] < 0:
             return f"{key}가 0 이상 정수가 아님"
-    for key in ("daily_active", "daily_new", "daily_listing"):
+    for key in ("daily_active", "daily_new", "daily_listing", "daily_total_users"):
         rows = data[key]
         if not isinstance(rows, list) or len(rows) != 30:
             return f"{key}가 30일 배열이 아님"
         if any(not row.get("date") or not isinstance(row.get("count"), int) for row in rows):
             return f"{key} 행의 date/count 형태가 잘못됨"
+    total_values = [row["count"] for row in data["daily_total_users"]]
+    if total_values != sorted(total_values):
+        return "누적 이용자 추이가 감소함"
+    for range_key, expected_days in (("90d", 90), ("1y", 365)):
+        ranged = client.get(f"/api/admin/user-stats?range={range_key}")
+        ranged_data = ranged.get_json() or {}
+        if ranged.status_code != 200 or len(ranged_data.get("daily_total_users") or []) != expected_days:
+            return f"이용자 현황 {range_key} 조회 기간이 잘못됨"
+    all_range = client.get("/api/admin/user-stats?range=all")
+    all_data = all_range.get_json() or {}
+    if all_range.status_code != 200 or not all_data.get("daily_total_users"):
+        return "이용자 현황 전체 기간 조회가 비어 있음"
+    if all_data["daily_total_users"][0]["date"] != all_data.get("trend_start"):
+        return "전체 기간이 최초 가입일부터 시작하지 않음"
+    if client.get("/api/admin/user-stats?range=invalid").status_code != 400:
+        return "이용자 현황의 잘못된 기간값이 거부되지 않음"
     if set((data["segment_counts"] or {})) != {"general", "agent", "operator"}:
         return "segment_counts의 general/agent/operator 구성이 잘못됨"
     views = data["page_views"]

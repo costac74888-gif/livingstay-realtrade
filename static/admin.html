@@ -89,6 +89,25 @@
    .presale-field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:var(--ink-soft)}
    .presale-field .member-edit-input{margin:0}
    @media(max-width:700px){#presaleForm,#promotionForm{grid-template-columns:1fr!important}.presale-field[style]{grid-column:auto!important}}
+    /* === 이용자 현황 compact analytics === */
+    .user-stats-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+    .user-stat-box{background:#fff;border:1px solid #DDE1E6;border-radius:8px;padding:10px 11px;min-width:0}
+    .user-stat-label{font-size:11px;color:var(--ink-soft);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .user-stat-value{display:flex;align-items:baseline;gap:4px;margin-top:3px}
+    .user-stat-value b{font-size:22px;letter-spacing:-.04em;color:var(--ink)}
+    .user-stat-value span{font-size:10px;color:var(--ink-soft)}
+    .user-stat-change{font-size:10px;margin-top:3px;min-height:14px}
+    .user-trend-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .user-range-controls{display:flex;gap:3px;padding:3px;background:#F2F0EB;border-radius:6px}
+    .user-range-btn{border:0;background:transparent;color:var(--ink-soft);padding:5px 9px;border-radius:4px;font:700 11px inherit;cursor:pointer;white-space:nowrap}
+    .user-range-btn:hover,.user-range-btn.is-active{background:#fff;color:var(--ink);box-shadow:0 1px 3px #1d27320d}
+    .user-range-btn:focus-visible{outline:2px solid #B4863F;outline-offset:1px}
+    .user-chart-wrap{height:235px;position:relative;margin-top:5px}
+    .user-chart-wrap canvas{width:100%!important;height:100%!important}
+    .user-chart-note{font-size:10.5px;color:var(--ink-soft);margin:5px 0 0}
+    @media(max-width:900px){.user-stats-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:520px){.user-stats-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.user-chart-wrap{height:210px}.user-range-btn{padding:5px 7px}}
+    @media(max-width:700px){.user-detail-grid{grid-template-columns:1fr!important}}
    /* === 관광 데이터랩 운영 보드 === */
    .tdl-page{--tdl-ink:#16202E;--tdl-muted:#697482;--tdl-line:#DDE1E6;--tdl-paper:#FCFBF8;--tdl-brass:#B4863F;color:var(--tdl-ink)}
    .tdl-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
@@ -1570,7 +1589,7 @@
       </svg>`;
     }
 
-    function renderUserStats(data) {
+    function renderUserStats(data, selectedRange = "30d") {
       const cards = [
         ["MAU", "mau", "mau_prev", "명"],
         ["WAU", "wau", "wau_prev", "명"],
@@ -1582,12 +1601,10 @@
       const cardHtml = cards.map(([label, key, previousKey, unit]) => {
         const value = Number(data[key] || 0);
         const change = previousKey ? userStatChange(value, data[previousKey]) : null;
-        return `<div style="background:#fff;border:1px solid #DDE1E6;border-radius:10px;padding:14px 15px;min-width:0;">
-          <div style="font-size:12px;color:var(--ink-soft);font-weight:600;">${label}</div>
-          <div style="display:flex;align-items:baseline;gap:5px;margin-top:4px;">
-            <b style="font-size:26px;color:var(--ink);">${num(value)}</b><span style="font-size:11px;color:var(--ink-soft);">${unit}</span>
-          </div>
-          ${change ? `<div style="font-size:11px;color:${change.color};margin-top:4px;">전 기간 대비 ${change.text}</div>` : '<div style="height:16px;margin-top:4px;"></div>'}
+        return `<div class="user-stat-box">
+          <div class="user-stat-label">${label}</div>
+          <div class="user-stat-value"><b>${num(value)}</b><span>${unit}</span></div>
+          ${change ? `<div class="user-stat-change" style="color:${change.color};">전 기간 대비 ${change.text}</div>` : '<div class="user-stat-change"></div>'}
         </div>`;
       }).join("");
 
@@ -1623,19 +1640,27 @@
           <h2 class="stats-title">이용자 현황</h2>
           <p class="stats-sub">최근 활동·가입·관심단지·매물등록과 페이지뷰를 기존 서비스 데이터 기준으로 집계합니다.</p>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+        <div class="user-stats-summary">
           ${cardHtml}
         </div>
-        <section class="stats-card stats-card-wide" style="margin-top:14px;">
-          <h3 class="stats-card-title">최근 30일 활동 추이</h3>
-          <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
-            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;border-radius:50%;margin-right:5px;"></i>활성사용자</span>
-            <span><i style="display:inline-block;width:9px;height:9px;background:#2E8B57;border-radius:50%;margin-right:5px;"></i>신규가입</span>
-            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;border-radius:50%;margin-right:5px;"></i>매물등록</span>
+        <section class="stats-card stats-card-wide" style="margin-top:10px;">
+          <div class="user-trend-head">
+            <div>
+              <h3 class="stats-card-title" style="margin:0;">이용자 추이</h3>
+              <p class="user-chart-note">누적 이용자와 신규 가입을 같은 날짜 축에서 비교합니다.</p>
+            </div>
+            <div class="user-range-controls" role="group" aria-label="이용자 추이 기간">
+              ${[["30d","30일"],["90d","90일"],["1y","1년"],["all","전체"]].map(([value, label]) =>
+                `<button type="button" class="user-range-btn ${selectedRange === value ? "is-active" : ""}" data-user-range="${value}" aria-pressed="${selectedRange === value}">${label}</button>`).join("")}
+            </div>
           </div>
-          <div style="overflow:hidden;margin-top:5px;">${userStatsLineSvg(data)}</div>
+          <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
+            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;margin-right:5px;"></i>누적 이용자</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;margin-right:5px;"></i>신규 가입</span>
+          </div>
+          <div class="user-chart-wrap"><canvas id="userTrendChart" role="img" aria-label="기간별 누적 이용자와 신규 가입 추이"></canvas></div>
         </section>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;">
+        <div class="user-detail-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;">
           <section class="stats-card">
             <h3 class="stats-card-title">사용자 세그먼트</h3>
             ${segmentHtml}
@@ -1649,13 +1674,54 @@
           </section>
         </div>
       `;
+      const days = data.daily_total_users || [];
+      const fresh = data.daily_new || [];
+      const labels = (days.length ? days : fresh).map((row) => String(row.date || "").slice(5));
+      const totalValues = days.map((row) => Number(row.count ?? row.total_users ?? row.total ?? 0));
+      const newValues = fresh.map((row) => Number(row.count || 0));
+      const chart = new Chart(document.getElementById("userTrendChart"), {
+        data: { labels, datasets: [
+          { type: "line", label: "누적 이용자", data: totalValues, borderColor: "#378ADD", backgroundColor: "rgba(55,138,221,.10)", borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true, yAxisID: "users" },
+          { type: "bar", label: "신규 가입", data: newValues, backgroundColor: "rgba(180,134,63,.68)", borderColor: "#B4863F", borderWidth: 1, maxBarThickness: 14, yAxisID: "new" },
+        ]},
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toLocaleString("ko-KR")}명` } } },
+          scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10, color: "#7A8490", font: { size: 10 } } },
+            users: { position: "left", beginAtZero: true, grid: { color: "#E8EBEF" }, ticks: { color: "#7A8490", font: { size: 10 } } },
+            new: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: "#7A8490", font: { size: 10 } } } } },
+      });
+      statsCharts.push(chart);
+      mount.querySelectorAll("[data-user-range]").forEach((button) => {
+        button.addEventListener("click", () => loadUserStatsRange(button.dataset.userRange));
+      });
+    }
+
+    async function loadUserStatsRange(range) {
+      const chartCanvas = document.getElementById("userTrendChart");
+      if (!chartCanvas) return;
+      const section = chartCanvas.closest(".stats-card");
+      const buttons = mount.querySelectorAll("[data-user-range]");
+      buttons.forEach((button) => { button.disabled = true; });
+      if (section) section.setAttribute("aria-busy", "true");
+      try {
+        const res = await fetch(`/api/admin/user-stats?range=${encodeURIComponent(range)}`);
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!res.ok) throw new Error("user stats range fetch failed");
+        const data = await res.json();
+        destroyStatsCharts();
+        renderUserStats(data, range);
+      } catch (e) {
+        buttons.forEach((button) => { button.disabled = false; });
+        if (section) section.setAttribute("aria-busy", "false");
+        window.alert("선택한 기간의 이용자 추이를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+      }
     }
 
     async function showUserStats() {
       destroyStatsCharts();
       mount.innerHTML = '<div class="stats-loading">이용자 현황을 불러오는 중…</div>';
       try {
-        const res = await fetch("/api/admin/user-stats");
+        const res = await fetch("/api/admin/user-stats?range=30d");
         if (res.status === 401) { window.location.href = "/admin/login"; return; }
         if (!res.ok) throw new Error("user stats fetch failed");
         const data = await res.json();
