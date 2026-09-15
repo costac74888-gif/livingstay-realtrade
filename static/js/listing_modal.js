@@ -1363,6 +1363,7 @@
     var meta = [listing.listing_number, listing.listing_date ? "최근 수정 " + listing.listing_date : ""].filter(Boolean).join(" · ");
     var detail = [areaText, roomText, yieldText].filter(Boolean).join(" · ");
     var isLimitedLocation = isWhole && listing.location_precision === "approximate";
+    var buildingName = isLimitedLocation ? "" : String(listing.building_name || "").trim();
     var locationLat = Number(isLimitedLocation ? listing.approx_lat : listing.lat);
     var locationLng = Number(isLimitedLocation ? listing.approx_lng : listing.lng);
     var hasMapLocation = isWhole && Number.isFinite(locationLat) && Number.isFinite(locationLng);
@@ -1464,6 +1465,7 @@
           '<button type="button" data-listing-detail-close aria-label="닫기" style="position:absolute;top:10px;right:10px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;cursor:pointer;">×</button>' +
         '</div>' +
         '<div style="padding:16px 18px 18px;">' +
+          (buildingName ? '<h3 style="margin:-2px 0 6px;color:var(--ink,#16202e);font-size:17px;line-height:1.35;font-weight:800;overflow-wrap:anywhere;">' + esc(buildingName) + '</h3>' : "") +
           (meta ? '<div style="font-size:11px;color:var(--ink-soft);margin:-4px 0 8px;">' + esc(meta) + '</div>' : "") +
           '<div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">' +
             '<span style="display:inline-block;margin-right:5px;padding:2px 6px;border-radius:4px;background:' + lodgingColor + ';color:#fff;font-size:10px;">' + esc(lodging) + '</span>' +

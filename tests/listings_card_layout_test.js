@@ -168,6 +168,9 @@ expect(
 );
 expect(
   modal.includes("data-listing-detail-map") &&
+  modal.includes("var buildingName = isLimitedLocation ?") &&
+  modal.includes("listing.building_name") &&
+  main.includes("building_name: lr.building_name || bName") &&
   modal.includes('listing.urgent_tier === "urgent"') &&
   modal.includes("background:var(--brass,#B4863F)") &&
   !modal.includes("🔥 급매") &&

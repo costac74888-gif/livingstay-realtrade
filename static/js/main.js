@@ -6992,7 +6992,9 @@ async function loadBuildingHeader(id){
             } catch (e) {}
             prompt("아래 매물 링크를 복사하세요:", shareData.url);
           };
-          window.openListingDetailModal(lr, {
+          window.openListingDetailModal(Object.assign({}, lr, {
+            building_name: lr.building_name || bName,
+          }), {
             onChat: () => _openListingChat(lr.id),
             onShare: shareListing,
           });
