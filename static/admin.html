@@ -1591,20 +1591,24 @@
 
     function renderUserStats(data, selectedRange = "30d") {
       const cards = [
-        ["MAU", "mau", "mau_prev", "명"],
-        ["WAU", "wau", "wau_prev", "명"],
-        ["DAU", "dau", "dau_prev", "명"],
-        ["신규가입(주간)", "new_this_week", null, "명"],
-        ["관심단지(주간)", "fav_this_week", null, "건"],
-        ["매물등록(주간)", "listing_this_week", null, "건"],
+        ["MAU", "mau", "mau_prev", "명", null],
+        ["WAU", "wau", "wau_prev", "명", null],
+        ["DAU", "dau", "dau_prev", "명", null],
+        ["신규가입(주간)", "new_this_week", null, "명", "total_users"],
+        ["관심단지(주간)", "fav_this_week", null, "건", "total_favorites"],
+        ["매물등록(주간)", "listing_this_week", null, "건", "total_listings"],
       ];
-      const cardHtml = cards.map(([label, key, previousKey, unit]) => {
+      const cardHtml = cards.map(([label, key, previousKey, unit, totalKey]) => {
         const value = Number(data[key] || 0);
         const change = previousKey ? userStatChange(value, data[previousKey]) : null;
         return `<div class="user-stat-box">
           <div class="user-stat-label">${label}</div>
           <div class="user-stat-value"><b>${num(value)}</b><span>${unit}</span></div>
-          ${change ? `<div class="user-stat-change" style="color:${change.color};">전 기간 대비 ${change.text}</div>` : '<div class="user-stat-change"></div>'}
+          ${change
+            ? `<div class="user-stat-change" style="color:${change.color};">전 기간 대비 ${change.text}</div>`
+            : totalKey
+              ? `<div class="user-stat-change">누적 ${num(data[totalKey] || 0)}${unit}</div>`
+              : '<div class="user-stat-change"></div>'}
         </div>`;
       }).join("");
 
@@ -1657,6 +1661,7 @@
           <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
             <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;margin-right:5px;"></i>DAU</span>
             <span><i style="display:inline-block;width:9px;height:9px;background:#7B61C9;margin-right:5px;"></i>MAU(30일)</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;margin-right:5px;"></i>신규 가입</span>
           </div>
           <div class="user-chart-wrap"><canvas id="userTrendChart" role="img" aria-label="기간별 DAU와 MAU 추이"></canvas></div>
           <p class="user-chart-note" style="margin-top:7px;">활성 이용자는 원본 IP를 저장하지 않고 해시한 방문 식별값으로 추정하므로 GA4 수치와 완전히 같지는 않습니다.</p>
@@ -1677,18 +1682,22 @@
       `;
       const days = data.daily_active || [];
       const mau = data.daily_mau || [];
+      const fresh = data.daily_new || [];
       const labels = (days.length ? days : mau).map((row) => String(row.date || "").slice(5));
       const dauValues = days.map((row) => Number(row.count || 0));
       const mauValues = mau.map((row) => Number(row.count || 0));
+      const newValues = fresh.map((row) => Number(row.count || 0));
       const chart = new Chart(document.getElementById("userTrendChart"), {
         data: { labels, datasets: [
-          { type: "line", label: "DAU", data: dauValues, borderColor: "#378ADD", backgroundColor: "rgba(55,138,221,.10)", borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true },
-          { type: "line", label: "MAU(30일)", data: mauValues, borderColor: "#7B61C9", backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .25 },
+          { type: "line", label: "DAU", data: dauValues, borderColor: "#378ADD", backgroundColor: "rgba(55,138,221,.10)", borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true, yAxisID: "active" },
+          { type: "line", label: "MAU(30일)", data: mauValues, borderColor: "#7B61C9", backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .25, yAxisID: "active" },
+          { type: "bar", label: "신규 가입", data: newValues, backgroundColor: "rgba(180,134,63,.68)", borderColor: "#B4863F", borderWidth: 1, maxBarThickness: 14, yAxisID: "new" },
         ]},
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
           plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toLocaleString("ko-KR")}명` } } },
           scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10, color: "#7A8490", font: { size: 10 } } },
-            y: { beginAtZero: true, grid: { color: "#E8EBEF" }, ticks: { precision: 0, color: "#7A8490", font: { size: 10 } } } } },
+            active: { position: "left", beginAtZero: true, grid: { color: "#E8EBEF" }, ticks: { precision: 0, color: "#7A8490", font: { size: 10 } } },
+            new: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { precision: 0, color: "#B4863F", font: { size: 10 } } } } },
       });
       statsCharts.push(chart);
       mount.querySelectorAll("[data-user-range]").forEach((button) => {

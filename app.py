@@ -31776,10 +31776,12 @@ def admin_user_stats():
         summary = dict(cur.fetchone())
 
         cur.execute("""
-            SELECT COUNT(*) FILTER (
-                WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
-                  AND created_at < CURRENT_DATE + INTERVAL '1 day'
-            ) AS new_this_week
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                      AND created_at < CURRENT_DATE + INTERVAL '1 day'
+                ) AS new_this_week,
+                COUNT(*) AS total_users
             FROM users
         """)
         summary.update(dict(cur.fetchone()))
@@ -31789,7 +31791,8 @@ def admin_user_stats():
                 COUNT(*) FILTER (
                     WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
                       AND created_at < CURRENT_DATE + INTERVAL '1 day'
-                ) AS fav_this_week
+                ) AS fav_this_week,
+                COUNT(*) AS total_favorites
             FROM user_favorites
         """)
         summary.update(dict(cur.fetchone()))
@@ -31800,7 +31803,10 @@ def admin_user_stats():
                     WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
                       AND created_at < CURRENT_DATE + INTERVAL '1 day'
                       AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
-                ) AS listing_this_week
+                ) AS listing_this_week,
+                COUNT(*) FILTER (
+                    WHERE COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
+                ) AS total_listings
             FROM listing_requests
         """)
         summary.update(dict(cur.fetchone()))
@@ -31961,6 +31967,9 @@ def admin_user_stats():
             "new_this_week": int(summary["new_this_week"] or 0),
             "fav_this_week": int(summary["fav_this_week"] or 0),
             "listing_this_week": int(summary["listing_this_week"] or 0),
+            "total_users": int(summary["total_users"] or 0),
+            "total_favorites": int(summary["total_favorites"] or 0),
+            "total_listings": int(summary["total_listings"] or 0),
             "mau_prev": int(summary["mau_prev"] or 0),
             "wau_prev": int(summary["wau_prev"] or 0),
             "dau_prev": int(summary["dau_prev"] or 0),

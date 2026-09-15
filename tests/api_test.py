@@ -333,6 +333,7 @@ def check_user_stats_admin_api(client):
     data = response.get_json() or {}
     required = {
         "mau", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
+        "total_users", "total_favorites", "total_listings",
         "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_mau", "daily_new",
         "daily_listing", "daily_total_users", "trend_range", "trend_start", "trend_end",
         "segment_counts", "page_views",
@@ -340,7 +341,8 @@ def check_user_stats_admin_api(client):
     if not required <= set(data):
         return f"이용자 현황 API 필수 필드 누락: {sorted(required - set(data))}"
     for key in ("mau", "wau", "dau", "new_this_week", "fav_this_week",
-                "listing_this_week", "mau_prev", "wau_prev", "dau_prev"):
+                "listing_this_week", "total_users", "total_favorites", "total_listings",
+                "mau_prev", "wau_prev", "dau_prev"):
         if not isinstance(data[key], int) or data[key] < 0:
             return f"{key}가 0 이상 정수가 아님"
     for key in ("daily_active", "daily_mau", "daily_new", "daily_listing", "daily_total_users"):
@@ -589,6 +591,7 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
         expected_deltas = {
             "mau": 2, "wau": 1, "dau": 1, "new_this_week": 1,
             "fav_this_week": 1, "listing_this_week": 1,
+            "total_users": 4, "total_favorites": 1, "total_listings": 2,
             "mau_prev": 1, "wau_prev": 1, "dau_prev": 0,
         }
         for key, delta in expected_deltas.items():
