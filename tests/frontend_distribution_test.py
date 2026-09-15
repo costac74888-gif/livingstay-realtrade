@@ -112,6 +112,8 @@ def main() -> None:
     check_failed_build_keeps_release()
 
     os.environ["SERVE_MINIFIED_ASSETS"] = "1"
+    os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
+    os.environ["SKIP_APP_BOOT_TASKS"] = "1"
     sys.path.insert(0, str(ROOT))
     from app import app  # noqa: E402
 

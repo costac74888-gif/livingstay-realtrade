@@ -21049,7 +21049,8 @@ def _warn_if_jobs_running_at_boot():
         print(f"[boot-warning] 실행중 작업 확인 실패(무시): {e}", flush=True)
 
 
-_warn_if_jobs_running_at_boot()  # gunicorn 부팅(모듈 임포트) 시점에 1회 실행
+if os.environ.get("SKIP_APP_BOOT_TASKS", "").strip().lower() not in {"1", "true", "yes"}:
+    _warn_if_jobs_running_at_boot()  # gunicorn 부팅(모듈 임포트) 시점에 1회 실행
 
 
 def _backfill_months():
@@ -35745,7 +35746,8 @@ def _resume_interrupted_sync_jobs():
         conn.close()
 
 
-_resume_interrupted_sync_jobs()
+if os.environ.get("SKIP_APP_BOOT_TASKS", "").strip().lower() not in {"1", "true", "yes"}:
+    _resume_interrupted_sync_jobs()
 
 
 def _resume_interrupted_scheduled_sync():
@@ -35791,7 +35793,8 @@ def _resume_interrupted_scheduled_sync():
         app.logger.exception("[auto-resume] 정기 API 통합 배치 재개 실패")
 
 
-_resume_interrupted_scheduled_sync()
+if os.environ.get("SKIP_APP_BOOT_TASKS", "").strip().lower() not in {"1", "true", "yes"}:
+    _resume_interrupted_scheduled_sync()
 
 
 # ---- 우편번호 백필 일일 자동 실행 (소량, 사람 개입 없이 서서히 완료) ----
@@ -35898,8 +35901,9 @@ def _zip_backfill_auto_loop():
         _t.sleep(1800)  # 30분마다 재확인
 
 
-threading.Thread(target=_zip_backfill_auto_loop, daemon=True,
-                 name="zip-backfill-auto").start()
+if os.environ.get("SKIP_APP_BOOT_TASKS", "").strip().lower() not in {"1", "true", "yes"}:
+    threading.Thread(target=_zip_backfill_auto_loop, daemon=True,
+                     name="zip-backfill-auto").start()
 
 
 # ── 이메일 광고배너 관리 (admin) ──────────────────────────────────────────────

@@ -29,7 +29,15 @@ VENDOR_CHART_URL = "/vendor/chart.umd.js"
 
 
 def run_building_photo_selection_preflight() -> None:
-    """승인된 높이별 정면 표본이 어긋나면 릴리스 생성 전에 중단한다."""
+    """승인된 높이별 정면 표본이 어긋나면 릴리스 생성 전에 중단한다.
+
+    이 테스트는 app 모듈을 import하지만 프런트 빌드는 DB 스키마를 변경하는
+    단계가 아니다. Publish 빌드가 운영 DB DDL 잠금에 대기하지 않도록 앱의
+    시작 시 스키마 초기화를 명시적으로 끈다.
+    """
+    test_env = os.environ.copy()
+    test_env["SKIP_STARTUP_SCHEMA_INIT"] = "1"
+    test_env["SKIP_APP_BOOT_TASKS"] = "1"
     subprocess.run(
         [
             sys.executable,
@@ -39,6 +47,7 @@ def run_building_photo_selection_preflight() -> None:
             "test_approved_height_fixtures_keep_the_target_frontage",
         ],
         cwd=ROOT,
+        env=test_env,
         check=True,
     )
 
