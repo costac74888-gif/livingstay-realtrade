@@ -333,7 +333,7 @@ def check_user_stats_admin_api(client):
     data = response.get_json() or {}
     required = {
         "mau", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
-        "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_new",
+        "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_mau", "daily_new",
         "daily_listing", "daily_total_users", "trend_range", "trend_start", "trend_end",
         "segment_counts", "page_views",
     }
@@ -343,7 +343,7 @@ def check_user_stats_admin_api(client):
                 "listing_this_week", "mau_prev", "wau_prev", "dau_prev"):
         if not isinstance(data[key], int) or data[key] < 0:
             return f"{key}가 0 이상 정수가 아님"
-    for key in ("daily_active", "daily_new", "daily_listing", "daily_total_users"):
+    for key in ("daily_active", "daily_mau", "daily_new", "daily_listing", "daily_total_users"):
         rows = data[key]
         if not isinstance(rows, list) or len(rows) != 30:
             return f"{key}가 30일 배열이 아님"
@@ -550,6 +550,16 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
                  "CURRENT_DATE - INTERVAL '31 days' + INTERVAL '1 hour'")
         add_user("withdrawn", "CURRENT_DATE - INTERVAL '40 days'", "CURRENT_DATE + INTERVAL '1 hour'",
                  status="withdrawn")
+        # 고유 방문자는 회원 로그인과 분리해 IP 해시 기준으로 집계한다.
+        for label, viewed_sql in (
+            ("today", "CURRENT_DATE + INTERVAL '1 hour'"),
+            ("wau-prev", "CURRENT_DATE - INTERVAL '8 days' + INTERVAL '1 hour'"),
+            ("mau-prev", "CURRENT_DATE - INTERVAL '31 days' + INTERVAL '1 hour'"),
+        ):
+            cur.execute(f"""
+                INSERT INTO page_views (path, ip_hash, user_agent, viewed_at)
+                VALUES ('/', %s, %s, {viewed_sql})
+            """, (f"{tag}-{label}", f"StatsTestBrowser/1.0 {tag}"))
         cur.execute("""
             INSERT INTO user_favorites (user_id, building_name, address, master_building_id, created_at)
             VALUES (%s, %s, %s, %s, CURRENT_DATE + INTERVAL '1 hour')

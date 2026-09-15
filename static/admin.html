@@ -1638,7 +1638,7 @@
       mount.innerHTML = `
         <div class="stats-head">
           <h2 class="stats-title">이용자 현황</h2>
-          <p class="stats-sub">최근 활동·가입·관심단지·매물등록과 페이지뷰를 기존 서비스 데이터 기준으로 집계합니다.</p>
+          <p class="stats-sub">익명 방문을 포함한 고유 활성 이용자와 가입·관심단지·매물등록을 집계합니다.</p>
         </div>
         <div class="user-stats-summary">
           ${cardHtml}
@@ -1647,7 +1647,7 @@
           <div class="user-trend-head">
             <div>
               <h3 class="stats-card-title" style="margin:0;">이용자 추이</h3>
-              <p class="user-chart-note">누적 이용자와 신규 가입을 같은 날짜 축에서 비교합니다.</p>
+              <p class="user-chart-note">GA4와 비슷하게 날짜별 DAU와 최근 30일 MAU 추이를 비교합니다.</p>
             </div>
             <div class="user-range-controls" role="group" aria-label="이용자 추이 기간">
               ${[["30d","30일"],["90d","90일"],["1y","1년"],["all","전체"]].map(([value, label]) =>
@@ -1655,10 +1655,11 @@
             </div>
           </div>
           <div style="display:flex;gap:15px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);margin:8px 0 2px;">
-            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;margin-right:5px;"></i>누적 이용자</span>
-            <span><i style="display:inline-block;width:9px;height:9px;background:#B4863F;margin-right:5px;"></i>신규 가입</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#378ADD;margin-right:5px;"></i>DAU</span>
+            <span><i style="display:inline-block;width:9px;height:9px;background:#7B61C9;margin-right:5px;"></i>MAU(30일)</span>
           </div>
-          <div class="user-chart-wrap"><canvas id="userTrendChart" role="img" aria-label="기간별 누적 이용자와 신규 가입 추이"></canvas></div>
+          <div class="user-chart-wrap"><canvas id="userTrendChart" role="img" aria-label="기간별 DAU와 MAU 추이"></canvas></div>
+          <p class="user-chart-note" style="margin-top:7px;">활성 이용자는 원본 IP를 저장하지 않고 해시한 방문 식별값으로 추정하므로 GA4 수치와 완전히 같지는 않습니다.</p>
         </section>
         <div class="user-detail-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;">
           <section class="stats-card">
@@ -1674,21 +1675,20 @@
           </section>
         </div>
       `;
-      const days = data.daily_total_users || [];
-      const fresh = data.daily_new || [];
-      const labels = (days.length ? days : fresh).map((row) => String(row.date || "").slice(5));
-      const totalValues = days.map((row) => Number(row.count ?? row.total_users ?? row.total ?? 0));
-      const newValues = fresh.map((row) => Number(row.count || 0));
+      const days = data.daily_active || [];
+      const mau = data.daily_mau || [];
+      const labels = (days.length ? days : mau).map((row) => String(row.date || "").slice(5));
+      const dauValues = days.map((row) => Number(row.count || 0));
+      const mauValues = mau.map((row) => Number(row.count || 0));
       const chart = new Chart(document.getElementById("userTrendChart"), {
         data: { labels, datasets: [
-          { type: "line", label: "누적 이용자", data: totalValues, borderColor: "#378ADD", backgroundColor: "rgba(55,138,221,.10)", borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true, yAxisID: "users" },
-          { type: "bar", label: "신규 가입", data: newValues, backgroundColor: "rgba(180,134,63,.68)", borderColor: "#B4863F", borderWidth: 1, maxBarThickness: 14, yAxisID: "new" },
+          { type: "line", label: "DAU", data: dauValues, borderColor: "#378ADD", backgroundColor: "rgba(55,138,221,.10)", borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true },
+          { type: "line", label: "MAU(30일)", data: mauValues, borderColor: "#7B61C9", backgroundColor: "transparent", borderWidth: 2, pointRadius: 0, pointHoverRadius: 3, tension: .25 },
         ]},
         options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
           plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${Number(ctx.parsed.y || 0).toLocaleString("ko-KR")}명` } } },
           scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 10, color: "#7A8490", font: { size: 10 } } },
-            users: { position: "left", beginAtZero: true, grid: { color: "#E8EBEF" }, ticks: { color: "#7A8490", font: { size: 10 } } },
-            new: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: "#7A8490", font: { size: 10 } } } } },
+            y: { beginAtZero: true, grid: { color: "#E8EBEF" }, ticks: { precision: 0, color: "#7A8490", font: { size: 10 } } } } },
       });
       statsCharts.push(chart);
       mount.querySelectorAll("[data-user-range]").forEach((button) => {

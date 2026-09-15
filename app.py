@@ -31723,11 +31723,12 @@ def admin_building_request_approve_name(req_id):
 @app.route("/api/admin/user-stats")
 @require_admin
 def admin_user_stats():
-    """회원 활동·가입·페이지뷰를 운영 대시보드용으로 집계한다.
+    """활성 이용자·회원 가입·페이지뷰를 운영 대시보드용으로 집계한다.
 
     모든 기간은 서버의 CURRENT_DATE를 기준으로 계산한다. 추이 기간은
     30일·90일·1년·최초 가입일부터 전체를 지원하고, 활동이 없는 날짜도
-    채운다. 기존 page_views는 보존하되 TOP5만 알려진 봇 UA를 제외한다.
+    채운다. DAU·WAU·MAU는 page_views의 IP 해시를 기준으로 익명 방문까지
+    포함하되 알려진 봇 UA는 제외한다.
     """
     range_key = str(request.args.get("range") or "30d").strip().lower()
     range_days = {"30d": 30, "90d": 90, "1y": 365}
@@ -31738,29 +31739,50 @@ def admin_user_stats():
     cur = conn.cursor()
     try:
         cur.execute("""
+            WITH human_views AS (
+                SELECT ip_hash, viewed_at
+                FROM page_views
+                WHERE ip_hash IS NOT NULL
+                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                      ARRAY['%bot%', '%crawl%', '%spider%', '%slurp%', '%facebookexternalhit%']
+                  )
+                  AND viewed_at >= CURRENT_DATE - INTERVAL '60 days'
+                  AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+            )
             SELECT
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE - INTERVAL '29 days'
-                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '29 days'
                 ) AS mau,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE - INTERVAL '6 days'
-                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '6 days'
                 ) AS wau,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE
-                      AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE
                 ) AS dau,
-                COUNT(*) FILTER (
-                    WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
-                      AND created_at < CURRENT_DATE + INTERVAL '1 day'
-                ) AS new_this_week
-            FROM users
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '59 days'
+                      AND viewed_at < CURRENT_DATE - INTERVAL '29 days'
+                ) AS mau_prev,
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '13 days'
+                      AND viewed_at < CURRENT_DATE - INTERVAL '6 days'
+                ) AS wau_prev,
+                COUNT(DISTINCT ip_hash) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '1 day'
+                      AND viewed_at < CURRENT_DATE
+                ) AS dau_prev
+            FROM human_views
         """)
         summary = dict(cur.fetchone())
+
+        cur.execute("""
+            SELECT COUNT(*) FILTER (
+                WHERE created_at >= CURRENT_DATE - INTERVAL '6 days'
+                  AND created_at < CURRENT_DATE + INTERVAL '1 day'
+            ) AS new_this_week
+            FROM users
+        """)
+        summary.update(dict(cur.fetchone()))
 
         cur.execute("""
             SELECT
@@ -31785,30 +31807,10 @@ def admin_user_stats():
 
         cur.execute("""
             SELECT
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE - INTERVAL '60 days'
-                      AND last_login_at < CURRENT_DATE - INTERVAL '30 days'
-                ) AS mau_prev,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE - INTERVAL '14 days'
-                      AND last_login_at < CURRENT_DATE - INTERVAL '7 days'
-                ) AS wau_prev,
-                COUNT(*) FILTER (
-                    WHERE COALESCE(status, 'active') = 'active'
-                      AND last_login_at >= CURRENT_DATE - INTERVAL '1 day'
-                      AND last_login_at < CURRENT_DATE
-                ) AS dau_prev
-            FROM users
-        """)
-        summary.update(dict(cur.fetchone()))
-
-        cur.execute("""
-            SELECT
                 CURRENT_DATE AS today,
                 LEAST(
                     COALESCE(MIN(created_at)::date, CURRENT_DATE),
+                    COALESCE((SELECT MIN(viewed_at)::date FROM page_views), CURRENT_DATE),
                     CURRENT_DATE
                 ) AS first_joined_on
             FROM users
@@ -31833,13 +31835,28 @@ def admin_user_stats():
                 FROM users
                 WHERE created_at < %s::date
             ),
+            human_viewers AS (
+                SELECT DISTINCT viewed_at::date AS day, ip_hash
+                FROM page_views
+                WHERE ip_hash IS NOT NULL
+                  AND viewed_at >= %s::date - INTERVAL '29 days'
+                  AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                      ARRAY['%%bot%%', '%%crawl%%', '%%spider%%', '%%slurp%%', '%%facebookexternalhit%%']
+                  )
+            ),
             active AS (
-                SELECT last_login_at::date AS day, COUNT(*) AS count
-                FROM users
-                WHERE COALESCE(status, 'active') = 'active'
-                  AND last_login_at >= %s::date
-                  AND last_login_at < CURRENT_DATE + INTERVAL '1 day'
-                GROUP BY last_login_at::date
+                SELECT day, COUNT(*) AS count
+                FROM human_viewers
+                WHERE day >= %s::date
+                GROUP BY day
+            ),
+            rolling_mau AS (
+                SELECT days.day, COUNT(DISTINCT human_viewers.ip_hash) AS count
+                FROM days
+                LEFT JOIN human_viewers
+                  ON human_viewers.day BETWEEN days.day - 29 AND days.day
+                GROUP BY days.day
             ),
             new_users AS (
                 SELECT created_at::date AS day, COUNT(*) AS count
@@ -31859,6 +31876,7 @@ def admin_user_stats():
             SELECT
                 to_char(days.day, 'YYYY-MM-DD') AS day,
                 COALESCE(active.count, 0) AS active,
+                COALESCE(rolling_mau.count, 0) AS mau,
                 COALESCE(new_users.count, 0) AS new_users,
                 COALESCE(listings.count, 0) AS listings,
                 baseline.count + SUM(COALESCE(new_users.count, 0)) OVER (
@@ -31868,12 +31886,17 @@ def admin_user_stats():
             FROM days
             CROSS JOIN baseline
             LEFT JOIN active ON active.day = days.day
+            LEFT JOIN rolling_mau ON rolling_mau.day = days.day
             LEFT JOIN new_users ON new_users.day = days.day
             LEFT JOIN listings ON listings.day = days.day
             ORDER BY days.day
-        """, (trend_start, trend_start, trend_start, trend_start, trend_start))
+        """, (
+            trend_start, trend_start, trend_start,
+            trend_start, trend_start, trend_start,
+        ))
         daily_rows = [dict(row) for row in cur.fetchall()]
         daily_active = [{"date": row["day"], "count": int(row["active"])} for row in daily_rows]
+        daily_mau = [{"date": row["day"], "count": int(row["mau"])} for row in daily_rows]
         daily_new = [{"date": row["day"], "count": int(row["new_users"])} for row in daily_rows]
         daily_listing = [{"date": row["day"], "count": int(row["listings"])} for row in daily_rows]
         daily_total_users = [{"date": row["day"], "count": int(row["total_users"])} for row in daily_rows]
@@ -31942,6 +31965,7 @@ def admin_user_stats():
             "wau_prev": int(summary["wau_prev"] or 0),
             "dau_prev": int(summary["dau_prev"] or 0),
             "daily_active": daily_active,
+            "daily_mau": daily_mau,
             "daily_new": daily_new,
             "daily_listing": daily_listing,
             "daily_total_users": daily_total_users,
