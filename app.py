@@ -18773,6 +18773,7 @@ _SCHEDULED_SYNC_LOCK_ID = 918299
 _SCHEDULED_SYNC_STAGE_PREFIX = f"{_SCHEDULED_SYNC_META_KEY}:"
 _LODGING_PROMOTION_STATUS_KEY = "lodging_promotion_status"
 _LODGING_PROMOTION_STALE_HOURS = 36
+_WEEKLY_DIGEST_MANUAL_STATUS_KEY = "weekly_digest_manual_status"
 _KST = ZoneInfo("Asia/Seoul")
 _SCHEDULED_SYNC_STAGES = (
     ("transactions", "실거래", "거래", "매일"),
@@ -18990,6 +18991,95 @@ def _start_detached_sync(meta_key, script_name, script_args, done_cooldown_min=3
             conn.close()
         return False, 500, {"ok": False, "message": "프로세스를 시작하지 못했습니다."}
     return True, 202, {"ok": True, "started_at": status["started_at"]}
+
+
+def _weekly_digest_current_week_counts(cur):
+    cur.execute(
+        """
+        SELECT status, COUNT(*) AS count
+          FROM weekly_email_deliveries
+         WHERE week_start=date_trunc(
+                   'week', (NOW() AT TIME ZONE 'Asia/Seoul')
+               )::date
+         GROUP BY status
+        """
+    )
+    return {row["status"]: int(row["count"]) for row in cur.fetchall()}
+
+
+@app.route("/api/admin/weekly-digest-status")
+@require_admin
+def admin_weekly_digest_status():
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM users
+                WHERE COALESCE(weekly_email_enabled, FALSE)=TRUE
+                  AND email IS NOT NULL AND email<>''
+                  AND COALESCE(status, 'active')<>'withdrawn')
+              + (SELECT COUNT(*) FROM agents
+                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                     AND email IS NOT NULL AND email<>'')
+              + (SELECT COUNT(*) FROM operators
+                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                     AND email IS NOT NULL AND email<>'')
+              + (SELECT COUNT(*) FROM loan_consultants
+                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                     AND email IS NOT NULL AND email<>'') AS target_count
+            """
+        )
+        target_count = int(cur.fetchone()["target_count"] or 0)
+        counts = _weekly_digest_current_week_counts(cur)
+        cur.execute(
+            "SELECT value, updated_at FROM app_meta WHERE key=%s",
+            (_WEEKLY_DIGEST_MANUAL_STATUS_KEY,),
+        )
+        meta = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+
+    status = {}
+    if meta and meta["value"]:
+        try:
+            status = json.loads(meta["value"])
+        except (TypeError, ValueError):
+            status = {}
+    running = status.get("state") == "running"
+    if running and meta and meta["updated_at"]:
+        running = (datetime.now() - meta["updated_at"]).total_seconds() < 60 * 60
+    return jsonify({
+        "ok": True,
+        "running": running,
+        "state": "stale" if status.get("state") == "running" and not running else status.get("state"),
+        "target_count": target_count,
+        "sent": counts.get("sent", 0),
+        "failed": counts.get("failed", 0),
+        "sending": counts.get("sending", 0),
+        "started_at": _kst_label(status.get("started_at")),
+        "finished_at": _kst_label(status.get("finished_at")),
+        "error": status.get("error"),
+    })
+
+
+@app.route("/api/admin/weekly-digest-send-all", methods=["POST"])
+@require_admin
+def admin_weekly_digest_send_all():
+    ok, code, payload = _start_detached_sync(
+        _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
+        "weekly_digest_runner.py",
+        [
+            "--status-key", _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
+            "--run-id", "__RUN_ID__",
+        ],
+        done_cooldown_min=1,
+    )
+    if ok:
+        payload["message"] = "이번 주 미발송 대상의 주간 이메일 발송을 시작했습니다."
+    return jsonify(payload), code
 
 
 def _kst_label(ts):

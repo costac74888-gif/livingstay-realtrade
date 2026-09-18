@@ -5185,6 +5185,67 @@
       }
     }
 
+    let weeklyDigestTimer = null;
+
+    async function loadWeeklyDigestStatus() {
+      const box = document.getElementById("weeklyDigestStatus");
+      const btn = document.getElementById("weeklyDigestSendBtn");
+      if (!box || !btn) {
+        if (weeklyDigestTimer) clearInterval(weeklyDigestTimer);
+        weeklyDigestTimer = null;
+        return;
+      }
+      try {
+        const res = await fetch("/api/admin/weekly-digest-status");
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) throw new Error(d.message || "조회 실패");
+        const stateLabel = d.running ? "발송 중" :
+          d.state === "done" ? "완료" :
+          d.state === "failed" ? "실패" :
+          d.state === "stale" ? "중단 의심" : "실행 기록 없음";
+        box.innerHTML = [
+          `<div class="geo-stat-row"><b>현재 수신 동의 대상:</b> ${num(d.target_count)}명</div>`,
+          `<div class="geo-stat-row"><b>이번 주 원장:</b> 성공 ${num(d.sent)} · 실패 ${num(d.failed)} · 처리 중 ${num(d.sending)}</div>`,
+          `<div class="geo-stat-row"><b>마지막 수동 발송:</b> ${dgEscape(stateLabel)}${d.finished_at || d.started_at ? ` · ${dgEscape(d.finished_at || d.started_at)}` : ""}</div>`,
+          d.error ? `<div class="geo-stat-row" style="color:#b3261e">${dgEscape(d.error)}</div>` : "",
+        ].join("");
+        btn.disabled = !!d.running;
+        btn.textContent = d.running ? "발송 중…" : "이번 주 전체 발송";
+        if (d.running && !weeklyDigestTimer) {
+          weeklyDigestTimer = setInterval(loadWeeklyDigestStatus, 5000);
+        } else if (!d.running && weeklyDigestTimer) {
+          clearInterval(weeklyDigestTimer);
+          weeklyDigestTimer = null;
+        }
+      } catch (err) {
+        box.textContent = "주간 이메일 현황을 불러오지 못했습니다.";
+        btn.disabled = false;
+      }
+    }
+
+    async function runWeeklyDigest() {
+      const btn = document.getElementById("weeklyDigestSendBtn");
+      const msg = document.getElementById("weeklyDigestMsg");
+      if (!window.confirm(
+        "수신 동의한 회원·파트너 중 이번 주 미발송 대상에게 개인화된 주간 이메일을 발송합니다. 계속할까요?"
+      )) return;
+      btn.disabled = true;
+      btn.textContent = "시작하는 중…";
+      msg.textContent = "";
+      try {
+        const res = await fetch("/api/admin/weekly-digest-send-all", { method: "POST" });
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        const d = await res.json().catch(() => ({}));
+        msg.style.color = res.ok && d.ok ? "#1a7f37" : "#b3261e";
+        msg.textContent = d.message || (res.ok ? "발송을 시작했습니다." : "발송을 시작하지 못했습니다.");
+      } catch (err) {
+        msg.style.color = "#b3261e";
+        msg.textContent = "네트워크 오류가 발생했습니다.";
+      }
+      await loadWeeklyDigestStatus();
+    }
+
     function showDataSync() {
       destroyStatsCharts();
       mount.innerHTML = `
@@ -5206,6 +5267,21 @@
           </div>
           <div id="dsBanner" role="alert"
                style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.6"></div>
+        </div>
+        <div class="legal-admin" style="margin-top:16px" id="dsSecWeeklyDigest">
+          <div class="legal-admin-head">
+            <h2 class="legal-admin-title">주간 이메일 전체 발송</h2>
+          </div>
+          <p class="legal-admin-hint">
+            수신 동의한 회원·파트너에게 이번 주 주간 이메일을 보냅니다.
+            각 회원의 관심단지·신규 실거래·의뢰 현황이 개인별로 적용됩니다.
+            이번 주에 이미 성공한 수신자는 자동으로 제외되며 완료 결과는 관리자 이메일로 보고됩니다.
+          </p>
+          <div id="weeklyDigestStatus" class="geo-status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions">
+            <span id="weeklyDigestMsg" class="legal-msg" role="alert"></span>
+            <button id="weeklyDigestSendBtn" class="admin-btn admin-btn-primary">이번 주 전체 발송</button>
+          </div>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecBrhub">
           <div class="legal-admin-head">
@@ -5642,6 +5718,7 @@
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
       document.getElementById("reclassifyKeywordBtn").addEventListener("click", runReclassifyLodgingKeywords);
       document.getElementById("reclassifyHygieneBtn").addEventListener("click", runReclassifyByHygiene);
+      document.getElementById("weeklyDigestSendBtn").addEventListener("click", runWeeklyDigest);
       document.getElementById("geoRunBtn").addEventListener("click", runGeocode);
       document.getElementById("photoTourApiPrewarmBtn")?.addEventListener("click", runPhotoSync);
       document.getElementById("tourapiImageBackfillRunBtn")?.addEventListener("click", runTourapiImageBackfill);
@@ -5665,6 +5742,7 @@
       document.getElementById("reclassifyRunBtn").addEventListener("click", runReclassify);
       document.getElementById("lodgingClassificationRestoreBtn").addEventListener("click", restoreLodgingClassificationProvenance);
       document.getElementById("storesSyncRunBtn").addEventListener("click", runStoresSync);
+      loadWeeklyDigestStatus();
       loadStoresSyncStatus();
       loadRealtySyncStatus();
       loadReclassifyStatus();
