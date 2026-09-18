@@ -238,7 +238,7 @@ content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.d
 [[outputs]]
 id = "oPzTzCnBBaZhBTmFvfc3n"
 uri = "file://exports/HOME_AND_STAY_DATA_POLICY_V03_0_2026-09-04.html"
-type = "text"
+type = "html"
 title = "데이터 통합 정책·운영 매뉴얼 V.03.0 (웹 문서)"
 description = "브라우저에서 열람하거나 다시 PDF로 인쇄할 수 있는 HTML 문서입니다."
 logical_id = "cb758f48-d2c1-4df3-8a39-5c625f380da4"
@@ -402,3 +402,17 @@ mtime_ms = 1789171550026
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/5d705e70-426a-48bf-b9d3-9ae793390897/ec69f1a0-45ea-4dc3-adfa-172b09dbd065"
 storage_version_token = "1789171705865846"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "5Vgsb1wi6Yq2Ci3cFJcPi"
+uri = "file://exports/molit_api_call_sources_2026-09-19.zip"
+type = "unspecified"
+title = "국토부 API 호출 소스 ZIP"
+description = "실거래(RTMS)·건축물대장(HUB) 호출 코드와 호출량 관리, 재시도, 인증값 마스킹, 주요 의존 모듈을 포함합니다. 실제 API 키와 데이터베이스 접속값은 제외했습니다."
+logical_id = "582c0c8e-567e-4b17-996a-4a4dea2ca107"
+content_hash = "sha256:7d4455c35e2b77770f5c8b18fa6287b84e25bea02d15e7aa7d074a257c2b4e7c"
+size = 152040
+mtime_ms = 1789768716838
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/582c0c8e-567e-4b17-996a-4a4dea2ca107/a6f8360a-72c1-439b-abe8-22b384c82029"
+storage_version_token = "1789768724505705"
+content_type = "application/octet-stream"
