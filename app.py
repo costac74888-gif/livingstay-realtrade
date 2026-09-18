@@ -19017,17 +19017,32 @@ def admin_weekly_digest_status():
             """
             SELECT
               (SELECT COUNT(*) FROM users
-                WHERE COALESCE(weekly_email_enabled, FALSE)=TRUE
+                WHERE NOT (
+                          weekly_email_enabled IS FALSE
+                          AND updated_weekly_email_at IS NOT NULL
+                      )
                   AND email IS NOT NULL AND email<>''
                   AND COALESCE(status, 'active')<>'withdrawn')
               + (SELECT COUNT(*) FROM agents
-                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                   WHERE NOT (
+                             weekly_email_enabled IS FALSE
+                             AND weekly_email_updated_at IS NOT NULL
+                         )
+                     AND status='approved'
                      AND email IS NOT NULL AND email<>'')
               + (SELECT COUNT(*) FROM operators
-                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                   WHERE NOT (
+                             weekly_email_enabled IS FALSE
+                             AND weekly_email_updated_at IS NOT NULL
+                         )
+                     AND status='approved'
                      AND email IS NOT NULL AND email<>'')
               + (SELECT COUNT(*) FROM loan_consultants
-                   WHERE weekly_email_enabled=TRUE AND status='approved'
+                   WHERE NOT (
+                             weekly_email_enabled IS FALSE
+                             AND weekly_email_updated_at IS NOT NULL
+                         )
+                     AND status='approved'
                      AND email IS NOT NULL AND email<>'') AS target_count
             """
         )

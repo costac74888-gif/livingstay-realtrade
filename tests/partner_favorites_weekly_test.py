@@ -185,7 +185,9 @@ class PartnerFavoritesWeeklyTests(unittest.TestCase):
         )
         query = cursor.queries[0]
         self.assertIn("status='approved'", query)
-        self.assertIn("weekly_email_enabled=TRUE", query)
+        self.assertIn("weekly_email_enabled IS FALSE", query)
+        self.assertIn("weekly_email_updated_at IS NOT NULL", query)
+        self.assertIn("updated_weekly_email_at IS NOT NULL", query)
         self.assertIn("FROM agents", query)
         self.assertIn("FROM operators", query)
         self.assertIn("FROM loan_consultants", query)

@@ -2033,7 +2033,8 @@ def _send_claimed_recipient(
         if hasattr(cur, "fetchone"):
             if recipient_type == "user":
                 eligibility_sql = (
-                    "SELECT COALESCE(weekly_email_enabled, FALSE) AS enabled "
+                    "SELECT NOT (weekly_email_enabled IS FALSE "
+                    "AND updated_weekly_email_at IS NOT NULL) AS enabled "
                     "FROM users WHERE id=%s AND COALESCE(status, 'active') <> 'withdrawn'"
                 )
                 eligibility_params = (uid,)
@@ -2043,7 +2044,8 @@ def _send_claimed_recipient(
                     "loan_consultant": "loan_consultants",
                 }.get(recipient_type)
                 eligibility_sql = (
-                    f"SELECT weekly_email_enabled AS enabled FROM {owner_table} "
+                    f"SELECT NOT (weekly_email_enabled IS FALSE "
+                    f"AND weekly_email_updated_at IS NOT NULL) AS enabled FROM {owner_table} "
                     "WHERE id=%s AND status='approved'"
                 )
                 eligibility_params = (uid,)
@@ -2124,7 +2126,10 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
                COALESCE(unsubscribe_token::text, '') AS unsubscribe_token,
                COALESCE(weekly_email_enabled, FALSE) AS weekly_email_enabled
           FROM users
-         WHERE COALESCE(weekly_email_enabled, FALSE)=TRUE
+         WHERE NOT (
+                   weekly_email_enabled IS FALSE
+                   AND updated_weekly_email_at IS NOT NULL
+               )
            AND email IS NOT NULL AND email <> ''
            AND COALESCE(status, 'active') <> 'withdrawn'
            AND (%s IS NULL OR id=%s)
@@ -2133,7 +2138,11 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
                COALESCE(weekly_unsubscribe_token::text, ''),
                weekly_email_enabled
           FROM agents
-         WHERE weekly_email_enabled=TRUE AND status='approved'
+         WHERE NOT (
+                   weekly_email_enabled IS FALSE
+                   AND weekly_email_updated_at IS NOT NULL
+               )
+           AND status='approved'
            AND email IS NOT NULL AND email <> ''
            AND %s IS NULL
         UNION ALL
@@ -2141,7 +2150,11 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
                COALESCE(weekly_unsubscribe_token::text, ''),
                weekly_email_enabled
           FROM operators
-         WHERE weekly_email_enabled=TRUE AND status='approved'
+         WHERE NOT (
+                   weekly_email_enabled IS FALSE
+                   AND weekly_email_updated_at IS NOT NULL
+               )
+           AND status='approved'
            AND email IS NOT NULL AND email <> ''
            AND %s IS NULL
         UNION ALL
@@ -2149,7 +2162,11 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
                COALESCE(weekly_unsubscribe_token::text, ''),
                weekly_email_enabled
           FROM loan_consultants
-         WHERE weekly_email_enabled=TRUE AND status='approved'
+         WHERE NOT (
+                   weekly_email_enabled IS FALSE
+                   AND weekly_email_updated_at IS NOT NULL
+               )
+           AND status='approved'
            AND email IS NOT NULL AND email <> ''
            AND %s IS NULL
         ORDER BY recipient_type, id
