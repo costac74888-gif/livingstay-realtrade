@@ -27499,7 +27499,10 @@ def admin_listing_requests_list():
                      WHEN lr.routed_reason = 'exclusive' THEN 'free'
                      ELSE lr.routed_reason
                    END AS routed_tier,
-                   (lr.status = 'submitted' AND lr.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
+                   (lr.deal_mode = 'broker'
+                    AND lr.routed_agent_id IS NOT NULL
+                    AND lr.status = 'submitted'
+                    AND lr.created_at < NOW() - INTERVAL '7 days') AS is_delayed,
                    a.office_name AS agent_office_name, a.phone AS agent_phone,
                    to_char(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD HH24:MI') AS created_at
             FROM listing_requests lr

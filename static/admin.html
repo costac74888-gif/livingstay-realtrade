@@ -867,7 +867,7 @@
             const x = m[v] || [v || "-", ""];
             const style = x[1] === "" ? ' style="background:#E8F0FE; color:#1A5DB8;"' : "";
             let html = `<span class="dg-badge${x[1] ? ` dg-badge-${x[1]}` : ""}"${style}>${dgEscape(x[0])}</span>`;
-            if (row.is_delayed) html += ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;" title="배정 후 7일 경과, 중개사 미응답">⏰ 응답 지연</span>';
+            if (row.deal_mode === "broker" && row.is_delayed) html += ' <span class="dg-badge" style="background:#FDECEA; color:#B3261E;" title="배정 후 7일 경과, 중개사 미응답">⏰ 응답 지연</span>';
             return html;
           } },
           { key: "admin_note", label: "비고", render: (v, row) => {
