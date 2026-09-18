@@ -160,6 +160,71 @@ class LodgingOperatorBoundaryTests(unittest.TestCase):
         self.assertIn("FOR UPDATE", cursor.sql)
         self.assertEqual(cursor.params, [7])
 
+    def test_existing_email_identity_is_reused_without_profile_changes(self):
+        class Cursor:
+            def __init__(self):
+                self.queries = []
+                self.rows = iter([{"id": 41, "status": "active"}])
+            def execute(self, sql, params):
+                self.queries.append((" ".join(sql.split()), params))
+            def fetchone(self):
+                return next(self.rows)
+        cursor = Cursor()
+        user_id, reused = app_module._find_or_create_lodging_operator_user(
+            cursor,
+            {
+                "email": "owner@example.test",
+                "password_hash": "new-application-hash",
+                "owner_name": "운영자",
+            },
+        )
+        self.assertEqual(user_id, 41)
+        self.assertTrue(reused)
+        self.assertEqual(len(cursor.queries), 2)
+        self.assertIn("pg_advisory_xact_lock", cursor.queries[0][0])
+        self.assertNotIn("UPDATE users", " ".join(q for q, _ in cursor.queries))
+        self.assertNotIn("INSERT INTO users", " ".join(q for q, _ in cursor.queries))
+
+    def test_first_lodging_approval_creates_one_email_identity(self):
+        class Cursor:
+            def __init__(self):
+                self.queries = []
+                self.rows = iter([None, {"id": 42}])
+            def execute(self, sql, params):
+                self.queries.append((" ".join(sql.split()), params))
+            def fetchone(self):
+                return next(self.rows)
+        cursor = Cursor()
+        user_id, reused = app_module._find_or_create_lodging_operator_user(
+            cursor,
+            {
+                "email": "new@example.test",
+                "password_hash": "stored-hash",
+                "owner_name": "신규 운영자",
+            },
+        )
+        self.assertEqual(user_id, 42)
+        self.assertFalse(reused)
+        self.assertIn("INSERT INTO users", cursor.queries[-1][0])
+
+    def test_withdrawn_identity_is_not_silently_reactivated(self):
+        class Cursor:
+            def __init__(self):
+                self.rows = iter([{"id": 43, "status": "withdrawn"}])
+            def execute(self, sql, params):
+                pass
+            def fetchone(self):
+                return next(self.rows)
+        with self.assertRaisesRegex(ValueError, "탈퇴한 이메일"):
+            app_module._find_or_create_lodging_operator_user(
+                Cursor(),
+                {
+                    "email": "withdrawn@example.test",
+                    "password_hash": "stored-hash",
+                    "owner_name": "탈퇴 운영자",
+                },
+            )
+
     def test_schema_declares_partial_registry_uniqueness_without_cleanup(self):
         source = (Path(ROOT) / "db.py").read_text(encoding="utf-8")
         self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_registry_unique", source)

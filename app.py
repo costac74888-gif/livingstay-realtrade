@@ -6288,6 +6288,40 @@ def _lodging_registry_operator_exists(cur, matched):
     return bool(cur.fetchone())
 
 
+def _find_or_create_lodging_operator_user(cur, application):
+    """Reuse one email identity for every approved lodging business."""
+    email = application["email"]
+    # A missing-row SELECT ... FOR UPDATE does not serialize concurrent
+    # approvals. Lock the normalized email first so only one user is created.
+    cur.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(LOWER(%s), 0))",
+        [email],
+    )
+    cur.execute(
+        """
+        SELECT id, COALESCE(status, 'active') AS status
+          FROM users
+         WHERE LOWER(email)=LOWER(%s)
+         FOR UPDATE
+        """,
+        [email],
+    )
+    existing = cur.fetchone()
+    if existing:
+        if existing["status"] == "withdrawn":
+            raise ValueError("탈퇴한 이메일 계정에는 사업장을 연결할 수 없습니다.")
+        return existing["id"], True
+    cur.execute(
+        """
+        INSERT INTO users (email, password_hash, name, provider, user_type, status)
+        VALUES (%s, %s, %s, 'email', 'operator', 'active')
+        RETURNING id
+        """,
+        [email, application["password_hash"], application["owner_name"]],
+    )
+    return cur.fetchone()["id"], False
+
+
 def _canonical_operator_permit(matched, submitted):
     """유일 매칭이면 원장의 정규 키를 저장하고, 미매칭이면 신청 원문을 보존한다."""
     return matched.get("permit_number") if matched else submitted
@@ -31344,6 +31378,7 @@ def admin_applications_approve(app_id):
     sms_sent = False
     sms_msg = None
     reassigned_leads = 0
+    reused_user_account = False
     try:
         if atype == "agent":
             # 등록번호(reg_number) 중복이면 승인 불가 — applications 상태는 그대로 둔다.
@@ -31466,19 +31501,11 @@ def admin_applications_approve(app_id):
                     cur.close()
                     conn.close()
                     return jsonify({"ok": False, "message": "해당 영업신고에는 이미 등록된 운영자가 있습니다."}), 400
-                # 승인된 신고 운영자는 일반 로그인 계정으로만 자신의 레코드를 관리한다.
-                # 이메일이 다른 회원에 이미 쓰이면 계정 탈취를 피하기 위해 승인을 중단한다.
-                cur.execute("SELECT id FROM users WHERE LOWER(email)=LOWER(%s) FOR UPDATE", [ap["email"]])
-                existing_user = cur.fetchone()
-                if existing_user:
-                    cur.close()
-                    conn.close()
-                    return jsonify({"ok": False, "message": "이미 사용 중인 이메일입니다."}), 400
-                cur.execute("""
-                    INSERT INTO users (email, password_hash, name, provider, user_type, status)
-                    VALUES (%s, %s, %s, 'email', 'operator', 'active') RETURNING id
-                """, [ap["email"], ap["password_hash"], ap["owner_name"]])
-                lodging_user_id = cur.fetchone()["id"]
+                # 로그인 계정은 이메일당 하나만 유지하고, 승인된 사업장을 같은
+                # user_id에 추가한다. 기존 비밀번호·회원유형·프로필은 변경하지 않는다.
+                lodging_user_id, reused_user_account = (
+                    _find_or_create_lodging_operator_user(cur, ap)
+                )
                 cur.execute("""
                     INSERT INTO operator_lodging
                       (user_id, lodging_reg_id, master_building_id, lodging_op_type, biz_name, rep_name,
@@ -31645,7 +31672,10 @@ def admin_applications_approve(app_id):
             resp["temp_password"] = temp_pw
         return jsonify(resp)
 
-    return jsonify({"ok": True, "created_id": created_id})
+    response = {"ok": True, "created_id": created_id}
+    if atype == "lodging_operator":
+        response["reused_user_account"] = reused_user_account
+    return jsonify(response)
 
 
 @app.route("/api/admin/applications/<int:app_id>/reject", methods=["POST"])

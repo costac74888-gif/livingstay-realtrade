@@ -98,3 +98,4 @@
 - [관리자 액션센터 알림 정책](admin-action-center-policy.md) — 관리자 업무 기준화면은 통합 액션센터; 긴급은 즉시, 일반은 일일 요약하며 수신자는 회사소개 문의 이메일을 따른다.
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
 - [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 운영 앱 메뉴는 관리자에게만 노출하되 서명된 비회원 공유 링크의 직접 열람은 유지한다.
+- [통합 계정과 복수 사업장](unified-account-business-roles.md) — 이메일별 로그인은 하나만 유지하고 일반회원·복수 사업자 역할과 사업장을 연결해 전환한다.
