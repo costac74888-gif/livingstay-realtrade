@@ -145,6 +145,22 @@ async function json(route, body) {
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 }
 
+async function gotoWithTransientRetry(page, url) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      lastError = error;
+      const message = String(error && error.message || error);
+      const transient = /ERR_(ABORTED|CONNECTION_REFUSED|CONNECTION_RESET)/.test(message);
+      if (!transient || attempt === 3) throw error;
+      await page.waitForTimeout(500 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 async function run() {
   const browser = await chromium.launch({
     headless: true, executablePath: chromiumExecutable(),
@@ -152,6 +168,9 @@ async function run() {
   });
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+    // 운영 앱은 HeadlessChrome/Playwright UA를 명시적 봇으로 204 차단한다.
+    // 실제 사용자와 같은 Chrome UA로 페이지를 열고, API 응답만 아래 route로 고정한다.
+    userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36",
   });
   const page = await context.newPage();
   const errors = [];
@@ -318,7 +337,10 @@ async function run() {
   try {
     for (const width of [1280, 390, 320]) {
       await page.setViewportSize({ width, height: width === 1280 ? 900 : width === 390 ? 844 : 720 });
-      const response = await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+      const response = await gotoWithTransientRetry(
+        page,
+        `${BASE_URL}/analysis?building_id=${SELECTED_ID}`,
+      );
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       try {
         await page.waitForFunction(() => {
@@ -499,7 +521,7 @@ async function run() {
     comparisonItemCount = 6;
 
     incompleteSelected = true;
-    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}`, { waitUntil: "domcontentloaded" });
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}`);
     await page.evaluate(() => {
       if (window.__analysisChartLayout) window.__analysisChartLayout.ready = false;
       window.dispatchEvent(new CustomEvent("livingstay:auth", { detail: { loggedIn: true } }));
@@ -531,7 +553,10 @@ async function run() {
       "부족한 비교축이 관광 자료임을 구체적으로 안내하지 않습니다.");
     expect(incompleteResult.transactionCount.includes("229건"),
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
-    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`, { waitUntil: "domcontentloaded" });
+    await gotoWithTransientRetry(
+      page,
+      `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`,
+    );
     await page.waitForFunction(() => document.getElementById("operationRoomCount").textContent.includes("200실"));
     const operationActionsBeforeInput = await page.evaluate(() => ({
       count: document.querySelectorAll("#operationReportActions .am-btn").length,
@@ -656,7 +681,10 @@ async function run() {
       return !document.getElementById("operationOcc").value
         && status.includes("운영분석 보류") && status.includes("OCC 계산 불가");
     });
-    await page.goto(`${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`, { waitUntil: "domcontentloaded" });
+    await gotoWithTransientRetry(
+      page,
+      `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`,
+    );
     await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
     await page.waitForFunction(() => document.querySelectorAll("#rentalUnitAreaOptions option").length === 5);
     const areaOptions = await page.locator("#rentalUnitAreaOptions option").evaluateAll((options) =>
