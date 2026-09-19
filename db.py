@@ -404,14 +404,12 @@ def close_connection_pool():
         _logger.info("DB 연결 풀 종료 완료 (pid=%s)", pool_pid)
     except Exception:
         _logger.warning("DB 연결 풀 종료 실패", exc_info=True)
-
-
 atexit.register(close_connection_pool)
 
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-19-1"
+SCHEMA_VERSION = "2026-09-19-2"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -2056,6 +2054,52 @@ def _run_init_db():
     # NULL은 과거 환경에서 동의 상태가 기록되지 않은 행일 수 있으므로 TRUE로 정규화한다.
     cur.execute("UPDATE users SET weekly_email_enabled = TRUE WHERE weekly_email_enabled IS NULL")
 
+    # 통합 계정: users가 로그인 주체이고, 기존 파트너 행은 역할·사업장
+    # 멤버십으로 연결한다. 레거시 테이블은 즉시 삭제하지 않아 아직 연결되지
+    # 않은 계정의 기존 로그인 경로와 관리자 승인 흐름을 보존한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS account_role_memberships (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('general', 'agent', 'operator', 'loan_consultant', 'lodging_operator')),
+        legacy_account_id INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, role, legacy_account_id)
+    )
+    """)
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS account_role_memberships_user_idx
+        ON account_role_memberships(user_id, status, role)
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS account_business_memberships (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('agent', 'operator', 'loan_consultant', 'lodging_operator')),
+        business_id INTEGER NOT NULL,
+        business_table TEXT NOT NULL CHECK (business_table IN ('agents', 'operators', 'loan_consultants', 'operator_lodging')),
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, role, business_table, business_id)
+    )
+    """)
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS account_business_memberships_user_idx
+        ON account_business_memberships(user_id, status, role)
+    """)
+    # Every users row has the general role. Existing partner rows are not
+    # linked by email alone: the account owner claims them through the
+    # reauthenticated legacy-link API, which verifies both passwords.
+    cur.execute("""
+    INSERT INTO account_role_memberships (user_id, role, legacy_account_id, status)
+    SELECT u.id, 'general', NULL, CASE WHEN u.status = 'withdrawn' THEN 'withdrawn' ELSE 'active' END
+      FROM users u
+     WHERE NOT EXISTS (
+       SELECT 1 FROM account_role_memberships m
+        WHERE m.user_id = u.id AND m.role = 'general' AND m.legacy_account_id IS NULL
+     )
+    """)
     # 이메일 회원 비밀번호 재설정 — URL 원문 대신 SHA-256 다이제스트만 DB에
     # 저장한다. user 삭제 시 토큰도 함께 정리한다.
     cur.execute("""
@@ -2799,6 +2843,31 @@ def _run_init_db():
     cur.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_op_lodging_photos_one_primary
         ON operator_lodging_photos(operator_lodging_id) WHERE is_primary
+    """)
+    cur.execute("""
+    INSERT INTO account_role_memberships (user_id, role, legacy_account_id, status)
+    SELECT ol.user_id, 'lodging_operator', ol.id,
+           CASE WHEN ol.status = 'approved' THEN 'active' ELSE COALESCE(ol.status, 'pending') END
+      FROM operator_lodging ol
+     WHERE ol.user_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM account_role_memberships m
+          WHERE m.user_id = ol.user_id AND m.role = 'lodging_operator'
+            AND m.legacy_account_id = ol.id
+       )
+    """)
+    cur.execute("""
+    INSERT INTO account_business_memberships
+        (user_id, role, business_id, business_table, status)
+    SELECT ol.user_id, 'lodging_operator', ol.id, 'operator_lodging',
+           CASE WHEN ol.status = 'approved' THEN 'active' ELSE COALESCE(ol.status, 'pending') END
+      FROM operator_lodging ol
+     WHERE ol.user_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM account_business_memberships b
+          WHERE b.user_id = ol.user_id AND b.role = 'lodging_operator'
+            AND b.business_table = 'operator_lodging' AND b.business_id = ol.id
+       )
     """)
     # 같은 원장 행에 표기만 다른 신고번호로 운영자가 중복 승인되는 것을 DB에서도 차단한다.
     # 기존 중복이 있으면 CREATE UNIQUE INDEX가 명시적으로 실패하며, 임의 삭제/병합하지 않는다.

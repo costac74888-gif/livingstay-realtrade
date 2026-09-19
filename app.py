@@ -6594,13 +6594,48 @@ def _current_lodging_operator(cur):
     user = current_user()
     if not user:
         return None
-    cur.execute("""
-        SELECT id, lodging_op_type, biz_name, rep_name, phone, booking_url, airbnb_url,
-               airbnb_urls, intro_text, photo_url, master_building_id,
-               lodging_reg_id, facility_phone, homepage_url, amenities, badges
-        FROM operator_lodging WHERE user_id=%s AND status='approved'
+    selected_role = session.get("active_role")
+    selected_table = session.get("active_business_table")
+    selected_id = session.get("active_business_id")
+    has_explicit_context = any(
+        key in session
+        for key in ("active_role", "active_business_table", "active_business_id")
+    )
+    select_fields = """
+        SELECT ol.id, ol.lodging_op_type, ol.biz_name, ol.rep_name, ol.phone,
+               ol.booking_url, ol.airbnb_url, ol.airbnb_urls, ol.intro_text,
+               ol.photo_url, ol.master_building_id, ol.lodging_reg_id,
+               ol.facility_phone, ol.homepage_url, ol.amenities, ol.badges
+    """
+    if has_explicit_context:
+        if (
+            selected_role != "lodging_operator"
+            or selected_table != "operator_lodging"
+            or selected_id is None
+        ):
+            return None
+        cur.execute(select_fields + """
+              FROM operator_lodging ol
+              JOIN account_business_memberships membership
+                ON membership.user_id = ol.user_id
+               AND membership.role = 'lodging_operator'
+               AND membership.business_table = 'operator_lodging'
+               AND membership.business_id = ol.id
+               AND membership.status = 'active'
+             WHERE ol.id = %s AND ol.user_id = %s AND ol.status = 'approved'
+        """, [selected_id, user["id"]])
+        return cur.fetchone()
+
+    # 기존 단일 사업장 사용자는 별도 전환 없이 계속 사용할 수 있다. 두 곳 이상이면
+    # 임의의 첫 행을 고르지 않고 사용자가 컨텍스트를 명시적으로 선택하게 한다.
+    cur.execute(select_fields + """
+          FROM operator_lodging ol
+         WHERE ol.user_id = %s AND ol.status = 'approved'
+         ORDER BY ol.id
+         LIMIT 2
     """, [user["id"]])
-    return cur.fetchone()
+    rows = cur.fetchall()
+    return rows[0] if len(rows) == 1 else None
 
 
 # 운영자가 고를 수 있는 고정 인증 label. 자유 문구는 저장·공개하지 않는다.
@@ -8858,6 +8893,309 @@ def current_user():
         conn.close()
 
 
+def _account_reauth_ok(user_id):
+    """비밀번호·이메일·탈퇴처럼 계정 전체에 영향을 주는 작업의 재인증 경계."""
+    if session.get("account_reauthenticated_user_id") != user_id:
+        return False
+    try:
+        return time.time() - float(session.get("account_reauthenticated_at", 0)) <= 600
+    except (TypeError, ValueError):
+        return False
+
+
+def _require_account_reauth(user_id, current_password):
+    if _account_reauth_ok(user_id):
+        return True
+    if not current_password:
+        return False
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT password_hash FROM users WHERE id = %s AND status <> 'withdrawn'",
+            (user_id,),
+        )
+        row = cur.fetchone()
+    finally:
+        cur.close()
+        conn.close()
+    if not row or not row.get("password_hash") or not check_password_hash(
+        row["password_hash"], current_password
+    ):
+        return False
+    session["account_reauthenticated_user_id"] = user_id
+    session["account_reauthenticated_at"] = time.time()
+    return True
+
+
+_ACCOUNT_CONTEXT_REDIRECTS = {
+    "general": "/mypage",
+    "agent": "/agent/dashboard",
+    "operator": "/operator/dashboard",
+    "lodging_operator": "/lodging-operator/manage",
+    "loan_consultant": "/loan-consultant/dashboard",
+}
+
+
+def _account_context_id(role, business_table=None, business_id=None):
+    if business_id is None:
+        return role
+    return f"{role}:{business_table}:{business_id}"
+
+
+def _get_account_contexts(user_id):
+    """Return selectable, active contexts with stable IDs and display names."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT role
+              FROM account_role_memberships
+             WHERE user_id = %s AND status = 'active'
+             ORDER BY CASE role WHEN 'general' THEN 0 ELSE 1 END, role
+        """, (user_id,))
+        roles = [row["role"] for row in cur.fetchall()]
+        if "general" not in roles:
+            roles.insert(0, "general")
+        cur.execute("""
+            SELECT b.role, b.business_id, b.business_table,
+                   CASE b.business_table
+                     WHEN 'agents' THEN (SELECT office_name FROM agents WHERE id=b.business_id)
+                     WHEN 'operators' THEN (SELECT company_name FROM operators WHERE id=b.business_id)
+                     WHEN 'loan_consultants' THEN (SELECT office_name FROM loan_consultants WHERE id=b.business_id)
+                     WHEN 'operator_lodging' THEN (
+                       SELECT NULLIF(biz_name, '') FROM operator_lodging WHERE id=b.business_id
+                     )
+                   END AS business_name
+              FROM account_business_memberships b
+             WHERE b.user_id = %s AND b.status = 'active'
+             ORDER BY b.role, b.business_table, b.business_id
+        """, (user_id,))
+        businesses = [dict(row) for row in cur.fetchall()]
+    finally:
+        cur.close()
+        conn.close()
+
+    contexts = []
+    business_roles = {row["role"] for row in businesses}
+    for role in roles:
+        if role == "general" or role not in business_roles:
+            contexts.append({
+                "id": _account_context_id(role),
+                "role": role,
+                "business_id": None,
+                "business_table": None,
+                "dashboard_url": _ACCOUNT_CONTEXT_REDIRECTS.get(role, "/mypage"),
+            })
+    for row in businesses:
+        contexts.append({
+            "id": _account_context_id(
+                row["role"], row["business_table"], row["business_id"]
+            ),
+            "role": row["role"],
+            "business_id": row["business_id"],
+            "business_table": row["business_table"],
+            "business_name": row.get("business_name"),
+            "dashboard_url": _ACCOUNT_CONTEXT_REDIRECTS.get(row["role"], "/mypage"),
+        })
+    return contexts
+
+
+def _active_account_context():
+    role = session.get("active_role")
+    if not role:
+        return None
+    table = session.get("active_business_table")
+    business_id = session.get("active_business_id")
+    return {
+        "id": _account_context_id(role, table, business_id),
+        "role": role,
+        "business_id": business_id,
+        "business_table": table,
+    }
+
+
+@app.route("/api/auth/contexts")
+def auth_contexts():
+    """현재 users 계정에 연결된 역할·사업장 목록."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    contexts = _get_account_contexts(u["id"])
+    return jsonify({
+        "ok": True,
+        "active_context": _active_account_context(),
+        "contexts": contexts,
+    })
+
+
+@app.route("/api/auth/context", methods=["POST", "PUT"])
+@limiter.limit("20 per minute")
+def auth_switch_context():
+    """명시적으로 역할 또는 사업장을 전환한다. 소유권은 DB 멤버십으로 확인한다."""
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    role = str(data.get("role") or "").strip()
+    table = str(data.get("business_table") or "").strip()
+    business_id = data.get("business_id")
+    context_id = str(data.get("context_id") or "").strip()
+    if context_id and (not role or business_id is None):
+        parts = context_id.split(":", 2)
+        role = parts[0]
+        if len(parts) == 3:
+            table = parts[1]
+            business_id = parts[2]
+    try:
+        business_id = int(business_id) if business_id is not None else None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "사업장 식별자가 올바르지 않습니다."}), 400
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if business_id is None:
+            if role == "general":
+                cur.execute(
+                    "SELECT 1 FROM users WHERE id=%s AND status <> 'withdrawn'",
+                    (u["id"],),
+                )
+            else:
+                cur.execute("""
+                    SELECT 1 FROM account_role_memberships
+                     WHERE user_id=%s AND role=%s AND status='active'
+                """, (u["id"], role))
+        else:
+            cur.execute("""
+                SELECT 1 FROM account_business_memberships
+                 WHERE user_id=%s AND role=%s AND business_table=%s
+                   AND business_id=%s AND status='active'
+            """, (u["id"], role, table, business_id))
+        if not cur.fetchone():
+            return jsonify({"ok": False, "message": "선택한 역할 또는 사업장에 대한 권한이 없습니다."}), 403
+    finally:
+        cur.close()
+        conn.close()
+    for session_key in ("agent_id", "operator_id", "loan_consultant_id"):
+        session.pop(session_key, None)
+    legacy_session_keys = {
+        "agents": "agent_id",
+        "operators": "operator_id",
+        "loan_consultants": "loan_consultant_id",
+    }
+    if table in legacy_session_keys and business_id is not None:
+        session[legacy_session_keys[table]] = business_id
+    session["active_role"] = role
+    session["active_business_id"] = business_id
+    session["active_business_table"] = table if business_id is not None else None
+    return jsonify({
+        "ok": True,
+        "context_id": _account_context_id(role, table or None, business_id),
+        "role": role,
+        "business_id": business_id,
+        "business_table": table or None,
+        "redirect": _ACCOUNT_CONTEXT_REDIRECTS.get(role, "/mypage"),
+    })
+
+
+@app.route("/api/auth/link-legacy-role", methods=["POST"])
+@limiter.limit("5 per 10 minutes; 20 per hour")
+def auth_link_legacy_role():
+    """현재 계정과 같은 이메일의 기존 사업자 로그인을 양쪽 비밀번호로 연결한다."""
+    u = current_user()
+    if not u or u.get("provider") != "email":
+        return jsonify({"ok": False, "message": "이메일 계정 로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    role = str(data.get("role") or "").strip()
+    current_password = data.get("current_password") or ""
+    legacy_password = data.get("legacy_password") or ""
+    legacy = {
+        "agent": ("agents", "office_name"),
+        "operator": ("operators", "company_name"),
+        "loan_consultant": ("loan_consultants", "office_name"),
+    }.get(role)
+    if not legacy:
+        return jsonify({"ok": False, "message": "연결할 사업자 유형이 올바르지 않습니다."}), 400
+    if not _require_account_reauth(u["id"], current_password):
+        return jsonify({"ok": False, "message": "현재 계정 비밀번호가 올바르지 않습니다."}), 401
+
+    table, name_column = legacy
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"""SELECT id, password_hash, status, {name_column} AS business_name
+                  FROM {table}
+                 WHERE LOWER(email)=LOWER(%s)
+                 ORDER BY id
+                 FOR UPDATE""",
+            (u.get("email"),),
+        )
+        matches = [
+            row for row in cur.fetchall()
+            if row.get("password_hash")
+            and check_password_hash(row["password_hash"], legacy_password)
+        ]
+        if len(matches) != 1:
+            return jsonify({
+                "ok": False,
+                "message": "기존 사업자 이메일 또는 비밀번호를 확인해주세요.",
+            }), 401
+        partner = matches[0]
+        if partner.get("status") != "approved":
+            return jsonify({"ok": False, "message": "승인된 사업자 계정만 연결할 수 있습니다."}), 403
+        cur.execute("""
+            INSERT INTO account_role_memberships
+                (user_id, role, legacy_account_id, status)
+            VALUES (%s, %s, %s, 'active')
+            ON CONFLICT (user_id, role, legacy_account_id)
+            DO UPDATE SET status='active'
+        """, (u["id"], role, partner["id"]))
+        cur.execute("""
+            INSERT INTO account_business_memberships
+                (user_id, role, business_id, business_table, status)
+            VALUES (%s, %s, %s, %s, 'active')
+            ON CONFLICT (user_id, role, business_table, business_id)
+            DO UPDATE SET status='active'
+        """, (u["id"], role, partner["id"], table))
+        # From this point users is the only credential owner. Keeping the old
+        # hash would leave a second login/reset path for the same identity.
+        cur.execute(
+            f"UPDATE {table} SET password_hash=NULL WHERE id=%s",
+            (partner["id"],),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    return jsonify({
+        "ok": True,
+        "context": {
+            "id": _account_context_id(role, table, partner["id"]),
+            "role": role,
+            "business_id": partner["id"],
+            "business_table": table,
+            "business_name": partner.get("business_name"),
+            "dashboard_url": _ACCOUNT_CONTEXT_REDIRECTS.get(role, "/mypage"),
+        },
+    })
+
+
+@app.route("/api/auth/reauthenticate", methods=["POST"])
+@limiter.limit("5 per minute")
+def auth_reauthenticate():
+    u = current_user()
+    if not u or u.get("provider") != "email":
+        return jsonify({"ok": False, "message": "이메일 계정의 재인증이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if not _require_account_reauth(u["id"], data.get("current_password") or ""):
+        return jsonify({"ok": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 401
+    return jsonify({"ok": True, "expires_in": 600})
+
+
 @app.route("/api/auth/request-password-reset", methods=["POST"])
 @limiter.limit("20 per minute", key_func=get_remote_address)
 @limiter.limit("3 per minute", key_func=_password_reset_rate_key)
@@ -8876,29 +9214,31 @@ def auth_request_password_reset():
     cur = conn.cursor()
     try:
         if _valid_email(email):
+            # 통합 users가 있으면 하나의 토큰만 발급한다. 아직 users에 연결되지
+            # 않은 레거시 파트너만 기존 account_type 토큰 경로를 사용한다.
             cur.execute(
-                """
-                SELECT id, password_hash, COALESCE(provider, 'email') AS provider,
-                       status, 'user' AS account_type
-                  FROM users
-                 WHERE LOWER(email) = %s
-                UNION ALL
-                SELECT id, password_hash, 'email' AS provider, status, 'agent' AS account_type
-                  FROM agents
-                 WHERE LOWER(email) = %s
-                UNION ALL
-                SELECT id, password_hash, 'email' AS provider, status, 'operator' AS account_type
-                  FROM operators
-                 WHERE LOWER(email) = %s
-                UNION ALL
-                SELECT id, password_hash, 'email' AS provider, status,
-                       'loan_consultant' AS account_type
-                  FROM loan_consultants
-                 WHERE LOWER(email) = %s
-                """,
-                (email, email, email, email),
+                """SELECT id, password_hash, COALESCE(provider, 'email') AS provider,
+                          status, 'user' AS account_type
+                     FROM users WHERE LOWER(email) = %s""",
+                (email,),
             )
             accounts = cur.fetchall()
+            if not accounts:
+                cur.execute(
+                    """
+                    SELECT id, password_hash, 'email' AS provider, status, 'agent' AS account_type
+                      FROM agents WHERE LOWER(email) = %s
+                    UNION ALL
+                    SELECT id, password_hash, 'email' AS provider, status, 'operator' AS account_type
+                      FROM operators WHERE LOWER(email) = %s
+                    UNION ALL
+                    SELECT id, password_hash, 'email' AS provider, status,
+                           'loan_consultant' AS account_type
+                      FROM loan_consultants WHERE LOWER(email) = %s
+                    """,
+                    (email, email, email),
+                )
+                accounts = cur.fetchall()
             for account in accounts:
                 active_account = account.get("status") != "withdrawn"
                 account_type = account.get("account_type")
@@ -9124,14 +9464,18 @@ def auth_login():
     try:
         cur.execute("SELECT id, password_hash, status FROM users WHERE LOWER(email) = %s", (email,))
         row = cur.fetchone()
-        if (row and row["password_hash"] and row.get("status") != "withdrawn"
-                and check_password_hash(row["password_hash"], password)):
-            cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
-            _record_login_history(cur, row["id"])
-            conn.commit()
-            session["user_id"] = row["id"]
-            session.permanent = bool(data.get("remember"))
-            return jsonify({"ok": True})
+        if row:
+            if (row["password_hash"] and row.get("status") != "withdrawn"
+                    and check_password_hash(row["password_hash"], password)):
+                cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
+                _record_login_history(cur, row["id"])
+                conn.commit()
+                session["user_id"] = row["id"]
+                session.permanent = bool(data.get("remember"))
+                return jsonify({"ok": True})
+            # A unified users identity owns this email. Do not fall through to
+            # a legacy partner password, which would create ambiguous login.
+            return jsonify({"ok": False, "message": fail_msg}), 401
 
         partner_tables = [
             ("agents", "agent_id", "/agent/dashboard"),
@@ -9162,6 +9506,9 @@ def auth_logout():
     session.pop("agent_id", None)
     session.pop("operator_id", None)
     session.pop("loan_consultant_id", None)
+    session.pop("active_role", None)
+    session.pop("active_business_id", None)
+    session.pop("active_business_table", None)
     session.pop("kakao_oauth_state", None)
     return jsonify({"ok": True})
 
@@ -9173,6 +9520,10 @@ def auth_me():
     account_type 필드로 프론트가 어떤 유형인지 구분할 수 있다."""
     u = current_user()
     if u:
+        contexts = _get_account_contexts(u["id"])
+        active_context = _active_account_context()
+        if not active_context and contexts:
+            active_context = contexts[0]
         return jsonify({
             "logged_in": True,
             "account_type": "user",
@@ -9184,6 +9535,11 @@ def auth_me():
             "weekly_email_enabled": bool(u.get("weekly_email_enabled", True)),
             "phone": u.get("phone"),
             "phone_verified": bool(u.get("phone_verified", False)),
+            "active_role": session.get("active_role"),
+            "active_business_id": session.get("active_business_id"),
+            "active_business_table": session.get("active_business_table"),
+            "active_context": active_context,
+            "contexts": contexts,
         })
 
     # 사업자 세션 확인 — agent → operator → loan_consultant 순서.
@@ -9226,11 +9582,39 @@ def auth_me():
 @app.route("/api/auth/me", methods=["PUT"])
 @limiter.limit("5 per minute; 20 per hour")
 def auth_update_name():
-    """이름 변경 — 로그인 필요. 이메일/카카오 공통. name만 바꾼다."""
+    """이름 변경 및 재인증된 이메일 변경 — users 계정 단위로 저장한다."""
     u = current_user()
     if not u:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
     data = request.get_json(force=True, silent=True) or {}
+    requested_email = (data.get("email") or "").strip().lower()
+    if requested_email:
+        if not _valid_email(requested_email):
+            return jsonify({"ok": False, "message": "올바른 이메일 형식이 아닙니다."}), 400
+        if requested_email != (u.get("email") or "").lower():
+            if u.get("provider") != "email" or not _require_account_reauth(
+                u["id"], data.get("current_password") or ""
+            ):
+                return jsonify({"ok": False, "message": "이메일 변경 전 재인증이 필요합니다."}), 401
+            conn = get_conn()
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "SELECT 1 FROM users WHERE LOWER(email)=%s AND id<>%s",
+                    (requested_email, u["id"]),
+                )
+                if cur.fetchone():
+                    return jsonify({"ok": False, "message": "이미 사용 중인 이메일입니다."}), 400
+                cur.execute(
+                    "UPDATE users SET email=%s, provider='email' WHERE id=%s",
+                    (requested_email, u["id"]),
+                )
+                conn.commit()
+            finally:
+                cur.close()
+                conn.close()
+            return jsonify({"ok": True, "name": u.get("name"), "email": requested_email,
+                            "provider": "email"})
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "message": "이름을 입력해주세요."}), 400
@@ -9419,15 +9803,36 @@ def auth_withdraw():
     u = current_user()
     if not u:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if u.get("provider") == "email" and not _require_account_reauth(
+        u["id"], data.get("current_password") or ""
+    ):
+        return jsonify({"ok": False, "message": "탈퇴 전 현재 비밀번호를 확인해주세요."}), 401
     conn = get_conn()
     cur = conn.cursor()
     try:
         cur.execute("UPDATE users SET status = 'withdrawn' WHERE id = %s", (u["id"],))
+        cur.execute(
+            "UPDATE account_role_memberships SET status='withdrawn' WHERE user_id=%s",
+            (u["id"],),
+        )
+        cur.execute(
+            "UPDATE account_business_memberships SET status='withdrawn' WHERE user_id=%s",
+            (u["id"],),
+        )
         conn.commit()
     finally:
         cur.close()
         conn.close()
     session.pop("user_id", None)
+    session.pop("agent_id", None)
+    session.pop("operator_id", None)
+    session.pop("loan_consultant_id", None)
+    session.pop("account_reauthenticated_user_id", None)
+    session.pop("account_reauthenticated_at", None)
+    session.pop("active_role", None)
+    session.pop("active_business_id", None)
+    session.pop("active_business_table", None)
     session.pop("kakao_oauth_state", None)
     return jsonify({"ok": True})
 
@@ -10408,12 +10813,36 @@ def admin_change_password():
 # 세션에 agent_id 저장. require_agent 로 보호.
 # ------------------------------------------------------------
 
+def _legacy_business_session_allowed(business_table, business_id):
+    """Legacy-only rows remain compatible; linked rows require an active owner."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS linked_count,
+                   COUNT(*) FILTER (
+                     WHERE b.status='active' AND u.status <> 'withdrawn'
+                   ) AS active_count
+              FROM account_business_memberships b
+              JOIN users u ON u.id=b.user_id
+             WHERE b.business_table=%s AND b.business_id=%s
+        """, (business_table, business_id))
+        row = cur.fetchone()
+        return not row or row["linked_count"] == 0 or row["active_count"] > 0
+    finally:
+        cur.close()
+        conn.close()
+
+
 def require_agent(f):
     """세션에 agent_id가 없으면 차단한다.
     /api/* 요청은 401 JSON, 그 외는 로그인 뒤 돌아올 주소를 보존해 /agent/login으로 리다이렉트."""
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("agent_id"):
+        agent_id = session.get("agent_id")
+        if not agent_id or not _legacy_business_session_allowed("agents", agent_id):
+            if agent_id:
+                session.pop("agent_id", None)
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
             next_path = request.full_path if request.query_string else request.path
@@ -12277,6 +12706,7 @@ def agent_leads():
 
 # 담당 중개사가 수정할 수 있는 매물의뢰 상태. 철회 상태는 별도 최종 상태로 유지한다.
 _LEAD_EDITABLE_STATUSES = {"submitted", "in_progress", "done"}
+_LEAD_STATUS_ORDER = {"submitted": 1, "in_progress": 2, "done": 3}
 
 _DEAL_TYPE_COUNT_COLUMN = {
     "매매": "sale_count",
@@ -16225,7 +16655,10 @@ def require_operator(f):
     /api/* 요청은 401 JSON, 그 외는 /operator/login으로 리다이렉트."""
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("operator_id"):
+        operator_id = session.get("operator_id")
+        if not operator_id or not _legacy_business_session_allowed("operators", operator_id):
+            if operator_id:
+                session.pop("operator_id", None)
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
             return redirect("/operator/login")
@@ -16719,7 +17152,12 @@ def require_loan_consultant(f):
     /api/* 요청은 401 JSON, 그 외는 /loan-consultant/login으로 리다이렉트."""
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("loan_consultant_id"):
+        consultant_id = session.get("loan_consultant_id")
+        if not consultant_id or not _legacy_business_session_allowed(
+            "loan_consultants", consultant_id
+        ):
+            if consultant_id:
+                session.pop("loan_consultant_id", None)
             if request.path.startswith("/api/"):
                 return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
             return redirect("/loan-consultant/login")
@@ -31529,6 +31967,26 @@ def admin_applications_approve(app_id):
                       ap.get("intro_text"), ap.get("doc_biz_reg_url"), ap.get("doc_biz_license_url"),
                       session.get("admin_user_id")])
                 created_id = cur.fetchone()["id"]
+            cur.execute(
+                "SELECT user_id FROM operator_lodging WHERE id=%s",
+                [created_id],
+            )
+            lodging_owner = cur.fetchone()
+            if lodging_owner and lodging_owner.get("user_id"):
+                cur.execute("""
+                    INSERT INTO account_role_memberships
+                        (user_id, role, legacy_account_id, status)
+                    VALUES (%s, 'lodging_operator', %s, 'active')
+                    ON CONFLICT (user_id, role, legacy_account_id)
+                    DO UPDATE SET status='active'
+                """, [lodging_owner["user_id"], created_id])
+                cur.execute("""
+                    INSERT INTO account_business_memberships
+                        (user_id, role, business_id, business_table, status)
+                    VALUES (%s, 'lodging_operator', %s, 'operator_lodging', 'active')
+                    ON CONFLICT (user_id, role, business_table, business_id)
+                    DO UPDATE SET status='active'
+                """, [lodging_owner["user_id"], created_id])
             cur.execute("""
                 UPDATE applications
                 SET status='approved', reviewed_at=NOW(), reviewed_by=%s, linked_op_lodging_id=%s

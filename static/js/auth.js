@@ -110,6 +110,94 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // 통합 계정 컨텍스트는 백엔드 배포 순서에 따라 contexts 또는
+  // available_contexts/available_roles 이름으로 올 수 있다. 화면은 공통
+  // 형태로 정규화해 레거시 단일 역할 응답도 그대로 지원한다.
+  var ROLE_LABELS = {
+    general: "일반회원",
+    user: "일반회원",
+    member: "일반회원",
+    agent: "중개사",
+    operator: "숙박 운영자",
+    lodging_operator: "숙박 운영자",
+    operations_support: "운영지원업체",
+    support: "운영지원업체",
+    loan_consultant: "대출상담사"
+  };
+  var ROLE_DASHBOARDS = {
+    agent: "/agent/dashboard",
+    operator: "/operator/dashboard",
+    lodging_operator: "/operator/dashboard",
+    loan_consultant: "/loan-consultant/dashboard",
+    operations_support: "/operator/dashboard",
+    support: "/operator/dashboard"
+  };
+  function contextRole(c) {
+    return String((c && (c.role || c.account_type || c.type)) || "user").toLowerCase();
+  }
+  function contextLabel(c) {
+    return (c && (c.label || c.role_label || c.name)) ||
+      ROLE_LABELS[contextRole(c)] || "계정";
+  }
+  function contextName(c) {
+    return c && (c.business_name || c.office_name || c.company_name || c.building_name || c.name);
+  }
+  function normalizeContexts(d) {
+    var list = d && (d.contexts || d.available_contexts || d.available_roles);
+    if (!Array.isArray(list)) list = [];
+    return list.map(function (c) {
+      if (typeof c === "string") c = { role: c };
+      c = c || {};
+      return {
+        id: c.id != null ? c.id : (c.context_id != null ? c.context_id : contextRole(c)),
+        role: contextRole(c),
+        label: contextLabel(c),
+        name: contextName(c),
+        dashboard: c.dashboard_url || c.redirect || ROLE_DASHBOARDS[contextRole(c)] || "/mypage",
+        raw: c
+      };
+    });
+  }
+  function renderContextSwitcher(contexts, active) {
+    if (!contexts || contexts.length < 2) return "";
+    var activeId = active && (active.id != null ? active.id : active.context_id);
+    var options = contexts.map(function (c) {
+      var title = c.label + (c.name ? " · " + c.name : "");
+      return '<option value="' + escapeHtml(c.id) + '"' +
+        (String(c.id) === String(activeId) ? " selected" : "") + ">" +
+        escapeHtml(title) + "</option>";
+    }).join("");
+    return '<label class="auth-context-switcher"><span class="auth-context-label">사용 역할</span>' +
+      '<select id="authContextSelect" aria-label="사용 역할과 사업장 선택">' + options + "</select></label>";
+  }
+  function switchContext(id, contexts) {
+    var selected = contexts.filter(function (c) { return String(c.id) === String(id); })[0];
+    var payload = { context_id: id };
+    if (selected) {
+      payload.role = selected.role;
+      if (selected.raw.business_id != null) payload.business_id = selected.raw.business_id;
+      if (selected.raw.business_table) payload.business_table = selected.raw.business_table;
+    }
+    return fetch("/api/auth/context", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+    }).then(function (res) {
+      if (!res.ok || !res.data || res.data.ok === false) {
+        throw new Error((res.data && res.data.message) || "역할 전환에 실패했습니다.");
+      }
+      var target = (res.data.redirect || (selected && selected.dashboard));
+      if (target) window.location.href = target;
+      else refreshMe();
+      return res.data;
+    });
+  }
+  window.livingstayNormalizeContexts = normalizeContexts;
+  window.livingstaySwitchContext = switchContext;
+  window.livingstayContextLabel = contextLabel;
+
   function showError(msg) {
     errorEl.style.color = "";
     errorEl.textContent = msg;
@@ -192,11 +280,23 @@
   }
 
   function renderLoggedIn(user) {
+    var contexts = normalizeContexts(user);
+    var active = user.active_context || user.active_role_context || user.active_role;
+    var switcher = renderContextSwitcher(contexts, active);
     authArea.innerHTML =
       '<span class="auth-username">' + escapeHtml(user.name || "회원") + '님</span>' +
+      switcher +
       '<button type="button" class="auth-btn auth-btn-ghost" id="authLogoutBtn">로그아웃</button>';
     var logoutBtn = document.getElementById("authLogoutBtn");
     if (logoutBtn) logoutBtn.addEventListener("click", doLogout);
+    var contextSelect = document.getElementById("authContextSelect");
+    if (contextSelect) contextSelect.addEventListener("change", function () {
+      contextSelect.disabled = true;
+      switchContext(contextSelect.value, contexts).catch(function (err) {
+        contextSelect.disabled = false;
+        alert(err.message || "역할 전환에 실패했습니다.");
+      });
+    });
   }
 
   function renderLoggedOut() {

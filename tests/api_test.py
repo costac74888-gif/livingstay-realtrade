@@ -1273,7 +1273,11 @@ def _check_password_reset_flow(client):
             patch.object(
                 app_module._secrets,
                 "token_urlsafe",
-                side_effect=[raw_token, *partner_tokens.values()],
+                side_effect=[
+                    raw_token,
+                    partner_tokens["operator"],
+                    partner_tokens["loan_consultant"],
+                ],
             ),
             patch.object(app_module, "_queue_password_reset_email") as queued_email,
             patch.object(app_module, "send_email") as email_sender,
@@ -1311,7 +1315,7 @@ def _check_password_reset_flow(client):
 
             if email_sender.called:
                 failures.append("비밀번호 재설정 요청: 외부 메일 발송이 HTTP 응답 경로에서 실행됨")
-            if queued_email.call_count != 6:
+            if queued_email.call_count != 5:
                 failures.append(f"비밀번호 재설정 요청: 모든 경우의 메일 작업을 큐잉하지 않음 ({queued_email.call_count}건)")
             elif queued_email.call_args_list:
                 reset_html = queued_email.call_args_list[0].args[1]
@@ -1331,10 +1335,10 @@ def _check_password_reset_flow(client):
                 queued_recipients = [call.args[0] for call in queued_email.call_args_list]
                 reset_links = [call.args[1] for call in queued_email.call_args_list
                                if "/reset-password?token=" in (call.args[1] or "")]
-                if queued_recipients.count(email) != 2:
-                    failures.append("비밀번호 재설정 요청: 같은 이메일의 일반회원·중개사 토큰을 모두 큐잉하지 않음")
-                if len(reset_links) != 4:
-                    failures.append("비밀번호 재설정 메일: 네 계정 유형의 재설정 링크가 모두 없음")
+                if queued_recipients.count(email) != 1:
+                    failures.append("비밀번호 재설정 요청: 통합 이메일에 계정 단위 메일 한 건만 큐잉하지 않음")
+                if len(reset_links) != 3:
+                    failures.append("비밀번호 재설정 메일: 통합회원·미연결 운영업체·대출상담사 링크가 모두 없음")
 
         cur.execute(
             """
@@ -1400,8 +1404,15 @@ def _check_password_reset_flow(client):
             if logged_in.status_code != 200 or not (logged_in.get_json() or {}).get("ok"):
                 failures.append("비밀번호 재설정: 새 비밀번호 이메일 로그인이 동작하지 않음")
 
+        cur.execute(
+            """SELECT 1 FROM password_reset_tokens
+               WHERE user_id=%s AND account_type='agent'""",
+            (partner_ids["agent"],),
+        )
+        if cur.fetchone():
+            failures.append("비밀번호 재설정 요청: 통합 이메일의 중개사 별도 토큰이 생성됨")
+
         partner_tables = {
-            "agent": "agents",
             "operator": "operators",
             "loan_consultant": "loan_consultants",
         }
@@ -2591,7 +2602,9 @@ def _check_partner_badge_policy(client):
         if (
             pending_listing.status_code != 200
             or not isinstance(pending_type_counts, dict)
-            or set(pending_type_counts) != {"agent", "operator", "loan_consultant"}
+            or set(pending_type_counts) != {
+                "agent", "operator", "lodging_operator", "loan_consultant", "presale"
+            }
             or any(not isinstance(v, int) or v < 0 for v in pending_type_counts.values())
         ):
             failures.append("회원관리 승인대기 유형별 건수 필드가 없거나 형식이 잘못됨")

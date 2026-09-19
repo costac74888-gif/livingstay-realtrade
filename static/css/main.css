@@ -1134,6 +1134,23 @@
 .auth-btn-solid:hover{ background:var(--brass-dark); }
 .auth-btn-ghost{ background:transparent; color:var(--ink-soft); border-color:var(--line); }
 .auth-btn-ghost:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+.auth-context-switcher{
+  display:inline-flex; align-items:center; gap:5px; max-width:250px;
+  color:var(--ink-soft); font-size:11.5px; white-space:nowrap;
+}
+.auth-context-label{ font-weight:600; }
+.auth-context-switcher select{
+  max-width:190px; min-height:30px; padding:4px 22px 4px 7px;
+  border:1px solid var(--line); border-radius:6px; background:#fff;
+  color:var(--ink); font:inherit; cursor:pointer;
+}
+#legacyRoleLinkBox input, #legacyRoleLinkBox select{
+  box-sizing:border-box; width:100%; min-height:38px; margin:0 0 7px;
+  padding:7px 9px; border:1px solid var(--line); border-radius:7px;
+  background:#fff; color:var(--ink); font:inherit;
+}
+#legacyRoleLinkBox summary{ cursor:pointer; }
+#legacyRoleLinkMsg{ min-height:16px; margin-top:5px; color:var(--brick); font-size:12px; }
 
   /* 지도 위 '목록' 토글 플로팅 버튼 (index 전용)
      데스크톱에서는 좌측 패널 오른쪽 가장자리에 붙고, 패널을 접으면 좌측 여백으로 이동한다. */
@@ -1288,6 +1305,13 @@
   .header-menu .auth-area{
     flex-direction:column; align-items:stretch; gap:6px;
     margin-top:4px; padding-top:8px; border-top:1px solid var(--line);
+  }
+  .header-menu .auth-context-switcher{
+    display:flex; width:100%; max-width:none; justify-content:space-between;
+    padding:4px 2px;
+  }
+  .header-menu .auth-context-switcher select{
+    flex:1; max-width:none; min-height:36px;
   }
   .header-menu .auth-btn{ width:100%; }
   .header-menu .auth-username{ padding:2px 4px; }
