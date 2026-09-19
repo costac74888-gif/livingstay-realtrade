@@ -82,7 +82,12 @@ class _ProviderFailure(RuntimeError):
 
 
 def _is_transient_provider_error(exc):
-    """공공 API의 일시 연결 장애와 영구적인 데이터 오류를 구분한다."""
+    """공공 API에 요청 자체가 닿지 않은 전송 장애인지 판정한다.
+
+    HTTP 503처럼 공급자가 응답한 오류는 특정 지번에만 반복될 수 있으므로
+    전체 공급자 연결 장애로 세지 않는다. 그런 행은 실패 대기열로 보내고
+    아직 시도하지 않은 정상 후보를 계속 처리한다.
+    """
     name = type(exc).__name__.lower()
     message = str(exc).lower()
     return (
@@ -508,7 +513,20 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
               AND tif.retry_after > NOW()
         )
     """)
-    sql = f"SELECT id, building_name, sgg_cd, umd_nm, jibun FROM master_buildings WHERE {' AND '.join(where)} ORDER BY id"
+    # 아직 한 번도 실패하지 않은 대상을 먼저 모두 처리한 뒤, 재시도 시각이
+    # 도래한 실패 건만 맨 뒤에 모아 처리한다. 특정 실패 지번이 매 실행의
+    # 앞부분을 다시 차지해 정상 수집 진도를 막지 않게 한다.
+    sql = f"""
+        SELECT id, building_name, sgg_cd, umd_nm, jibun
+        FROM master_buildings
+        WHERE {' AND '.join(where)}
+        ORDER BY CASE WHEN EXISTS (
+            SELECT 1
+            FROM title_info_backfill_failures queued
+            WHERE queued.building_id = master_buildings.id
+        ) THEN 1 ELSE 0 END,
+        id
+    """
     if limit:
         sql += f" LIMIT {int(limit)}"
     while True:
@@ -726,7 +744,13 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 except Exception:
                     pass
                 n_err += 1
-                consec_err += 1
+                transport_failure = _is_transient_provider_error(e)
+                if transport_failure:
+                    consec_err += 1
+                else:
+                    # HTTP 503/파싱 오류 등은 공급자에게 도달한 개별 행 오류다.
+                    # 전체 연결 장애 연속 횟수를 끊고 실패 목록으로만 격리한다.
+                    consec_err = 0
                 item_done = True
                 last_item_error = (
                     f"{type(e).__name__}: {_mask_key(e)}"
@@ -752,11 +776,17 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                         )
                         failure_recorded = True
                 print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
-                if _is_transient_provider_error(e):
+                if transport_failure:
                     print(
                         f"  [{i}/{total}] CONTINUE — 외부 API 연결 재시도 "
                         f"{PROVIDER_RETRY_MAX}회 실패, 이 건물은 대기열에 보관하고 "
                         "다음 건물로 진행합니다.",
+                        flush=True,
+                    )
+                else:
+                    print(
+                        f"  [{i}/{total}] QUEUE — 개별 지번 API 오류를 실패 목록으로 "
+                        "보내고 정상 대상을 계속 처리합니다.",
                         flush=True,
                     )
                 if consec_err >= 10:

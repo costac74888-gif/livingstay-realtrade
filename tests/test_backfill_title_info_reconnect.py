@@ -373,6 +373,12 @@ class BackfillReconnectTests(unittest.TestCase):
                 for call in cur.execute.call_args_list
             )
         )
+        target_query = next(
+            call.args[0]
+            for call in cur.execute.call_args_list
+            if call.args[0].lstrip().startswith("SELECT id, building_name")
+        )
+        self.assertIn("THEN 1 ELSE 0 END", target_query)
         self.assertEqual(conn.commit.call_count, 2)  # 실패 격리 + 둘째 건물 완료
         refresh.assert_called_once_with(conn)
         self.assertEqual(writes[-1]["processed"], 2)
@@ -430,6 +436,42 @@ class BackfillReconnectTests(unittest.TestCase):
             10,
         )
         refresh.assert_not_called()
+
+    def test_item_specific_503s_are_queued_without_blocking_unseen_targets(self):
+        """개별 503은 뒤로 격리하고 아직 시도하지 않은 정상 건물을 끝까지 처리한다."""
+        conn = MagicMock()
+        conn.closed = 0
+        cur = MagicMock()
+        cur.rowcount = 1
+        cur.fetchall.return_value = [_building(i) for i in range(1, 12)]
+        bjdong = MagicMock()
+        bjdong.find_bjdong_cd.return_value = "10100"
+
+        failures = [
+            RuntimeError("503 Server Error: Service Unavailable")
+            for _ in range(10)
+        ]
+        with (
+            patch.object(
+                title_info,
+                "_fetch_title_rows",
+                side_effect=[*failures, []],
+            ) as fetch,
+            patch.object(title_info, "refresh_auto_building_names", return_value=0) as refresh,
+            patch.object(title_info.time, "sleep"),
+        ):
+            result = title_info._run_with_open_connection(
+                only_missing=True,
+                sleep=0,
+                bjdong=bjdong,
+                conn=conn,
+                cur=cur,
+            )
+
+        self.assertEqual(result, (0, 1, 0, 10))
+        self.assertEqual(fetch.call_count, 11)
+        self.assertEqual(conn.commit.call_count, 11)
+        refresh.assert_called_once_with(conn)
 
 
 if __name__ == "__main__":
