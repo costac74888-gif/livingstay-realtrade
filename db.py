@@ -411,7 +411,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-09-09-13"
+SCHEMA_VERSION = "2026-09-19-1"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -609,6 +609,23 @@ def _run_init_db():
         lodging_classification_source TEXT,
         lodging_classification_confidence TEXT
     )
+    """)
+    # 건축HUB가 특정 지번에서만 503/timeout을 반복하는 경우를 격리한다.
+    # 실패 행 자체를 완료 처리하지 않고 일정 시간 뒤 재시도하되, 그동안은
+    # 뒤의 정상 건물들이 같은 실패 구간에 계속 막히지 않게 한다.
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS title_info_backfill_failures (
+        building_id INTEGER PRIMARY KEY
+            REFERENCES master_buildings(id) ON DELETE CASCADE,
+        attempts INTEGER NOT NULL DEFAULT 1 CHECK (attempts > 0),
+        last_error TEXT NOT NULL DEFAULT '',
+        last_failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        retry_after TIMESTAMPTZ NOT NULL
+    )
+    """)
+    cur.execute("""
+    CREATE INDEX IF NOT EXISTS idx_title_info_backfill_failures_retry
+        ON title_info_backfill_failures(retry_after)
     """)
     # 한국관광 데이터랩 CSV 전용 저장소. 기존 숙박·캠핑 통계 산식과 연결하지
     # 않으며, 열지도 API가 원본별 지표를 선택해 읽는 용도로만 사용한다.

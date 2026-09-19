@@ -60,6 +60,8 @@ class BackfillReconnectTests(unittest.TestCase):
             nonlocal initial_update_count
             if sql.lstrip().startswith("SELECT id, building_name"):
                 return
+            if sql.lstrip().startswith("DELETE FROM title_info_backfill_failures"):
+                return
             building_id = params["id"]
             update_attempts.append(building_id)
             initial_update_count += 1
@@ -71,6 +73,8 @@ class BackfillReconnectTests(unittest.TestCase):
             initial_cur.rowcount = 1
 
         def replacement_execute(sql, params=None):
+            if sql.lstrip().startswith("DELETE FROM title_info_backfill_failures"):
+                return
             building_id = params["id"]
             update_attempts.append(building_id)
             replacement_cur.rowcount = 1
@@ -262,10 +266,14 @@ class BackfillReconnectTests(unittest.TestCase):
         def initial_execute(sql, params=None):
             if sql.lstrip().startswith("SELECT id, building_name"):
                 return
+            if sql.lstrip().startswith("DELETE FROM title_info_backfill_failures"):
+                return
             update_sql.append(sql)
             initial_cur.rowcount = 1
 
         def replacement_execute(sql, params=None):
+            if sql.lstrip().startswith("DELETE FROM title_info_backfill_failures"):
+                return
             update_sql.append(sql)
             # 첫 commit이 서버에는 반영됐으므로 조건부 재시도는 0건이어야 한다.
             replacement_cur.rowcount = 0
@@ -353,8 +361,19 @@ class BackfillReconnectTests(unittest.TestCase):
             [call.args[0] for call in sleep.call_args_list if call.args[0] > 0],
             [15.0, 30.0, 60.0],
         )
-        self.assertEqual(cur.execute.call_count, 2)  # 대상 조회 + 둘째 건물 완료 UPDATE
-        conn.commit.assert_called_once_with()
+        self.assertTrue(
+            any(
+                "INSERT INTO title_info_backfill_failures" in call.args[0]
+                for call in cur.execute.call_args_list
+            )
+        )
+        self.assertTrue(
+            any(
+                "retry_after > NOW()" in call.args[0]
+                for call in cur.execute.call_args_list
+            )
+        )
+        self.assertEqual(conn.commit.call_count, 2)  # 실패 격리 + 둘째 건물 완료
         refresh.assert_called_once_with(conn)
         self.assertEqual(writes[-1]["processed"], 2)
         self.assertEqual(writes[-1]["total"], 2)
@@ -402,7 +421,14 @@ class BackfillReconnectTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 40)
         self.assertEqual(writes[-1]["processed"], 10)
         self.assertEqual(writes[-1]["err"], 10)
-        self.assertFalse(conn.commit.called)
+        self.assertEqual(conn.commit.call_count, 10)
+        self.assertEqual(
+            sum(
+                "INSERT INTO title_info_backfill_failures" in call.args[0]
+                for call in cur.execute.call_args_list
+            ),
+            10,
+        )
         refresh.assert_not_called()
 
 

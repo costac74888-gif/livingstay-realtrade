@@ -99,3 +99,4 @@
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
 - [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 운영 앱 메뉴는 관리자에게만 노출하되 서명된 비회원 공유 링크의 직접 열람은 유지한다.
 - [통합 계정과 복수 사업장](unified-account-business-roles.md) — 이메일별 로그인은 하나만 유지하고 일반회원·복수 사업자 역할과 사업장을 연결해 전환한다.
+- [건축HUB 배포 연결과 실패 격리](building-hub-deployment-egress.md) — 워크스페이스와 배포 환경의 data.go.kr 연결성이 다르며, 지속 실패 지번은 완료 처리 없이 대기열로 격리한다.

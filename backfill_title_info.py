@@ -62,6 +62,7 @@ PROVIDER_RETRY_BASE_SEC = 15.0
 PROVIDER_RETRY_MAX_SEC = 60.0
 PROVIDER_CONNECT_TIMEOUT_SEC = 15
 PROVIDER_READ_TIMEOUT_SEC = 30
+PROVIDER_FAILURE_RETRY_HOURS = 6
 
 
 class _DatabaseReconnectExhausted(RuntimeError):
@@ -373,6 +374,47 @@ def _extract(rep):
     }
 
 
+def _record_provider_failure(cur, building_id, error):
+    """지속 실패 행을 완료 처리하지 않고 지수형 대기열에 넣는다."""
+    cur.execute(
+        """
+        INSERT INTO title_info_backfill_failures (
+            building_id, attempts, last_error, last_failed_at, retry_after
+        )
+        VALUES (
+            %s, 1, %s, NOW(), NOW() + (%s * INTERVAL '1 hour')
+        )
+        ON CONFLICT (building_id) DO UPDATE
+        SET attempts = title_info_backfill_failures.attempts + 1,
+            last_error = EXCLUDED.last_error,
+            last_failed_at = NOW(),
+            retry_after = NOW() + (
+                LEAST(
+                    168,
+                    %s * POWER(
+                        2,
+                        LEAST(title_info_backfill_failures.attempts, 5)
+                    )
+                ) * INTERVAL '1 hour'
+            )
+        """,
+        [
+            building_id,
+            str(error)[:500],
+            PROVIDER_FAILURE_RETRY_HOURS,
+            PROVIDER_FAILURE_RETRY_HOURS,
+        ],
+    )
+
+
+def _clear_provider_failure(cur, building_id):
+    """재시도에 성공한 건물의 오래된 실패 기록을 제거한다."""
+    cur.execute(
+        "DELETE FROM title_info_backfill_failures WHERE building_id = %s",
+        [building_id],
+    )
+
+
 def run(limit=None, ids=None, only_missing=True, sleep=0.2, pk_only=False,
         status_key=None, run_id=None):
     """pk_only=True — 보강 모드: 이미 표제부가 채워진 건물도 포함해
@@ -458,6 +500,14 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
         checkpoint_condition = " AND title_backfilled_at IS NULL"
     else:
         checkpoint_condition = ""
+    where.append("""
+        NOT EXISTS (
+            SELECT 1
+            FROM title_info_backfill_failures tif
+            WHERE tif.building_id = master_buildings.id
+              AND tif.retry_after > NOW()
+        )
+    """)
     sql = f"SELECT id, building_name, sgg_cd, umd_nm, jibun FROM master_buildings WHERE {' AND '.join(where)} ORDER BY id"
     if limit:
         sql += f" LIMIT {int(limit)}"
@@ -535,6 +585,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 )
                 consec_err = 0  # 성공적으로 응답 받음
                 api_response_count += 1
+                _clear_provider_failure(cur, bid)
                 rep = _pick_representative(rows)
                 if not rep:
                     row_changed = 0
@@ -680,11 +731,32 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                 last_item_error = (
                     f"{type(e).__name__}: {_mask_key(e)}"
                 )[:500]
+                failure_recorded = False
+                while not failure_recorded:
+                    try:
+                        _record_provider_failure(cur, bid, last_item_error)
+                        conn.commit()
+                        failure_recorded = True
+                    except Exception as queue_error:
+                        if _is_connection_lost(queue_error, conn):
+                            reconnect_after(queue_error)
+                            continue
+                        try:
+                            conn.rollback()
+                        except Exception:
+                            pass
+                        print(
+                            f"  [{i}/{total}] WARN id={bid} — 실패 대기열 저장 실패: "
+                            f"{_mask_key(queue_error)[:300]}",
+                            flush=True,
+                        )
+                        failure_recorded = True
                 print(f"  [{i}/{total}] ERR  id={bid} {name} — {last_item_error}", flush=True)
                 if _is_transient_provider_error(e):
                     print(
                         f"  [{i}/{total}] CONTINUE — 외부 API 연결 재시도 "
-                        f"{PROVIDER_RETRY_MAX}회 실패, 다음 건물로 진행합니다.",
+                        f"{PROVIDER_RETRY_MAX}회 실패, 이 건물은 대기열에 보관하고 "
+                        "다음 건물로 진행합니다.",
                         flush=True,
                     )
                 if consec_err >= 10:
