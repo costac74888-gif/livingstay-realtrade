@@ -6066,7 +6066,7 @@ function _renderApprovedRosterOperatingInfo(b){
     registered_name: b.operating_info.facility_name,
     legal_category: b.operating_info.subtype,
     hotel_grade: b.operating_info.hotel_grade,
-    permit_number: b.operating_info.registration_number,
+    permit_number_masked: b.operating_info.registration_number_masked || b.operating_info.registration_number,
     official_room_count: b.operating_info.official_room_count,
     official_road_address: b.operating_info.address,
     source_name: b.operating_info.source,
@@ -6102,7 +6102,7 @@ function _renderApprovedRosterOperatingInfo(b){
           <div><dt>등록명칭</dt><dd>${value(info.registered_name)}</dd></div>
           <div><dt>법정 업종</dt><dd>${value(info.legal_category)}</dd></div>
           ${info.hotel_grade ? `<div><dt>호텔 등급</dt><dd>${value(info.hotel_grade)}</dd></div>` : ""}
-          <div><dt>허가·신고번호</dt><dd>${value(info.permit_number)}</dd></div>
+          <div><dt>허가·신고번호</dt><dd>${value(info.permit_number_masked || info.permit_number)}</dd></div>
           <div><dt>영업 상태</dt><dd>${value(info.active_status)}${info.status_detail ? ` · ${value(info.status_detail)}` : ""}</dd></div>
           <div><dt>허가일</dt><dd>${value(info.permit_date)}</dd></div>
           <div><dt>${isCamping ? "공식 사이트 수" : "공식 객실수"}</dt><dd>${isCamping ? count(info.official_site_count, "면") : count(info.official_room_count, "실")}</dd></div>

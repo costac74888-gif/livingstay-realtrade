@@ -2321,8 +2321,10 @@ def get_building(building_id):
     # normalized address (road first, jibun fallback).
     registry_records = _public_lodging_registry_records(cur, building)
     annual_records = _public_annual_operating_records(cur, building_id)
-    building["operating_records"] = _sort_public_operating_records(
-        _deduplicate_public_operating_records(registry_records + annual_records)
+    building["operating_records"] = _mask_public_operating_record_numbers(
+        _sort_public_operating_records(
+            _deduplicate_public_operating_records(registry_records + annual_records)
+        )
     )
     # 영업신고가 여러 건이면 신고 객실수가 가장 많은 사업장을 대표로 노출한다.
     # 객실수가 없거나 같을 때는 원장의 기존 순서를 안정적으로 보존한다.
@@ -2331,9 +2333,15 @@ def get_building(building_id):
     )
     building["operating_record_count"] = len(building["operating_records"])
     # Compatibility field for existing clients: annual roster only.
-    building["operating_info"] = annual_tourism_roster.latest_linked_operating_info(
-        cur, building_id
-    )
+    operating_info = annual_tourism_roster.latest_linked_operating_info(cur, building_id)
+    if operating_info:
+        operating_info = dict(operating_info)
+        masked_registration = _masked_public_operating_permit_number(
+            operating_info.get("registration_number")
+        )
+        operating_info["registration_number"] = masked_registration
+        operating_info["registration_number_masked"] = masked_registration
+    building["operating_info"] = operating_info
 
     # 상세 자체는 캐시된 무료·보유 사진만 즉시 반환한다. TourAPI 신규 조회는
     # 별도 온디맨드 API가 담당해 건물 정보 렌더링을 외부 API 응답으로 막지 않는다.
@@ -21981,6 +21989,40 @@ def _admin_lodging_source_label(permit_number):
         if permit.startswith(prefix):
             return label
     return "숙박업 영업신고 원장(행안부)"
+
+
+def _masked_public_operating_permit_number(value):
+    """공개 영업원장 번호에서 연도 뒤 일련번호 숫자를 가린다."""
+    permit = str(value or "").strip()
+    if not permit:
+        return None
+
+    year_matches = list(re.finditer(r"(?:19|20)\d{2}", permit))
+    if year_matches:
+        year_end = year_matches[-1].end()
+        suffix = permit[year_end:]
+        masked_suffix = re.sub(r"\d", "•", suffix)
+        if masked_suffix != suffix:
+            return permit[:year_end] + masked_suffix
+
+    # 원본에 연도가 없는 예외 형식은 마지막 숫자 최대 6자리만 숨긴다.
+    digit_positions = [match.start() for match in re.finditer(r"\d", permit)]
+    if not digit_positions:
+        return permit
+    hidden_positions = set(digit_positions[-6:])
+    return "".join(
+        "•" if index in hidden_positions else char
+        for index, char in enumerate(permit)
+    )
+
+
+def _mask_public_operating_record_numbers(records):
+    """최종 공개 응답에서 허가·신고번호 원문을 제거한다."""
+    for record in records:
+        masked = _masked_public_operating_permit_number(record.get("permit_number"))
+        record["permit_number"] = masked
+        record["permit_number_masked"] = masked
+    return records
 
 
 def _public_lodging_registry_records(cur, building):

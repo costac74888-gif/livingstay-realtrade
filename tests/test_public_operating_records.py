@@ -90,6 +90,32 @@ class PublicOperatingRecordTests(unittest.TestCase):
         self.assertEqual(record["hotel_grade"], "5성급")
         self.assertNotIn("phone", record)
 
+    def test_public_permit_number_masks_serial_digits_after_year(self):
+        cases = {
+            "5050000-214-1995-00002": "5050000-214-1995-•••••",
+            "TOURISM:5050000:CDFI2260031995000001":
+                "TOURISM:5050000:CDFI2260031995••••••",
+            "TOURISM:1234567": "TOURISM:1••••••",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    application._masked_public_operating_permit_number(raw),
+                    expected,
+                )
+
+    def test_final_public_projection_contains_no_raw_permit_number(self):
+        raw = "5050000-214-1995-00002"
+        records = application._mask_public_operating_record_numbers([
+            {"permit_number": raw, "registered_name": "공식 숙소"},
+        ])
+        self.assertEqual(records[0]["permit_number"], "5050000-214-1995-•••••")
+        self.assertEqual(
+            records[0]["permit_number_masked"],
+            "5050000-214-1995-•••••",
+        )
+        self.assertNotIn(raw, repr(records))
+
     def test_largest_official_room_count_is_first_operating_record(self):
         records = [
             {"registered_name": "관광 등록명", "official_room_count": 20},
