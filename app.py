@@ -21547,6 +21547,7 @@ def admin_sync_status():
     try:
         cur.execute("""
             SELECT COUNT(*) AS c, MAX(deal_date) AS md,
+                   MAX(updated_at) AS last_data_updated_at,
                    COUNT(*) FILTER (WHERE transaction_scope = 'unit') AS unit_count,
                    COUNT(*) FILTER (WHERE transaction_scope = 'whole_building') AS whole_count,
                    COUNT(*) FILTER (WHERE transaction_scope = 'land_or_site') AS land_count
@@ -21594,6 +21595,7 @@ def admin_sync_status():
             "land_or_site": int(row["land_count"] or 0),
         },
         "max_deal_date": (row["md"].strftime("%Y-%m-%d") if hasattr(row["md"], "strftime") else row["md"]) if row["md"] else None,
+        "last_data_updated_at": _kst_label(row["last_data_updated_at"]) if row["last_data_updated_at"] else None,
     })
 
 

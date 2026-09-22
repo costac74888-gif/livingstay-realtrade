@@ -1,11 +1,13 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import psycopg2
 
 import db
 import sync_batch
+import sync_runner
 
 
 class _Connection:
@@ -56,7 +58,23 @@ class TransactionSyncDeadlockTests(unittest.TestCase):
     def test_recent_sync_runner_skips_address_prepare_only_for_recent_status(self):
         source = Path("sync_runner.py").read_text(encoding="utf-8")
         self.assertIn('if META_KEY == "tx_sync_status":', source)
-        self.assertIn('cmd.append("--skip-address-prepare")', source)
+        self.assertIn('"--skip-address-prepare"', source)
+        self.assertIn('"--progress-key"', source)
+        self.assertIn('RECENT_PROGRESS_KEY = "tx_sync_progress"', source)
+
+    def test_recent_sync_runner_allows_six_hours_for_nationwide_collection(self):
+        self.assertEqual(sync_runner.TIMEOUT_SEC, 6 * 3600)
+
+    def test_recent_sync_runner_adds_resume_checkpoint(self):
+        args = SimpleNamespace(months=None, progress_key=None)
+        with patch.object(sync_runner, "META_KEY", "tx_sync_status"):
+            command = sync_runner._build_sync_command("/app", args)
+        self.assertIn("--skip-address-prepare", command)
+        progress_index = command.index("--progress-key")
+        self.assertEqual(
+            command[progress_index + 1],
+            sync_runner.RECENT_PROGRESS_KEY,
+        )
 
     def test_transaction_scope_uses_rtms_building_type(self):
         self.assertEqual(

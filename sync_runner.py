@@ -27,8 +27,9 @@ from db import get_conn
 from secret_redaction import redact_env_secrets
 
 META_KEY = "tx_sync_status"  # --meta-key 인자로 변경 가능(과거 데이터 백필은 tx_backfill_status)
-TIMEOUT_SEC = 3 * 3600      # 최대 실행 3시간
+TIMEOUT_SEC = 6 * 3600      # 전국 3개월 수집의 외부 API 지연을 고려한 최대 실행 6시간
 HEARTBEAT_SEC = 30
+RECENT_PROGRESS_KEY = "tx_sync_progress"
 
 
 def _redact(text):
@@ -104,6 +105,24 @@ def _tx_count():
         conn.close()
 
 
+def _build_sync_command(base_dir, args):
+    """실거래 수집 하위 프로세스 명령을 상태 종류에 맞게 구성한다."""
+    cmd = [sys.executable, "-u", os.path.join(base_dir, "sync_batch.py"), "--master-only"]
+    if META_KEY == "tx_sync_status":
+        # 최근 거래 동기화도 시군구·월 체크포인트를 남겨 제한시간/게시 중단 뒤
+        # 처음부터 반복하지 않고 완료 다음 지점부터 이어간다.
+        cmd += [
+            "--skip-address-prepare",
+            "--progress-key",
+            RECENT_PROGRESS_KEY,
+        ]
+    if args.months and args.months > 0:
+        cmd += ["--months", str(int(args.months))]
+    if args.progress_key:
+        cmd += ["--progress-key", args.progress_key]
+    return cmd
+
+
 def main():
     global META_KEY
     parser = argparse.ArgumentParser()
@@ -121,21 +140,19 @@ def main():
         print("[runner] running 상태가 아니므로 종료합니다.")
         return
     run_id = status.get("run_id") or ""
+    if status.get("tx_before") is None:
+        try:
+            status["tx_before"] = _tx_count()
+            _write_status(status, run_id)
+        except Exception as e:
+            print(f"[runner] 시작 거래수 기록 실패(계속 진행): {_redact(e)}", flush=True)
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     tail = deque(maxlen=60)  # 실패 시 보여줄 마지막 출력 일부
     error = None
 
     try:
-        cmd = [sys.executable, "-u", "sync_batch.py", "--master-only"]
-        if META_KEY == "tx_sync_status":
-            # 최근 거래 동기화는 JUSO 주소 전수 보강 때문에 RTMS 수집이
-            # 지연·실패하지 않도록 이미 준비된 마스터로 바로 수집한다.
-            cmd.append("--skip-address-prepare")
-        if args.months and args.months > 0:
-            cmd += ["--months", str(int(args.months))]
-        if args.progress_key:
-            cmd += ["--progress-key", args.progress_key]
+        cmd = _build_sync_command(base_dir, args)
         proc = subprocess.Popen(
             cmd,
             cwd=base_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,

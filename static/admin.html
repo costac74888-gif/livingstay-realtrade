@@ -4906,7 +4906,10 @@
       const btn = document.getElementById("txSyncRunBtn");
       if (!box || !btn) { stopTxSyncPolling(); return; }
       const rows = [];
-      rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 최근 계약일 ${d.max_deal_date ? dgEscape(d.max_deal_date) : "-"}</div>`);
+      rows.push(`<div class="geo-stat-row"><b>거래 데이터:</b> 총 ${num(d.tx_total)}건 · 원본 최신 계약일 ${d.max_deal_date ? dgEscape(d.max_deal_date) : "-"}</div>`);
+      if (d.last_data_updated_at) {
+        rows.push(`<div class="geo-stat-row"><b>최근 수집 반영:</b> ${dgEscape(d.last_data_updated_at)} <span style="color:var(--ink-soft);">(계약일은 국토부 공개 시차로 더 이전일 수 있음)</span></div>`);
+      }
       if (d.scope_counts) {
         rows.push(`<div class="geo-stat-row"><b>거래대상 분리:</b> 개별 호실 ${num(d.scope_counts.unit)}건 · 건물 전체 ${num(d.scope_counts.whole_building)}건 · 토지·부지 ${num(d.scope_counts.land_or_site)}건</div>`);
       }
