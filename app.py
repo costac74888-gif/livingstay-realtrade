@@ -35704,7 +35704,13 @@ def _report_rate_by_sido_payload():
                 if total_units else None
             ),
         }
-        return {"ok": True, "items": items, "total": total, "is_partial": True}
+        return {
+            "ok": True,
+            "items": items,
+            "total": total,
+            "is_partial": True,
+            "metric_contract": "living_lodging_active_rooms_capped_v1",
+        }
     finally:
         cur.close()
         conn.close()

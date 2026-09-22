@@ -464,6 +464,61 @@ def _get_datalab_summary_db_fallback():
             conn.close()
 
 
+REPORT_RATE_CONTRACT = "living_lodging_active_rooms_capped_v1"
+
+
+def _validated_official_report_rate(app_module):
+    """공식 생활숙박 집계의 계보와 산술 불변식을 모두 검증한다."""
+    reader = getattr(app_module, "_report_rate_by_sido_payload", None)
+    if not callable(reader):
+        raise ValueError("공식 생활숙박 신고율 집계 함수를 찾을 수 없습니다.")
+
+    payload = reader() or {}
+    if payload.get("metric_contract") != REPORT_RATE_CONTRACT:
+        raise ValueError("생활숙박 신고율 산식 계약이 없거나 지원하지 않는 버전입니다.")
+    if payload.get("ok") is not True:
+        raise ValueError("공식 생활숙박 신고율 집계가 완료되지 않았습니다.")
+
+    total = payload.get("total") or {}
+    items = payload.get("items") or []
+    total_units = int(total.get("total_units") or 0)
+    active_rooms = int(total.get("active_room_cnt") or 0)
+    rate = total.get("report_rate")
+    if total_units <= 0 or active_rooms < 0 or active_rooms > total_units:
+        raise ValueError(
+            f"생활숙박 신고율 분자·분모 오류: {active_rooms}/{total_units}"
+        )
+    if rate is None:
+        raise ValueError("생활숙박 신고율이 비어 있습니다.")
+
+    rate = float(rate)
+    expected_rate = round(active_rooms * 100.0 / total_units, 1)
+    if not 0.0 <= rate <= 100.0 or abs(rate - expected_rate) > 0.05:
+        raise ValueError(
+            f"생활숙박 신고율 산술 불일치: 전달값={rate:.1f}%, "
+            f"재계산={expected_rate:.1f}%"
+        )
+
+    item_units = sum(int(item.get("total_units") or 0) for item in items)
+    item_rooms = sum(int(item.get("active_room_cnt") or 0) for item in items)
+    sido_names = [str(item.get("sido") or "").strip() for item in items]
+    if (
+        not items
+        or item_units != total_units
+        or item_rooms != active_rooms
+        or any(not sido for sido in sido_names)
+        or len(sido_names) != len(set(sido_names))
+    ):
+        raise ValueError("생활숙박 신고율 전국 합계와 시도별 원장이 일치하지 않습니다.")
+
+    return {
+        "report_rate": rate,
+        "report_rate_numerator": active_rooms,
+        "report_rate_denominator": total_units,
+        "report_rate_contract": REPORT_RATE_CONTRACT,
+    }
+
+
 def _get_datalab_summary(app_module=None):
     """통합 통계 원본 캐시에서 이메일용 최소 요약만 안전하게 꺼낸다.
 
@@ -479,6 +534,12 @@ def _get_datalab_summary(app_module=None):
     try:
         if app_module is None:
             import app as app_module
+
+        result = dict(empty)
+        try:
+            result.update(_validated_official_report_rate(app_module))
+        except Exception as exc:
+            result["quality_errors"] = [str(exc)]
 
         cache = getattr(app_module, "_MASTER_STATS_CACHE", {}) or {}
         if not (cache.get("data") or {}):
@@ -499,33 +560,6 @@ def _get_datalab_summary(app_module=None):
 
         def section_ok(name):
             return sections.get(name, {}).get("status") == "ok"
-
-        result = dict(empty)
-        if section_ok("consign_stats"):
-            total = (data.get("consign_stats") or {}).get("total") or {}
-            rate = total.get("report_rate")
-            if rate is not None:
-                rate = float(rate)
-                if 0.0 <= rate <= 100.0:
-                    result["report_rate"] = rate
-                else:
-                    result["quality_errors"] = [
-                        f"전국 생숙 영업신고율 범위 오류: {rate:.1f}%"
-                    ]
-
-        if result["report_rate"] is None and not result.get("quality_errors"):
-            report_reader = getattr(app_module, "_report_rate_by_sido_payload", None)
-            if callable(report_reader):
-                report_payload = report_reader() or {}
-                rate = (report_payload.get("total") or {}).get("report_rate")
-                if rate is not None:
-                    rate = float(rate)
-                    if 0.0 <= rate <= 100.0:
-                        result["report_rate"] = rate
-                    else:
-                        result["quality_errors"] = [
-                            f"전국 생숙 영업신고율 범위 오류: {rate:.1f}%"
-                        ]
 
         if section_ok("transaction_stats"):
             transactions = data.get("transaction_stats") or {}
@@ -550,14 +584,25 @@ def _get_datalab_summary(app_module=None):
             fallback = _get_datalab_summary_db_fallback()
             # 순위·관광소비는 가벼운 DB fallback을 쓰되, 신고율은 위에서 실행한
             # 중복제거·호실수 cap 적용 공식 집계값만 유지한다.
-            fallback["report_rate"] = result.get("report_rate")
+            for key in (
+                "report_rate",
+                "report_rate_numerator",
+                "report_rate_denominator",
+                "report_rate_contract",
+            ):
+                if key in result:
+                    fallback[key] = result[key]
             if result.get("quality_errors"):
                 fallback["quality_errors"] = result["quality_errors"]
             return fallback
         return result
     except Exception:
-        log.warning("데이터랩 요약 캐시를 읽지 못했습니다. DB 폴백을 시도합니다.", exc_info=True)
-        return _get_datalab_summary_db_fallback()
+        log.warning("데이터랩 요약 캐시를 읽지 못했습니다.", exc_info=True)
+        fallback = _get_datalab_summary_db_fallback()
+        fallback["quality_errors"] = [
+            "공식 생활숙박 신고율을 검증하지 못해 발송을 중단합니다."
+        ]
+        return fallback
 
 
 # ── 건물 링크 보정 ─────────────────────────────────────────────────────────────
