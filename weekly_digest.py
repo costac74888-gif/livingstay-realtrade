@@ -145,68 +145,54 @@ def _status_badge_style(status):
 # ── DB 조회 ──────────────────────────────────────────────────────────────────
 
 
-def _get_ranking(cur):
-    """신고가 갱신 TOP5, 거래량 TOP5 (최근 7일)"""
-    week_ago = (date.today() - timedelta(days=7)).isoformat()
+def _get_public_api_payload(path, app_module=None):
+    """운영 홈페이지가 사용하는 공개 API 라우트의 응답을 그대로 읽는다."""
+    try:
+        if app_module is None:
+            import app as app_module
+        flask_app = getattr(app_module, "app", None)
+        if flask_app is None:
+            return {}
+        with flask_app.test_client() as client:
+            response = client.get(path)
+        if response.status_code != 200:
+            return {}
+        payload = response.get_json(silent=True)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        log.warning("홈페이지 공개 API를 읽지 못했습니다: %s", path, exc_info=True)
+        return {}
 
-    # 신고가 갱신: 이번 주 거래 중 해당 건물의 역대 최고가를 경신한 것.
-    # building_id가 비어도 발송 직전 거래 식별자(sgg_cd·umd_nm·jibun)로 보정할 수
-    # 있도록 거래 원본 키와 주소를 함께 반환한다.
-    cur.execute("""
-        WITH this_week AS (
-            SELECT building_name, address, sgg_cd, umd_nm, jibun,
-                   MAX(price) AS new_peak
-            FROM transactions
-            WHERE transaction_scope = 'unit' AND deal_date >= %s
-            GROUP BY building_name, address, sgg_cd, umd_nm, jibun
-        ),
-        prev_peak AS (
-            SELECT building_name, address, sgg_cd, umd_nm, jibun,
-                   MAX(price) AS old_peak
-            FROM transactions
-            WHERE transaction_scope = 'unit' AND deal_date < %s
-            GROUP BY building_name, address, sgg_cd, umd_nm, jibun
-        )
-        SELECT t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun,
-               t.new_peak AS price,
-               (SELECT mb2.id FROM master_buildings mb2
-                WHERE mb2.sgg_cd = t.sgg_cd
-                  AND REPLACE(mb2.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
-                  AND mb2.jibun = t.jibun
-                ORDER BY mb2.id LIMIT 1)  AS building_id,
-               ROUND((t.new_peak - COALESCE(p.old_peak, 0))::numeric
-                     * 100.0 / NULLIF(COALESCE(p.old_peak, t.new_peak), 0), 1) AS pct_gain
-        FROM this_week t
-        LEFT JOIN prev_peak p
-               ON p.building_name = t.building_name
-              AND p.address = t.address
-              AND p.sgg_cd = t.sgg_cd
-              AND REPLACE(p.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
-              AND p.jibun = t.jibun
-        WHERE t.new_peak > COALESCE(p.old_peak, 0)
-        ORDER BY pct_gain DESC NULLS LAST
-        LIMIT 5
-    """, (week_ago, week_ago))
-    price_highs = cur.fetchall()
 
-    # 거래량 TOP5 (최근 7일) — 위와 같이 거래 식별자를 유지한다.
-    cur.execute("""
-        SELECT t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun,
-               COUNT(*) AS deal_count,
-               (SELECT mb2.id FROM master_buildings mb2
-                WHERE mb2.sgg_cd = t.sgg_cd
-                  AND REPLACE(mb2.umd_nm, ' ', '') = REPLACE(t.umd_nm, ' ', '')
-                  AND mb2.jibun = t.jibun
-                ORDER BY mb2.id LIMIT 1)  AS building_id
-        FROM transactions t
-        WHERE t.transaction_scope = 'unit' AND t.deal_date >= %s
-        GROUP BY t.building_name, t.address, t.sgg_cd, t.umd_nm, t.jibun
-        ORDER BY deal_count DESC
-        LIMIT 5
-    """, (week_ago,))
-    most_traded = cur.fetchall()
-
-    return price_highs, most_traded
+def _get_public_homepage_ranking(app_module=None):
+    try:
+        payload = _get_public_api_payload("/api/ranking", app_module)
+        if payload.get("ok") is False:
+            return [], []
+        price_rows = payload.get("price_highs") or []
+        volume_rows = payload.get("most_traded") or []
+        if not isinstance(price_rows, list) or not isinstance(volume_rows, list):
+            return [], []
+        valid_price_rows = [
+            dict(row) for row in price_rows
+            if (
+                isinstance(row, dict)
+                and str(row.get("building_name") or "").strip()
+                and row.get("price") is not None
+            )
+        ]
+        valid_volume_rows = [
+            dict(row) for row in volume_rows
+            if (
+                isinstance(row, dict)
+                and str(row.get("building_name") or "").strip()
+                and row.get("deal_count") is not None
+            )
+        ]
+        return valid_price_rows, valid_volume_rows
+    except Exception:
+        log.warning("홈페이지 공개 랭킹을 읽지 못했습니다.", exc_info=True)
+        return [], []
 
 
 def _weekly_feature_episode(today=None, series_length=8):
@@ -464,59 +450,14 @@ def _get_datalab_summary_db_fallback():
             conn.close()
 
 
-REPORT_RATE_CONTRACT = "living_lodging_active_rooms_capped_v1"
-
-
-def _validated_official_report_rate(app_module):
-    """공식 생활숙박 집계의 계보와 산술 불변식을 모두 검증한다."""
-    reader = getattr(app_module, "_report_rate_by_sido_payload", None)
-    if not callable(reader):
-        raise ValueError("공식 생활숙박 신고율 집계 함수를 찾을 수 없습니다.")
-
-    payload = reader() or {}
-    if payload.get("metric_contract") != REPORT_RATE_CONTRACT:
-        raise ValueError("생활숙박 신고율 산식 계약이 없거나 지원하지 않는 버전입니다.")
-    if payload.get("ok") is not True:
-        raise ValueError("공식 생활숙박 신고율 집계가 완료되지 않았습니다.")
-
-    total = payload.get("total") or {}
-    items = payload.get("items") or []
-    total_units = int(total.get("total_units") or 0)
-    active_rooms = int(total.get("active_room_cnt") or 0)
-    rate = total.get("report_rate")
-    if total_units <= 0 or active_rooms < 0 or active_rooms > total_units:
-        raise ValueError(
-            f"생활숙박 신고율 분자·분모 오류: {active_rooms}/{total_units}"
-        )
+def _get_public_homepage_report_rate(app_module=None):
+    """홈페이지 공개 API가 실제로 제공하는 신고율 값을 그대로 읽는다."""
+    payload = _get_public_api_payload("/api/stats/consign-by-sido", app_module)
+    rate = ((payload or {}).get("total") or {}).get("report_rate")
     if rate is None:
-        raise ValueError("생활숙박 신고율이 비어 있습니다.")
-
+        return None
     rate = float(rate)
-    expected_rate = round(active_rooms * 100.0 / total_units, 1)
-    if not 0.0 <= rate <= 100.0 or abs(rate - expected_rate) > 0.05:
-        raise ValueError(
-            f"생활숙박 신고율 산술 불일치: 전달값={rate:.1f}%, "
-            f"재계산={expected_rate:.1f}%"
-        )
-
-    item_units = sum(int(item.get("total_units") or 0) for item in items)
-    item_rooms = sum(int(item.get("active_room_cnt") or 0) for item in items)
-    sido_names = [str(item.get("sido") or "").strip() for item in items]
-    if (
-        not items
-        or item_units != total_units
-        or item_rooms != active_rooms
-        or any(not sido for sido in sido_names)
-        or len(sido_names) != len(set(sido_names))
-    ):
-        raise ValueError("생활숙박 신고율 전국 합계와 시도별 원장이 일치하지 않습니다.")
-
-    return {
-        "report_rate": rate,
-        "report_rate_numerator": active_rooms,
-        "report_rate_denominator": total_units,
-        "report_rate_contract": REPORT_RATE_CONTRACT,
-    }
+    return rate if 0.0 <= rate <= 100.0 else None
 
 
 def _get_datalab_summary(app_module=None):
@@ -530,79 +471,33 @@ def _get_datalab_summary(app_module=None):
         "report_rate": None, "price_change": None, "volume_top": None,
         "consumption_summary": None,
     }
-    cache_fill_failed = False
     try:
         if app_module is None:
             import app as app_module
 
         result = dict(empty)
         try:
-            result.update(_validated_official_report_rate(app_module))
-        except Exception as exc:
-            result["quality_errors"] = [str(exc)]
-
-        cache = getattr(app_module, "_MASTER_STATS_CACHE", {}) or {}
-        if not (cache.get("data") or {}):
-            section_reader = getattr(app_module, "_master_stats_section", None)
-            if callable(section_reader):
-                try:
-                    section_reader("consign_stats")
-                except Exception:
-                    cache_fill_failed = True
-            else:
-                cache_fill_failed = True
-            cache = getattr(app_module, "_MASTER_STATS_CACHE", {}) or {}
-            if not (cache.get("data") or {}):
-                cache_fill_failed = True
-
-        data = cache.get("data") or {}
-        sections = cache.get("sections") or {}
-
-        def section_ok(name):
-            return sections.get(name, {}).get("status") == "ok"
-
-        if section_ok("transaction_stats"):
-            transactions = data.get("transaction_stats") or {}
-            price_items = (
-                ((transactions.get("price_change") or {}).get("up") or {}).get("items")
-                or []
+            result["report_rate"] = _get_public_homepage_report_rate(app_module)
+        except Exception:
+            log.warning(
+                "홈페이지 공개 신고율을 읽지 못해 이메일에서 해당 카드만 생략합니다.",
+                exc_info=True,
             )
-            volume_items = transactions.get("volume_top") or []
-            result["price_change"] = dict(price_items[0]) if price_items else None
-            result["volume_top"] = dict(volume_items[0]) if volume_items else None
-        tourism_data = (
-            data.get("consumption_trend")
-            or (data.get("tourism_stats") or {}).get("consumption_trend")
-            or (data.get("tourism") or {}).get("consumption_trend")
-            or []
+
+        price_payload = _get_public_api_payload(
+            "/api/stats/price-change-top?direction=up", app_module
         )
-        result["consumption_summary"] = (
-            _consumption_summary(tourism_data)
-            if tourism_data else _get_consumption_summary_db()
-        )
-        if cache_fill_failed:
-            fallback = _get_datalab_summary_db_fallback()
-            # 순위·관광소비는 가벼운 DB fallback을 쓰되, 신고율은 위에서 실행한
-            # 중복제거·호실수 cap 적용 공식 집계값만 유지한다.
-            for key in (
-                "report_rate",
-                "report_rate_numerator",
-                "report_rate_denominator",
-                "report_rate_contract",
-            ):
-                if key in result:
-                    fallback[key] = result[key]
-            if result.get("quality_errors"):
-                fallback["quality_errors"] = result["quality_errors"]
-            return fallback
+        price_items = price_payload.get("items") or []
+        result["price_change"] = dict(price_items[0]) if price_items else None
+        _, volume_items = _get_public_homepage_ranking(app_module)
+        result["volume_top"] = dict(volume_items[0]) if volume_items else None
+        # 관광소비 이메일 전용 재계산은 하지 않는다. 홈페이지 공개 API와
+        # 동일한 요약 카드가 생기기 전까지 해당 보조 블록을 생략한다.
+        result["consumption_summary"] = None
         return result
     except Exception:
         log.warning("데이터랩 요약 캐시를 읽지 못했습니다.", exc_info=True)
-        fallback = _get_datalab_summary_db_fallback()
-        fallback["quality_errors"] = [
-            "공식 생활숙박 신고율을 검증하지 못해 발송을 중단합니다."
-        ]
-        return fallback
+        return dict(empty)
 
 
 # ── 건물 링크 보정 ─────────────────────────────────────────────────────────────
@@ -1021,7 +916,11 @@ def _zone1_2(listing_reqs, buy_reqs):
 def _zone2(price_highs, most_traded):
     """시세 랭킹"""
     if not price_highs and not most_traded:
-        return ""
+        return """
+        <div style="padding:14px;background:#F8F9FB;border-radius:6px;
+                    color:#666;font-size:13px;text-align:center;">
+          이번 주 신규 실거래가 없습니다.
+        </div>"""
 
     def price_rows():
         if not price_highs:
@@ -2298,19 +2197,13 @@ def main():
         cur = conn.cursor()
 
         # 공통 데이터 (전체 회원이 동일하게 받음)
-        price_highs, most_traded = _get_ranking(cur)
+        price_highs, most_traded = _get_public_homepage_ranking()
         # _get_datalab_summary()는 별도 DB 연결을 사용한다. 운영 스키마 DDL이
         # 대기 중일 때 첫 연결의 ACCESS SHARE 잠금을 계속 쥐고 있으면,
         # 두 번째 연결이 DDL 뒤에서 기다리는 교착성 잠금 대기가 생긴다.
         # 순위 조회는 읽기 전용이므로 여기서 트랜잭션을 끝내 잠금을 해제한다.
         conn.commit()
         datalab_summary          = _get_datalab_summary()
-        quality_errors = (datalab_summary or {}).get("quality_errors") or []
-        if quality_errors:
-            for quality_error in quality_errors:
-                log.error("[품질검증 실패] %s", quality_error)
-            log.error("잘못된 공통 지표가 포함되어 이번 주 이메일 발송을 중단합니다.")
-            return 1
         feature_tip              = _get_active_feature_tip(cur)
         _resolve_building_ids(
             cur,

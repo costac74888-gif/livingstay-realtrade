@@ -16,21 +16,25 @@ import app as app_module
 from app import _email_target_is_safe
 
 
-def _official_report_payload(rate=42.5, rooms=85, units=200):
-    return {
-        "ok": True,
-        "metric_contract": digest.REPORT_RATE_CONTRACT,
-        "items": [{
-            "sido": "테스트도",
-            "active_room_cnt": rooms,
-            "total_units": units,
-        }],
-        "total": {
-            "active_room_cnt": rooms,
-            "total_units": units,
-            "report_rate": rate,
-        },
-    }
+def _public_api_payload(path, _app_module=None):
+    if path == "/api/stats/consign-by-sido":
+        return {"ok": True, "total": {"report_rate": 42.5}}
+    if path == "/api/stats/price-change-top?direction=up":
+        return {"ok": True, "items": [{
+            "building_name": "상승 단지",
+            "building_id": 12,
+            "change_percent": 9.8,
+        }]}
+    if path == "/api/ranking":
+        return {
+            "price_highs": [],
+            "most_traded": [{
+                "building_name": "거래 단지",
+                "building_id": 24,
+                "deal_count": 7,
+            }],
+        }
+    return {}
 
 
 class _CandidateCursor:
@@ -294,67 +298,25 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 19)), 8)
         self.assertEqual(digest._weekly_feature_episode(date(2026, 2, 26)), 1)
 
-    @patch("weekly_digest._get_consumption_summary_db", return_value=None)
-    def test_datalab_summary_uses_only_successful_master_cache_sections(self, consumption_db):
-        app_module = SimpleNamespace(
-            _report_rate_by_sido_payload=_official_report_payload,
-            _MASTER_STATS_CACHE={
-                "sections": {
-                    "consign_stats": {"status": "ok"},
-                    "transaction_stats": {"status": "ok"},
-                },
-                "data": {
-                    "consign_stats": {"total": {"report_rate": 42.5}},
-                    "transaction_stats": {
-                        "price_change": {"up": {"items": [{
-                            "building_name": "상승 단지",
-                            "building_id": 12,
-                            "change_percent": 9.8,
-                        }]}},
-                        "volume_top": [{
-                            "building_name": "거래 단지",
-                            "building_id": 24,
-                            "deal_count": 7,
-                        }],
-                    },
-                },
-            }
-        )
+    @patch("weekly_digest._get_public_api_payload", side_effect=_public_api_payload)
+    def test_datalab_summary_uses_only_public_homepage_responses(self, public_api):
+        app_module = SimpleNamespace()
         summary = digest._get_datalab_summary(app_module)
         self.assertEqual(summary["report_rate"], 42.5)
         self.assertEqual(summary["price_change"]["building_name"], "상승 단지")
         self.assertEqual(summary["volume_top"]["deal_count"], 7)
+        self.assertIsNone(summary["consumption_summary"])
+        self.assertGreaterEqual(public_api.call_count, 3)
 
-        app_module._MASTER_STATS_CACHE["sections"]["transaction_stats"] = {"status": "error"}
-        partial = digest._get_datalab_summary(app_module)
-        self.assertEqual(partial["report_rate"], 42.5)
-        self.assertIsNone(partial["price_change"])
-        self.assertIsNone(partial["volume_top"])
-        self.assertEqual(consumption_db.call_count, 2)
-
-    @patch("weekly_digest._get_datalab_summary_db_fallback")
     @patch("weekly_digest._get_consumption_summary_db")
-    def test_cache_success_without_tourism_cache_uses_lightweight_query(
-        self, consumption_db, fallback,
+    @patch("weekly_digest._get_public_api_payload", side_effect=_public_api_payload)
+    def test_public_homepage_summary_never_uses_consumption_db_fallback(
+        self, _public_api, consumption_db,
     ):
-        consumption_db.return_value = {
-            "ref_yearmonth": "2025-12",
-            "amounts": {"기타숙박": 125000},
-            "other_lodging_mom": 25.0,
-        }
-        app_module = SimpleNamespace(
-            _report_rate_by_sido_payload=_official_report_payload,
-            _MASTER_STATS_CACHE={
-                "sections": {"consign_stats": {"status": "ok"}},
-                "data": {"consign_stats": {"total": {"report_rate": 42.5}}},
-            }
-        )
-
-        summary = digest._get_datalab_summary(app_module)
-
-        self.assertEqual(summary["consumption_summary"], consumption_db.return_value)
-        consumption_db.assert_called_once_with()
-        fallback.assert_not_called()
+        summary = digest._get_datalab_summary(SimpleNamespace())
+        self.assertEqual(summary["report_rate"], 42.5)
+        self.assertIsNone(summary["consumption_summary"])
+        consumption_db.assert_not_called()
 
     def test_consumption_summary_uses_latest_two_nationwide_months(self):
         summary = digest._consumption_summary([
@@ -422,23 +384,46 @@ class WeeklyDigestTests(unittest.TestCase):
         )
 
     @patch("weekly_digest._get_datalab_summary_db_fallback")
-    def test_datalab_summary_falls_back_when_cache_is_unavailable(self, fallback):
-        fallback.return_value = {
-            "report_rate": None,
-            "price_change": {"building_name": "상승 단지", "change_percent": 4.2},
-            "volume_top": {"building_name": "거래 단지", "deal_count": 9},
-        }
-        app_module = SimpleNamespace(
-            _MASTER_STATS_CACHE={},
-            _report_rate_by_sido_payload=_official_report_payload,
-        )
+    @patch("weekly_digest._get_public_api_payload", return_value={})
+    def test_public_api_unavailable_does_not_create_replacement_stats(
+        self, _public_api, fallback,
+    ):
+        summary = digest._get_datalab_summary(SimpleNamespace())
+        self.assertIsNone(summary["report_rate"])
+        self.assertIsNone(summary["price_change"])
+        self.assertIsNone(summary["volume_top"])
+        fallback.assert_not_called()
 
-        summary = digest._get_datalab_summary(app_module)
-        self.assertEqual(summary["report_rate"], 42.5)
-        self.assertEqual(summary["report_rate_numerator"], 85)
-        self.assertEqual(summary["report_rate_denominator"], 200)
-        self.assertEqual(summary["price_change"]["building_name"], "상승 단지")
-        fallback.assert_called_once_with()
+    @patch("weekly_digest._get_public_api_payload", side_effect=RuntimeError("route failed"))
+    def test_public_ranking_exception_becomes_no_new_transactions(self, _public_api):
+        self.assertEqual(digest._get_public_homepage_ranking(SimpleNamespace()), ([], []))
+        html = digest._zone2([], [])
+        self.assertIn("이번 주 신규 실거래가 없습니다", html)
+
+    @patch("weekly_digest._get_public_api_payload")
+    def test_public_ranking_warming_becomes_no_new_transactions(self, public_api):
+        public_api.return_value = {
+            "ok": False,
+            "status": "warming",
+            "price_highs": [],
+            "most_traded": [],
+        }
+        self.assertEqual(digest._get_public_homepage_ranking(SimpleNamespace()), ([], []))
+
+    @patch("weekly_digest._get_public_api_payload")
+    def test_malformed_public_ranking_rows_become_no_new_transactions(self, public_api):
+        public_api.return_value = {
+            "price_highs": [{}, {"building_name": "가격 없는 건물"}],
+            "most_traded": [{}, {"building_name": "건수 없는 건물"}],
+        }
+        price_rows, volume_rows = digest._get_public_homepage_ranking(SimpleNamespace())
+        self.assertEqual((price_rows, volume_rows), ([], []))
+        html = digest.build_html(
+            "테스터", [], {}, [], [], price_rows, volume_rows,
+            {"report_rate": None, "price_change": None, "volume_top": None},
+            None, "https://example.test/mypage",
+        )
+        self.assertIn("이번 주 신규 실거래가 없습니다", html)
 
     def test_missing_building_ids_use_transaction_then_address_then_unique_name(self):
         cursor = _CandidateCursor([
@@ -733,8 +718,8 @@ class WeeklyDigestTests(unittest.TestCase):
             {"report_rate": None, "price_change": None, "volume_top": None},
             None, "https://example.test/mypage",
         )
-        self.assertNotIn("이번 주 시세 랭킹", html)
-        self.assertNotIn("이번 주 거래 데이터가 없습니다", html)
+        self.assertIn("이번 주 시세 랭킹", html)
+        self.assertIn("이번 주 신규 실거래가 없습니다", html)
 
     def test_admin_copy_explicitly_omits_personalized_sections(self):
         html = digest.build_html(
@@ -746,35 +731,15 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("관리자 검수본에는 회원별 관심단지와 의뢰 현황이 포함되지 않습니다", html)
         self.assertNotIn("관심단지를 등록하면 이런 알림을 받을 수 있어요", html)
 
-    def test_invalid_report_rate_is_rejected_even_when_cache_looks_valid(self):
-        app_module = SimpleNamespace(
-            _report_rate_by_sido_payload=lambda: _official_report_payload(
-                rate=124.2, rooms=85, units=200,
-            ),
-            _MASTER_STATS_CACHE={
-                "sections": {"consign_stats": {"status": "ok"}},
-                "data": {"consign_stats": {"total": {"report_rate": 124.2}}},
-            }
-        )
-        with patch("weekly_digest._get_consumption_summary_db", return_value=None):
-            summary = digest._get_datalab_summary(app_module)
+    def test_out_of_range_public_report_rate_is_hidden_without_stopping_email(self):
+        def payload(path, _app_module=None):
+            if path == "/api/stats/consign-by-sido":
+                return {"ok": True, "total": {"report_rate": 124.2}}
+            return {}
+        with patch("weekly_digest._get_public_api_payload", side_effect=payload):
+            summary = digest._get_datalab_summary(SimpleNamespace())
         self.assertIsNone(summary["report_rate"])
-        self.assertIn("산술 불일치", summary["quality_errors"][0])
-
-    def test_report_rate_rejects_missing_contract_and_region_total_mismatch(self):
-        missing_contract = _official_report_payload()
-        missing_contract.pop("metric_contract")
-        with self.assertRaisesRegex(ValueError, "산식 계약"):
-            digest._validated_official_report_rate(SimpleNamespace(
-                _report_rate_by_sido_payload=lambda: missing_contract,
-            ))
-
-        mismatched_regions = _official_report_payload()
-        mismatched_regions["items"][0]["active_room_cnt"] = 84
-        with self.assertRaisesRegex(ValueError, "시도별 원장"):
-            digest._validated_official_report_rate(SimpleNamespace(
-                _report_rate_by_sido_payload=lambda: mismatched_regions,
-            ))
+        self.assertNotIn("quality_errors", summary)
 
     def test_subject_priority_has_no_ad_prefix(self):
         tip = {"title": "이번 주 기능"}
