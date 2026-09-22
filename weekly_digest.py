@@ -364,42 +364,10 @@ def _get_datalab_summary_db_fallback():
         conn = get_conn()
         cur = conn.cursor()
 
-        # fallback ① 전국 생숙 영업신고율. master_buildings에는 정규화 키가
-        # 저장되지 않으므로 기존 주소 매칭과 같은 도로명·지번 prefix 키를 만들어
-        # Python 해시 맵으로 결합한다. 대량 OR JOIN은 주간 발송 시간 제한을 넘긴다.
-        cur.execute("""
-            SELECT id, units, road_address, jibun_address
-            FROM master_buildings
-            WHERE lodging_type = '생활'
-        """)
-        buildings = cur.fetchall()
-        cur.execute("""
-            SELECT permit_number, room_count, biz_status_name, road_norm, jibun_norm
-            FROM lodging_registry
-            WHERE road_norm IS NOT NULL OR jibun_norm IS NOT NULL
-        """)
-        lodgings = cur.fetchall()
-        by_road, by_jibun = {}, {}
-        for lodging in lodgings:
-            if lodging.get("road_norm"):
-                by_road.setdefault(lodging["road_norm"], {})[lodging["permit_number"]] = lodging
-            if lodging.get("jibun_norm"):
-                by_jibun.setdefault(lodging["jibun_norm"], {})[lodging["permit_number"]] = lodging
-
-        total_units = active_rooms = 0
-        for building in buildings:
-            total_units += int(building.get("units") or 0)
-            road_key = normalize_road_prefix(building.get("road_address"))
-            jibun_key = normalize_jibun_prefix(
-                building.get("jibun_address") or building.get("road_address")
-            )
-            matches = {}
-            matches.update(by_road.get(road_key, {}))
-            matches.update(by_jibun.get(jibun_key, {}))
-            for lodging in matches.values():
-                if "폐업" not in (lodging.get("biz_status_name") or ""):
-                    active_rooms += int(lodging.get("room_count") or 0)
-        report_rate = round(100.0 * active_rooms / total_units, 1) if total_units else None
+        # 생활숙박 신고율은 원본 중복 제거·활성 생활업종 필터·건물별 호실수
+        # cap이 모두 필요하다. 축약 계산은 같은 신고를 여러 건물에 더해 100%를
+        # 넘길 수 있으므로 검증된 통계 섹션이 없을 때는 이 지표를 표시하지 않는다.
+        report_rate = None
 
         # fallback ② 최근 30일 거래량 TOP1. 같은 이름의 다른 건물을 합치지 않고,
         # 이름·주소·거래 식별자를 함께 보존해 상세 링크를 안전하게 찾는다.
@@ -536,7 +504,28 @@ def _get_datalab_summary(app_module=None):
         if section_ok("consign_stats"):
             total = (data.get("consign_stats") or {}).get("total") or {}
             rate = total.get("report_rate")
-            result["report_rate"] = float(rate) if rate is not None else None
+            if rate is not None:
+                rate = float(rate)
+                if 0.0 <= rate <= 100.0:
+                    result["report_rate"] = rate
+                else:
+                    result["quality_errors"] = [
+                        f"전국 생숙 영업신고율 범위 오류: {rate:.1f}%"
+                    ]
+
+        if result["report_rate"] is None and not result.get("quality_errors"):
+            report_reader = getattr(app_module, "_report_rate_by_sido_payload", None)
+            if callable(report_reader):
+                report_payload = report_reader() or {}
+                rate = (report_payload.get("total") or {}).get("report_rate")
+                if rate is not None:
+                    rate = float(rate)
+                    if 0.0 <= rate <= 100.0:
+                        result["report_rate"] = rate
+                    else:
+                        result["quality_errors"] = [
+                            f"전국 생숙 영업신고율 범위 오류: {rate:.1f}%"
+                        ]
 
         if section_ok("transaction_stats"):
             transactions = data.get("transaction_stats") or {}
@@ -557,7 +546,15 @@ def _get_datalab_summary(app_module=None):
             _consumption_summary(tourism_data)
             if tourism_data else _get_consumption_summary_db()
         )
-        return _get_datalab_summary_db_fallback() if cache_fill_failed else result
+        if cache_fill_failed:
+            fallback = _get_datalab_summary_db_fallback()
+            # 순위·관광소비는 가벼운 DB fallback을 쓰되, 신고율은 위에서 실행한
+            # 중복제거·호실수 cap 적용 공식 집계값만 유지한다.
+            fallback["report_rate"] = result.get("report_rate")
+            if result.get("quality_errors"):
+                fallback["quality_errors"] = result["quality_errors"]
+            return fallback
+        return result
     except Exception:
         log.warning("데이터랩 요약 캐시를 읽지 못했습니다. DB 폴백을 시도합니다.", exc_info=True)
         return _get_datalab_summary_db_fallback()
@@ -933,7 +930,7 @@ def _zone1_2(listing_reqs, buy_reqs):
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
-          매물 내놓기 — 제휴 중개법인 통해 수수료 0원 →
+          매물 등록 방법 확인하기 →
         </a>"""
 
     rows = ""
@@ -978,6 +975,9 @@ def _zone1_2(listing_reqs, buy_reqs):
 
 def _zone2(price_highs, most_traded):
     """시세 랭킹"""
+    if not price_highs and not most_traded:
+        return ""
+
     def price_rows():
         if not price_highs:
             return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 신고가 갱신 건물이 없습니다.</td></tr>"
@@ -1065,7 +1065,7 @@ def _zone3(summary):
      if rate is None and not price and not volume and not consumption:
          return ""
 
-     rate_text = f"{float(rate):.1f}%" if isinstance(rate, (int, float)) else "-"
+     rate_text = f"{float(rate):.1f}%" if isinstance(rate, (int, float)) else None
      if price:
          pct = price.get("change_percent")
          pct_text = f"{float(pct):+.1f}%" if pct is not None else "변동률 집계 중"
@@ -1079,14 +1079,14 @@ def _zone3(summary):
              + f'<br><span style="font-size:13px;color:#B4863F;">{pct_text}</span>'
          )
      else:
-         price_text = "-"
+         price_text = None
 
      consign_url = html.escape(f"{SITE_URL}/?datalab=consign", quote=True)
      rate_link = (
          f'<a href="{consign_url}" '
          'style="color:#B4863F;font-weight:700;text-decoration:none;">'
          f'{rate_text}</a>'
-     )
+     ) if rate_text else None
 
      if volume:
          volume_text = (
@@ -1100,7 +1100,7 @@ def _zone3(summary):
              + f'{int(volume.get("deal_count") or 0):,}건</span>'
          )
      else:
-         volume_text = "-"
+         volume_text = None
 
      consumption_block = ""
      amounts = consumption.get("amounts") if isinstance(consumption, dict) else None
@@ -1158,11 +1158,19 @@ def _zone3(summary):
         </a>
       </p>"""
 
+     cards = [
+         ("영업신고율", rate_link),
+         ("가격변동 TOP1", price_text),
+         ("거래량 TOP1", volume_text),
+     ]
+     cards = [(label, value) for label, value in cards if value]
+
      def card(label, value):
+         width = max(33, 100 // max(1, len(cards)))
          return f"""
          <td class="weekly-datalab-card-cell"
-             width="33%"
-             style="width:33%;vertical-align:top;padding:4px;min-width:0;">
+             width="{width}%"
+             style="width:{width}%;vertical-align:top;padding:4px;min-width:0;">
            <table class="weekly-datalab-card" width="100%" cellpadding="0" cellspacing="0"
                   role="presentation"
                   style="width:100%;min-width:0;border:1px solid #EEEEEE;
@@ -1187,9 +1195,7 @@ def _zone3(summary):
             style="width:100%;border-collapse:separate;border-spacing:0;
                    table-layout:fixed;font-size:13px;">
        <tr>
-          {card("영업신고율", rate_link)}
-         {card("가격변동 TOP1", price_text)}
-         {card("거래량 TOP1", volume_text)}
+          {''.join(card(label, value) for label, value in cards)}
        </tr>
      </table>
       {consumption_block}
@@ -1272,13 +1278,49 @@ def build_html(user_name, favs, deals_by_fav,
                price_highs, most_traded,
                datalab_summary, feature_tip,
                  unsubscribe_url, alert_off_count=0, signal_counts=None,
-                 tracking_token=None):
+                 tracking_token=None, include_personalized=True):
     z0  = _zone0(datalab_summary)
     z1  = _zone1_1(favs, deals_by_fav, signal_counts, alert_off_count)
     z12 = _zone1_2(listing_reqs, buy_reqs)
     z2  = _zone2(price_highs, most_traded)
     z3  = _zone3(datalab_summary)
     z4  = _zone4(feature_tip)
+
+    personalized_blocks = f"""
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+         📌 관심단지 숙박알리미
+      </h2>
+      {z1}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📋 매물의뢰 진행 현황
+      </h2>
+      {z12}
+    </td>
+  </tr>""" if include_personalized else """
+  <tr><td style="padding:16px 28px 0;">
+    <div style="padding:12px;background:#F4F5F7;color:#666;font-size:12px;border-radius:6px;">
+      관리자 검수본에는 회원별 관심단지와 의뢰 현황이 포함되지 않습니다.
+    </div>
+  </td></tr>"""
+
+    zone2_block = f"""
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📊 이번 주 시세 랭킹
+      </h2>
+      {z2}
+    </td>
+  </tr>""" if z2 else ""
 
     zone0_block = f"""
   <tr>
@@ -1370,38 +1412,8 @@ def build_html(user_name, favs, deals_by_fav,
 
   {zone0_block}
 
-   <!-- ── Zone 1-1: 관심단지 숙박알리미 ── -->
-  <tr>
-    <td style="padding:20px 28px 0;">
-      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
-                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
-         📌 관심단지 숙박알리미
-      </h2>
-      {z1}
-    </td>
-  </tr>
-
-  <!-- ── Zone 1-2: 매물의뢰 현황 ── -->
-  <tr>
-    <td style="padding:20px 28px 0;">
-      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
-                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📋 매물의뢰 진행 현황
-      </h2>
-      {z12}
-    </td>
-  </tr>
-
-  <!-- ── Zone 2: 시세 랭킹 ── -->
-  <tr>
-    <td style="padding:20px 28px 0;">
-      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
-                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📊 이번 주 시세 랭킹
-      </h2>
-      {z2}
-    </td>
-  </tr>
+  {personalized_blocks}
+  {zone2_block}
 
   {zone3_block}
   {zone4_block}
@@ -1491,7 +1503,7 @@ def _claim_delivery(cur, user_id, week_start, cohort, recipient_type="user"):
              WHERE {owner_column}=%s AND recipient_type=%s AND week_start=%s
                AND status <> 'sent'
                AND ((status='failed' AND COALESCE(error_message,'')
-                     NOT LIKE 'stale sending lease expired%' AND attempts < %s)
+                     NOT LIKE 'stale sending lease expired%%' AND attempts < %s)
                 OR (status='sending' AND claimed_at < NOW() -
                     (%s * INTERVAL '1 minute') AND attempts < %s))
              RETURNING id, tracking_token, claim_token, attempts
@@ -1505,7 +1517,7 @@ def _claim_delivery(cur, user_id, week_start, cohort, recipient_type="user"):
         INSERT INTO weekly_email_deliveries
             (user_id, week_start, cohort, status, attempts, claimed_at, claim_token)
         VALUES (%s, %s, %s, 'sending', 1, NOW(), gen_random_uuid())
-        ON CONFLICT (user_id, week_start) DO UPDATE
+        ON CONFLICT ON CONSTRAINT weekly_email_deliveries_user_id_week_start_key DO UPDATE
            SET status = 'sending', attempts = weekly_email_deliveries.attempts + 1,
                claimed_at = NOW(), failed_at = NULL, error_message = NULL,
                claim_token = gen_random_uuid(),
@@ -1513,7 +1525,7 @@ def _claim_delivery(cur, user_id, week_start, cohort, recipient_type="user"):
          WHERE weekly_email_deliveries.status <> 'sent'
            AND ((weekly_email_deliveries.status = 'failed'
                  AND COALESCE(weekly_email_deliveries.error_message, '')
-                     NOT LIKE 'stale sending lease expired%'
+                      NOT LIKE 'stale sending lease expired%%'
                  AND weekly_email_deliveries.attempts < %s)
              OR (weekly_email_deliveries.status = 'sending'
                  AND weekly_email_deliveries.claimed_at <
@@ -1780,6 +1792,7 @@ def _send_admin_digest_copy(
         datalab_summary, feature_tip,
         f"{SITE_URL}/admin", 0,
         signal_counts={},
+        include_personalized=False,
     )
     now = datetime.now().astimezone()
     cohort = cohort or scheduled_cohort(kst_today()) or "manual"
@@ -2247,6 +2260,12 @@ def main():
         # 순위 조회는 읽기 전용이므로 여기서 트랜잭션을 끝내 잠금을 해제한다.
         conn.commit()
         datalab_summary          = _get_datalab_summary()
+        quality_errors = (datalab_summary or {}).get("quality_errors") or []
+        if quality_errors:
+            for quality_error in quality_errors:
+                log.error("[품질검증 실패] %s", quality_error)
+            log.error("잘못된 공통 지표가 포함되어 이번 주 이메일 발송을 중단합니다.")
+            return 1
         feature_tip              = _get_active_feature_tip(cur)
         _resolve_building_ids(
             cur,
@@ -2316,7 +2335,7 @@ def main():
                     log.info(
                         "  [DRY-RUN] %s | 관심단지 %d개(신규실거래 %d건) | "
                         "의뢰 listing=%d buy=%d | 데이터랩 신고율=%s | 기능팁=%s",
-                        email, len(personalized["favs"]),
+                        f"{recipient_type}:{uid}", len(personalized["favs"]),
                         personalized["new_deal_count"],
                         len(personalized["listing_reqs"]),
                         len(personalized["buy_reqs"]),

@@ -175,6 +175,7 @@ class WeeklyDigestTests(unittest.TestCase):
             source = source_file.read()
         self.assertIn("claim_token = gen_random_uuid()", source)
         self.assertIn("RETURNING id, tracking_token, claim_token, attempts", source)
+        self.assertEqual(source.count("stale sending lease expired%%"), 2)
 
     def test_report_claim_and_finish_are_fenced(self):
         cursor = _ReportClaimCursor()
@@ -567,7 +568,6 @@ class WeeklyDigestTests(unittest.TestCase):
         headings = [
             "관심단지 숙박알리미",
             "매물의뢰 진행 현황",
-            "이번 주 시세 랭킹",
             "이번 주 기능 소개",
         ]
         indexes = [html.index(heading) for heading in headings]
@@ -578,7 +578,8 @@ class WeeklyDigestTests(unittest.TestCase):
             f'href="{digest.SITE_URL}/?utm_source=weekly&utm_medium=email&utm_campaign=no_fav_cta"',
             html,
         )
-        self.assertIn("제휴 중개법인 통해 수수료 0원", html)
+        self.assertNotIn("수수료 0원", html)
+        self.assertIn("매물 등록 방법 확인하기", html)
         self.assertIn("/guide#listing-guide", html)
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertIn("기능 소개 제목", html)
@@ -660,7 +661,7 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("거래 단지 7건", html)
         self.assertIn(f'href="{digest.SITE_URL}/building/24"', html)
         self.assertIn("weekly-datalab-cards", html)
-        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 3)
+        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 2)
         self.assertIn(f'href="{digest.SITE_URL}/?datalab=lodging"', html)
         self.assertIn("background:#F0F4FF", html)
 
@@ -699,6 +700,37 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertNotIn("이번 주 기능 소개", html)
         self.assertNotIn("데이터랩 전체 보기 →", html)
+
+    def test_empty_rankings_are_omitted_instead_of_sending_blank_tables(self):
+        html = digest.build_html(
+            "테스터", [], {}, [], [], [], [],
+            {"report_rate": None, "price_change": None, "volume_top": None},
+            None, "https://example.test/mypage",
+        )
+        self.assertNotIn("이번 주 시세 랭킹", html)
+        self.assertNotIn("이번 주 거래 데이터가 없습니다", html)
+
+    def test_admin_copy_explicitly_omits_personalized_sections(self):
+        html = digest.build_html(
+            "관리자", [], {}, [], [], [], [],
+            {"report_rate": None, "price_change": None, "volume_top": None},
+            None, "https://example.test/admin",
+            include_personalized=False,
+        )
+        self.assertIn("관리자 검수본에는 회원별 관심단지와 의뢰 현황이 포함되지 않습니다", html)
+        self.assertNotIn("관심단지를 등록하면 이런 알림을 받을 수 있어요", html)
+
+    def test_invalid_report_rate_is_rejected_from_master_cache(self):
+        app_module = SimpleNamespace(
+            _MASTER_STATS_CACHE={
+                "sections": {"consign_stats": {"status": "ok"}},
+                "data": {"consign_stats": {"total": {"report_rate": 124.2}}},
+            }
+        )
+        with patch("weekly_digest._get_consumption_summary_db", return_value=None):
+            summary = digest._get_datalab_summary(app_module)
+        self.assertIsNone(summary["report_rate"])
+        self.assertIn("124.2%", summary["quality_errors"][0])
 
     def test_subject_priority_has_no_ad_prefix(self):
         tip = {"title": "이번 주 기능"}

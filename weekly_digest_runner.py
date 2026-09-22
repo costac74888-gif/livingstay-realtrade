@@ -65,15 +65,19 @@ def main():
 
     started_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     errors = []
+    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"weekly_digest_{args.run_id}.log")
     for cohort in ("tue", "thu"):
-        result = subprocess.run(
-            [sys.executable, "-u", "weekly_digest.py", "--cohort", cohort],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=45 * 60,
-            check=False,
-        )
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            result = subprocess.run(
+                [sys.executable, "-u", "weekly_digest.py", "--cohort", cohort],
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                timeout=45 * 60,
+                check=False,
+            )
         if result.returncode:
             errors.append(f"{cohort} 그룹 발송 실패")
 
