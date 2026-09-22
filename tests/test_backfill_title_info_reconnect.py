@@ -386,12 +386,13 @@ class BackfillReconnectTests(unittest.TestCase):
         self.assertEqual(writes[-1]["err"], 1)
         self.assertIn("apis.data.go.kr", writes[-1]["last_item_error"])
 
-    def test_provider_timeout_stops_after_ten_consecutive_failed_buildings(self):
-        """공급자 전체 장애 때는 오류 건을 무한히 소진하지 않는다."""
+    def test_provider_timeout_cools_down_then_continues_after_ten_failures(self):
+        """공급자 전체 장애도 실행을 실패시키지 않고 냉각 후 남은 대상을 계속한다."""
         conn = MagicMock()
         conn.closed = 0
         cur = MagicMock()
-        cur.fetchall.return_value = [_building(i) for i in range(1, 11)]
+        cur.rowcount = 1
+        cur.fetchall.return_value = [_building(i) for i in range(1, 12)]
         bjdong = MagicMock()
         bjdong.find_bjdong_cd.return_value = "10100"
         status = {"run_id": "provider-run", "state": "running"}
@@ -401,7 +402,13 @@ class BackfillReconnectTests(unittest.TestCase):
             patch.object(
                 title_info,
                 "_fetch_title_rows",
-                side_effect=RuntimeError("ConnectTimeout: apis.data.go.kr timed out"),
+                side_effect=[
+                    *[
+                        RuntimeError("ConnectTimeout: apis.data.go.kr timed out")
+                        for _ in range(40)
+                    ],
+                    [],
+                ],
             ) as fetch,
             patch.object(title_info, "_read_status", return_value=status),
             patch.object(
@@ -409,25 +416,25 @@ class BackfillReconnectTests(unittest.TestCase):
                 "_write_status",
                 side_effect=lambda _key, payload, _run_id: writes.append(dict(payload)),
             ),
-            patch.object(title_info, "refresh_auto_building_names") as refresh,
-            patch.object(title_info.time, "sleep"),
+            patch.object(title_info, "refresh_auto_building_names", return_value=0) as refresh,
+            patch.object(title_info, "PROVIDER_CIRCUIT_COOLDOWN_SEC", 300),
+            patch.object(title_info.time, "sleep") as sleep,
         ):
-            with self.assertRaises(title_info._ProviderFailure) as raised:
-                title_info._run_with_open_connection(
-                    only_missing=True,
-                    sleep=0,
-                    status_key="title-info-status",
-                    run_id="provider-run",
-                    bjdong=bjdong,
-                    conn=conn,
-                    cur=cur,
-                )
+            result = title_info._run_with_open_connection(
+                only_missing=True,
+                sleep=0,
+                status_key="title-info-status",
+                run_id="provider-run",
+                bjdong=bjdong,
+                conn=conn,
+                cur=cur,
+            )
 
-        self.assertEqual(raised.exception.counts, (0, 0, 0, 10))
-        self.assertEqual(fetch.call_count, 40)
-        self.assertEqual(writes[-1]["processed"], 10)
+        self.assertEqual(result, (0, 1, 0, 10))
+        self.assertEqual(fetch.call_count, 41)
+        self.assertEqual(writes[-1]["processed"], 11)
         self.assertEqual(writes[-1]["err"], 10)
-        self.assertEqual(conn.commit.call_count, 10)
+        self.assertEqual(conn.commit.call_count, 11)
         self.assertEqual(
             sum(
                 "INSERT INTO title_info_backfill_failures" in call.args[0]
@@ -435,7 +442,11 @@ class BackfillReconnectTests(unittest.TestCase):
             ),
             10,
         )
-        refresh.assert_not_called()
+        self.assertIn(300, [call.args[0] for call in sleep.call_args_list])
+        self.assertTrue(
+            any(write.get("provider_state") == "cooling_down" for write in writes)
+        )
+        refresh.assert_called_once_with(conn)
 
     def test_item_specific_503s_are_queued_without_blocking_unseen_targets(self):
         """개별 503은 뒤로 격리하고 아직 시도하지 않은 정상 건물을 끝까지 처리한다."""

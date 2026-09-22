@@ -63,6 +63,8 @@ PROVIDER_RETRY_MAX_SEC = 60.0
 PROVIDER_CONNECT_TIMEOUT_SEC = 15
 PROVIDER_READ_TIMEOUT_SEC = 30
 PROVIDER_FAILURE_RETRY_HOURS = 6
+PROVIDER_CIRCUIT_FAILURES = 10
+PROVIDER_CIRCUIT_COOLDOWN_SEC = 300
 
 
 class _DatabaseReconnectExhausted(RuntimeError):
@@ -546,7 +548,6 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
     n_ok = n_empty = n_skip = n_err = 0
     changed = 0
     consec_err = 0
-    stop_for_errors = False
     last_item_error = None
     # 성공 응답(빈 표제부 포함) 없이 API가 모두 실패한 실행에서는, API 결과와
     # 무관한 자동 명칭 재정리를 수행하지 않는다.
@@ -789,9 +790,23 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                         "보내고 정상 대상을 계속 처리합니다.",
                         flush=True,
                     )
-                if consec_err >= 10:
-                    print("[중단] 외부 API 오류 10건 연속 — 체크포인트를 유지하고 종료합니다.", flush=True)
-                    stop_for_errors = True
+                if consec_err >= PROVIDER_CIRCUIT_FAILURES:
+                    _update_progress_status(
+                        status_key, run_id,
+                        processed=n_ok + n_empty + n_skip + n_err,
+                        total=total, ok=n_ok, empty=n_empty, skip=n_skip, err=n_err,
+                        last_item_error=last_item_error,
+                        provider_state="cooling_down",
+                        provider_retry_attempt=0,
+                        provider_retry_wait_seconds=PROVIDER_CIRCUIT_COOLDOWN_SEC,
+                    )
+                    print(
+                        f"[대기] 외부 API 연결 오류 {PROVIDER_CIRCUIT_FAILURES}건 연속 — "
+                        f"{PROVIDER_CIRCUIT_COOLDOWN_SEC}초 후 남은 건물을 자동으로 계속합니다.",
+                        flush=True,
+                    )
+                    time.sleep(PROVIDER_CIRCUIT_COOLDOWN_SEC)
+                    consec_err = 0
 
         processed = n_ok + n_empty + n_skip + n_err
         _update_progress_status(
@@ -804,15 +819,6 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
         )
         if i % 20 == 0:
             print(f"  ...진행 {i}/{total} (OK={n_ok} EMPTY={n_empty} SKIP={n_skip} ERR={n_err})", flush=True)
-        if stop_for_errors:
-            message = (
-                "건축HUB 표제부 API 연결 복구가 반복 실패하여 중단했습니다. "
-                f"마지막 오류: {last_item_error or '원인 미상'} "
-                "(실패한 행은 완료 처리하지 않았으므로 복구 후 재실행할 수 있습니다.)"
-            )
-            raise _ProviderFailure(
-                message, ok=n_ok, empty=n_empty, skip=n_skip, err=n_err
-            )
         time.sleep(sleep)
 
     renamed = 0
