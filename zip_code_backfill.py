@@ -27,6 +27,7 @@ from datetime import date as _date
 
 import psycopg2
 import psycopg2.extras
+from secret_redaction import redact_exception
 from stats_cache import mark_master_stats_invalidated
 
 # This file was used by the original one-off command.  A production worker's
@@ -40,6 +41,7 @@ PROVIDER_RETRY_MAX_SEC = 600.0
 LEASE_STALE_MINUTES = 10
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("PROD_DATABASE_URL", "")
 _CURRENT_RUN_ID = None
+_SECRET_ENV_NAMES = ("JUSO_API_KEY",)
 
 
 class LeaseAlreadyHeld(Exception):
@@ -48,6 +50,11 @@ class LeaseAlreadyHeld(Exception):
 
 class LeaseLost(Exception):
     pass
+
+
+def _safe_error(error):
+    """Return a bounded provider error that is safe for DB/admin display."""
+    return redact_exception(error, _SECRET_ENV_NAMES)[:500]
 
 
 def get_conn():
@@ -123,7 +130,7 @@ def acquire_lease(conn, run_id=None):
     initial = dict(legacy)
     initial.update(
         date=today, state="running", done=False,
-        heartbeat=datetime_now(), run_id=run_id,
+        heartbeat=datetime_now(), run_id=run_id, last_error=None,
     )
     cur = conn.cursor()
     try:
@@ -141,7 +148,7 @@ def acquire_lease(conn, run_id=None):
                     END
                 ) || jsonb_build_object(
                     'state', 'running', 'done', false, 'heartbeat', %s,
-                    'run_id', %s
+                    'run_id', %s, 'last_error', null
                 )
             )::text,
             updated_at = NOW()
@@ -237,6 +244,7 @@ def _attempt_address(conn, cur, prog, row, road_to_jibun):
         if not zip_val:
             prog["last_id"] = bid
             prog["in_flight_id"] = None
+            prog["last_error"] = None
             return "empty", None, False
         cur.execute(
             "UPDATE master_buildings SET zip_code=%s WHERE id=%s AND zip_code IS NULL",
@@ -247,17 +255,18 @@ def _attempt_address(conn, cur, prog, row, road_to_jibun):
         prog["last_id"] = bid
         prog["in_flight_id"] = None
         prog["completed"] += 1
+        prog["last_error"] = None
         return "ok", zip_val, changed
     except Exception as error:
         # UPDATE failures leave psycopg2's transaction aborted. Roll back
         # before the caller stores the consumed call and advanced checkpoint.
         conn.rollback()
         if _is_transient_provider_error(error):
-            prog["last_error"] = f"id={bid} {type(error).__name__}: {str(error)[:500]}"
+            prog["last_error"] = f"id={bid} {type(error).__name__}: {_safe_error(error)}"
             return "retry", error, False
         prog["last_id"] = bid
         prog["in_flight_id"] = None
-        prog["last_error"] = f"id={bid} {type(error).__name__}: {str(error)[:500]}"
+        prog["last_error"] = f"id={bid} {type(error).__name__}: {_safe_error(error)}"
         return "error", error, False
 
 
@@ -379,7 +388,7 @@ def main_impl():
                 raise RuntimeError(
                     "JUSO API 재접속이 반복 실패했습니다. "
                     "현재 건물 체크포인트를 유지하고 다음 자동 실행에서 재시도합니다. "
-                    f"마지막 오류: {type(detail).__name__}: {detail}"
+                    f"마지막 오류: {type(detail).__name__}: {_safe_error(detail)}"
                 )
             wait_sec = min(
                 PROVIDER_RETRY_BASE_SEC * (2 ** (provider_retry_attempt - 1)),
@@ -407,7 +416,11 @@ def main_impl():
             print(f"  [{i}/{len(rows)}] EMPTY id={bid} {name[:30]} — JUSO 응답 없음 또는 zipNo 빈값", flush=True)
         else:
             n_err += 1
-            print(f"  [{i}/{len(rows)}] ERR  id={bid} {name[:30]} — {type(detail).__name__}: {detail}", flush=True)
+            print(
+                f"  [{i}/{len(rows)}] ERR  id={bid} {name[:30]} — "
+                f"{type(detail).__name__}: {_safe_error(detail)}",
+                flush=True,
+            )
 
         save_progress(conn, prog)
         if args.sleep > 0:
@@ -459,7 +472,7 @@ def _mark_failed(error, run_id):
             state="failed",
             done=False,
             heartbeat=datetime_now(),
-            last_error=f"{type(error).__name__}: {str(error)[:500]}",
+            last_error=f"{type(error).__name__}: {_safe_error(error)}",
         )
         _save_progress_cursor(cur, prog)
         conn.commit()

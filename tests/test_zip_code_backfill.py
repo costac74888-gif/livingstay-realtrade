@@ -1,10 +1,64 @@
 import unittest
 from unittest import mock
 
+import requests
+
+import address_utils
 import zip_code_backfill as zip_backfill
 
 
 class ZipCodeBackfillProgressTests(unittest.TestCase):
+    def test_juso_connection_failure_falls_back_to_alternate_official_host(self):
+        response = mock.Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "results": {"juso": [{"zipNo": "12345"}]}
+        }
+        with (
+            mock.patch.object(address_utils, "JUSO_API_KEY", "test-key"),
+            mock.patch.object(
+                address_utils.requests,
+                "get",
+                side_effect=[
+                    requests.ConnectTimeout("primary timed out"),
+                    response,
+                ],
+            ) as get,
+        ):
+            result = address_utils.road_to_jibun("서울 중구 세종대로 1")
+
+        self.assertEqual(result["zipNo"], "12345")
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(get.call_args_list[0].args[0], address_utils.JUSO_URLS[0])
+        self.assertEqual(get.call_args_list[1].args[0], address_utils.JUSO_URLS[1])
+
+    def test_persisted_provider_error_redacts_juso_key(self):
+        class Connection:
+            def rollback(self):
+                pass
+
+        secret = "devU01-secret=="
+        encoded = "devU01-secret%3D%3D"
+        error = requests.ConnectTimeout(
+            "failed /addrLinkApi.do?confmKey="
+            f"{encoded}&keyword=test"
+        )
+        progress = {
+            "calls_today": 1, "last_id": 10, "completed": 2,
+            "run_id": "worker-1", "in_flight_id": 11,
+        }
+        with mock.patch.dict("os.environ", {"JUSO_API_KEY": secret}):
+            outcome, _, _ = zip_backfill._attempt_address(
+                Connection(), object(), progress,
+                {"id": 11, "road_address": "서울 테스트로 1"},
+                mock.Mock(side_effect=error),
+            )
+
+        self.assertEqual(outcome, "retry")
+        self.assertNotIn(secret, progress["last_error"])
+        self.assertNotIn(encoded, progress["last_error"])
+        self.assertIn("confmKey=***", progress["last_error"])
+
     def test_progress_parses_app_meta_text_json(self):
         raw = (
             '{"date":"2026-09-06","calls_today":27,"last_id":91,'
@@ -35,6 +89,33 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
         result = zip_backfill._normalise_progress(current, "2026-09-06")
         self.assertEqual(result["calls_today"], 419)
         self.assertEqual(result["last_id"], 88)
+
+    def test_successful_attempt_clears_previous_provider_error(self):
+        class Cursor:
+            rowcount = 1
+
+            def execute(self, _sql, _params):
+                pass
+
+        class Connection:
+            def commit(self):
+                pass
+
+            def rollback(self):
+                pass
+
+        progress = {
+            "calls_today": 2, "last_id": 10, "completed": 1,
+            "run_id": "worker-1", "in_flight_id": 11,
+            "last_error": "old provider error",
+        }
+        outcome, zip_code, changed = zip_backfill._attempt_address(
+            Connection(), Cursor(), progress,
+            {"id": 11, "road_address": "서울 테스트로 1"},
+            lambda _address: {"zipNo": "12345"},
+        )
+        self.assertEqual((outcome, zip_code, changed), ("ok", "12345", True))
+        self.assertIsNone(progress["last_error"])
 
     def test_db_failure_after_provider_success_counts_attempt_once_and_advances(self):
         class FailingCursor:

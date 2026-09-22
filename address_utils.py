@@ -18,7 +18,12 @@ import zipfile
 import requests
 
 JUSO_API_KEY = os.environ.get("JUSO_API_KEY", "")
-JUSO_URL = "https://business.juso.go.kr/addrlink/addrLinkApi.do"
+JUSO_URLS = (
+    "https://business.juso.go.kr/addrlink/addrLinkApi.do",
+    "https://www.juso.go.kr/addrlink/addrLinkApi.do",
+)
+# Backward-compatible name for callers/tests that imported the old constant.
+JUSO_URL = JUSO_URLS[0]
 
 
 def road_to_jibun(road_address: str) -> dict | None:
@@ -42,9 +47,21 @@ def road_to_jibun(road_address: str) -> dict | None:
         "keyword": keyword,
         "resultType": "json",
     }
-    resp = requests.get(JUSO_URL, params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
+    last_error = None
+    data = None
+    for url in JUSO_URLS:
+        try:
+            # Replit에서 business 호스트 한쪽만 간헐적으로 연결 지연되는
+            # 경우가 있어, 연결 장애일 때 동일 JUSO 서비스의 www 호스트로
+            # 한 번 전환한다. 정상 응답(검색 결과 없음 포함)은 중복 호출하지 않는다.
+            resp = requests.get(url, params=params, timeout=(5, 20))
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except requests.RequestException as error:
+            last_error = error
+    if data is None:
+        raise last_error
 
     juso_list = data.get("results", {}).get("juso", [])
     if not juso_list:
