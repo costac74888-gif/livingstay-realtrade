@@ -81,6 +81,20 @@ class _ConsumptionConnection:
         pass
 
 
+class _RankingCursor:
+    def __init__(self, rows):
+        self.result_sets = iter(rows)
+        self.queries = []
+        self.params = []
+
+    def execute(self, query, params):
+        self.queries.append(query)
+        self.params.append(params)
+
+    def fetchall(self):
+        return next(self.result_sets)
+
+
 class _ClaimCursor:
     def __init__(self):
         self.query = ""
@@ -398,7 +412,7 @@ class WeeklyDigestTests(unittest.TestCase):
     def test_public_ranking_exception_becomes_no_new_transactions(self, _public_api):
         self.assertEqual(digest._get_public_homepage_ranking(SimpleNamespace()), ([], []))
         html = digest._zone2([], [])
-        self.assertIn("이번 주 신규 실거래가 없습니다", html)
+        self.assertIn("최근 30일 거래 데이터가 없습니다", html)
 
     @patch("weekly_digest._get_public_api_payload")
     def test_public_ranking_warming_becomes_no_new_transactions(self, public_api):
@@ -436,7 +450,7 @@ class WeeklyDigestTests(unittest.TestCase):
             {"report_rate": None, "price_change": None, "volume_top": None},
             None, "https://example.test/mypage",
         )
-        self.assertIn("이번 주 신규 실거래가 없습니다", html)
+        self.assertIn("최근 30일 거래 데이터가 없습니다", html)
 
     def test_missing_building_ids_use_transaction_then_address_then_unique_name(self):
         cursor = _CandidateCursor([
@@ -546,9 +560,6 @@ class WeeklyDigestTests(unittest.TestCase):
             "매수 의뢰 단지": 103,
             "신고가 랭킹 단지": 104,
             "거래량 랭킹 단지": 105,
-            "데이터랩 가격 단지": 106,
-            "제주에어포트호텔 17건": 8450,
-            "제주에어포트호텔": 8450,
         }
         for building_name, building_id in expected_links.items():
             self.assertRegex(
@@ -561,16 +572,16 @@ class WeeklyDigestTests(unittest.TestCase):
     def test_unmatched_building_name_is_not_disguised_as_a_home_link(self):
         html = digest.build_html(
             "테스터", [], {}, [], [], [], [],
-            {
-                "report_rate": None,
-                "price_change": {
-                    "building_name": "미매칭 단지",
-                    "change_percent": 3.1,
-                },
-                "volume_top": None,
-            },
+            {"report_rate": None, "price_change": None, "volume_top": None},
             None,
             "https://example.test/unsubscribe",
+        )
+        self.assertNotIn("미매칭 단지", html)
+
+        html = digest.build_html(
+            "테스터", [], {}, [], [],
+            [{"building_name": "미매칭 단지", "pct_gain": 3.1}],
+            [], {}, None, "https://example.test/unsubscribe", news_items=[],
         )
         self.assertRegex(html, r'<span[^>]*>미매칭 단지</span>')
         self.assertIn("상세 정보 준비 중", html)
@@ -621,8 +632,7 @@ class WeeklyDigestTests(unittest.TestCase):
             "https://example.test/mypage",
             signal_counts={"deal": 0, "urgent": 0},
         )
-        self.assertIn("이번 주 관심단지의 새로운 알림이 없었어요.", html)
-        self.assertIn("관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.", html)
+        self.assertIn("나머지 관심단지 1곳은 최근 30일 새 실거래가 없습니다.", html)
         self.assertIn(
             f'href="{digest.SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"',
             html,
@@ -647,91 +657,42 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertNotIn("금 급매", html)
         self.assertNotIn("은 급매", html)
 
-    def test_zone0_prefers_report_rate_and_has_hero_style(self):
-        html = digest.build_html(
+    def test_report_rate_and_datalab_cards_are_not_rendered_in_weekly_email(self):
+        email = digest.build_html(
             "테스터", [], {}, [], [], [], [],
             {
                 "report_rate": 42.5,
-                "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
-                "volume_top": {"building_name": "거래 단지", "deal_count": 7},
-            },
-            None, "https://example.test/mypage",
-        )
-        self.assertIn("전국 생숙 영업신고율", html)
-        self.assertIn("42.5%", html)
-        self.assertIn("데이터랩 전체 보기 →", html)
-        self.assertIn(f'href="{digest.SITE_URL}/?datalab=consign"', html)
-        self.assertIn("border-left:4px solid #B4863F", html)
-        self.assertIn("background:#F8F4EE", html)
-
-    def test_zone0_falls_back_to_volume_top_and_zone3_uses_cards(self):
-        html = digest.build_html(
-            "테스터", [], {}, [], [], [], [],
-            {
-                "report_rate": None,
                 "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
                 "volume_top": {"building_id": 24, "building_name": "거래 단지", "deal_count": 7},
             },
-            {
-                "title": "기능 소개 제목",
-                "body": "기능 설명",
-                "cta_label": "자세히 보기",
-                "cta_url": "/guide",
-            },
-            "https://example.test/mypage",
+            None, "https://example.test/mypage", news_items=[],
         )
-        self.assertIn("거래 단지", html)
-        self.assertIn("거래 단지 7건", html)
-        self.assertIn(f'href="{digest.SITE_URL}/building/24"', html)
-        self.assertIn("weekly-datalab-cards", html)
-        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 2)
-        self.assertIn(f'href="{digest.SITE_URL}/?datalab=lodging"', html)
-        self.assertIn("background:#F0F4FF", html)
+        self.assertNotIn("42.5%", email)
+        self.assertNotIn("영업신고율", email)
+        self.assertNotIn("데이터랩 한눈에 보기", email)
+        self.assertNotIn("weekly-datalab-cards", email)
+        self.assertNotIn("거래 단지", email)
 
-    def test_zone3_appends_consumption_block_without_changing_three_cards(self):
-        html = digest.build_html(
-            "테스터", [], {}, [], [], [], [],
-            {
-                "report_rate": 42.5,
-                "price_change": {"building_name": "상승 단지", "change_percent": 9.8},
-                "volume_top": {"building_name": "거래 단지", "deal_count": 7},
-                "consumption_summary": {
-                    "ref_yearmonth": "2025-12",
-                    "amounts": {
-                        "기타숙박": 125000, "호텔": 200000,
-                        "캠핑장/펜션": 700000,
-                    },
-                    "other_lodging_mom": 25.0,
-                },
-            },
-            None, "https://example.test/mypage",
-        )
-        self.assertEqual(html.count('<td class="weekly-datalab-card-cell"'), 3)
-        self.assertIn("2025년 12월 숙박 관광소비", html)
-        self.assertIn("기타숙박</b> 1억원", html)
-        self.assertIn("캠핑·펜션</b> 7억원", html)
-        self.assertIn("전월比 ▲25.0%", html)
-        self.assertIn("관광소비 열지도 보기 →", html)
-        self.assertIn(f'href="{digest.SITE_URL}/?datalab=tourism_consume"', html)
-
-    def test_empty_zone3_and_zone4_are_omitted(self):
+    def test_empty_zone4_is_omitted(self):
         html = digest.build_html(
             "테스터", [], {}, [], [], [], [],
             {"report_rate": None, "price_change": None, "volume_top": None},
-            None, "https://example.test/mypage",
+            None, "https://example.test/mypage", news_items=[],
         )
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertNotIn("이번 주 기능 소개", html)
-        self.assertNotIn("데이터랩 전체 보기 →", html)
 
     def test_empty_rankings_are_omitted_instead_of_sending_blank_tables(self):
         html = digest.build_html(
             "테스터", [], {}, [], [], [], [],
             {"report_rate": None, "price_change": None, "volume_top": None},
             None, "https://example.test/mypage",
+            period_start="2026-08-26", period_end="2026-09-24",
+            news_items=[],
         )
-        self.assertIn("이번 주 시세 랭킹", html)
-        self.assertIn("이번 주 신규 실거래가 없습니다", html)
+        self.assertIn("최근 30일 시세 랭킹", html)
+        self.assertIn("최근 30일 거래 데이터가 없습니다", html)
+        self.assertIn("2026-08-26 — 2026-09-24", html)
 
     def test_admin_copy_explicitly_omits_personalized_sections(self):
         html = digest.build_html(
@@ -777,12 +738,111 @@ class WeeklyDigestTests(unittest.TestCase):
         html = digest._zone1_1(
             [("저장한 건물", "주소", 321)], {}, {}, alert_off_count=4
         )
-        self.assertIn("저장한 건물", html)
-        self.assertIn("이번 주 새로운 실거래가 없었어요", html)
-        self.assertIn("내 관심단지", html)
+        self.assertIn("나머지 관심단지 1곳은 최근 30일 새 실거래가 없습니다.", html)
+        self.assertIn("관심단지 · 최신 실거래", html)
         self.assertIn("알림이 꺼진 관심단지가 4건", html)
         self.assertIn("관심단지 추가·알림 설정 확인", html)
         self.assertNotIn("이번 주 신호</th>", html)
+
+    def test_favorite_recent_trades_precede_single_no_trade_count_line(self):
+        html = digest._zone1_1(
+            [
+                ("미거래 A", "주소 A", 1),
+                ("거래 건물", "주소 B", 2),
+                ("미거래 B", "주소 C", 3),
+            ],
+            {
+                ("거래 건물", "주소 B"): {
+                    "price": 12500, "deal_date": "2026-09-20", "building_id": 2,
+                },
+            },
+            {"deal": 1},
+            period_start="2026-08-26",
+            period_end="2026-09-24",
+        )
+        self.assertLess(html.index("거래 건물"), html.index("나머지 관심단지 2곳"))
+        self.assertIn("2026-09-20", html)
+        self.assertIn("1억 2,500만원", html)
+        self.assertEqual(html.count("나머지 관심단지"), 1)
+        self.assertNotIn("미거래 A", html)
+        self.assertIn("2026-08-26", html)
+
+    def test_30_day_rankings_use_historical_max_and_exact_labeled_period(self):
+        cursor = _RankingCursor([
+            [{"building_id": 10, "building_name": "신고가", "price": 20000,
+              "deal_date": "2026-09-24", "pct_gain": 10.0}],
+            [{"building_id": 11, "building_name": "거래량", "deal_count": 4}],
+        ])
+        highs, volumes, period_start, period_end = digest._get_30_day_rankings(
+            cursor, date(2026, 9, 24),
+        )
+        self.assertEqual((period_start, period_end), ("2026-08-26", "2026-09-24"))
+        self.assertEqual(highs[0]["building_id"], 10)
+        self.assertEqual(volumes[0]["deal_count"], 4)
+        self.assertIn("historical_max AS", cursor.queries[0])
+        self.assertIn("MAX(price) AS old_max", cursor.queries[0])
+        self.assertIn("deal_date < %s", cursor.queries[0])
+        self.assertIn("price > old_max", cursor.queries[0])
+        self.assertIn("transaction_scope='unit'", cursor.queries[0])
+        self.assertIn("LIMIT 5", cursor.queries[0])
+        self.assertEqual(cursor.params[0], ("2026-08-26", "2026-08-26",
+                                             "2026-09-24"))
+        self.assertEqual(cursor.params[1], ("2026-08-26", "2026-09-24"))
+
+    def test_verified_news_links_are_escaped_and_invalid_links_are_omitted(self):
+        rendered = digest._zone_news([
+            {"title": '정책 <속보> & 확인', "url": 'https://news.test/a?x="y"',
+             "source": "<출처>", "published": "2026-09-24"},
+            {"title": "가짜 링크", "url": "javascript:alert(1)"},
+        ])
+        self.assertIn("정책 &lt;속보&gt; &amp; 확인", rendered)
+        self.assertIn('href="https://news.test/a?x=&quot;y&quot;"', rendered)
+        self.assertIn("&lt;출처&gt;", rendered)
+        self.assertIn("2026-09-24", rendered)
+        self.assertNotIn("가짜 링크", rendered)
+        empty = digest._zone_news([])
+        self.assertIn("현재 확인된 원문 링크가 있는", empty)
+
+    @patch("weekly_digest_news.get_recent_news", return_value=[])
+    def test_digest_calls_news_provider_with_three_item_limit(self, get_news):
+        self.assertEqual(digest._get_recent_news(), [])
+        get_news.assert_called_once_with(limit=3)
+
+    def test_untrusted_greeting_favorite_and_request_values_are_escaped(self):
+        rendered = digest.build_html(
+            '<img src=x onerror=alert(1)>',
+            [('<script>favorite</script>', "주소", None)],
+            {
+                ("<script>favorite</script>", "주소"): {
+                    "price": 10000, "deal_date": "2026-09-24",
+                },
+            },
+            [{
+                "building_name": '<script>request</script>',
+                "status": '<img src=x onerror=alert(1)>',
+            }],
+            [],
+            [], [], {}, None, "https://example.test/unsubscribe",
+            news_items=[],
+        )
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;님", rendered)
+        self.assertIn("&lt;script&gt;favorite&lt;/script&gt;", rendered)
+        self.assertIn("&lt;script&gt;request&lt;/script&gt;", rendered)
+        self.assertIn("&lt;img src=x onerror=alert(1)&gt;", rendered)
+        self.assertNotIn("<script>", rendered)
+
+    def test_30_day_deal_lookback_does_not_expand_other_weekly_alerts(self):
+        with open(digest.__file__, encoding="utf-8") as source_file:
+            source = source_file.read()
+        user_personalization = source.split(
+            "def _personalize_recipient", 1
+        )[1].split("def _personalize_partner_recipient", 1)[0]
+        partner_personalization = source.split(
+            "def _personalize_partner_recipient", 1
+        )[1].split("def _send_claimed_recipient", 1)[0]
+        self.assertIn("deals_since or week_ago", user_personalization)
+        self.assertIn("(uid, week_ago, favorite_ids)", user_personalization)
+        self.assertIn("deals_since or week_ago", partner_personalization)
 
     def test_extreme_price_change_is_not_the_email_subject(self):
         extreme = {"price_change": {

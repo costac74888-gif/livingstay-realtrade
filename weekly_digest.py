@@ -3,12 +3,10 @@
 홈앤스테이 주간 소식 이메일 발송
 ===================================
 대상  : weekly_email_enabled = TRUE 인 일반 회원 + 승인된 파트너
-Zone 0   : 이번 주 핵심 수치 (데이터가 없으면 생략)
-Zone 1-1 : 관심단지 신규 실거래 (없으면 CTA 버튼)
-Zone 1-2 : 매물의뢰 / 매수의뢰 진행 현황 (없으면 CTA 버튼)
-Zone 2   : 이번 주 시세 랭킹 — 신고가 TOP5, 거래량 TOP5
-Zone 3   : 데이터랩 요약 — 전국 신고율, 가격변동·거래량 TOP1
-Zone 4   : ISO 주차 기반 기능 소개 시리즈
+관심단지 : 최근 30일 신규 실거래, 미거래 관심단지 수
+의뢰 현황 : 진행 중인 매물의뢰 / 매수의뢰 상태
+시세 랭킹 : 최근 30일 신고가 갱신 TOP5, 거래량 TOP5
+뉴스·기능 팁 : 확인된 원문 뉴스 링크와 ISO 주차 기능 소개
 
 실행:
   python weekly_digest.py                  # 전체 발송
@@ -194,6 +192,162 @@ def _get_public_homepage_ranking(app_module=None):
     except Exception:
         log.warning("홈페이지 공개 랭킹을 읽지 못했습니다.", exc_info=True)
         return [], []
+
+
+def _get_30_day_rankings(cur, today=None):
+    """Compute email rankings from transaction history for the exact 30-day period."""
+    end_date = today or kst_today()
+    start_date = end_date - timedelta(days=29)
+    period_start = start_date.isoformat()
+    period_end = end_date.isoformat()
+    cur.execute("""
+        WITH transaction_buildings AS (
+            SELECT t.id, t.master_building_id,
+                   COALESCE(t.master_building_id, location_match.id) AS building_id,
+                   COALESCE(mb.building_name, location_match.building_name,
+                            t.building_name, t.source_building_name) AS building_name,
+                   t.price, t.deal_date
+              FROM transactions t
+              LEFT JOIN master_buildings mb ON mb.id=t.master_building_id
+              LEFT JOIN LATERAL (
+                  SELECT candidate.id, candidate.building_name
+                    FROM master_buildings candidate
+                   WHERE t.master_building_id IS NULL
+                     AND candidate.sgg_cd=t.sgg_cd
+                     AND REPLACE(candidate.umd_nm, ' ', '') =
+                         REPLACE(t.umd_nm, ' ', '')
+                     AND candidate.jibun=t.jibun
+                   ORDER BY (candidate.building_name=t.building_name) DESC NULLS LAST,
+                            candidate.id
+                   LIMIT 1
+              ) location_match ON TRUE
+             WHERE t.transaction_scope='unit' AND t.price > 0
+        ),
+        historical_max AS (
+            SELECT building_id, MAX(price) AS old_max
+              FROM transaction_buildings
+             WHERE building_id IS NOT NULL AND deal_date < %s
+             GROUP BY building_id
+        ),
+        period_transactions AS (
+            SELECT t.*, h.old_max
+              FROM transaction_buildings t
+              LEFT JOIN historical_max h USING (building_id)
+             WHERE t.building_id IS NOT NULL
+               AND t.deal_date >= %s AND t.deal_date <= %s
+        ),
+        qualifying_highs AS (
+            SELECT *, ROW_NUMBER() OVER (
+                       PARTITION BY building_id
+                       ORDER BY price DESC, deal_date DESC, id DESC
+                   ) AS high_rank
+              FROM period_transactions
+             WHERE old_max IS NULL OR price > old_max
+        ),
+        ranked_highs AS (
+            SELECT building_id, building_name, price, deal_date, old_max,
+                   CASE WHEN old_max > 0
+                        THEN ROUND(100.0 * (price - old_max) / old_max, 1)
+                        ELSE NULL END AS pct_gain,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY building_id
+                       ORDER BY
+                           CASE WHEN old_max > 0
+                                THEN 100.0 * (price - old_max) / old_max
+                                ELSE NULL END DESC NULLS LAST,
+                           price DESC, deal_date DESC
+                   ) AS rank_for_building
+              FROM qualifying_highs
+             WHERE high_rank=1
+        )
+        SELECT 'high' AS ranking, building_id, building_name, price,
+               deal_date, pct_gain, NULL::BIGINT AS deal_count
+          FROM ranked_highs
+         WHERE rank_for_building=1
+         ORDER BY pct_gain DESC NULLS LAST, price DESC, deal_date DESC
+         LIMIT 5
+    """, (period_start, period_start, period_end))
+    price_rows = [dict(row) for row in cur.fetchall()]
+    cur.execute("""
+        WITH transaction_buildings AS (
+            SELECT COALESCE(t.master_building_id, location_match.id) AS building_id,
+                   COALESCE(mb.building_name, location_match.building_name,
+                            t.building_name, t.source_building_name) AS building_name,
+                   t.deal_date
+              FROM transactions t
+              LEFT JOIN master_buildings mb ON mb.id=t.master_building_id
+              LEFT JOIN LATERAL (
+                  SELECT candidate.id, candidate.building_name
+                    FROM master_buildings candidate
+                   WHERE t.master_building_id IS NULL
+                     AND candidate.sgg_cd=t.sgg_cd
+                     AND REPLACE(candidate.umd_nm, ' ', '') =
+                         REPLACE(t.umd_nm, ' ', '')
+                     AND candidate.jibun=t.jibun
+                   ORDER BY (candidate.building_name=t.building_name) DESC NULLS LAST,
+                            candidate.id
+                   LIMIT 1
+              ) location_match ON TRUE
+             WHERE t.transaction_scope='unit' AND t.price > 0
+               AND t.deal_date >= %s AND t.deal_date <= %s
+        )
+        SELECT building_id, MAX(building_name) AS building_name,
+               COUNT(*) AS deal_count
+          FROM transaction_buildings
+         WHERE building_id IS NOT NULL
+         GROUP BY building_id
+         ORDER BY deal_count DESC, building_name
+         LIMIT 5
+    """, (period_start, period_end))
+    volume_rows = [dict(row) for row in cur.fetchall()]
+    for row in (*price_rows, *volume_rows):
+        row["building_id"] = _valid_building_id(row.get("building_id"))
+    return price_rows, volume_rows, period_start, period_end
+
+
+def _get_recent_news():
+    """Get verified source-linked stories; a missing news provider is an empty state."""
+    try:
+        from weekly_digest_news import get_recent_news
+        items = get_recent_news(limit=3)
+    except Exception:
+        log.info("주간 뉴스 제공자를 사용할 수 없어 뉴스 영역을 비웁니다.", exc_info=True)
+        return []
+    return items if isinstance(items, list) else []
+
+
+def _normalized_news_items(items):
+    """Keep only news rows with a real title and an absolute HTTP(S) source URL."""
+    normalized = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        url = str(item.get("url") or item.get("link") or "").strip()
+        try:
+            parsed = urlparse(url)
+            valid_url = (
+                parsed.scheme in ("http", "https")
+                and bool(parsed.hostname)
+                and not parsed.username
+                and not parsed.password
+                and not any(ord(char) < 32 for char in url)
+            )
+        except ValueError:
+            valid_url = False
+        if not title or not valid_url:
+            continue
+        normalized.append({
+            "title": title,
+            "url": url,
+            "source": str(item.get("source") or item.get("publisher") or "").strip(),
+            "date": str(
+                item.get("date") or item.get("published_at") or item.get("published") or ""
+            ).strip(),
+        })
+        if len(normalized) == 3:
+            break
+    return normalized
 
 
 def _weekly_feature_episode(today=None, series_length=8):
@@ -730,8 +884,9 @@ def _building_link(building_id, building_name, style):
     )
 
 
-def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
-    """관심단지의 실거래·급매·신규매물·신고변동을 한 영역에 요약한다."""
+def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0,
+             period_start=None, period_end=None):
+    """최근 30일 관심단지 거래를 우선 표시하고 미거래 단지는 한 줄로 묶는다."""
     if not favs:
         return f"""
         <table width="100%" cellpadding="0" cellspacing="0">
@@ -770,9 +925,66 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
         </table>"""
 
     signal_counts = signal_counts or {}
-    total_signals = sum(int(v or 0) for v in signal_counts.values())
-    summary_rows = [
-        ("새 실거래", signal_counts.get("deal", 0), "#B4863F"),
+    deals = []
+    no_deal_count = 0
+    for bname, addr, mid in favs:
+        deal = deals_by_fav.get((bname, addr))
+        if deal:
+            deals.append((bname, addr, mid, deal))
+        else:
+            no_deal_count += 1
+    rows = ""
+    for bname, addr, mid, deal in deals:
+        name_html = _building_link(
+            mid or deal.get("building_id"),
+            bname,
+            "color:#16202E;font-weight:700;text-decoration:none;",
+        )
+        rows += f"""
+            <tr>
+              <td style="padding:9px 4px;border-bottom:1px solid #eee;vertical-align:top;">
+                {name_html}
+              </td>
+              <td style="padding:9px 4px;border-bottom:1px solid #eee;text-align:right;
+                         white-space:nowrap;font-size:12px;color:#777;">
+                {html.escape(str(deal.get('deal_date') or '-'))}
+              </td>
+              <td style="padding:9px 4px;border-bottom:1px solid #eee;text-align:right;
+                         white-space:nowrap;font-weight:700;color:#B4863F;">
+                {_fmt_price(deal['price'])}
+              </td>
+            </tr>"""
+
+    if no_deal_count:
+        rows += f"""
+        <tr>
+          <td colspan="3" style="padding:10px 4px;border-bottom:1px solid #eee;
+                                  color:#777;font-size:12px;">
+            나머지 관심단지 {no_deal_count}곳은 최근 30일 새 실거래가 없습니다.
+          </td>
+        </tr>"""
+
+    alert_off_hint = ""
+    if alert_off_count > 0:
+        mypage_url = html.escape(f"{SITE_URL}/mypage", quote=True)
+        alert_off_hint = f"""
+    <p style="margin:10px 0 0;font-size:12px;color:#B4863F;">
+      🔔 알림이 꺼진 관심단지가 {alert_off_count}건 있어요 —
+      <a href="{mypage_url}" style="color:#B4863F;font-weight:700;text-decoration:underline;">마이페이지에서 켜기 →</a>
+    </p>"""
+
+    if not rows:
+        rows = """<tr><td colspan="3" style="padding:9px 4px;color:#777;">
+          최근 30일 관심단지 거래가 없습니다.
+        </td></tr>"""
+    period = ""
+    if period_start and period_end:
+        period = (
+            f'<p style="margin:0 0 9px;color:#888;font-size:11px;">'
+            f'최근 30일 · {html.escape(str(period_start))} — '
+            f'{html.escape(str(period_end))}</p>'
+        )
+    signal_rows = [
         ("🔥 급매", signal_counts.get("urgent", 0), "#C85A36"),
         ("신규매물", signal_counts.get("new_listing", 0), "#4A7A18"),
         ("신규신고", signal_counts.get("permit_new", 0), "#4A7A18"),
@@ -780,84 +992,34 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
         ("영업상태 변경", signal_counts.get("permit_status", 0), "#6E5A9E"),
         ("호실수 변경", signal_counts.get("permit_room", 0), "#356D9A"),
     ]
-    rows = "".join(
-        f"""<tr>
-          <td style="padding:8px 4px;border-bottom:1px solid #eee;color:#555;">{label}</td>
-          <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:{color};">{int(count or 0)}건</td>
-        </tr>"""
-        for label, count, color in summary_rows if int(count or 0) > 0
-    )
-    for bname, addr, mid in favs:
-        deal = deals_by_fav.get((bname, addr))
-        name_html = _building_link(
-            mid or (deal and deal.get("building_id")),
-            bname,
-            "color:#16202E;font-weight:700;text-decoration:none;",
-        )
-        if deal:
-            rows += f"""
-            <tr>
-              <td style="padding:8px 4px;border-bottom:1px solid #eee;vertical-align:top;">
-                {name_html}
-              </td>
-              <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;
-                         white-space:nowrap;font-weight:700;color:#B4863F;">
-                {_fmt_price(deal['price'])}
-              </td>
-              <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right;
-                         white-space:nowrap;color:#888;font-size:12px;">
-                {deal['deal_date']}
-              </td>
-            </tr>"""
-        else:
-            rows += f"""
-            <tr>
-              <td colspan="3" style="padding:8px 4px;border-bottom:1px solid #eee;color:#888;">
-                {name_html}
-                <span style="margin-left:8px;font-size:12px;">— 이번 주 새로운 실거래가 없었어요</span>
-              </td>
-            </tr>"""
-
-    alert_off_hint = ""
-    if alert_off_count > 0:
-        mypage_url = f"{SITE_URL}/mypage"
-        alert_off_hint = f"""
-    <p style="margin:10px 0 0;font-size:12px;color:#B4863F;">
-      🔔 알림이 꺼진 관심단지가 {alert_off_count}건 있어요 —
-      <a href="{mypage_url}" style="color:#B4863F;font-weight:700;text-decoration:underline;">마이페이지에서 켜기 →</a>
-    </p>"""
-
-    if not total_signals:
-        rows = f"""
-        <tr><td colspan="3" style="padding:8px 4px;color:#555;font-size:13px;">
-          이번 주 관심단지의 새로운 알림이 없었어요.
-          관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.
-        </td></tr>""" + rows
-
-    heading = (
-        """<th colspan="3" style="text-align:left;padding:6px 4px;color:#888;
-                    font-weight:600;border-bottom:2px solid #eee;">내 관심단지</th>"""
-        if not total_signals else
-        """<th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
-                  border-bottom:2px solid #eee;">이번 주 신호</th>
-           <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
-                  border-bottom:2px solid #eee;">건수</th>"""
+    signals = "".join(
+        f'<span style="display:inline-block;margin:8px 12px 0 0;font-size:11px;'
+        f'color:{color};">{html.escape(label)} {int(count or 0)}건</span>'
+        for label, count, color in signal_rows if int(count or 0) > 0
     )
     no_signal_cta = f"""
     <p style="margin:12px 0 0;">
-      <a href="{SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"
+      <a href="{html.escape(SITE_URL, quote=True)}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"
          style="display:inline-block;background:#B4863F;color:#fff;
                 text-decoration:none;padding:10px 22px;border-radius:6px;
-                font-size:14px;font-weight:700;">관심단지 추가·알림 설정 확인 →</a>
-    </p>""" if not total_signals else ""
+                 font-size:14px;font-weight:700;">관심단지 추가·알림 설정 확인 →</a>
+    </p>""" if not deals and not signals else ""
 
     return f"""
+    {period}
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
-        <tr>{heading}</tr>
+        <tr>
+          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">관심단지 · 최신 실거래</th>
+          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">거래일</th>
+          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
+                     border-bottom:2px solid #eee;">가격</th>
+        </tr>
       </thead>
       <tbody>{rows}</tbody>
-    </table>{alert_off_hint}{no_signal_cta}"""
+    </table>{signals}{alert_off_hint}{no_signal_cta}"""
 
 
 def _zone1_2(listing_reqs, buy_reqs):
@@ -886,7 +1048,8 @@ def _zone1_2(listing_reqs, buy_reqs):
             name,
             "color:#16202E;text-decoration:none;",
         )
-        badge_style = _status_badge_style(r["status"])
+        status = r.get("status")
+        badge_style = _status_badge_style(status)
         rows += f"""
         <tr>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;font-size:12px;
@@ -897,7 +1060,7 @@ def _zone1_2(listing_reqs, buy_reqs):
           <td style="padding:8px 4px;border-bottom:1px solid #eee;">
             <span style="{badge_style}padding:2px 8px;border-radius:10px;
                           font-size:12px;font-weight:700;">
-              {_status_label(r['status'])}
+              {html.escape(str(_status_label(status)))}
             </span>
           </td>
         </tr>"""
@@ -918,18 +1081,21 @@ def _zone1_2(listing_reqs, buy_reqs):
     </table>"""
 
 
-def _zone2(price_highs, most_traded):
-    """시세 랭킹"""
+def _zone2(price_highs, most_traded, period_start=None, period_end=None):
+    """최근 30일 동안의 실거래 이력 기반 랭킹."""
     if not price_highs and not most_traded:
-        return """
+        return f"""
         <div style="padding:14px;background:#F8F9FB;border-radius:6px;
                     color:#666;font-size:13px;text-align:center;">
-          이번 주 신규 실거래가 없습니다.
-        </div>"""
+          최근 30일 거래 데이터가 없습니다.
+        </div>
+        <p style="margin:8px 4px 0;color:#888;font-size:11px;">
+          집계 기간: {html.escape(str(period_start or '최근 30일'))}{' — ' + html.escape(str(period_end)) if period_end else ''}
+        </p>"""
 
     def price_rows():
         if not price_highs:
-            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 신고가 갱신 건물이 없습니다.</td></tr>"
+            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>최근 30일 신고가 갱신 건물이 없습니다.</td></tr>"
         html = ""
         for i, r in enumerate(price_highs, 1):
             name_html = _building_link(
@@ -937,7 +1103,11 @@ def _zone2(price_highs, most_traded):
                 r["building_name"],
                 "color:#16202E;font-weight:700;text-decoration:none;",
             )
-            gain = f"+{r['pct_gain']}%" if r.get("pct_gain") else ""
+            try:
+                pct_gain = float(r.get("pct_gain"))
+                gain = f"{pct_gain:+.1f}%"
+            except (TypeError, ValueError):
+                gain = ""
             html += f"""
             <tr>
               <td style="padding:6px 4px;border-bottom:1px solid #f0f0f0;
@@ -954,7 +1124,7 @@ def _zone2(price_highs, most_traded):
 
     def vol_rows():
         if not most_traded:
-            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>이번 주 거래 데이터가 없습니다.</td></tr>"
+            return "<tr><td colspan='3' style='padding:8px 4px;color:#888;font-size:13px;'>최근 30일 거래 데이터가 없습니다.</td></tr>"
         html = ""
         for i, r in enumerate(most_traded, 1):
             name_html = _building_link(
@@ -983,7 +1153,7 @@ def _zone2(price_highs, most_traded):
           <th colspan="3"
               style="text-align:left;padding:6px 4px;color:#16202E;font-size:13px;
                      font-weight:700;border-bottom:2px solid #eee;">
-            🏆 신고가 갱신 TOP5
+            🏆 신고가 갱신 TOP5 · 최근 30일
           </th>
         </tr>
       </thead>
@@ -995,12 +1165,40 @@ def _zone2(price_highs, most_traded):
           <th colspan="3"
               style="text-align:left;padding:6px 4px;color:#16202E;font-size:13px;
                      font-weight:700;border-bottom:2px solid #eee;">
-            🔥 거래량 TOP5
+            🔥 거래량 TOP5 · 최근 30일
           </th>
         </tr>
       </thead>
       <tbody>{vol_rows()}</tbody>
-    </table>"""
+    </table>
+    <p style="margin:8px 4px 0;color:#888;font-size:11px;">
+      집계 기간: {html.escape(str(period_start or '최근 30일'))}{' — ' + html.escape(str(period_end)) if period_end else ''}
+    </p>"""
+
+
+def _zone_news(news_items):
+    items = _normalized_news_items(news_items)
+    if not items:
+        return """
+        <p style="margin:0;color:#777;font-size:13px;line-height:1.6;">
+          현재 확인된 원문 링크가 있는 숙박부동산 뉴스가 없습니다.
+        </p>"""
+    rows = []
+    for item in items:
+        metadata = " · ".join(value for value in (item["date"], item["source"]) if value)
+        metadata_html = html.escape(metadata) if metadata else ""
+        href = html.escape(item["url"], quote=True)
+        rows.append(f"""
+        <tr>
+          <td style="padding:10px 4px;border-bottom:1px solid #edf0f2;">
+            <a href="{href}" style="color:#16202E;text-decoration:none;
+                                   font-size:13px;line-height:1.5;font-weight:700;">
+              {html.escape(item['title'])}
+            </a>
+            {'<div style="margin-top:4px;color:#92999f;font-size:11px;">' + metadata_html + '</div>' if metadata_html else ''}
+          </td>
+        </tr>""")
+    return f'<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">{"".join(rows)}</table>'
 
 
 def _zone3(summary):
@@ -1226,14 +1424,17 @@ def build_html(user_name, favs, deals_by_fav,
                 listing_reqs, buy_reqs,
                price_highs, most_traded,
                datalab_summary, feature_tip,
-                 unsubscribe_url, alert_off_count=0, signal_counts=None,
-                 tracking_token=None, include_personalized=True):
-    z0  = _zone0(datalab_summary)
-    z1  = _zone1_1(favs, deals_by_fav, signal_counts, alert_off_count)
+                  unsubscribe_url, alert_off_count=0, signal_counts=None,
+                  tracking_token=None, include_personalized=True,
+                  period_start=None, period_end=None, news_items=None):
+    z1  = _zone1_1(
+        favs, deals_by_fav, signal_counts, alert_off_count,
+        period_start, period_end,
+    )
     z12 = _zone1_2(listing_reqs, buy_reqs)
-    z2  = _zone2(price_highs, most_traded)
-    z3  = _zone3(datalab_summary)
+    z2  = _zone2(price_highs, most_traded, period_start, period_end)
     z4  = _zone4(feature_tip)
+    news = _zone_news(_get_recent_news() if news_items is None else news_items)
 
     personalized_blocks = f"""
   <tr>
@@ -1265,29 +1466,11 @@ def build_html(user_name, favs, deals_by_fav,
     <td style="padding:20px 28px 0;">
       <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
                  padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📊 이번 주 시세 랭킹
+        📊 최근 30일 시세 랭킹
       </h2>
       {z2}
     </td>
   </tr>""" if z2 else ""
-
-    zone0_block = f"""
-  <tr>
-    <td style="padding:20px 28px 0;">
-      {z0}
-    </td>
-  </tr>""" if z0 else ""
-
-    zone3_block = f"""
-  <tr>
-    <td style="padding:20px 28px 0;background:#F8F4EE;">
-      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
-                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📈 데이터랩 한눈에 보기
-      </h2>
-      {z3}
-    </td>
-  </tr>""" if z3 else ""
 
     zone4_block = f"""
   <tr>
@@ -1300,23 +1483,23 @@ def build_html(user_name, favs, deals_by_fav,
     </td>
   </tr>""" if z4 else ""
 
+    news_block = f"""
+  <tr>
+    <td style="padding:20px 28px 0;">
+      <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
+                 padding-bottom:8px;border-bottom:2px solid #B4863F;">
+        📰 숙박부동산 뉴스
+      </h2>
+      {news}
+    </td>
+  </tr>"""
+
     rendered = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>홈앤스테이 주간 소식</title>
-<style>
-@media only screen and (max-width:580px) {{
-  .weekly-datalab-cards {{ table-layout:auto !important; }}
-  .weekly-datalab-card-cell {{
-    display:block !important;
-    width:100% !important;
-    padding:4px 0 !important;
-  }}
-  .weekly-datalab-card {{ width:100% !important; }}
-}}
-</style>
 </head>
 <body style="margin:0;padding:0;background:#f4f5f7;
              font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;">
@@ -1351,7 +1534,7 @@ def build_html(user_name, favs, deals_by_fav,
   <tr>
     <td style="padding:24px 28px 0;">
       <p style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 4px;">
-        {user_name}님, 이번 주 홈앤스테이 소식을 전달해드려요.
+        {html.escape(str(user_name or '회원'))}님, 이번 주 홈앤스테이 소식을 전달해드려요.
       </p>
       <p style="font-size:13px;color:#888;margin:0;">
          실거래부터 영업현황·매물·중개·운영·금융까지 — 이번 주 소식을 전달해드려요.
@@ -1359,13 +1542,11 @@ def build_html(user_name, favs, deals_by_fav,
     </td>
   </tr>
 
-  {zone0_block}
-
   {personalized_blocks}
   {zone2_block}
 
-  {zone3_block}
   {zone4_block}
+  {news_block}
 
   <!-- ── 푸터 ── -->
   <tr>
@@ -1382,7 +1563,7 @@ def build_html(user_name, favs, deals_by_fav,
             </p>
             <p style="font-size:11px;color:#aaa;margin:0;">
               이 메일은 홈앤스테이 회원가입 시 동의하신 주간 소식 수신 설정에 따라 발송됩니다.
-              <a href="{unsubscribe_url}" style="color:#aaa;text-decoration:underline;">수신거부</a>
+        <a href="{html.escape(str(unsubscribe_url or ''), quote=True)}" style="color:#aaa;text-decoration:underline;">수신거부</a>
             </p>
           </td>
         </tr>
@@ -1734,7 +1915,7 @@ def _send_admin_delivery_report(target_count, sent, errors, test=False, cohort=N
 
 def _send_admin_digest_copy(
     price_highs, most_traded, datalab_summary, feature_tip, force_resend=False,
-    cohort=None,
+    cohort=None, period_start=None, period_end=None, news_items=None,
 ):
     """개인 회원 데이터 없이 공통 주간 이메일 본문을 관리자에게도 보낸다."""
     subject = "[관리자 사본] " + _build_subject(0, datalab_summary, feature_tip)
@@ -1745,6 +1926,8 @@ def _send_admin_digest_copy(
         f"{SITE_URL}/admin", 0,
         signal_counts={},
         include_personalized=False,
+        period_start=period_start, period_end=period_end,
+        news_items=news_items,
     )
     now = datetime.now().astimezone()
     cohort = cohort or scheduled_cohort(kst_today()) or "manual"
@@ -1759,7 +1942,7 @@ def _send_admin_digest_copy(
     )
 
 
-def _personalize_recipient(cur, user, week_ago):
+def _personalize_recipient(cur, user, week_ago, deals_since=None, deals_through=None):
     """Load one member's digest data; callers can fail this recipient only."""
     uid = user["id"]
     recipient_type = user.get("recipient_type", "user")
@@ -1843,9 +2026,13 @@ def _personalize_recipient(cur, user, week_ago):
                AND REPLACE(mb.umd_nm, ' ', '')=REPLACE(t.umd_nm, ' ', '')
                AND mb.jibun=t.jibun
              WHERE t.building_name=ANY(%s) AND t.address=ANY(%s)
-               AND t.transaction_scope='unit' AND t.deal_date >= %s
-             ORDER BY t.building_name, t.address, t.deal_date DESC
-        """, (names, addresses, week_ago))
+                 AND t.transaction_scope='unit' AND t.price > 0
+                 AND t.deal_date >= %s AND t.deal_date <= %s
+              ORDER BY t.building_name, t.address, t.deal_date DESC, t.id DESC
+        """, (
+            names, addresses, deals_since or week_ago,
+            deals_through or kst_today().isoformat(),
+        ))
         valid = {(f[0], f[1]) for f in favs}
         deals_by_fav = {
             (r["building_name"], r["address"]): dict(r)
@@ -1916,7 +2103,9 @@ def _personalize_recipient(cur, user, week_ago):
     }
 
 
-def _personalize_partner_recipient(cur, partner, week_ago):
+def _personalize_partner_recipient(
+    cur, partner, week_ago, deals_since=None, deals_through=None,
+):
     """파트너 관심단지 UNION 활성 담당 단지뱃지 범위만 개인화한다."""
     kind = partner["recipient_type"]
     owner_column = {
@@ -1976,8 +2165,8 @@ def _personalize_partner_recipient(cur, partner, week_ago):
                    AND mb.sgg_cd=t.sgg_cd
                    AND REPLACE(mb.umd_nm, ' ', '')=REPLACE(t.umd_nm, ' ', '')
                    AND mb.jibun=t.jibun
-                 WHERE t.transaction_scope='unit'
-                   AND t.deal_date >= %s
+                  WHERE t.transaction_scope='unit'
+                     AND t.deal_date >= %s AND t.deal_date <= %s
             )
             SELECT DISTINCT ON (building_id) building_id,
                    t.building_name, t.address, t.price, t.deal_date,
@@ -1990,7 +2179,8 @@ def _personalize_partner_recipient(cur, partner, week_ago):
                 OR t.location_match_count=1
              ORDER BY building_id, t.deal_date DESC, t.transaction_id DESC
             """,
-            (building_ids, week_ago),
+            (building_ids, deals_since or week_ago,
+             deals_through or kst_today().isoformat()),
         )
         deals_by_id = {int(r["building_id"]): dict(r) for r in cur.fetchall()}
         deals_by_fav = {
@@ -2012,7 +2202,7 @@ def _send_claimed_recipient(
     conn, cur, user, delivery, subject, favs, deals_by_fav, listing_reqs,
     buy_reqs, price_highs, most_traded, datalab_summary, feature_tip,
     unsubscribe_url, alert_off_count, signal_counts, week_start, cohort,
-    recipient_type=None,
+    recipient_type=None, period_start=None, period_end=None, news_items=None,
 ):
     """Render/send one already-claimed recipient and fence every DB mutation."""
     uid = user["id"]
@@ -2023,6 +2213,8 @@ def _send_claimed_recipient(
             price_highs, most_traded, datalab_summary, feature_tip,
             unsubscribe_url, alert_off_count, signal_counts=signal_counts,
             tracking_token=delivery["tracking_token"],
+            period_start=period_start, period_end=period_end,
+            news_items=news_items,
         )
         # 수신거부가 claim 이후에 발생한 경우 provider 제출 직전에 다시
         # 확인한다. 테스트용 최소 커서에는 조회 API가 없으므로 생략한다.
@@ -2245,14 +2437,18 @@ def main():
     elif target_uid is not None and selected_cohort is None:
         selected_cohort = cohort_for_user(target_uid)
     week_ago   = (today - timedelta(days=7)).isoformat()
+    deals_since = (today - timedelta(days=29)).isoformat()
     week_start = week_start_for(today)
+    news_items = _get_recent_news()
 
     conn = get_conn()
     try:
         cur = conn.cursor()
 
         # 공통 데이터 (전체 회원이 동일하게 받음)
-        price_highs, most_traded = _get_public_homepage_ranking()
+        price_highs, most_traded, period_start, period_end = _get_30_day_rankings(
+            cur, today,
+        )
         # _get_datalab_summary()는 별도 DB 연결을 사용한다. 운영 스키마 DDL이
         # 대기 중일 때 첫 연결의 ACCESS SHARE 잠금을 계속 쥐고 있으면,
         # 두 번째 연결이 DDL 뒤에서 기다리는 교착성 잠금 대기가 생긴다.
@@ -2279,6 +2475,8 @@ def main():
             ok, msg = _send_admin_digest_copy(
                 price_highs, most_traded, datalab_summary, feature_tip,
                 force_resend=args.force_resend,
+                period_start=period_start, period_end=period_end,
+                news_items=news_items,
             )
             log.info("관리자 주간 이메일 사본: %s", msg)
             return 0 if ok else 1
@@ -2305,9 +2503,13 @@ def main():
                         log.info("  - %s (이미 발송됨/다른 작업자가 처리 중)", email)
                         continue
                 personalized = (
-                    _personalize_recipient(cur, user, week_ago)
+                    _personalize_recipient(
+                        cur, user, week_ago, deals_since, today.isoformat(),
+                    )
                     if recipient_type == "user"
-                    else _personalize_partner_recipient(cur, user, week_ago)
+                    else _personalize_partner_recipient(
+                        cur, user, week_ago, deals_since, today.isoformat(),
+                    )
                 )
                 subject = _build_subject(
                     personalized["new_deal_count"],
@@ -2346,6 +2548,8 @@ def main():
                     unsubscribe_url, personalized["alert_off_count"],
                     personalized["signal_counts"], week_start, selected_cohort,
                     recipient_type=recipient_type,
+                    period_start=period_start, period_end=period_end,
+                    news_items=news_items,
                 )
             except Exception as exc:
                 conn.rollback()
