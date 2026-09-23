@@ -816,11 +816,11 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("현재 확인된 원문 링크가 있는", empty)
 
     @patch("weekly_digest_news.get_recent_news", return_value=[])
-    def test_digest_calls_news_provider_with_five_item_limit(self, get_news):
+    def test_digest_calls_news_provider_with_three_item_limit(self, get_news):
         self.assertEqual(digest._get_recent_news(), [])
-        get_news.assert_called_once_with(limit=5)
+        get_news.assert_called_once_with(limit=3)
 
-    def test_digest_keeps_five_news_rows(self):
+    def test_digest_keeps_three_news_rows(self):
         news_items = [
             {
                 "title": f"Hotel industry report {number}",
@@ -833,9 +833,9 @@ class WeeklyDigestTests(unittest.TestCase):
 
         rendered = digest._zone_news(news_items)
 
-        self.assertEqual(rendered.count("<tr>"), 5)
-        self.assertEqual(rendered.count("<a href="), 5)
-        self.assertNotIn("Hotel industry report 5", rendered)
+        self.assertEqual(rendered.count("<tr>"), 3)
+        self.assertEqual(rendered.count("<a href="), 3)
+        self.assertNotIn("Hotel industry report 3", rendered)
 
     def test_untrusted_greeting_favorite_and_request_values_are_escaped(self):
         rendered = digest.build_html(

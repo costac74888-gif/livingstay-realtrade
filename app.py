@@ -19549,9 +19549,15 @@ def admin_weekly_digest_status():
     running = status.get("state") == "running"
     if running and meta and meta["updated_at"]:
         running = (datetime.now() - meta["updated_at"]).total_seconds() < 60 * 60
+    week_start = (
+        datetime.now(_KST).date()
+        - timedelta(days=datetime.now(_KST).weekday())
+    ).isoformat()
     return jsonify({
         "ok": True,
         "running": running,
+        "test_ready": status.get("state") == "test_ready"
+                      and status.get("week_start") == week_start,
         "state": "stale" if status.get("state") == "running" and not running else status.get("state"),
         "target_count": target_count,
         "sent": counts.get("sent", 0),
@@ -19563,9 +19569,43 @@ def admin_weekly_digest_status():
     })
 
 
+@app.route("/api/admin/weekly-digest-send-test", methods=["POST"])
+@require_admin
+def admin_weekly_digest_send_test():
+    ok, code, payload = _start_detached_sync(
+        _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
+        "weekly_digest_runner.py",
+        ["--status-key", _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
+         "--run-id", "__RUN_ID__", "--test"],
+        done_cooldown_min=0,
+    )
+    if ok:
+        payload["message"] = "대표 계정의 실제 개인화 테스트 메일을 발송합니다. 성공 상태를 확인한 뒤 전체 발송하세요."
+    return jsonify(payload), code
+
+
 @app.route("/api/admin/weekly-digest-send-all", methods=["POST"])
 @require_admin
 def admin_weekly_digest_send_all():
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM app_meta WHERE key=%s",
+                    (_WEEKLY_DIGEST_MANUAL_STATUS_KEY,))
+        row = cur.fetchone()
+        try:
+            status = json.loads(row["value"]) if row and row["value"] else {}
+        except (TypeError, ValueError):
+            status = {}
+    finally:
+        cur.close()
+        conn.close()
+    current_week = (
+        datetime.now(_KST).date()
+        - timedelta(days=datetime.now(_KST).weekday())
+    ).isoformat()
+    if status.get("state") != "test_ready" or status.get("week_start") != current_week:
+        return jsonify({"ok": False, "message": "이번 주 대표 테스트 메일의 성공을 먼저 확인해 주세요."}), 409
     ok, code, payload = _start_detached_sync(
         _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
         "weekly_digest_runner.py",
@@ -19573,7 +19613,7 @@ def admin_weekly_digest_send_all():
             "--status-key", _WEEKLY_DIGEST_MANUAL_STATUS_KEY,
             "--run-id", "__RUN_ID__",
         ],
-        done_cooldown_min=1,
+        done_cooldown_min=0,
     )
     if ok:
         payload["message"] = "이번 주 미발송 대상의 주간 이메일 발송을 시작했습니다."

@@ -19,6 +19,7 @@ import sys
 import argparse
 import html
 import hashlib
+import secrets as _secrets
 import logging
 import re
 import time
@@ -41,8 +42,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-_dev_domain  = os.environ.get("REPLIT_DEV_DOMAIN", "")
-_fallback    = f"https://{_dev_domain}" if _dev_domain else "https://livingstay-realtrade.replit.app"
+_fallback    = "https://homenstay.com"
 SITE_URL     = os.environ.get("SITE_URL", _fallback).rstrip("/")
 KST = ZoneInfo("Asia/Seoul")
 CLAIM_STALE_AFTER = timedelta(minutes=30)
@@ -309,7 +309,7 @@ def _get_recent_news():
     """Get verified source-linked stories; a missing news provider is an empty state."""
     try:
         from weekly_digest_news import get_recent_news
-        items = get_recent_news(limit=5)
+        items = get_recent_news(limit=3)
     except Exception:
         log.info("주간 뉴스 제공자를 사용할 수 없어 뉴스 영역을 비웁니다.", exc_info=True)
         return []
@@ -345,7 +345,7 @@ def _normalized_news_items(items):
                 item.get("date") or item.get("published_at") or item.get("published") or ""
             ).strip(),
         })
-        if len(normalized) == 5:
+        if len(normalized) == 3:
             break
     return normalized
 
@@ -2400,10 +2400,72 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
     return rows
 
 
+def _send_representative_test():
+    """Send one actual personalized digest, without claiming a weekly delivery."""
+    today = kst_today()
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, email, COALESCE(name, email) AS name,
+                   COALESCE(unsubscribe_token::text, '') AS unsubscribe_token
+              FROM users
+             WHERE lower(email)=lower(%s)
+               AND NOT (weekly_email_enabled IS FALSE
+                        AND updated_weekly_email_at IS NOT NULL)
+               AND COALESCE(status, 'active') <> 'withdrawn'
+        """, ("joisys@nate.com",))
+        matches = cur.fetchall()
+        if len(matches) != 1 or matches[0]["email"].lower() != "joisys@nate.com":
+            raise RuntimeError("대표 테스트 회원을 유일한 수신 가능 계정으로 확인하지 못했습니다.")
+        user = dict(matches[0])
+        prices, traded, start, end = _get_30_day_rankings(cur, today)
+        conn.commit()
+        summary = _get_datalab_summary()
+        tip = _get_active_feature_tip(cur)
+        personalized = _personalize_recipient(
+            cur, user, (today - timedelta(days=7)).isoformat(),
+            (today - timedelta(days=29)).isoformat(), today.isoformat(),
+        )
+        conn.commit()
+        news = _get_recent_news()
+        token = user["unsubscribe_token"]
+        unsubscribe_url = (
+            f"{SITE_URL}/unsubscribe?token={quote(token)}"
+            if token else f"{SITE_URL}/mypage"
+        )
+        body = build_html(
+            user["name"], personalized["favs"], personalized["deals_by_fav"],
+            personalized["listing_reqs"], personalized["buy_reqs"],
+            prices, traded, summary, tip, unsubscribe_url,
+            personalized["alert_off_count"],
+            signal_counts=personalized["signal_counts"],
+            period_start=start, period_end=end, news_items=news,
+        )
+        subject = "[대표 테스트] " + _build_subject(
+            personalized["new_deal_count"], summary, tip,
+        )
+        # The test is intentionally outside the weekly delivery ledger, so it
+        # never marks this member as already sent for the later full run.
+        ok, message = send_email(
+            user["email"], subject, body,
+            idempotency_key=f"weekly-representative-test-{_secrets.token_hex(16)}",
+        )
+        if not ok:
+            raise RuntimeError(f"대표 테스트 메일 전송 실패: {message}")
+        log.info("대표 계정 개인화 주간메일 테스트 접수 완료 (관심단지 %d, 뉴스 %d)",
+                 len(personalized["favs"]), len(news))
+        return 0
+    finally:
+        conn.close()
+
+
 # ── 메인 ─────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="홈앤스테이 주간 소식 이메일 발송")
+    parser.add_argument("--manual-test", action="store_true", help="대표 계정으로 실제 개인화 테스트 메일")
+    parser.add_argument("--manual-all", action="store_true", help="관리자 승인 후 이번 주 미발송자 전체")
     parser.add_argument("--dry-run",  action="store_true", help="발송 없이 로그만 출력")
     parser.add_argument("--user-id",  type=int, default=None, help="특정 회원 ID (테스트용)")
     parser.add_argument("--test-admin-report", action="store_true",
@@ -2418,6 +2480,8 @@ def main():
                         help="Asia/Seoul 기준 화·목에 해당 cohort만 발송")
     args = parser.parse_args()
 
+    if args.manual_test:
+        return _send_representative_test()
     dry_run    = args.dry_run
     target_uid = args.user_id
     today      = kst_today()
@@ -2426,7 +2490,7 @@ def main():
         log.info("관리자 테스트 보고: %s", msg)
         return 0 if ok else 1
     is_manual_preview = target_uid is not None
-    if not is_manual_preview:
+    if not is_manual_preview and not args.manual_all:
         if today < week_start_for(EXPERIMENT_START):
             log.info("A/B 실험 시작 전이라 주간 이메일을 발송하지 않습니다.")
             return 0
