@@ -411,6 +411,19 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertEqual(digest._get_public_homepage_ranking(SimpleNamespace()), ([], []))
 
     @patch("weekly_digest._get_public_api_payload")
+    def test_public_ranking_uses_existing_new_price_field(self, public_api):
+        public_api.return_value = {
+            "ok": True,
+            "price_highs": [{"building_name": "신고가 단지", "new_price": 125000,
+                             "pct_gain": 5.0}],
+            "most_traded": [],
+        }
+        price_rows, _ = digest._get_public_homepage_ranking(SimpleNamespace())
+        self.assertEqual(len(price_rows), 1)
+        self.assertEqual(price_rows[0]["price"], 125000)
+        self.assertEqual(price_rows[0]["new_price"], 125000)
+
+    @patch("weekly_digest._get_public_api_payload")
     def test_malformed_public_ranking_rows_become_no_new_transactions(self, public_api):
         public_api.return_value = {
             "price_highs": [{}, {"building_name": "가격 없는 건물"}],
@@ -589,8 +602,7 @@ class WeeklyDigestTests(unittest.TestCase):
             f'href="{digest.SITE_URL}/?utm_source=weekly&utm_medium=email&utm_campaign=no_fav_cta"',
             html,
         )
-        self.assertNotIn("수수료 0원", html)
-        self.assertIn("매물 등록 방법 확인하기", html)
+        self.assertIn("매물 내놓기 — 제휴 중개법인 통해 수수료 0원", html)
         self.assertIn("/guide#listing-guide", html)
         self.assertNotIn("데이터랩 한눈에 보기", html)
         self.assertIn("기능 소개 제목", html)
@@ -612,7 +624,7 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("이번 주 관심단지의 새로운 알림이 없었어요.", html)
         self.assertIn("관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.", html)
         self.assertIn(
-            f'href="{digest.SITE_URL}/mypage?utm_source=weekly&utm_medium=email&utm_campaign=no_signal_cta"',
+            f'href="{digest.SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"',
             html,
         )
 
@@ -759,6 +771,36 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertEqual(
             digest._build_subject(0, {}, None),
             "[홈앤스테이] 이번 주 소식",
+        )
+
+    def test_zero_signal_favorites_still_render_and_keep_alert_off_hint(self):
+        html = digest._zone1_1(
+            [("저장한 건물", "주소", 321)], {}, {}, alert_off_count=4
+        )
+        self.assertIn("저장한 건물", html)
+        self.assertIn("이번 주 새로운 실거래가 없었어요", html)
+        self.assertIn("내 관심단지", html)
+        self.assertIn("알림이 꺼진 관심단지가 4건", html)
+        self.assertIn("관심단지 추가·알림 설정 확인", html)
+        self.assertNotIn("이번 주 신호</th>", html)
+
+    def test_extreme_price_change_is_not_the_email_subject(self):
+        extreme = {"price_change": {
+            "building_name": "이상치", "change_percent": 478.8,
+        }}
+        self.assertEqual(
+            digest._build_subject(0, extreme, {"title": "이번 주 기능"}),
+            "[홈앤스테이] 이번 주 기능",
+        )
+        self.assertEqual(
+            digest._build_subject(0, extreme, None),
+            "[홈앤스테이] 이번 주 소식",
+        )
+
+    def test_listing_cta_restores_partner_no_fee_copy(self):
+        self.assertIn(
+            "매물 내놓기 — 제휴 중개법인 통해 수수료 0원",
+            digest._zone1_2([], []),
         )
 
 

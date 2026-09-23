@@ -173,14 +173,15 @@ def _get_public_homepage_ranking(app_module=None):
         volume_rows = payload.get("most_traded") or []
         if not isinstance(price_rows, list) or not isinstance(volume_rows, list):
             return [], []
-        valid_price_rows = [
-            dict(row) for row in price_rows
-            if (
-                isinstance(row, dict)
-                and str(row.get("building_name") or "").strip()
-                and row.get("price") is not None
-            )
-        ]
+        valid_price_rows = []
+        for row in price_rows:
+            if not isinstance(row, dict) or not str(row.get("building_name") or "").strip():
+                continue
+            price = row.get("price")
+            if price is None:
+                price = row.get("new_price")
+            if price is not None:
+                valid_price_rows.append({**row, "price": price})
         valid_volume_rows = [
             dict(row) for row in volume_rows
             if (
@@ -770,21 +771,6 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
 
     signal_counts = signal_counts or {}
     total_signals = sum(int(v or 0) for v in signal_counts.values())
-    if not total_signals:
-        return f"""
-        <p style="color:#555;font-size:14px;margin:0 0 8px;">
-          이번 주 관심단지의 새로운 알림이 없었어요.
-        </p>
-        <p style="color:#888;font-size:12.5px;margin:0 0 12px;">
-          관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.
-        </p>
-        <a href="{SITE_URL}/mypage?utm_source=weekly&utm_medium=email&utm_campaign=no_signal_cta"
-           style="display:inline-block;background:#B4863F;color:#fff;
-                  text-decoration:none;padding:10px 22px;border-radius:6px;
-                  font-size:14px;font-weight:700;">
-          관심단지 추가·알림 설정 확인 →
-        </a>"""
-
     summary_rows = [
         ("새 실거래", signal_counts.get("deal", 0), "#B4863F"),
         ("🔥 급매", signal_counts.get("urgent", 0), "#C85A36"),
@@ -841,18 +827,37 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0):
       <a href="{mypage_url}" style="color:#B4863F;font-weight:700;text-decoration:underline;">마이페이지에서 켜기 →</a>
     </p>"""
 
+    if not total_signals:
+        rows = f"""
+        <tr><td colspan="3" style="padding:8px 4px;color:#555;font-size:13px;">
+          이번 주 관심단지의 새로운 알림이 없었어요.
+          관심단지를 더 추가하면 더 많은 알림을 받을 수 있어요.
+        </td></tr>""" + rows
+
+    heading = (
+        """<th colspan="3" style="text-align:left;padding:6px 4px;color:#888;
+                    font-weight:600;border-bottom:2px solid #eee;">내 관심단지</th>"""
+        if not total_signals else
+        """<th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
+                  border-bottom:2px solid #eee;">이번 주 신호</th>
+           <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
+                  border-bottom:2px solid #eee;">건수</th>"""
+    )
+    no_signal_cta = f"""
+    <p style="margin:12px 0 0;">
+      <a href="{SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"
+         style="display:inline-block;background:#B4863F;color:#fff;
+                text-decoration:none;padding:10px 22px;border-radius:6px;
+                font-size:14px;font-weight:700;">관심단지 추가·알림 설정 확인 →</a>
+    </p>""" if not total_signals else ""
+
     return f"""
     <table style="width:100%;border-collapse:collapse;font-size:13px;">
       <thead>
-        <tr>
-          <th style="text-align:left;padding:6px 4px;color:#888;font-weight:600;
-                     border-bottom:2px solid #eee;">이번 주 신호</th>
-          <th style="text-align:right;padding:6px 4px;color:#888;font-weight:600;
-                     border-bottom:2px solid #eee;">건수</th>
-        </tr>
+        <tr>{heading}</tr>
       </thead>
       <tbody>{rows}</tbody>
-    </table>{alert_off_hint}"""
+    </table>{alert_off_hint}{no_signal_cta}"""
 
 
 def _zone1_2(listing_reqs, buy_reqs):
@@ -870,7 +875,7 @@ def _zone1_2(listing_reqs, buy_reqs):
            style="display:inline-block;background:#B4863F;color:#fff;
                   text-decoration:none;padding:10px 22px;border-radius:6px;
                   font-size:14px;font-weight:700;">
-          매물 등록 방법 확인하기 →
+          매물 내놓기 — 제휴 중개법인 통해 수수료 0원 →
         </a>"""
 
     rows = ""
@@ -1399,9 +1404,12 @@ def _build_subject(new_deal_count, datalab_summary, feature_tip):
         headline = f"관심단지 {new_deal_count}곳 새 실거래"
     else:
         price = (datalab_summary or {}).get("price_change") or {}
-        if price.get("building_name"):
-            pct = price.get("change_percent")
-            pct_text = f" {float(pct):+.1f}%" if pct is not None else ""
+        try:
+            pct = float(price.get("change_percent"))
+        except (ValueError, TypeError):
+            pct = None
+        if price.get("building_name") and pct is not None and abs(pct) <= 100:
+            pct_text = f" {pct:+.1f}%"
             headline = f"가격변동 TOP1 | {price['building_name']}{pct_text}"
         elif feature_tip and feature_tip.get("title"):
             headline = str(feature_tip["title"])
