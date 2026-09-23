@@ -886,7 +886,7 @@ def _building_link(building_id, building_name, style):
 
 def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0,
              period_start=None, period_end=None):
-    """최근 30일 관심단지 거래를 우선 표시하고 미거래 단지는 한 줄로 묶는다."""
+    """최근 30일 관심단지 거래를 우선 표시하고 미거래 단지의 이름도 보여준다."""
     if not favs:
         return f"""
         <table width="100%" cellpadding="0" cellspacing="0">
@@ -926,13 +926,13 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0,
 
     signal_counts = signal_counts or {}
     deals = []
-    no_deal_count = 0
+    no_deals = []
     for bname, addr, mid in favs:
         deal = deals_by_fav.get((bname, addr))
         if deal:
             deals.append((bname, addr, mid, deal))
         else:
-            no_deal_count += 1
+            no_deals.append((bname, addr, mid))
     rows = ""
     for bname, addr, mid, deal in deals:
         name_html = _building_link(
@@ -955,14 +955,26 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0,
               </td>
             </tr>"""
 
-    if no_deal_count:
+    if no_deals:
         rows += f"""
-        <tr>
-          <td colspan="3" style="padding:10px 4px;border-bottom:1px solid #eee;
-                                  color:#777;font-size:12px;">
-            나머지 관심단지 {no_deal_count}곳은 최근 30일 새 실거래가 없습니다.
-          </td>
-        </tr>"""
+        <tr><td colspan="3" style="padding:10px 4px 5px;color:#777;font-size:12px;">
+          나머지 관심단지 {len(no_deals)}곳 · 최근 30일 새 실거래 없음
+        </td></tr>"""
+        for bname, addr, mid in no_deals:
+            name_html = _building_link(
+                mid, bname or addr or "이름 없는 관심단지",
+                "color:#16202E;font-weight:600;text-decoration:none;",
+            )
+            rows += f"""
+            <tr>
+              <td style="padding:9px 4px;border-bottom:1px solid #eee;">
+                {name_html}
+              </td>
+              <td colspan="2" style="padding:9px 4px;border-bottom:1px solid #eee;
+                                     text-align:right;color:#777;font-size:12px;">
+                거래 없음
+              </td>
+            </tr>"""
 
     alert_off_hint = ""
     if alert_off_count > 0:

@@ -632,7 +632,8 @@ class WeeklyDigestTests(unittest.TestCase):
             "https://example.test/mypage",
             signal_counts={"deal": 0, "urgent": 0},
         )
-        self.assertIn("나머지 관심단지 1곳은 최근 30일 새 실거래가 없습니다.", html)
+        self.assertIn("나머지 관심단지 1곳 · 최근 30일 새 실거래 없음", html)
+        self.assertIn("관심 단지", html)
         self.assertIn(
             f'href="{digest.SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"',
             html,
@@ -738,13 +739,15 @@ class WeeklyDigestTests(unittest.TestCase):
         html = digest._zone1_1(
             [("저장한 건물", "주소", 321)], {}, {}, alert_off_count=4
         )
-        self.assertIn("나머지 관심단지 1곳은 최근 30일 새 실거래가 없습니다.", html)
+        self.assertIn("나머지 관심단지 1곳 · 최근 30일 새 실거래 없음", html)
+        self.assertIn("저장한 건물", html)
+        self.assertIn("거래 없음", html)
         self.assertIn("관심단지 · 최신 실거래", html)
         self.assertIn("알림이 꺼진 관심단지가 4건", html)
         self.assertIn("관심단지 추가·알림 설정 확인", html)
         self.assertNotIn("이번 주 신호</th>", html)
 
-    def test_favorite_recent_trades_precede_single_no_trade_count_line(self):
+    def test_favorite_recent_trades_precede_named_no_trade_rows(self):
         html = digest._zone1_1(
             [
                 ("미거래 A", "주소 A", 1),
@@ -764,8 +767,15 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("2026-09-20", html)
         self.assertIn("1억 2,500만원", html)
         self.assertEqual(html.count("나머지 관심단지"), 1)
-        self.assertNotIn("미거래 A", html)
+        self.assertIn("미거래 A", html)
+        self.assertIn("미거래 B", html)
+        self.assertLess(html.index("미거래 A"), html.index("미거래 B"))
         self.assertIn("2026-08-26", html)
+
+    def test_no_trade_names_are_escaped(self):
+        html = digest._zone1_1([("<가짜 & 단지>", "주소", None)], {})
+        self.assertIn("&lt;가짜 &amp; 단지&gt;", html)
+        self.assertNotIn("<가짜 & 단지>", html)
 
     def test_30_day_rankings_use_historical_max_and_exact_labeled_period(self):
         cursor = _RankingCursor([
