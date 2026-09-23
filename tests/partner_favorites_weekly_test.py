@@ -148,7 +148,8 @@ class PartnerFavoritesWeeklyTests(unittest.TestCase):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         add_source = source[source.index("def _partner_favorites_add"):source.index("def _partner_favorites_remove")]
         self.assertIn("pg_advisory_xact_lock", add_source)
-        self.assertIn(">= 30", add_source)
+        self.assertIn(">= MAX_FAVORITES", add_source)
+        self.assertIn('"max": MAX_FAVORITES', source)
         self.assertIn("idempotent", add_source)
         self.assertIn("if not duplicate", add_source)
 
@@ -193,6 +194,22 @@ class PartnerFavoritesWeeklyTests(unittest.TestCase):
         self.assertIn("FROM loan_consultants", query)
         self.assertEqual(query.count("status='approved'"), 3)
         self.assertIn("recipient_type", query)
+        self.assertIn("account_business_memberships", query)
+        self.assertEqual(query.count("AND NOT EXISTS"), 3)
+        self.assertIn("abm.status='active'", query)
+
+    def test_linked_partner_favorites_join_user_digest_only_by_membership(self):
+        source = (ROOT / "weekly_digest.py").read_text(encoding="utf-8")
+        scope = source[
+            source.index("def _personalize_recipient"):
+            source.index("def _personalize_partner_recipient")
+        ]
+        self.assertIn("account_business_memberships", scope)
+        self.assertIn("partner_favorites", scope)
+        self.assertIn("abm.user_id=%s", scope)
+        self.assertIn("abm.status='active'", scope)
+        self.assertNotIn("LOWER(email)", scope)
+        self.assertIn("seen_building_ids", scope)
 
     def test_claim_is_owner_aware_and_fenced(self):
         cursor = Cursor(fetch_one={

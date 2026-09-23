@@ -17237,7 +17237,7 @@ def _partner_favorite_response(cur, kind, owner):
         "ok": True,
         "items": _partner_favorites_data(cur, kind, owner["id"]),
         "count": None,
-        "max": 30,
+        "max": MAX_FAVORITES,
         "weekly_email_enabled": bool(owner.get("weekly_email_enabled")),
     }
 
@@ -17291,9 +17291,12 @@ def _partner_favorites_add(kind):
         favorite_id = duplicate["id"] if duplicate else None
         if not duplicate:
             cur.execute(f"SELECT COUNT(*) AS c FROM partner_favorites WHERE {owner_column}=%s", [owner["id"]])
-            if int((cur.fetchone() or {}).get("c") or 0) >= 30:
+            if int((cur.fetchone() or {}).get("c") or 0) >= MAX_FAVORITES:
                 conn.rollback()
-                return jsonify({"ok": False, "message": "관심단지는 최대 30개까지 등록할 수 있습니다."}), 409
+                return jsonify({
+                    "ok": False,
+                    "message": f"관심단지는 최대 {MAX_FAVORITES}개까지 등록할 수 있습니다.",
+                }), 409
             cur.execute(
                 f"INSERT INTO partner_favorites ({owner_column}, master_building_id) "
                 "VALUES (%s, %s) RETURNING id",

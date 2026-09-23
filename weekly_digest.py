@@ -1778,6 +1778,37 @@ def _personalize_recipient(cur, user, week_ago):
     """, (uid,))
     favorite_rows = [dict(r) for r in cur.fetchall()]
     _resolve_building_ids(cur, favorite_rows)
+    # 통합계정에 명시적으로 연결된 사업자 역할의 관심단지도 같은 주간메일에
+    # 합친다. 이메일 문자열만 같은 레거시 계정은 개인정보 보호상 합치지 않는다.
+    cur.execute("""
+        SELECT DISTINCT ON (pf.master_building_id)
+               mb.building_name,
+               COALESCE(mb.road_address, mb.jibun_address, mb.sgg_text) AS address,
+               pf.master_building_id
+          FROM account_business_memberships abm
+          JOIN partner_favorites pf
+            ON (abm.role='agent' AND abm.business_table='agents'
+                AND pf.agent_id=abm.business_id)
+            OR (abm.role='operator' AND abm.business_table='operators'
+                AND pf.operator_id=abm.business_id)
+            OR (abm.role='loan_consultant'
+                AND abm.business_table='loan_consultants'
+                AND pf.loan_consultant_id=abm.business_id)
+          JOIN master_buildings mb ON mb.id=pf.master_building_id
+         WHERE abm.user_id=%s AND abm.status='active'
+         ORDER BY pf.master_building_id, pf.created_at DESC, pf.id DESC
+    """, (uid,))
+    linked_partner_rows = [dict(r) for r in cur.fetchall()]
+    seen_building_ids = {
+        int(row["master_building_id"])
+        for row in favorite_rows
+        if row.get("master_building_id") is not None
+    }
+    for row in linked_partner_rows:
+        building_id = int(row["master_building_id"])
+        if building_id not in seen_building_ids:
+            favorite_rows.append(row)
+            seen_building_ids.add(building_id)
     favs = [(r["building_name"], r["address"], r["master_building_id"])
             for r in favorite_rows]
 
@@ -2091,41 +2122,57 @@ def _get_weekly_recipients(cur, selected_cohort, target_uid=None):
            AND COALESCE(status, 'active') <> 'withdrawn'
            AND (%s IS NULL OR id=%s)
         UNION ALL
-        SELECT 'agent', id, email, COALESCE(owner_name, email),
-               COALESCE(weekly_unsubscribe_token::text, ''),
-               weekly_email_enabled
-          FROM agents
+        SELECT 'agent', a.id, a.email, COALESCE(a.owner_name, a.email),
+               COALESCE(a.weekly_unsubscribe_token::text, ''),
+               a.weekly_email_enabled
+          FROM agents a
          WHERE NOT (
-                   weekly_email_enabled IS FALSE
-                   AND weekly_email_updated_at IS NOT NULL
+                   a.weekly_email_enabled IS FALSE
+                   AND a.weekly_email_updated_at IS NOT NULL
                )
-           AND status='approved'
-           AND email IS NOT NULL AND email <> ''
+           AND a.status='approved'
+           AND a.email IS NOT NULL AND a.email <> ''
            AND %s IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM account_business_memberships abm
+                WHERE abm.role='agent' AND abm.business_table='agents'
+                  AND abm.business_id=a.id AND abm.status='active'
+           )
         UNION ALL
-        SELECT 'operator', id, email, COALESCE(owner_name, email),
-               COALESCE(weekly_unsubscribe_token::text, ''),
-               weekly_email_enabled
-          FROM operators
+        SELECT 'operator', o.id, o.email, COALESCE(o.owner_name, o.email),
+               COALESCE(o.weekly_unsubscribe_token::text, ''),
+               o.weekly_email_enabled
+          FROM operators o
          WHERE NOT (
-                   weekly_email_enabled IS FALSE
-                   AND weekly_email_updated_at IS NOT NULL
+                   o.weekly_email_enabled IS FALSE
+                   AND o.weekly_email_updated_at IS NOT NULL
                )
-           AND status='approved'
-           AND email IS NOT NULL AND email <> ''
+           AND o.status='approved'
+           AND o.email IS NOT NULL AND o.email <> ''
            AND %s IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM account_business_memberships abm
+                WHERE abm.role='operator' AND abm.business_table='operators'
+                  AND abm.business_id=o.id AND abm.status='active'
+           )
         UNION ALL
-        SELECT 'loan_consultant', id, email, COALESCE(owner_name, email),
-               COALESCE(weekly_unsubscribe_token::text, ''),
-               weekly_email_enabled
-          FROM loan_consultants
+        SELECT 'loan_consultant', l.id, l.email, COALESCE(l.owner_name, l.email),
+               COALESCE(l.weekly_unsubscribe_token::text, ''),
+               l.weekly_email_enabled
+          FROM loan_consultants l
          WHERE NOT (
-                   weekly_email_enabled IS FALSE
-                   AND weekly_email_updated_at IS NOT NULL
+                   l.weekly_email_enabled IS FALSE
+                   AND l.weekly_email_updated_at IS NOT NULL
                )
-           AND status='approved'
-           AND email IS NOT NULL AND email <> ''
+           AND l.status='approved'
+           AND l.email IS NOT NULL AND l.email <> ''
            AND %s IS NULL
+           AND NOT EXISTS (
+               SELECT 1 FROM account_business_memberships abm
+                WHERE abm.role='loan_consultant'
+                  AND abm.business_table='loan_consultants'
+                  AND abm.business_id=l.id AND abm.status='active'
+           )
         ORDER BY recipient_type, id
         """,
         (target_uid, target_uid, target_uid, target_uid, target_uid),
