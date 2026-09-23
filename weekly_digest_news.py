@@ -1,4 +1,4 @@
-"""Fetch recent lodging/accommodation news from official Korean sources.
+"""Fetch recent lodging/accommodation news from trusted original publishers.
 
 The Korea Tourism Organization's official press-release listing provides
 direct article links under an open-government Type 1 attribution license.
@@ -29,7 +29,10 @@ FEED_URL = "https://www.mcst.go.kr/common/rss/rssGenXml.jsp?pMenuCD=0302000000"
 KTO_PRESS_RELEASE_URL = (
     "https://knto.or.kr/pressRelease?srchText=%EC%88%99%EB%B0%95"
 )
-_ALLOWED_HOSTS = frozenset({"www.mcst.go.kr", "mcst.go.kr", "knto.or.kr"})
+_ALLOWED_HOSTS = frozenset({
+    "www.mcst.go.kr", "mcst.go.kr", "knto.or.kr",
+    "lodgingmagazine.com", "www.hoteldive.com",
+})
 _MAX_FEED_BYTES = 512 * 1024
 _TIMEOUT_SECONDS = 5
 _MAX_AGE = timedelta(days=30)
@@ -38,6 +41,12 @@ _SEOUL = ZoneInfo("Asia/Seoul")
 _SOURCE_FEEDS = (
     ("knto", KTO_PRESS_RELEASE_URL, "한국관광공사"),
     ("mcst", FEED_URL, "문화체육관광부"),
+    (
+        "lodging",
+        "https://lodgingmagazine.com/category/industrynews/feed/",
+        "LODGING Magazine",
+    ),
+    ("hoteldive", "https://www.hoteldive.com/feeds/news/", "Hotel Dive"),
 )
 _LODGING_WORDS = (
     "숙박", "숙소", "숙박시설", "숙박업", "호텔", "모텔", "민박", "펜션",
@@ -115,6 +124,24 @@ def _article_url(feed_link, source="mcst"):
             if len(press_ids) != 1 or not re.fullmatch(r"\d{1,10}", press_ids[0]):
                 return None
             # Keep the supplied HTTPS article URL intact; never upgrade HTTP RSS links.
+            return feed_link.strip()
+        if source == "lodging":
+            if (
+                host != "lodgingmagazine.com"
+                or parsed.scheme.lower() != "https"
+                or parsed.query
+                or not re.fullmatch(r"/[a-z0-9][a-z0-9-]*(?:/[a-z0-9-]+)*/?", parsed.path)
+            ):
+                return None
+            return feed_link.strip()
+        if source == "hoteldive":
+            if (
+                host != "www.hoteldive.com"
+                or parsed.scheme.lower() != "https"
+                or parsed.query
+                or not re.fullmatch(r"/news/[a-z0-9-]+/\d+/", parsed.path)
+            ):
+                return None
             return feed_link.strip()
         return None
     except (TypeError, ValueError):
@@ -328,7 +355,7 @@ def _parse_feed(payload, now=None, limit=3, source="mcst", source_name=None):
     return result
 
 
-def get_recent_news(limit=3):
+def get_recent_news(limit=5):
     """Return up to ``limit`` recent verified articles; fail closed to ``[]``."""
     try:
         result_limit = max(0, int(limit))
@@ -362,7 +389,15 @@ def get_recent_news(limit=3):
                         "Could not retrieve %s lodging news feed", source_name,
                         exc_info=True,
                     )
-        feeds.sort(key=lambda item: item["published"], reverse=True)
+        # 국내 독자를 위한 주간메일이므로 국내 공식 자료를 먼저 보여주고,
+        # 부족한 줄만 해외 숙박업계 기사로 채운다.
+        feeds.sort(
+            key=lambda item: (
+                item["source"] in {"한국관광공사", "문화체육관광부"},
+                item["published"],
+            ),
+            reverse=True,
+        )
         unique = []
         seen_urls = set()
         for article in feeds:

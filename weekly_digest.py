@@ -309,7 +309,7 @@ def _get_recent_news():
     """Get verified source-linked stories; a missing news provider is an empty state."""
     try:
         from weekly_digest_news import get_recent_news
-        items = get_recent_news(limit=3)
+        items = get_recent_news(limit=5)
     except Exception:
         log.info("주간 뉴스 제공자를 사용할 수 없어 뉴스 영역을 비웁니다.", exc_info=True)
         return []
@@ -345,7 +345,7 @@ def _normalized_news_items(items):
                 item.get("date") or item.get("published_at") or item.get("published") or ""
             ).strip(),
         })
-        if len(normalized) == 3:
+        if len(normalized) == 5:
             break
     return normalized
 
@@ -956,25 +956,23 @@ def _zone1_1(favs, deals_by_fav, signal_counts=None, alert_off_count=0,
             </tr>"""
 
     if no_deals:
-        rows += f"""
-        <tr><td colspan="3" style="padding:10px 4px 5px;color:#777;font-size:12px;">
-          나머지 관심단지 {len(no_deals)}곳 · 최근 30일 새 실거래 없음
-        </td></tr>"""
+        names = []
         for bname, addr, mid in no_deals:
-            name_html = _building_link(
-                mid, bname or addr or "이름 없는 관심단지",
-                "color:#16202E;font-weight:600;text-decoration:none;",
+            label = html.escape(str(bname or addr or "이름 없는 관심단지"))
+            url = _bld_url(mid)
+            names.append(
+                f'<a href="{html.escape(url, quote=True)}" '
+                'style="color:#16202E;text-decoration:underline;">'
+                f'{label}</a>'
+                if url else label
             )
-            rows += f"""
-            <tr>
-              <td style="padding:9px 4px;border-bottom:1px solid #eee;">
-                {name_html}
-              </td>
-              <td colspan="2" style="padding:9px 4px;border-bottom:1px solid #eee;
-                                     text-align:right;color:#777;font-size:12px;">
-                거래 없음
-              </td>
-            </tr>"""
+        rows += f"""
+        <tr><td colspan="3" style="padding:10px 4px;border-bottom:1px solid #eee;
+                                   color:#555;font-size:12px;line-height:1.8;
+                                   overflow-wrap:anywhere;">
+          <strong>실거래 없는 건물 ({len(no_deals)}곳):</strong>
+          {', '.join(names)}
+        </td></tr>"""
 
     alert_off_hint = ""
     if alert_off_count > 0:
@@ -1500,7 +1498,7 @@ def build_html(user_name, favs, deals_by_fav,
     <td style="padding:20px 28px 0;">
       <h2 style="font-size:15px;font-weight:700;color:#16202E;margin:0 0 12px;
                  padding-bottom:8px;border-bottom:2px solid #B4863F;">
-        📰 숙박부동산 뉴스
+        📰 숙박업계 뉴스
       </h2>
       {news}
     </td>

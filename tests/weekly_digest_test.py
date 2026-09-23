@@ -632,7 +632,7 @@ class WeeklyDigestTests(unittest.TestCase):
             "https://example.test/mypage",
             signal_counts={"deal": 0, "urgent": 0},
         )
-        self.assertIn("나머지 관심단지 1곳 · 최근 30일 새 실거래 없음", html)
+        self.assertIn("실거래 없는 건물 (1곳):", html)
         self.assertIn("관심 단지", html)
         self.assertIn(
             f'href="{digest.SITE_URL}/mypage?utm_source=weekly&amp;utm_medium=email&amp;utm_campaign=no_signal_cta"',
@@ -739,15 +739,15 @@ class WeeklyDigestTests(unittest.TestCase):
         html = digest._zone1_1(
             [("저장한 건물", "주소", 321)], {}, {}, alert_off_count=4
         )
-        self.assertIn("나머지 관심단지 1곳 · 최근 30일 새 실거래 없음", html)
+        self.assertIn("실거래 없는 건물 (1곳):", html)
         self.assertIn("저장한 건물", html)
-        self.assertIn("거래 없음", html)
+        self.assertEqual(html.count("실거래 없는 건물"), 1)
         self.assertIn("관심단지 · 최신 실거래", html)
         self.assertIn("알림이 꺼진 관심단지가 4건", html)
         self.assertIn("관심단지 추가·알림 설정 확인", html)
         self.assertNotIn("이번 주 신호</th>", html)
 
-    def test_favorite_recent_trades_precede_named_no_trade_rows(self):
+    def test_favorite_recent_trades_precede_compact_no_trade_names(self):
         html = digest._zone1_1(
             [
                 ("미거래 A", "주소 A", 1),
@@ -763,13 +763,15 @@ class WeeklyDigestTests(unittest.TestCase):
             period_start="2026-08-26",
             period_end="2026-09-24",
         )
-        self.assertLess(html.index("거래 건물"), html.index("나머지 관심단지 2곳"))
+        self.assertLess(html.index("거래 건물"), html.index("실거래 없는 건물 (2곳):"))
         self.assertIn("2026-09-20", html)
         self.assertIn("1억 2,500만원", html)
-        self.assertEqual(html.count("나머지 관심단지"), 1)
+        self.assertEqual(html.count("실거래 없는 건물"), 1)
         self.assertIn("미거래 A", html)
         self.assertIn("미거래 B", html)
         self.assertLess(html.index("미거래 A"), html.index("미거래 B"))
+        self.assertIn('미거래 A</a>, <a', html)
+        self.assertNotIn("상세 정보 준비 중", html)
         self.assertIn("2026-08-26", html)
 
     def test_no_trade_names_are_escaped(self):
@@ -814,9 +816,26 @@ class WeeklyDigestTests(unittest.TestCase):
         self.assertIn("현재 확인된 원문 링크가 있는", empty)
 
     @patch("weekly_digest_news.get_recent_news", return_value=[])
-    def test_digest_calls_news_provider_with_three_item_limit(self, get_news):
+    def test_digest_calls_news_provider_with_five_item_limit(self, get_news):
         self.assertEqual(digest._get_recent_news(), [])
-        get_news.assert_called_once_with(limit=3)
+        get_news.assert_called_once_with(limit=5)
+
+    def test_digest_keeps_five_news_rows(self):
+        news_items = [
+            {
+                "title": f"Hotel industry report {number}",
+                "url": f"https://news.example/article-{number}",
+                "source": "Publisher",
+                "published": "2026-09-24",
+            }
+            for number in range(6)
+        ]
+
+        rendered = digest._zone_news(news_items)
+
+        self.assertEqual(rendered.count("<tr>"), 5)
+        self.assertEqual(rendered.count("<a href="), 5)
+        self.assertNotIn("Hotel industry report 5", rendered)
 
     def test_untrusted_greeting_favorite_and_request_values_are_escaped(self):
         rendered = digest.build_html(

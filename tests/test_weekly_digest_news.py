@@ -151,6 +151,112 @@ class WeeklyDigestNewsTests(unittest.TestCase):
         ])
         self.assertEqual(news._parse_feed(payload, now=NOW), [])
 
+    def test_hospitality_publishers_accept_only_direct_https_article_urls(self):
+        lodging = _rss([
+            (
+                "Hotel operating costs climb",
+                "https://lodgingmagazine.com/hotel-operating-costs-climb/",
+                "Tue, 22 Sep 2026 12:00:00 +0000",
+            ),
+            (
+                "Hotel search listing",
+                "https://lodgingmagazine.com/?s=hotel",
+                "Tue, 22 Sep 2026 12:00:00 +0000",
+            ),
+        ])
+        hoteldive = _rss([
+            (
+                "Resort announces major renovation",
+                "https://www.hoteldive.com/news/resort-announces-major-renovation/830999/",
+                "Tue, 22 Sep 2026 12:00:00 -0400",
+            ),
+            (
+                "Hotel redirect",
+                "https://www.hoteldive.com/redirect/830998/",
+                "Tue, 22 Sep 2026 12:00:00 -0400",
+            ),
+        ])
+
+        lodging_items = news._parse_feed(
+            lodging, now=NOW, source="lodging", source_name="LODGING Magazine"
+        )
+        hoteldive_items = news._parse_feed(
+            hoteldive, now=NOW, source="hoteldive", source_name="Hotel Dive"
+        )
+
+        self.assertEqual(len(lodging_items), 1)
+        self.assertEqual(lodging_items[0]["url"], "https://lodgingmagazine.com/hotel-operating-costs-climb/")
+        self.assertEqual(lodging_items[0]["source"], "LODGING Magazine")
+        self.assertEqual(len(hoteldive_items), 1)
+        self.assertEqual(
+            hoteldive_items[0]["url"],
+            "https://www.hoteldive.com/news/resort-announces-major-renovation/830999/",
+        )
+        self.assertEqual(hoteldive_items[0]["published"], "2026-09-23")
+
+    def test_public_fetch_combines_verified_sources_to_five_unique_articles(self):
+        lodging = _rss([
+            (
+                f"Hotel lodging business report {number}",
+                f"https://lodgingmagazine.com/hotel-lodging-business-report-{number}/",
+                "Tue, 22 Sep 2026 12:00:00 +0000",
+            )
+            for number in range(1, 4)
+        ])
+        hoteldive = _rss([
+            (
+                f"Resort accommodation industry news {number}",
+                f"https://www.hoteldive.com/news/resort-accommodation-industry-news-{number}/83099{number}/",
+                "Tue, 22 Sep 2026 12:00:00 -0400",
+            )
+            for number in range(1, 4)
+        ])
+
+        def mock_fetch(url):
+            if url == news.KTO_PRESS_RELEASE_URL or url == news.FEED_URL:
+                return _rss([])
+            if url.startswith("https://lodgingmagazine.com/"):
+                return lodging
+            if url == "https://www.hoteldive.com/feeds/news/":
+                return hoteldive
+            return b""
+
+        with (
+            patch.object(news, "_fetch_feed", side_effect=mock_fetch),
+            patch.object(news, "_now_seoul", return_value=NOW),
+        ):
+            result = news.get_recent_news(limit=5)
+
+        self.assertEqual(len(result), 5)
+        self.assertEqual(len({item["url"] for item in result}), 5)
+        self.assertTrue(all(item["url"].startswith("https://") for item in result))
+
+    def test_domestic_official_story_is_not_crowded_out_by_five_overseas_stories(self):
+        domestic = _kto_html([
+            ("최근 숙박산업 동향", "/pressRelease/550767", "2026-08-31"),
+        ])
+        overseas = _rss([
+            (
+                f"Hotel lodging business report {number}",
+                f"https://lodgingmagazine.com/hotel-lodging-business-report-{number}/",
+                "Tue, 22 Sep 2026 12:00:00 +0000",
+            )
+            for number in range(1, 7)
+        ])
+        def mock_fetch(url):
+            if url == news.KTO_PRESS_RELEASE_URL:
+                return domestic
+            if url.startswith("https://lodgingmagazine.com/"):
+                return overseas
+            return _rss([])
+        with (
+            patch.object(news, "_fetch_feed", side_effect=mock_fetch),
+            patch.object(news, "_now_seoul", return_value=NOW),
+        ):
+            result = news.get_recent_news(limit=5)
+        self.assertEqual(len(result), 5)
+        self.assertEqual(result[0]["source"], "한국관광공사")
+
     def test_kto_listing_rejects_stale_or_malformed_dates(self):
         payload = _kto_html([
             ("오래된 호텔 운영 소식", "/pressRelease/550768", "2026-08-23"),
