@@ -105,9 +105,12 @@
     <div class="rental-workspace">
     <section id="rentalSliders" class="analysis-card rental-sliders-panel" aria-label="매수·임대 조건 슬라이더"></section>
     <section id="rentalPositioning" class="analysis-card rental-positioning" aria-live="polite">
-      <div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장 기준 임대 포지셔닝</h3><p>R-ONE 비교지역과 현재 시장 기준선을 먼저 확인한 뒤, 내 임대 조건을 같은 축 위에 놓습니다.</p></div>
+      <div class="positioning-header">
+        <div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장 기준 임대 포지셔닝</h3><p>R-ONE 비교지역과 현재 시장 기준선을 먼저 확인한 뒤, 내 임대 조건을 같은 축 위에 놓습니다.</p></div>
+        <div class="positioning-toggle" role="group" aria-label="수익률 표시"><button type="button" class="active" data-mode="net">순수익률</button><button type="button" data-mode="equity">자기자본</button></div>
+      </div>
       <div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><canvas id="rentalPositionChart" aria-label="시장 기준 임대 포지셔닝 차트"></canvas><div class="positioning-pending">매입가·월세와 공실 기준을 입력하면 포지셔닝이 표시됩니다.</div></div>
-      <div class="positioning-toggle" role="group" aria-label="수익률 표시"><button type="button" class="active" data-mode="net">순수익률</button><button type="button" data-mode="equity">자기자본</button></div>
+      <p class="positioning-source-note">임대수익·공실 비교 기준은 한국부동산원 R-ONE 공개 통계를 참고합니다. 자료의 유형·지역·기준시점을 확인하세요.</p>
     </section>
     <span id="rentalVacancyMonthsHint" class="rental-vacancy-hint">비워두면 서버가 제공한 R-ONE 평균을 사용하는 가정값입니다.</span>
     <details id="rentalBasisDetails" class="analysis-card rental-form rental-basis-details">
@@ -146,9 +149,11 @@
       </div></details>
        <div class="rental-actions"><span class="rental-live-note">입력하는 즉시 계산됩니다</span></div>
     </details>
+    <div class="rental-results-column">
     <section id="rentalCoreMetrics" class="rental-core-metrics" aria-label="핵심 지표"><div class="metric-heading"><span class="eyebrow">DECISION METRICS</span><h3>핵심 지표</h3></div><div class="metric-grid"><article class="analysis-card metric-card"><small>순수익률 (대출 전)</small><strong data-metric="netYield">—</strong><span>NOI ÷ 매입·취득부대비용·보증금</span></article><article class="analysis-card metric-card"><small>자기자본 수익률</small><strong data-metric="cashReturn">—</strong><span>대출 원리금 차감 후</span></article><article class="analysis-card metric-card"><small>월 순현금흐름</small><strong data-metric="cashFlow">—</strong><span>이자 차감 기준</span></article><article class="analysis-card metric-card"><small>실투자금</small><strong data-metric="invested">—</strong><span>내가 실제 투입하는 금액</span></article></div></section>
-    <section id="rentalSensitivity" class="analysis-card rental-sensitivity"><div class="section-topline"><div><span class="eyebrow">SENSITIVITY</span><h3>월세 × 공실 민감도</h3></div><span class="sensitivity-context">조건 입력 대기</span></div><div class="sensitivity-scroll"><table><thead><tr><th>공실 \ 월세</th><th>25만원</th><th>30만원</th><th>35만원</th><th>40만원</th><th>45만원</th><th>50만원</th><th>55만원</th></tr></thead><tbody><tr><th>0개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>1개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>2개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>3개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>4개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>5개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>6개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div><div class="sensitivity-legend"><span class="good">전국 평균 이상</span><span class="watch">3%~전국 평균</span><span class="bad">3% 미만</span></div></section>
+    <section id="rentalSensitivity" class="analysis-card rental-sensitivity"><div class="section-topline"><div><span class="eyebrow">SENSITIVITY</span><h3>월세 × 공실 민감도</h3></div><span class="sensitivity-context">조건 입력 대기</span></div><div class="sensitivity-scroll"><table><thead><tr><th>공실 \ 월세</th><th>25만원</th><th>30만원</th><th>35만원</th><th>40만원</th><th>45만원</th><th>50만원</th><th>55만원</th></tr></thead><tbody><tr><th>0개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>1개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>2개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>3개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>4개월</th><th>—</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>5개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>6개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div><div class="sensitivity-legend"><span class="good">전국 평균 이상</span><span class="watch">3%~전국 평균</span><span class="bad">3% 미만</span></div></section>
     <section id="rentalVerdict" class="analysis-card rental-verdict"><span class="eyebrow">READ THE SIGNAL</span><strong>조건을 입력하면 시장 대비 판정이 표시됩니다.</strong><p>수익률과 공실 안정성을 함께 보고, 실거래 기준가를 확인하세요.</p></section>
+    </div>
     <details id="rentalDetails" class="rental-details"><summary>상세 지표 <span>표면수익률·기준가 수익률·보유비용·대출 지표</span></summary><section id="rentalExtraMetrics" class="rental-results" aria-live="polite"></section></details>
     </div>
       <section class="rental-results rental-results-legacy" id="rentalResults" aria-live="polite">
@@ -169,9 +174,11 @@
         <div class="baseline-strip operation-baselines"><div class="baseline region-baseline">비교지역<b id="operationRegionBaseline">—</b></div><div class="baseline">평균 ADR<b id="operationAdrBaseline">—</b></div><div class="baseline">평균 OCC<b id="operationOccBaseline">—</b></div><div class="baseline">비교 표본<b id="operationSampleBaseline">—</b></div></div>
         <div class="operation-summary-chips"><section class="summary-grid operation-summary" id="operationSummary" aria-label="비교지역과 평균 요약"></section></div>
       </section>
+      <div class="operation-results-column">
       <section id="operationCoreMetrics" class="analysis-card operation-core-metrics" aria-label="숙박 운영 핵심 지표"></section>
       <section id="operationSensitivity" class="analysis-card operation-sensitivity" aria-label="ADR과 OCC 민감도"></section>
       <section id="operationVerdict" class="analysis-card operation-verdict" aria-live="polite"></section>
+      </div>
     </div>
     <details id="operationBasisDetails" class="analysis-card operation-details">
       <summary>운영분석 산출근거 <span>ADR · OCC · RevPAR · 월 매출 및 비용 반영 방식</span></summary>
@@ -196,6 +203,6 @@
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
- <script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-settings.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script><script src="/static/js/analysis-print.js"></script>
+  <script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-settings.js"></script><script src="/static/js/slider-utils.js"></script><script src="/static/js/rental-analysis.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/analysis-print.js"></script>
 </body>
 </html>

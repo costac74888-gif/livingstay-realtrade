@@ -80,8 +80,6 @@ function benchmark() {
 
 async function installApiMocks(page) {
   const apiCalls = [];
-  await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
-  await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/v2/maps/**", (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -162,6 +160,25 @@ async function installApiMocks(page) {
   return apiCalls;
 }
 
+async function awaitScreenshotFonts(page) {
+  const fontState = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const faces = Array.from(document.fonts).map((face) => ({
+      family: face.family.replace(/["']/g, ""),
+      status: face.status,
+    }));
+    return {
+      status: document.fonts.status,
+      notoLoaded: faces.some((face) => /Noto Sans KR/i.test(face.family) && face.status === "loaded"),
+      faces,
+    };
+  });
+  if (!fontState.notoLoaded) {
+    console.warn("Korean web font unavailable in this environment; screenshot uses browser fallback font.");
+  }
+  return fontState;
+}
+
 async function waitForRental(page) {
   await page.waitForFunction(() => {
     const result = window.__rentalAnalysisResult;
@@ -212,6 +229,8 @@ async function run() {
     const response = await page.goto(firstUrl.toString(), { waitUntil: "domcontentloaded" });
     expect(response && response.ok(), "분석 화면을 열지 못했습니다. 실행 중인 미리보기 주소를 확인하세요.");
     await waitForRental(page);
+    await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000
+      && Number(document.querySelector('[data-rental-slider="rentalPurchasePrice"]').min) === 3500);
 
     const initial = await page.evaluate(() => {
       const result = window.__rentalAnalysisResult;
@@ -229,6 +248,19 @@ async function run() {
         own: own && own.data[0],
         sensitivityRows: document.querySelectorAll("#rentalSensitivity tbody tr").length,
         sensitivityCells: document.querySelectorAll("#rentalSensitivity tbody tr:first-child td").length,
+      sliders: Object.fromEntries(Array.from(document.querySelectorAll("#rentalSliders [data-rental-slider]"))
+        .map((slider) => [slider.dataset.rentalSlider, {
+          min: Number(slider.min), max: Number(slider.max), step: Number(slider.step),
+        }])),
+      positionCard: document.getElementById("rentalPositioning").getBoundingClientRect().toJSON(),
+      positionMap: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().toJSON(),
+      positionChart: document.getElementById("rentalPositionChart").getBoundingClientRect().toJSON(),
+      sensitivityOverflow: (() => {
+        const scroll = document.querySelector(
+          "#rentalSensitivity .rental-sensitivity-scroll, #rentalSensitivity .sensitivity-scroll",
+        );
+        return scroll.scrollWidth - scroll.clientWidth;
+      })(),
         vacancyParam: new URLSearchParams(location.search).get("r_vacancy"),
         hasVacancyParam: new URLSearchParams(location.search).has("r_vacancy"),
         apiCalls: window.__rentalAnalysisApiCalls || [],
@@ -246,10 +278,75 @@ async function run() {
       "초과 수익률이 차트 경계의 방향 삼각형 데이터로 표시되지 않았습니다.");
     expect(initial.sensitivityRows === 7 && initial.sensitivityCells === 7,
       "민감도 표는 공실 0~6개월과 월세 7개 열이어야 합니다.");
+    expect(initial.sliders.rentalPurchasePrice.min === 3500
+      && initial.sliders.rentalPurchasePrice.max === 6500
+      && initial.sliders.rentalPurchasePrice.step === 100,
+    `시세 5,000만원 매수가 범위·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalPurchasePrice)}`);
+    expect(initial.sliders.rentalDeposit.max === 1200 && initial.sliders.rentalDeposit.step === 50,
+      `보증금 상한·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalDeposit)}`);
+    expect(initial.sliders.rentalMonthlyRent.min === 50
+      && initial.sliders.rentalMonthlyRent.max === 150
+      && initial.sliders.rentalMonthlyRent.step === 5
+      && initial.sliders.rentalVacancyMonths.step === 0.5,
+    `월세·공실 슬라이더 범위가 기준 규칙과 다릅니다: ${JSON.stringify(initial.sliders)}`);
+    expect(Math.abs(initial.positionChart.width - initial.positionMap.width) <= 2
+      && Math.abs(initial.positionMap.height - 360) < 2,
+    `데스크톱 임대 포지셔닝 차트가 카드 전체 폭·360px 높이가 아닙니다: ${JSON.stringify({
+      card: initial.positionCard, map: initial.positionMap, chart: initial.positionChart,
+    })}`);
+    expect(initial.sensitivityOverflow <= 2,
+      `데스크톱 임대 민감도 표의 7개 열에 가로 스크롤이 필요합니다: ${initial.sensitivityOverflow}px`);
     expect(initial.hasVacancyParam && initial.vacancyParam === "",
       "가정 공실이 공유 URL에서 직접 입력값으로 바뀌었습니다.");
     fs.mkdirSync("screenshots", { recursive: true });
+    await awaitScreenshotFonts(page);
     await page.screenshot({ path: "screenshots/rental-desktop-1280.png", fullPage: true });
+    await page.locator("#rentalPositioning").screenshot({
+      path: "screenshots/slider-rental-chart-1280.png",
+    });
+    await page.locator("#rentalSensitivity").screenshot({
+      path: "screenshots/slider-rental-sensitivity-1280.png",
+    });
+
+    await setValueFromLabel(page, "rentalMonthlyRent", 30);
+    const roneCallsBeforeRelease = apiCalls.filter((call) => call.path === "/api/analysis/rental-benchmark").length;
+    const rangeFreeze = await page.evaluate(() => {
+      const slider = document.querySelector('[data-rental-slider="rentalMonthlyRent"]');
+      const before = { min: slider.min, max: slider.max, step: slider.step };
+      slider.value = "32";
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      const during = { min: slider.min, max: slider.max, step: slider.step };
+      slider.dispatchEvent(new Event("change", { bubbles: true }));
+      return { before, during };
+    });
+    expect(rangeFreeze.before.min === "15" && rangeFreeze.before.max === "50"
+      && rangeFreeze.before.step === "1"
+      && JSON.stringify(rangeFreeze.during) === JSON.stringify(rangeFreeze.before),
+    `월세 드래그 중 활성 슬라이더 범위가 고정되지 않았습니다: ${JSON.stringify(rangeFreeze)}`);
+    expect(apiCalls.filter((call) => call.path === "/api/analysis/rental-benchmark").length === roneCallsBeforeRelease,
+    "월세 슬라이더 input 중 R-ONE 조회가 추가로 발생했습니다.");
+    await page.waitForTimeout(400);
+    const rangeAfterRelease = await page.evaluate(() => {
+      const slider = document.querySelector('[data-rental-slider="rentalMonthlyRent"]');
+      const result = window.__rentalAnalysisResult;
+      const headers = Array.from(document.querySelectorAll("#rentalSensitivity thead th"))
+        .slice(1).map((header) => header.textContent.trim());
+      const selected = document.querySelector("#rentalSensitivity td.selected");
+      return {
+        min: Number(slider.min), max: Number(slider.max), step: Number(slider.step),
+        annualRent: result.annualRent, rent: result.annualRent / 12, headers,
+        selectedValue: selected && Number(selected.textContent.trim().replace("%", "")),
+        expectedValue: result.netYield,
+      };
+    });
+    expect(rangeAfterRelease.min === 16 && rangeAfterRelease.max === 52
+      && rangeAfterRelease.step === 1 && rangeAfterRelease.rent === 32,
+    `월세 change 후 범위가 새 중심에 맞춰 재계산되지 않았습니다: ${JSON.stringify(rangeAfterRelease)}`);
+    expect(JSON.stringify(rangeAfterRelease.headers)
+      === JSON.stringify(["17만원", "22만원", "27만원", "32만원", "37만원", "42만원", "47만원"]),
+    `월세 32만원 민감도 열이 17~47만원으로 이동하지 않았습니다: ${JSON.stringify(rangeAfterRelease.headers)}`);
+    expectNear(rangeAfterRelease.selectedValue, rangeAfterRelease.expectedValue,
+      "월세 민감도 현재 칸과 핵심 순수익률");
 
     await setValueFromLabel(page, "rentalMonthlyRent", 47);
     await page.waitForFunction(() => Number(window.__rentalAnalysisResult?.annualRent) === 564);
@@ -258,16 +355,18 @@ async function run() {
       slider: Number(document.querySelector('[data-rental-slider="rentalMonthlyRent"]').value),
       headers: Array.from(document.querySelectorAll("#rentalSensitivity thead th")).map((node) => node.textContent.trim()),
       highlighted: document.querySelector("#rentalSensitivity tbody td.selected")?.title || "",
+      selectedCell: Number(document.querySelector("#rentalSensitivity tbody td.selected")?.textContent.trim().replace("%", "")),
       returnBasis: window.__rentalAnalysisResult.returnBasis,
       netYield: window.__rentalAnalysisResult.netYield,
       noi: window.__rentalAnalysisResult.noi,
     }));
-    expect(directValue.exactRent === 47 && directValue.slider === 45,
-      `직접 입력 47만원을 슬라이더 위치 45로 함께 표시해야 합니다: ${JSON.stringify({
+    expect(directValue.exactRent === 47 && directValue.slider === 47,
+      `직접 입력 47만원을 가장 가까운 슬라이더 위치에 표시해야 합니다: ${JSON.stringify({
         exactRent: directValue.exactRent, slider: directValue.slider,
       })}`);
-    expect(directValue.headers.includes("45만원") && directValue.highlighted.includes("입력값 47만원"),
-      "민감도 표는 45만원 인접 칸을 강조하고 직접 입력값을 툴팁에 표시해야 합니다.");
+    expect(directValue.headers.includes("47만원") && directValue.highlighted.includes("월세 47만원"),
+      "민감도 표에 직접 입력값 47만원 열과 정확한 현재 조건 툴팁이 표시되어야 합니다.");
+    expectNear(directValue.selectedCell, directValue.netYield, "월세 47 민감도 현재 칸과 순수익률");
     expectNear(directValue.netYield, directValue.noi / 3920 * 100,
       "월세 직접 입력 후 수익률");
 
@@ -281,7 +380,7 @@ async function run() {
     }));
     expectNear(debtFree.result.netYield, debtFree.result.cashReturn,
       "대출 0일 때 순수익률과 자기자본 수익률 일치");
-    expect(debtFree.selectedCell === debtFree.result.netYield.toFixed(1) + "%",
+    expect(debtFree.selectedCell === debtFree.result.netYield.toFixed(2) + "%",
       "월세 30·공실 1의 민감도 강조 칸과 핵심 카드 수익률이 일치하지 않습니다.");
     expect(!debtFree.debtCards.includes("DSCR") && !debtFree.debtCards.includes("월 대출 상환액"),
       "대출 0일 때 대출 상세 지표가 표시됩니다.");
@@ -341,6 +440,30 @@ async function run() {
     expect(zeroVacancy.highlighted && zeroVacancy.highlighted !== "—",
       "민감도 표에서 현재 조건 교차 셀이 강조되지 않았습니다.");
 
+    await vacancySlider.evaluate((element) => {
+      element.value = "0.5";
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.waitForFunction(() => window.__rentalAnalysisResult?.vacancyMonths === 0.5);
+    const fractionalVacancy = await page.evaluate(() => {
+      const headers = Array.from(document.querySelectorAll("#rentalSensitivity tbody th"))
+        .map((header) => header.textContent.trim().replace(/\s+/g, " "));
+      const selected = document.querySelector("#rentalSensitivity tbody td.selected");
+      return {
+        headers,
+        rows: document.querySelectorAll("#rentalSensitivity tbody tr").length,
+        selectedTitle: selected?.title || "",
+        selectedValue: selected && Number(selected.textContent.trim().replace("%", "")),
+        expectedValue: window.__rentalAnalysisResult.netYield,
+      };
+    });
+    expect(fractionalVacancy.rows === 7 && fractionalVacancy.headers.some((header) => /0[,.]5개월/.test(header)),
+      `공실 0.5개월이 정확한 민감도 행으로 표시되지 않았습니다: ${JSON.stringify(fractionalVacancy.headers)}`);
+    expect(fractionalVacancy.selectedTitle.includes("공실 0.5개월 기준"),
+      `공실 0.5개월 현재 칸의 계산 설명이 정확하지 않습니다: ${fractionalVacancy.selectedTitle}`);
+    expectNear(fractionalVacancy.selectedValue, fractionalVacancy.expectedValue,
+      "공실 0.5개월 민감도 현재 칸과 핵심 순수익률");
+
     await page.setViewportSize({ width: 360, height: 800 });
     const mobile = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
@@ -349,11 +472,27 @@ async function run() {
       detailsCollapsed: !document.getElementById("rentalBasisDetails").open
         && !document.getElementById("rentalDetails").open,
       visibleSliderCount: document.querySelectorAll("#rentalSliders [data-rental-slider]").length,
+      tableScrollWidth: document.querySelector(
+        "#rentalSensitivity .rental-sensitivity-scroll, #rentalSensitivity .sensitivity-scroll",
+      ).scrollWidth,
+      tableClientWidth: document.querySelector(
+        "#rentalSensitivity .rental-sensitivity-scroll, #rentalSensitivity .sensitivity-scroll",
+      ).clientWidth,
+      positionMap: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().toJSON(),
+      sliderTouchAction: getComputedStyle(document.querySelector('[data-rental-slider="rentalMonthlyRent"]')).touchAction,
+      sliderRowHeight: document.querySelector('[data-rental-row="rentalMonthlyRent"]').getBoundingClientRect().height,
     }));
     expect(mobile.scroll <= mobile.viewport && mobile.body <= mobile.viewport,
       `360px 화면에 가로 페이지 넘침이 있습니다: ${JSON.stringify(mobile)}`);
     expect(mobile.visibleSliderCount === 5, "모바일 화면에서 5개 입력 슬라이더가 모두 렌더링되어야 합니다.");
     expect(mobile.detailsCollapsed, "계산 근거·상세 지표는 기본 접힘 상태여야 합니다.");
+    expect(mobile.tableScrollWidth > mobile.tableClientWidth,
+      "모바일 임대 민감도 표는 가로 스크롤을 허용해야 합니다.");
+    expect(Math.abs(mobile.positionMap.height - 300) < 2,
+      `모바일 임대 포지셔닝 차트가 300px 높이가 아닙니다: ${mobile.positionMap.height}px`);
+    expect(mobile.sliderTouchAction === "pan-y" && mobile.sliderRowHeight >= 44,
+      `모바일 슬라이더의 터치 영역·세로 스크롤 설정이 부족합니다: ${JSON.stringify(mobile)}`);
+    await awaitScreenshotFonts(page);
     await page.screenshot({ path: "screenshots/rental-mobile-360.png", fullPage: true });
 
     const printReady = await page.evaluate(async () => {

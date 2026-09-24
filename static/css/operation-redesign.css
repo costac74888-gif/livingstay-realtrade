@@ -738,3 +738,68 @@
     display: block !important;
   }
 }
+
+/* Keep all decision cards together in the right-hand column. */
+.operation-workspace {
+  grid-template-columns: minmax(0, 1.38fr) minmax(0, 1fr);
+  grid-template-areas:
+    "sliders results"
+    "chart results";
+  align-items: start;
+}
+.operation-results-column {
+  grid-area: results;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.operation-results-column > #operationCoreMetrics,
+.operation-results-column > #operationSensitivity,
+.operation-results-column > #operationVerdict {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  grid-area: auto;
+}
+.operation-slider-row {
+  min-height: 44px;
+  touch-action: pan-y;
+}
+.operation-slider-row > input[type="range"] {
+  height: 22px;
+  min-height: 22px;
+  margin: 5px 0 7px;
+  touch-action: pan-y;
+}
+.operation-slider-row > input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+}
+.operation-slider-row > input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+}
+.operation-slider-row > input[type="range"]::-moz-range-track {
+  height: 6px;
+}
+.operation-slider-row > input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+}
+.operation-slider-row > input[type="range"]:focus-visible {
+  outline: 3px solid rgba(38, 115, 207, .38);
+  outline-offset: 3px;
+}
+@media (max-width: 900px) {
+  .operation-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "sliders"
+      "chart"
+      "results";
+  }
+  .operation-results-column {
+    grid-area: results;
+  }
+}

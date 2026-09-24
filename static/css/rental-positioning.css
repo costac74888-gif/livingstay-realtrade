@@ -162,3 +162,174 @@
  .rental-condition-bar,.rental-sliders-panel,.rental-positioning,.rental-core-metrics,.rental-sensitivity,.rental-verdict,.rental-details{max-width:100%;box-sizing:border-box}
  .rental-sensitivity{overflow:hidden}.sensitivity-scroll{max-width:100%;overflow-x:auto}
 }
+
+/* Full-width market-positioning chart and aligned rental decision column. */
+.rental-workspace {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  grid-template-areas:
+    "sliders results"
+    "positioning results"
+    "vacancy results"
+    "basis basis"
+    "details details";
+  align-items: start;
+}
+.rental-workspace > #rentalSliders { grid-area: sliders; min-width: 0; }
+.rental-workspace > #rentalPositioning { grid-area: positioning; min-width: 0; }
+.rental-workspace > #rentalVacancyMonthsHint { grid-area: vacancy; }
+.rental-workspace > #rentalBasisDetails { grid-area: basis; min-width: 0; }
+.rental-workspace > #rentalDetails { grid-area: details; min-width: 0; }
+.rental-results-column {
+  grid-area: results;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.rental-results-column > #rentalCoreMetrics,
+.rental-results-column > #rentalSensitivity,
+.rental-results-column > #rentalVerdict {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.rental-positioning {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0;
+}
+.positioning-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.rental-positioning .positioning-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.rental-positioning .positioning-copy h3 { margin: 3px 0 5px; }
+.rental-positioning .positioning-copy p {
+  max-width: 64em;
+  margin: 0;
+  line-height: 1.5;
+}
+.rental-positioning .positioning-map {
+  width: 100%;
+  height: 360px;
+  min-height: 360px;
+  margin-top: 12px;
+  flex: none;
+}
+.rental-positioning .positioning-toggle {
+  flex: none;
+  margin: 2px 0 0;
+}
+.positioning-source-note {
+  margin: 8px 0 0;
+  color: #718683;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Seven sensitivity scenarios remain visible at desktop widths. */
+@media (min-width: 1280px) {
+  #rentalSensitivity .rental-sensitivity-scroll,
+  #rentalSensitivity .sensitivity-scroll {
+    overflow-x: visible;
+  }
+  #rentalSensitivity table {
+    width: 100%;
+    min-width: 0;
+    table-layout: fixed;
+    border-spacing: 2px;
+    font-size: 12px;
+  }
+  #rentalSensitivity thead th {
+    padding: 6px 2px;
+    font-size: 11px;
+  }
+  #rentalSensitivity thead th:first-child,
+  #rentalSensitivity tbody th {
+    width: 56px;
+  }
+  #rentalSensitivity tbody th,
+  #rentalSensitivity td {
+    padding: 6px 2px;
+    font-size: 12px;
+  }
+}
+
+/* A larger touch target without intercepting vertical page scrolling. */
+.rental-slider-row,
+.operation-slider-row {
+  min-height: 44px;
+  touch-action: pan-y;
+}
+.rental-slider-row input[type="range"],
+.rental-slider-row .rental-range,
+.operation-slider-row > input[type="range"] {
+  width: 100%;
+  height: 22px;
+  min-height: 22px;
+  margin: 5px 0 7px;
+  touch-action: pan-y;
+  cursor: pointer;
+}
+.rental-slider-row input[type="range"]::-webkit-slider-runnable-track,
+.rental-slider-row .rental-range::-webkit-slider-runnable-track,
+.operation-slider-row > input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+}
+.rental-slider-row input[type="range"]::-webkit-slider-thumb,
+.rental-slider-row .rental-range::-webkit-slider-thumb,
+.operation-slider-row > input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+}
+.rental-slider-row input[type="range"]::-moz-range-track,
+.rental-slider-row .rental-range::-moz-range-track,
+.operation-slider-row > input[type="range"]::-moz-range-track {
+  height: 6px;
+}
+.rental-slider-row input[type="range"]::-moz-range-thumb,
+.rental-slider-row .rental-range::-moz-range-thumb,
+.operation-slider-row > input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+}
+.rental-slider-row input[type="range"]:focus-visible,
+.rental-slider-row .rental-range:focus-visible,
+.operation-slider-row > input[type="range"]:focus-visible {
+  outline: 3px solid rgba(38, 115, 207, .38);
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .rental-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "sliders"
+      "positioning"
+      "vacancy"
+      "results"
+      "basis"
+      "details";
+  }
+}
+
+@media (max-width: 650px) {
+  .rental-positioning .positioning-map {
+    height: 300px;
+    min-height: 300px;
+  }
+  .positioning-header { gap: 8px; }
+  .rental-positioning .positioning-copy p { max-width: 100%; }
+  #rentalSensitivity .rental-sensitivity-scroll,
+  #rentalSensitivity .sensitivity-scroll { overflow-x: auto; }
+  #rentalSensitivity table { min-width: 600px; }
+  .operation-slider-row > input[type="range"]::-webkit-slider-thumb { margin-top: -8px; }
+}

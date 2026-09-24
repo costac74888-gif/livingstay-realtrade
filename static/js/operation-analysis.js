@@ -22,6 +22,12 @@
   var roneRequestsByBuilding = Object.create(null);
   var crossRentSync = false;
   var rentalRentUserChanged = false;
+  var sliderBounds = Object.create(null);
+  var activeSliderField = "";
+  var sliderCommitTimer = 0;
+  var sliderCommitGeneration = 0;
+  var pendingSliderFields = Object.create(null);
+  var sliderUtils = window.analysisSliderUtils;
   var labels = {
     adr: ["operationAdr", "ADR", "원", 5000], occ: ["operationOcc", "OCC", "%", 1],
     opexRatio: ["operationOpexRatio", "운영경비율", "%", 1],
@@ -157,6 +163,22 @@
     roneRentStatus = compareRentSource.text;
     setAssumption("compareRent", true);
     syncSliderPositions();
+    crossRent();
+    updateOperationUrl("compareRent");
+    scheduleRender();
+  }
+  function applyRentYieldFallback(reason) {
+    if (!assumed.compareRent || value("compareRent") != null) return;
+    var basis = currentPurchaseBasis();
+    if (basis == null || basis <= 0) return;
+    setInput("compareRent", basis * 0.005);
+    compareRentSource = null;
+    roneRentStatus = (reason ? reason + " " : "")
+      + "검증된 R-ONE 수익률을 사용할 수 없어 기준 매입가의 0.5% 월 수익률을 비교 월세 가정값으로 적용했습니다.";
+    setAssumption("compareRent", true);
+    syncSliderPositions();
+    crossRent();
+    updateOperationUrl("compareRent");
     scheduleRender();
   }
   function ensureRoneCompareRent(sequence) {
@@ -169,6 +191,8 @@
           setInput("compareRent", adjustedRent);
           roneRentStatus = compareRentSource.text;
           syncSliderPositions();
+          crossRent();
+          updateOperationUrl("compareRent");
           scheduleRender();
         }
       }
@@ -207,15 +231,19 @@
       roneRequestsByBuilding[id] = request;
     }
     request.then(function (result) {
-      if (sequence !== loadSequence || id !== buildingId() || !assumed.compareRent) return;
+      if (sequence !== loadSequence || id !== buildingId() || !assumed.compareRent
+        || activeSliderField === "purchasePrice") return;
       if (value("compareRent") != null && !compareRentSource) return;
       var currentPurchase = value("purchasePrice");
       if (currentPurchase == null || currentPurchase <= 0) return;
       if (result.payload) {
         applyRoneBreakEvenRent(result.payload);
       } else {
-        roneRentStatus = result.error || "검증된 R-ONE 임대수익률 자료를 사용할 수 없습니다.";
-        syncSliderPositions();
+        applyRentYieldFallback(result.error || "검증된 R-ONE 임대수익률 자료를 사용할 수 없습니다.");
+        if (value("compareRent") == null) {
+          roneRentStatus = result.error || "검증된 R-ONE 임대수익률 자료를 사용할 수 없습니다.";
+          syncSliderPositions();
+        }
       }
     });
   }
@@ -256,6 +284,11 @@
   }
   function resetOperationScenarioForBuildingChange(id) {
     uploadSequence += 1;
+    sliderCommitGeneration += 1;
+    window.clearTimeout(sliderCommitTimer);
+    sliderCommitTimer = 0;
+    pendingSliderFields = Object.create(null);
+    activeSliderField = "";
     ensureOperationInputs();
     building = null;
     benchmarks = [];
@@ -342,7 +375,7 @@
         var parsed = Number(params.get(key));
         var bounds = {
           adr: [50000, 1000000], occ: [0, 100], opexRatio: [10, 60],
-          mgmtFeeRatio: [0, 50], purchasePrice: [0, 10000000000], compareRent: [20, 10000000],
+          mgmtFeeRatio: [0, 50], purchasePrice: [100, 1000000], compareRent: [5, 1000],
         }[field];
         if (Number.isFinite(parsed) && parsed >= bounds[0] && parsed <= bounds[1]) {
           setInput(field, parsed); setAssumption(field, false);
@@ -369,50 +402,90 @@
     ensureRoneCompareRent(loadSequence);
   }
   function fieldMin(field) {
-    if (field === "adr") return 50000;
-    if (field === "occ") return 20;
-    if (field === "opexRatio") return 10;
-    if (field === "mgmtFeeRatio") return 0;
-    if (field === "compareRent") return 20;
-    if (purchasePriceBase == null) {
-      var source = sharedPurchaseValue();
-      var current = value("purchasePrice");
-      purchasePriceBase = source ? source.value : current;
-    }
-    return purchasePriceBase == null ? 0 : Math.max(0, purchasePriceBase * 0.5);
+    var bounds = sliderBounds[field];
+    return bounds ? bounds.min : 0;
   }
   function fieldMax(field) {
-    var current = value(field) || 0;
-    if (field === "adr") return Math.max(300000, current * 1.3, regionalBaseline().adr || 0);
-    if (field === "occ") return 100;
-    if (field === "opexRatio") return 60;
-    if (field === "mgmtFeeRatio") return 50;
-    if (field === "compareRent") return Math.max(200, current * 1.5);
-    var base = purchasePriceBase;
-    if (base == null) {
-      var source = sharedPurchaseValue();
-      base = source ? source.value : current;
-      if (base != null) purchasePriceBase = base;
+    var bounds = sliderBounds[field];
+    return bounds ? bounds.max : 0;
+  }
+  function currentPurchaseBasis() {
+    var market = number(document.getElementById("rentalMarketPrice")
+      && document.getElementById("rentalMarketPrice").value);
+    if (market != null && market > 0) return market;
+    if (purchasePriceBase != null && purchasePriceBase > 0) return purchasePriceBase;
+    var source = sharedPurchaseValue();
+    if (source && source.value > 0) {
+      purchasePriceBase = source.value;
+      return purchasePriceBase;
     }
-    return Math.max(100000000, base == null ? 0 : base * 2);
+    return null;
+  }
+  function computeSliderBounds() {
+    if (!sliderUtils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
+    var baseline = regionalBaseline();
+    var bounds = Object.create(null);
+    if (baseline.adr != null && baseline.adr > 0) {
+      var adrUnit = sliderUtils.niceStep(baseline.adr / 100);
+      var adrMin = Math.max(0, Math.round(baseline.adr * 0.4 / adrUnit) * adrUnit);
+      var adrMax = baseline.adr * 2;
+      bounds.adr = {
+        min: adrMin, max: Math.max(adrMax, adrMin + 1),
+        step: sliderUtils.niceStep((adrMax - adrMin) / 60),
+      };
+    } else {
+      bounds.adr = { min: 50000, max: 300000, step: 5000 };
+    }
+    bounds.occ = { min: 20, max: 100, step: 1 };
+    bounds.opexRatio = { min: 10, max: 60, step: 1 };
+    bounds.mgmtFeeRatio = { min: 0, max: 50, step: 1 };
+
+    var purchaseBasis = currentPurchaseBasis();
+    if (purchaseBasis != null) {
+      bounds.purchasePrice = sliderUtils.purchaseBounds(purchaseBasis);
+      bounds.purchasePrice = sliderUtils.includeValue(bounds.purchasePrice, value("purchasePrice"));
+    } else {
+      bounds.purchasePrice = null;
+    }
+
+    var compareCenter = value("compareRent");
+    var sharedRent = sharedRentValue();
+    if (!(compareCenter > 0) && sharedRent) compareCenter = sharedRent.value;
+    if (!(compareCenter > 0) && purchaseBasis != null) compareCenter = purchaseBasis * 0.005;
+    bounds.compareRent = compareCenter > 0 ? sliderUtils.rentBounds(compareCenter) : null;
+    if (bounds.compareRent) bounds.compareRent = sliderUtils.includeValue(bounds.compareRent, value("compareRent"));
+
+    ["adr", "occ", "opexRatio", "mgmtFeeRatio"].forEach(function (field) {
+      bounds[field] = sliderUtils.includeValue(bounds[field], value(field));
+    });
+    sliderBounds = bounds;
   }
   function displayValue(field) {
     var valueNow = value(field);
-    return valueNow == null ? "입력 필요" : format(valueNow, field === "occ" ? 2 : 0) + labels[field][2];
+    if (field === "purchasePrice" && !sliderBounds.purchasePrice) return "입력 필요";
+    if (valueNow == null) return "입력 필요";
+    if ((field === "purchasePrice" || field === "compareRent") && sliderUtils) {
+      return sliderUtils.formatMan(valueNow, 0);
+    }
+    return format(valueNow, field === "occ" ? 2 : 0) + labels[field][2];
   }
   function sliderMarkup(field) {
     var meta = labels[field], input = $(meta[0]), current = number(input.value);
-    var min = fieldMin(field), max = Math.max(fieldMax(field), min + meta[3]);
-    var steps = Math.max(1, Math.round((max - min) / meta[3]));
+    var computedBounds = sliderBounds[field];
+    var bounds = computedBounds || { min: 0, max: 0, step: 1 };
+    var initial = current == null ? bounds.min
+      : Math.max(bounds.min, Math.min(bounds.max,
+        bounds.min + Math.round((current - bounds.min) / bounds.step) * bounds.step));
     return '<div class="operation-slider-row" data-operation-row="' + field + '"><div class="operation-slider-head"><label for="operationSlider_' + field + '">' + meta[1] + '</label><span>'
       + '<button class="operation-value-button" type="button" data-operation-value="' + field + '">' + displayValue(field) + '</button>'
       + '<i data-operation-assumption' + (assumed[field] ? "" : ' class="hidden"') + '>' + (field === "adr" || field === "occ" ? "가정값(지역 평균)" : "가정값") + "</i>"
-      + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + min + '" max="' + max + '" step="' + meta[3] + '" value="' + (current == null ? min : current) + '" aria-label="' + meta[1] + '"'
-      + ((field === "purchasePrice" || field === "compareRent") && current == null ? " disabled" : "") + "></div>";
+      + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + bounds.min + '" max="' + bounds.max + '" step="' + bounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
+      + (((field === "purchasePrice" || field === "compareRent") && !computedBounds) ? " disabled" : "") + "></div>";
   }
   function syncOperationSliders() {
     var host = $("operationSliders");
     if (!host) return;
+    computeSliderBounds();
     var dayBasis = monthlyDayBasis();
     var baseline = regionalBaseline();
     var operationGroupTitle = "운영 조건";
@@ -446,23 +519,35 @@
     }
     syncSliderPositions();
   }
-  function syncSliderPositions() {
+  function updateSliderLabel(field) {
+    var button = document.querySelector('[data-operation-value="' + field + '"]');
+    if (button && !button.querySelector("input")) button.textContent = displayValue(field);
+  }
+  function updateSliderAssumptionBadge(field) {
+    var badge = document.querySelector('[data-operation-row="' + field + '"] [data-operation-assumption]');
+    if (badge) {
+      badge.classList.toggle("hidden", !assumed[field]);
+      badge.textContent = field === "adr" || field === "occ" ? "가정값(지역 평균)"
+        : field === "compareRent" && compareRentSource ? "가정값(R-ONE 수익률)" : "가정값";
+    }
+  }
+  function syncSliderPositions(options) {
+    options = options || {};
+    if (options.recompute !== false) computeSliderBounds();
     document.querySelectorAll("[data-operation-slider]").forEach(function (range) {
       var field = range.dataset.operationSlider, current = value(field);
-      var min = fieldMin(field), max = Math.max(fieldMax(field), min + labels[field][3]);
-      range.min = String(min); range.max = String(max);
-      var step = Number(range.step);
-      if (field === "purchasePrice" || field === "compareRent") range.disabled = current == null;
-      if (current == null) range.value = String(min);
-      else range.value = String(Math.max(min, Math.min(max, min + Math.round((current - min) / step) * step)));
-      var button = document.querySelector('[data-operation-value="' + field + '"]');
-      if (button) button.textContent = displayValue(field);
-      var badge = document.querySelector('[data-operation-row="' + field + '"] [data-operation-assumption]');
-      if (badge) {
-        badge.classList.toggle("hidden", !assumed[field]);
-        badge.textContent = field === "adr" || field === "occ" ? "가정값(지역 평균)"
-          : field === "compareRent" && compareRentSource ? "가정값(R-ONE 수익률)" : "가정값";
+      var bounds = sliderBounds[field];
+      if (bounds && field !== activeSliderField) {
+        range.min = String(bounds.min);
+        range.max = String(bounds.max);
+        range.step = String(bounds.step);
+        range.disabled = false;
+        range.value = String(current == null ? bounds.min : sliderUtils.nearest(current, bounds));
+      } else if (!bounds && (field === "purchasePrice" || field === "compareRent")) {
+        range.min = "0"; range.max = "0"; range.step = "1"; range.value = "0"; range.disabled = true;
       }
+      updateSliderLabel(field);
+      updateSliderAssumptionBadge(field);
     });
     var costShare = $("operationCostShare");
     if (costShare && value("opexRatio") != null && value("mgmtFeeRatio") != null) {
@@ -474,6 +559,30 @@
   function scheduleRender() {
     if (animationFrame) return;
     animationFrame = window.requestAnimationFrame(function () { animationFrame = 0; renderChart(); });
+  }
+  function scheduleSliderCommit(field) {
+    activeSliderField = "";
+    if (field) pendingSliderFields[field] = true;
+    window.clearTimeout(sliderCommitTimer);
+    var generation = ++sliderCommitGeneration;
+    var committedBuildingId = buildingId();
+    var committedLoadSequence = loadSequence;
+    sliderCommitTimer = window.setTimeout(function () {
+      if (generation !== sliderCommitGeneration || committedBuildingId !== buildingId()
+        || committedLoadSequence !== loadSequence) return;
+      sliderCommitTimer = 0;
+      var changedFields = Object.keys(pendingSliderFields);
+      pendingSliderFields = Object.create(null);
+      syncSliderPositions({ recompute: true });
+      if (generation !== sliderCommitGeneration || committedBuildingId !== buildingId()
+        || committedLoadSequence !== loadSequence) return;
+      if (changedFields.indexOf("purchasePrice") >= 0 || changedFields.indexOf("compareRent") >= 0) crossRent();
+      if (generation !== sliderCommitGeneration || committedBuildingId !== buildingId()
+        || committedLoadSequence !== loadSequence) return;
+      updateOperationUrl(changedFields);
+      if (changedFields.indexOf("purchasePrice") >= 0) ensureRoneCompareRent(loadSequence);
+      scheduleRender();
+    }, 300);
   }
   function crossRent() {
     var purchase = value("purchasePrice"), rent = value("compareRent");
@@ -807,10 +916,13 @@
     if (state.adr == null || state.occ == null || state.opexRatio == null || state.mgmtFeeRatio == null) {
       host.innerHTML = "<p>ADR·OCC와 비용 기준이 필요합니다.</p>"; return;
     }
-    var adrSteps = [-30000, -20000, -10000, 0, 10000, 20000, 30000];
-    var occSteps = [-15, -10, -5, 0, 5, 10, 15];
-    var columns = adrSteps.map(function (delta) { return state.adr + delta; }).filter(function (adr) { return adr >= 50000; });
-    var rows = occSteps.map(function (delta) { return state.occ + delta; }).filter(function (occ) { return occ >= 0 && occ <= 100; });
+    var adrInterval = sliderUtils.niceStep((state.baseAdr || state.adr) * 0.07);
+    var columns = [-3, -2, -1, 0, 1, 2, 3]
+      .map(function (offset) { return state.adr + offset * adrInterval; })
+      .filter(function (adr) { return adr > 0; });
+    var rows = [-3, -2, -1, 0, 1, 2, 3]
+      .map(function (offset) { return state.occ + offset * 5; })
+      .filter(function (occ) { return occ >= 0 && occ <= 100; });
     var cellNet = function (adr, occ) {
       return monthRevenue(adr, occ, state.monthlyDays, state.opexRatio, state.mgmtFeeRatio);
     };
@@ -926,7 +1038,6 @@
       ? { region: state.selectedName, adr: state.adr, occ: state.occ, revpar: state.revpar, selected: true } : null;
     renderDetail(selected);
     bindOperationShare();
-    syncSliderPositions();
     var canvas = $("operationChart"), existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
     var wrapper = canvas.parentElement;
@@ -1294,49 +1405,70 @@
       var range = event.target.closest("[data-operation-slider]");
       if (!range) return;
       var field = range.dataset.operationSlider;
+      activeSliderField = field;
       setInput(field, range.value);
-      setAssumption(field, false);
+      assumed[field] = false;
       if (field === "compareRent") { compareRentSource = null; roneRentStatus = ""; }
-      if (field === "purchasePrice" || field === "compareRent") crossRent();
-      if (field === "purchasePrice") ensureRoneCompareRent(loadSequence);
-      syncSliderPositions();
-      updateOperationUrl(field);
+      updateSliderLabel(field);
       scheduleRender();
+    });
+    host.addEventListener("change", function (event) {
+      var range = event.target.closest("[data-operation-slider]");
+      if (!range) return;
+      scheduleSliderCommit(range.dataset.operationSlider);
     });
     host.addEventListener("click", function (event) {
       var button = event.target.closest("[data-operation-value]");
       if (!button || button.querySelector("input")) return;
       var field = button.dataset.operationValue, input = document.createElement("input");
-      input.type = "number"; input.step = field === "adr" ? "1" : String(labels[field][3]);
-      input.min = String(fieldMin(field)); input.max = String(fieldMax(field));
+      input.type = "number"; input.step = "any";
+      input.min = field === "adr" ? "1" : field === "occ" ? "0"
+        : field === "opexRatio" ? "10" : field === "mgmtFeeRatio" ? "0"
+          : field === "purchasePrice" ? "100" : field === "compareRent" ? "5" : "0";
+      input.max = field === "occ" ? "100" : field === "opexRatio" ? "60"
+        : field === "mgmtFeeRatio" ? "50" : field === "purchasePrice" ? "1000000"
+          : field === "compareRent" ? "1000" : "1000000";
       input.value = value(field) == null ? "" : String(value(field));
       input.setAttribute("aria-label", labels[field][1] + " 직접 입력");
       button.textContent = ""; button.appendChild(input); input.focus(); input.select();
+      var cancelled = false;
       var commit = function () {
         if (!button.contains(input)) return;
+        if (cancelled) {
+          button.textContent = displayValue(field);
+          updateSliderLabel(field);
+          return;
+        }
         var raw = input.value.trim(), parsed = raw === "" ? null : Number(raw);
         if (parsed != null && Number.isFinite(parsed)) {
           var limits = {
-            adr: [50000, Math.max(300000, parsed * 1.3)], occ: [0, 100],
+            adr: [1, 1000000], occ: [0, 100],
             opexRatio: [10, 60], mgmtFeeRatio: [0, 50],
-            purchasePrice: [0, Math.max(100000000, parsed * 2)],
-            compareRent: [20, Math.max(200, parsed * 1.5)],
+            purchasePrice: [100, 1000000],
+            compareRent: [5, 1000],
           }[field];
           setInput(field, Math.max(limits[0], Math.min(limits[1], parsed)));
           if (field === "purchasePrice" && purchasePriceBase == null) purchasePriceBase = parsed;
-          setAssumption(field, false);
+          assumed[field] = false;
           if (field === "compareRent") { compareRentSource = null; roneRentStatus = ""; }
-          if (field === "purchasePrice" || field === "compareRent") crossRent();
-          if (field === "purchasePrice") ensureRoneCompareRent(loadSequence);
-          updateOperationUrl(field);
+          syncSliderPositions();
+          updateSliderLabel(field);
+          scheduleSliderCommit(field);
+        } else {
+          syncSliderPositions();
         }
-        syncSliderPositions();
+        button.textContent = displayValue(field);
+        updateSliderLabel(field);
         scheduleRender();
       };
       input.addEventListener("blur", commit, { once: true });
       input.addEventListener("keydown", function (keyEvent) {
         if (keyEvent.key === "Enter") { keyEvent.preventDefault(); input.blur(); }
-        if (keyEvent.key === "Escape") { input.value = value(field) == null ? "" : String(value(field)); input.blur(); }
+        if (keyEvent.key === "Escape") {
+          cancelled = true;
+          input.value = value(field) == null ? "" : String(value(field));
+          input.blur();
+        }
       });
     });
   }
