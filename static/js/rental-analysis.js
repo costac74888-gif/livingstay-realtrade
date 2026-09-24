@@ -19,6 +19,10 @@
   var sliderInputs = {};
   var sliderBounds = Object.create(null);
   var sliderBasePrice = null;
+  var rentCenterBase = null;
+  var rentCenterEdited = false;
+  var invalidRentalInputs = Object.create(null);
+  var lastValidRentalInputs = Object.create(null);
   var sliderChangeTimer = 0;
   var sliderChangeField = "";
   var lastCalculated = null;
@@ -30,6 +34,7 @@
     r_management: "rentalManagementCost", r_other: "rentalOtherCost",
   };
   var sharedValuesRestored = false;
+  var invalidRentalUrlFields = Object.create(null);
   var ids = [
     "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
     "rentalVacancyMonths", "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
@@ -114,23 +119,118 @@
     }) + "개월";
     return window.analysisSliderUtils.formatMan(Number(value));
   }
+  function rentalHardKind(field) {
+    return ({
+      rentalPurchasePrice: "purchase",
+      rentalDeposit: "deposit",
+      rentalMonthlyRent: "rent",
+      rentalVacancyMonths: "vacancy",
+      rentalLoanAmount: "loan",
+    })[field] || "";
+  }
+  function clampRentalValue(field, value) {
+    var kind = rentalHardKind(field);
+    return kind ? window.analysisSliderUtils.clampHard(kind, value,
+      field === "rentalLoanAmount" ? n("rentalPurchasePrice") : undefined) : Number(value);
+  }
+  function setRentalInputError(field, message) {
+    var error = document.querySelector('[data-rental-input-error="' + field + '"]');
+    if (!error) return;
+    error.textContent = message || "";
+    error.hidden = !message;
+  }
+  function rentalLimitText(field, value) {
+    if (field === "rentalVacancyMonths") {
+      return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) + "개월";
+    }
+    return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만";
+  }
+  function updateRentalLimitLabels(bounds) {
+    Object.keys(bounds).forEach(function (field) {
+      var node = document.querySelector('[data-rental-limits="' + field + '"]');
+      var rangeBounds = bounds[field];
+      if (!node) return;
+      var edges = node.querySelectorAll("span");
+      if (!rangeBounds) {
+        if (edges[0]) edges[0].textContent = "—";
+        if (edges[1]) edges[1].textContent = "—";
+        return;
+      }
+      if (edges[0]) edges[0].textContent = rentalLimitText(field, rangeBounds.min);
+      if (edges[1]) edges[1].textContent = rentalLimitText(field, rangeBounds.max);
+    });
+  }
+  function cleanInvalidRentalParams(keys) {
+    if (!keys.length) return;
+    var params = new URLSearchParams(location.search);
+    keys.forEach(function (key) { params.delete(key); });
+    var suffix = params.toString();
+    history.replaceState(history.state, "", location.pathname + (suffix ? "?" + suffix : "") + location.hash);
+  }
+  function warnInvalidRentalParam(key, value) {
+    console.warn("[slider] 비정상 값 무시:", key, value);
+  }
   function purchaseBounds() {
-    var market = n("rentalMarketPrice");
-    var current = n("rentalPurchasePrice");
-    sliderBasePrice = market > 0 ? market : current > 0 ? current : null;
-    return window.analysisSliderUtils.purchaseBounds(sliderBasePrice);
+    var utils = window.analysisSliderUtils;
+    var market = utils.clampHard("purchase", n("rentalMarketPrice"));
+    var current = utils.clampHard("purchase", n("rentalPurchasePrice"));
+    sliderBasePrice = market != null ? market : current;
+    var safeBase = sliderBasePrice;
+    if (safeBase == null) return null;
+    var bounds = utils.purchaseBounds(safeBase);
+    bounds.min = Math.max(utils.HARD_CAPS.purchase[0], bounds.min);
+    bounds.max = Math.min(utils.HARD_CAPS.purchase[1], bounds.max);
+    bounds.step = utils.niceStep((bounds.max - bounds.min) / 40);
+    return bounds;
   }
   function rentCenter() {
     var rent = n("rentalMonthlyRent");
-    if (rent > 0) return rent;
-    var purchase = n("rentalPurchasePrice");
-    if (purchase <= 0) purchase = sliderBasePrice || n("rentalMarketPrice");
+    var utils = window.analysisSliderUtils;
+    if (rent > 0) return utils.clampHard("rent", rent);
+    var market = utils.clampHard("purchase", n("rentalMarketPrice"));
+    var purchase = utils.clampHard("purchase", n("rentalPurchasePrice"));
+    if (purchase == null) purchase = sliderBasePrice || market;
     var yieldRate = rentalBenchmark && Number(rentalBenchmark.income_yield);
     if (purchase > 0 && Number.isFinite(yieldRate) && yieldRate > 0) {
-      return purchase * yieldRate / 100 / 12;
+      return utils.clampHard("rent", purchase * yieldRate / 100 / 12);
     }
-    var base = n("rentalMarketPrice") || sliderBasePrice || purchase;
-    return base > 0 ? base * 0.005 : null;
+    var base = market || sliderBasePrice || purchase;
+    return base > 0 ? utils.clampHard("rent", base * 0.005) : null;
+  }
+  function applyInvalidRentalUrlDefaults() {
+    var utils = window.analysisSliderUtils;
+    var seeded = false;
+    if (invalidRentalUrlFields.rentalPurchasePrice && n("rentalPurchasePrice") <= 0) {
+      var market = utils.clampHard("purchase", n("rentalMarketPrice"));
+      if (market != null) {
+        $("rentalPurchasePrice").value = String(market);
+        lastValidRentalInputs.rentalPurchasePrice = market;
+        updateAcquisitionCosts();
+        updateEstimatedTax();
+        delete invalidRentalUrlFields.rentalPurchasePrice;
+        seeded = true;
+      }
+    }
+    if (invalidRentalUrlFields.rentalMonthlyRent && n("rentalMonthlyRent") <= 0) {
+      var rent = utils.clampHard("rent", rentCenter());
+      if (rent == null) {
+        var marketBase = utils.clampHard("purchase", n("rentalMarketPrice"));
+        rent = marketBase == null ? null : utils.clampHard("rent", marketBase * 0.005);
+      }
+      if (rent != null) {
+        $("rentalMonthlyRent").value = String(rent);
+        lastValidRentalInputs.rentalMonthlyRent = rent;
+        delete invalidRentalUrlFields.rentalMonthlyRent;
+        seeded = true;
+      }
+    }
+    if (seeded) resetRentCenterBase();
+  }
+  function resetRentCenterBase() {
+    var utils = window.analysisSliderUtils;
+    var next = utils.clampHard("rent", rentCenter());
+    rentCenterBase = next;
+    rentCenterEdited = false;
   }
   function rentalSliderConfiguration() {
     var utils = window.analysisSliderUtils;
@@ -138,7 +238,12 @@
     var purchase = purchaseBounds();
     var purchaseValue = n("rentalPurchasePrice");
     var depositMax = Math.max(0, Math.min(purchaseValue * 0.3, 5000));
-    var rent = utils.rentBounds(rentCenter());
+    var rent = rentCenterBase == null ? null : utils.rentBounds(rentCenterBase);
+    if (rent) {
+      rent.min = Math.max(utils.HARD_CAPS.rent[0], rent.min);
+      rent.max = Math.min(utils.HARD_CAPS.rent[1], rent.max);
+      rent.step = utils.niceStep((rent.max - rent.min) / 40);
+    }
     return {
       rentalPurchasePrice: purchase,
       rentalLoanAmount: purchase && purchaseValue > 0 ? {
@@ -163,6 +268,19 @@
   function syncSliderBounds(expandField, skipField) {
     var utils = window.analysisSliderUtils;
     if (!utils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
+    ["rentalPurchasePrice", "rentalDeposit", "rentalMonthlyRent",
+      "rentalVacancyMonths", "rentalLoanAmount"].forEach(function (field) {
+      var value = $(field).value;
+      if (value !== "" && clampRentalValue(field, value) == null) {
+        var corrected = field === "rentalLoanAmount" && n("rentalPurchasePrice") > 0
+          ? Math.min(Number(value), loanMaximum())
+          : lastValidRentalInputs[field];
+        $(field).value = corrected == null ? "" : String(corrected);
+        if (corrected != null) lastValidRentalInputs[field] = corrected;
+      } else if (value !== "") {
+        lastValidRentalInputs[field] = clampRentalValue(field, value);
+      }
+    });
     var bounds = rentalSliderConfiguration();
     if (expandField && bounds[expandField]) {
       bounds[expandField] = utils.includeValue(bounds[expandField], n(expandField));
@@ -190,6 +308,7 @@
       var button = document.querySelector('[data-rental-value="' + field + '"]');
       if (button) button.textContent = formatInputValue(field, $(field).value);
     });
+    updateRentalLimitLabels(bounds);
     var buyHeading = document.querySelector("#rentalSliders .rental-buy-heading");
     if (buyHeading) buyHeading.textContent = "매수 조건 (대출금리 연 " + formatInputValue("rate", n("rentalLoanRate")).replace("만원", "%")
       + ", " + $("rentalLoanMethod").selectedOptions[0].text + ")";
@@ -250,7 +369,9 @@
     return '<div class="rental-slider-row" data-rental-row="' + field + '"><div class="rental-slider-head"><label for="rentalSlider' + field.slice(6) + '">' + label + '</label>'
       + '<span><button type="button" class="rental-value-button slider-value" data-rental-value="' + field + '" data-value-for="' + field + '" aria-label="' + label + ' 직접 입력">' + formatInputValue(field, $(field).value) + '</button>'
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
-      + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '"></div>';
+      + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
+      + '<span class="rental-range-limits" data-rental-limits="' + field + '" aria-hidden="true"><span>—</span><span>—</span></span>'
+      + '<span class="rental-slider-input-error" data-rental-input-error="' + field + '" role="alert" hidden></span></div>';
   }
   function setupRentalSliders() {
     var host = $("rentalSliders");
@@ -271,10 +392,23 @@
       var range = event.target.closest("[data-rental-slider]");
       if (!range) return;
       var field = range.dataset.rentalSlider;
+      delete invalidRentalUrlFields[field];
+      var safeValue = clampRentalValue(field, range.value);
+      if (safeValue == null) {
+        range.value = $(field).value || range.min;
+        setRentalInputError(field, field === "rentalMonthlyRent"
+          ? "월세는 1~1,000만원 범위로 입력하세요" : "입력값이 허용 범위를 벗어났습니다.");
+        return;
+      }
+      range.value = String(safeValue);
+      lastValidRentalInputs[field] = safeValue;
+      invalidRentalInputs[field] = false;
+      rentCenterEdited = true;
+      setRentalInputError(field, "");
       if (field === "rentalVacancyMonths") vacancyAssumed = false;
-      $(field).value = range.value;
+      $(field).value = String(safeValue);
       var valueButton = document.querySelector('[data-rental-value="' + field + '"]');
-      if (valueButton) valueButton.textContent = formatInputValue(field, range.value);
+      if (valueButton) valueButton.textContent = formatInputValue(field, safeValue);
       if (field === "rentalPurchasePrice") {
         updateAcquisitionCosts();
         updateEstimatedTax();
@@ -291,21 +425,42 @@
       if (!button) return;
       var field = button.dataset.rentalValue;
       if (button.querySelector("input")) return;
+      var hardKind = rentalHardKind(field);
+      var hardBounds = hardKind && window.analysisSliderUtils.HARD_CAPS[hardKind];
       var input = document.createElement("input");
       input.type = "number";
-      input.step = "1";
-      input.min = "0";
+      input.step = field === "rentalVacancyMonths" ? "0.5" : "1";
+      input.min = hardKind === "loan" ? "0" : hardBounds ? String(hardBounds[0]) : "0";
+      input.max = hardKind === "loan" ? String(n("rentalPurchasePrice"))
+        : hardBounds ? String(hardBounds[1]) : "";
       input.value = $(field).value;
       input.setAttribute("aria-label", field === "rentalVacancyMonths" ? "연간 공실 개월" : "금액(만원)");
+      setRentalInputError(field, "");
       button.textContent = "";
       button.appendChild(input);
       input.focus();
       input.select();
       var commit = function () {
         if (!button.contains(input)) return;
+        delete invalidRentalUrlFields[field];
         var raw = input.value.trim();
-        if (raw !== "" && Number.isFinite(Number(raw))) {
-          $(field).value = String(Math.max(0, Number(raw)));
+        var parsed = raw === "" ? null : clampRentalValue(field, raw);
+        if (raw !== "" && Number.isFinite(Number(raw)) && parsed == null) {
+          setRentalInputError(field, field === "rentalMonthlyRent"
+            ? "월세는 1~1,000만원 범위로 입력하세요" : "입력값이 허용 범위를 벗어났습니다.");
+          button.textContent = formatInputValue(field, $(field).value);
+          return;
+        }
+        if (parsed == null) setRentalInputError(field, "");
+        if (parsed != null) {
+          setRentalInputError(field, "");
+          $(field).value = String(parsed);
+          lastValidRentalInputs[field] = parsed;
+          invalidRentalInputs[field] = false;
+          if (field === "rentalMonthlyRent") {
+            resetRentCenterBase();
+          }
+          rentCenterEdited = true;
           if (field === "rentalVacancyMonths") vacancyAssumed = false;
           if (field === "rentalPurchasePrice") {
             updateAcquisitionCosts();
@@ -787,12 +942,14 @@
         : "소규모 상가 전국 전체 평균 " + months.toFixed(1) + "개월"
           + (candidate && candidate.vacancy_period ? " (" + quarterLabel(candidate.vacancy_period) + ")" : "")
           + " · 직접 입력 시 사용자 값 우선";
+      if (!rentCenterEdited) resetRentCenterBase();
       syncSliderBounds();
       calculate();
     } catch (ignore) {
       if (seq !== buildingSequence || String(id) !== loadedBuildingId) return;
       rentalBenchmark = null;
       $("rentalVacancyMonthsHint").textContent = "R-ONE 평균을 불러오지 못했습니다. 직접 입력할 수 있습니다.";
+      if (!rentCenterEdited) resetRentCenterBase();
       syncSliderBounds();
       calculate();
     }
@@ -1120,6 +1277,7 @@
         $("rentalMarketPrice").placeholder = "직접 입력";
         setMarketStatus(result.reason || "실거래 자료가 부족해 자동 기준가를 계산할 수 없습니다.", "unavailable");
         sliderBasePrice = null;
+        if (!rentCenterEdited) resetRentCenterBase();
         syncSliderBounds();
         calculate();
         return;
@@ -1130,6 +1288,7 @@
         $("rentalMarketPrice").placeholder = "직접 입력";
         setMarketStatus("실거래 계산 표본과 근거 목록이 일치하지 않아 자동 기준가를 제공하지 않습니다.", "error");
         sliderBasePrice = null;
+        if (!rentCenterEdited) resetRentCenterBase();
         syncSliderBounds();
         calculate();
         return;
@@ -1139,6 +1298,8 @@
         $("rentalMarketPrice").value = String(automaticMarketPrice);
       }
       sliderBasePrice = null;
+      applyInvalidRentalUrlDefaults();
+      if (!rentCenterEdited) resetRentCenterBase();
       syncSliderBounds();
       calculate();
       var range = result.area_range || {};
@@ -1163,6 +1324,7 @@
         $("rentalMarketPrice").placeholder = "직접 입력";
         setMarketStatus("최근 실거래를 불러오지 못했습니다. 직접 입력할 수 있습니다.", "error");
         sliderBasePrice = null;
+        if (!rentCenterEdited) resetRentCenterBase();
         syncSliderBounds();
         calculate();
       }
@@ -1172,10 +1334,12 @@
     if (sharedValuesRestored) return;
     var params = new URLSearchParams(location.search);
     var hasRentalValues = Object.keys(sharedFieldParams).some(function (key) { return params.has(key); })
-      || params.has("r_yieldmode");
+      || params.has("r_yieldmode") || params.has("buy") || params.has("rent");
     if (!hasRentalValues) return;
     sharedValuesRestored = true;
     loadingSharedValues = true;
+    var invalidKeys = [];
+    var invalidFields = Object.create(null);
     Object.keys(sharedFieldParams).forEach(function (key) {
       if (!params.has(key)) return;
       var field = sharedFieldParams[key];
@@ -1193,8 +1357,33 @@
         vacancyAssumed = true;
         return;
       }
-      if (value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0) $(field).value = value;
+      var kind = rentalHardKind(field);
+      var normalized = kind ? window.analysisSliderUtils.clampHard(kind, value,
+        field === "rentalLoanAmount" ? n("rentalPurchasePrice") : undefined)
+        : Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
+      if (normalized == null) {
+        invalidKeys.push(key);
+        invalidFields[field] = true;
+        invalidRentalUrlFields[field] = true;
+        warnInvalidRentalParam(key, value);
+        return;
+      }
+      $(field).value = String(normalized);
+      if (kind) lastValidRentalInputs[field] = normalized;
     });
+    [["buy", "rentalPurchasePrice", "r_purchase"], ["rent", "rentalMonthlyRent", "r_rent"]]
+      .forEach(function (entry) {
+        var key = entry[0];
+        if (!params.has(key)) return;
+        var value = params.get(key);
+        var valid = window.analysisSliderUtils.clampHard(
+          entry[1] === "rentalPurchasePrice" ? "purchase" : "rent", value);
+        if (valid == null) {
+          invalidKeys.push(key);
+          invalidRentalUrlFields[entry[1]] = true;
+          if (!invalidFields[entry[1]]) warnInvalidRentalParam(key, value);
+        }
+      });
     var mode = params.get("r_yieldmode");
     if (mode === "equity" || mode === "net") positionMode = mode;
     loadingSharedValues = false;
@@ -1205,6 +1394,8 @@
     if (n("rentalVacancyMonths") > 0 || params.has("r_vacancy") && params.get("r_vacancy") !== "") {
       vacancyAssumed = false;
     }
+    cleanInvalidRentalParams(invalidKeys);
+    resetRentCenterBase();
     syncSliderBounds();
   }
   async function loadBuilding() {
@@ -1212,6 +1403,8 @@
     var seq = ++buildingSequence;
     cancelRentalSliderChange();
     if (!id) {
+      rentCenterBase = null;
+      rentCenterEdited = false;
       loadedBuildingId = "";
       loadedBuilding = null;
       sliderBasePrice = null;
@@ -1252,6 +1445,7 @@
       setMarketStatus("호실 면적 목록을 확인하고 있습니다.", "loading");
     }
     restoreSharedRentalValues();
+    resetRentCenterBase();
     try {
       var responses = await Promise.all([
         fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }),
@@ -1296,6 +1490,24 @@
   setupRentalSliders();
   ids.forEach(function (id) {
     $(id).addEventListener("input", function () {
+      var hardKind = rentalHardKind(id);
+      if (hardKind) {
+        delete invalidRentalUrlFields[id];
+        var safeValue = clampRentalValue(id, $(id).value);
+        if (safeValue == null) {
+          invalidRentalInputs[id] = true;
+          $(id).value = lastValidRentalInputs[id] == null ? "" : String(lastValidRentalInputs[id]);
+          setRentalInputError(id, id === "rentalMonthlyRent"
+            ? "월세는 1~1,000만원 범위로 입력하세요"
+            : "입력값이 허용 범위를 벗어났습니다.");
+          return;
+        }
+        $(id).value = String(safeValue);
+        lastValidRentalInputs[id] = safeValue;
+        invalidRentalInputs[id] = false;
+        rentCenterEdited = true;
+        setRentalInputError(id, "");
+      }
       if (id === "rentalVacancyMonths" && !loadingSharedValues) vacancyAssumed = false;
       if (id === "rentalPropertyTax") taxManuallyEdited = true;
       if (id === "rentalMarketPrice") {
@@ -1326,7 +1538,12 @@
       calculate();
     });
     $(id).addEventListener("change", function () {
+      if (invalidRentalInputs[id]) {
+        invalidRentalInputs[id] = false;
+        return;
+      }
       if (id === "rentalUnitArea") {
+        resetRentCenterBase();
         syncSliderBounds();
         queueRentalSliderChange(id, true);
         return;
@@ -1336,7 +1553,8 @@
         syncSliderBounds();
         return;
       }
-      if (["rentalPurchasePrice", "rentalDeposit", "rentalMonthlyRent", "rentalVacancyMonths"].indexOf(id) >= 0) {
+      if (["rentalPurchasePrice", "rentalLoanAmount", "rentalDeposit",
+        "rentalMonthlyRent", "rentalVacancyMonths"].indexOf(id) >= 0) {
         syncSliderBounds(id);
         queueRentalSliderChange(id, true);
       }
@@ -1351,8 +1569,13 @@
     clearTimeout(areaLookupTimer);
     cancelRentalSliderChange();
     sliderBasePrice = null;
+    rentCenterBase = null;
+    rentCenterEdited = false;
     ids.forEach(function (id) { $(id).value = ""; });
+    lastValidRentalInputs = Object.create(null);
+    invalidRentalUrlFields = Object.create(null);
     $("rentalVacancyMonths").value = "";
+    resetRentCenterBase();
     vacancyAssumed = true;
     positionMode = "net";
     $("rentalVacancyRate").value = "";

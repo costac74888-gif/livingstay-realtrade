@@ -632,6 +632,54 @@
   }
 }
 
+/* Keep slider captions readable and leave room for the range-end labels. */
+.operation-slider-row {
+  min-width: 0;
+}
+.operation-slider-head {
+  min-width: 0;
+}
+.operation-slider-head label {
+  flex: none;
+  white-space: nowrap;
+}
+.operation-slider-head > span {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.operation-slider-head .operation-value-button {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.operation-slider-bounds {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -5px 0 8px;
+  color: #87918f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.operation-slider-bounds > :last-child {
+  text-align: right;
+}
+@media (max-width: 650px) {
+  .operation-slider-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .operation-slider-head > span {
+    max-width: calc(100% - 44px);
+  }
+}
+
 @media (max-width: 650px) {
   .operation-slider-list {
     grid-template-columns: minmax(0, 1fr);

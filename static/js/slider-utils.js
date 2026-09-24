@@ -1,6 +1,26 @@
 (function (window) {
   "use strict";
 
+  var HARD_CAPS = Object.freeze({
+    purchase: Object.freeze([100, 300000]),
+    deposit: Object.freeze([0, 20000]),
+    rent: Object.freeze([1, 1000]),
+    vacancy: Object.freeze([0, 12]),
+    adr: Object.freeze([10000, 2000000]),
+    occ: Object.freeze([0, 100]),
+    opex: Object.freeze([0, 90]),
+    mgmtFee: Object.freeze([0, 90]),
+  });
+
+  function clampHard(kind, value, purchasePrice) {
+    var bounds = kind === "loan" ? [0, Number(purchasePrice)] : HARD_CAPS[kind];
+    if (!bounds) throw new Error("알 수 없는 슬라이더 항목: " + kind);
+    if (value === "" || value === null || value === undefined) return null;
+    var parsed = Number(value);
+    return Number.isFinite(parsed) && Number.isFinite(bounds[1])
+      && parsed >= bounds[0] && parsed <= bounds[1] ? parsed : null;
+  }
+
   function niceStep(rawStep) {
     if (!Number.isFinite(rawStep) || rawStep <= 0) throw new RangeError("간격은 양수여야 합니다.");
     var magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
@@ -49,6 +69,8 @@
   }
 
   window.analysisSliderUtils = Object.freeze({
+    HARD_CAPS: HARD_CAPS,
+    clampHard: clampHard,
     niceStep: niceStep,
     formatMan: formatMan,
     purchaseBounds: purchaseBounds,

@@ -306,6 +306,10 @@ async function run() {
         metricCount: document.querySelectorAll("#operationCoreMetrics .operation-metric").length,
         costShare: document.getElementById("operationCostShare")?.textContent || "",
         source: document.querySelector("#operationAnalysis .operation-benchmark-note")?.textContent || "",
+        sliderLimits: Object.fromEntries(Array.from(document.querySelectorAll(
+          "#operationSliders .operation-slider-bounds",
+        )).map((node) => [node.closest("[data-operation-row]")?.dataset.operationRow,
+          Array.from(node.children).map((child) => child.textContent.trim())])),
         emptyPanel: document.querySelector("#operationAnalysis .detail-empty"),
         resultsColumn: document.querySelector(".operation-results-column")?.getBoundingClientRect().toJSON(),
         sensitivityBox: document.getElementById("operationSensitivity").getBoundingClientRect().toJSON(),
@@ -322,6 +326,9 @@ async function run() {
     "실질 공제율 48.9%와 소유주 몫 51.1%가 일치하지 않습니다.");
     expect(first.sliderCount === 6 && first.metricCount === 5,
       "운영 2개·비용 2개·비교 2개 슬라이더 또는 핵심지표 5개가 누락됐습니다.");
+    expect(first.sliderLimits.compareRent?.length === 2
+      && first.sliderLimits.compareRent.every((value) => /만(?:원)?$/.test(value)),
+    `비교 월세 슬라이더의 min/max 라벨이 없습니다: ${JSON.stringify(first.sliderLimits)}`);
     expect(first.assumptions.length >= 4, "지역 ADR/OCC 및 비용 기본값 가정 배지가 표시되지 않습니다.");
     expect(!first.emptyPanel, "자료 입력 전 빈 결과 패널이 남아 있습니다.");
     expect(first.source.includes("호텔") && first.source.includes("생활숙박"),
@@ -451,12 +458,17 @@ async function run() {
         .every((details) => !details.open),
       sliderTouchAction: getComputedStyle(document.querySelector('[data-operation-slider="adr"]')).touchAction,
       sliderRowHeight: document.querySelector('[data-operation-row="adr"]').getBoundingClientRect().height,
+      endpointStyle: getComputedStyle(document.querySelector(
+        '[data-operation-row="compareRent"] .operation-slider-bounds',
+      )).fontSize,
     }));
     expect(mobile.scroll <= mobile.viewport && mobile.body <= mobile.viewport,
       `360px 모바일 가로 넘침: ${JSON.stringify(mobile)}`);
     expect(mobile.detailsClosed, "접이식 산출근거·TOP5·건물환산 세부가 기본으로 열려 있습니다.");
     expect(mobile.sliderTouchAction === "pan-y" && mobile.sliderRowHeight >= 44,
       `모바일 운영 슬라이더의 터치 영역·세로 스크롤 설정이 부족합니다: ${JSON.stringify(mobile)}`);
+    expect(mobile.endpointStyle === "11px",
+      `모바일 비교 월세 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
     expect(mobile.chartLayout
       && Math.abs(mobile.chartLayout.baselinePixelX - mobile.chartLayout.chartCenterX) < 2
       && Math.abs(mobile.chartLayout.baselinePixelY - mobile.chartLayout.chartCenterY) < 2,
@@ -604,6 +616,12 @@ async function run() {
     });
     const ordinaryPage = await ordinaryContext.newPage();
     ordinaryPage.on("pageerror", (error) => errors.push(error.message));
+    const sliderWarnings = [];
+    ordinaryPage.on("console", (message) => {
+      if (message.type() === "warning" && message.text().startsWith("[slider] 비정상 값 무시:")) {
+        sliderWarnings.push(message.text());
+      }
+    });
     await installApiMocks(ordinaryPage, []);
     const ordinaryUrl = new URL("/analysis", BASE_URL);
     ordinaryUrl.searchParams.set("building_id", BUILDING_ID);
@@ -637,6 +655,63 @@ async function run() {
       && ordinaryReturned.params.occ === "68" && ordinaryReturned.params.buy === "5200"
       && ordinaryReturned.params.rent === "90",
     `일반 링크의 시나리오 파라미터가 임대 탭 왕복 후 보존되지 않았습니다: ${JSON.stringify(ordinaryReturned.params)}`);
+
+    const compareRentSlider = ordinaryPage.locator('[data-operation-slider="compareRent"]');
+    const stableCompareRentMax = await compareRentSlider.getAttribute("max");
+    for (let index = 0; index < 5; index++) {
+      await compareRentSlider.evaluate((element) => {
+        element.value = element.max;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await ordinaryPage.waitForTimeout(350);
+      await ordinaryPage.locator('[data-operation-slider="purchasePrice"]').evaluate((element, cycle) => {
+        element.value = cycle % 2 === 0 ? element.min : element.max;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      }, index);
+      await ordinaryPage.waitForTimeout(350);
+      await compareRentSlider.evaluate((element) => {
+        element.value = element.max;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await ordinaryPage.waitForTimeout(350);
+    }
+    const finalCompareRentMax = await compareRentSlider.getAttribute("max");
+    expect(finalCompareRentMax === stableCompareRentMax,
+      `매입가 변경 후 숙박 비교 월세 상한이 이동했습니다: ${stableCompareRentMax} → ${finalCompareRentMax}`);
+
+    const malformedOperation = new URL("/analysis", BASE_URL);
+    malformedOperation.searchParams.set("building_id", String(BUILDING_ID));
+    malformedOperation.searchParams.set("mode", "operation");
+    malformedOperation.searchParams.set("adr", "999999999");
+    malformedOperation.searchParams.set("occ", "105");
+    malformedOperation.searchParams.set("opex_ratio", "99");
+    malformedOperation.searchParams.set("mgmt_fee", "100");
+    malformedOperation.searchParams.set("buy", "356240000");
+    malformedOperation.searchParams.set("rent", "85129212260000");
+    malformedOperation.searchParams.set("preserve", "1");
+    await ordinaryPage.goto(malformedOperation.toString(), { waitUntil: "domcontentloaded" });
+    await ready(ordinaryPage);
+    await ordinaryPage.waitForFunction(() => {
+      const params = new URLSearchParams(location.search);
+      return ["adr", "occ", "opex_ratio", "mgmt_fee", "buy", "rent"]
+        .every((key) => !params.has(key)) && params.get("preserve") === "1";
+    });
+    const cleanedOperation = await ordinaryPage.evaluate(() => ({
+      state: window.__operationAnalysisState,
+      params: Object.fromEntries(new URLSearchParams(location.search)),
+    }));
+    expect(cleanedOperation.params.preserve === "1"
+      && cleanedOperation.state.adr >= 10000 && cleanedOperation.state.adr <= 2000000
+      && cleanedOperation.state.occ >= 0 && cleanedOperation.state.occ <= 100
+      && cleanedOperation.state.opexRatio <= 90 && cleanedOperation.state.mgmtFeeRatio <= 90
+      && cleanedOperation.state.purchasePrice == null
+      && cleanedOperation.state.compareRent <= 1000,
+    `잘못된 운영 URL 값이 정화되지 않았습니다: ${JSON.stringify(cleanedOperation)}`);
+    expect(sliderWarnings.length === 6,
+      `잘못된 운영 URL 값 6개에 대한 경고가 필요합니다: ${JSON.stringify(sliderWarnings)}`);
     await ordinaryContext.close();
 
     const lowAdrPage = await context.newPage();

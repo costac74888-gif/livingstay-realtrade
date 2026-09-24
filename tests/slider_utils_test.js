@@ -38,4 +38,30 @@ assert.equal(utils.formatMan(4000), "4,000만원");
 assert.equal(utils.formatMan(52000), "5억 2,000만원");
 assert.equal(utils.formatMan(32), "32만원");
 
+for (const [kind, min, max] of [
+  ["purchase", 100, 300000],
+  ["deposit", 0, 20000],
+  ["rent", 1, 1000],
+  ["vacancy", 0, 12],
+  ["adr", 10000, 2000000],
+  ["occ", 0, 100],
+  ["opex", 0, 90],
+  ["mgmtFee", 0, 90],
+]) {
+  assert.equal(utils.HARD_CAPS[kind][0], min, `${kind} hard minimum`);
+  assert.equal(utils.HARD_CAPS[kind][1], max, `${kind} hard maximum`);
+  assert.equal(utils.clampHard(kind, min), min, `${kind} accepts minimum`);
+  assert.equal(utils.clampHard(kind, max), max, `${kind} accepts maximum`);
+  assert.equal(utils.clampHard(kind, min - 1), null, `${kind} rejects below minimum`);
+  assert.equal(utils.clampHard(kind, max + 1), null, `${kind} rejects above maximum`);
+}
+assert.equal(utils.clampHard("loan", 0, 5000), 0);
+assert.equal(utils.clampHard("loan", 5000, 5000), 5000);
+assert.equal(utils.clampHard("loan", 5001, 5000), null);
+assert.equal(utils.clampHard("loan", 1, 0), null);
+for (const invalid of ["", null, undefined, "NaN", "Infinity", -Infinity, NaN]) {
+  assert.equal(utils.clampHard("rent", invalid), null, `rent rejects ${String(invalid)}`);
+}
+assert.throws(() => utils.clampHard("unknown", 1), /알 수 없는 슬라이더 항목/);
+
 console.log("공통 슬라이더 유틸리티 테스트 통과");

@@ -265,8 +265,54 @@
 /* A larger touch target without intercepting vertical page scrolling. */
 .rental-slider-row,
 .operation-slider-row {
+  min-width: 0;
   min-height: 44px;
   touch-action: pan-y;
+}
+.rental-slider-head label,
+.operation-slider-head label {
+  flex: none;
+  white-space: nowrap;
+}
+.rental-slider-head > span,
+.operation-slider-head > span {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+[data-rental-value],
+.operation-value-button {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rental-range-limits,
+.operation-slider-bounds {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -5px 0 8px;
+  color: #87918f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.rental-range-limits > :last-child,
+.operation-slider-bounds > :last-child {
+  text-align: right;
+}
+.rental-slider-input-error:not([hidden]),
+.operation-slider-error {
+  display: block;
+  color: #a92e2e;
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 3px 0 7px;
 }
 .rental-slider-row input[type="range"],
 .rental-slider-row .rental-range,
@@ -322,6 +368,22 @@
 }
 
 @media (max-width: 650px) {
+  .rental-slider-list,
+  .operation-slider-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rental-slider-head,
+  .operation-slider-head {
+    min-width: 0;
+  }
+  .rental-slider-head > span,
+  .operation-slider-head > span {
+    max-width: calc(100% - 44px);
+  }
+  [data-rental-value],
+  .operation-value-button {
+    max-width: 100%;
+  }
   .rental-positioning .positioning-map {
     height: 300px;
     min-height: 300px;
