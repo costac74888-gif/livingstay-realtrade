@@ -47,9 +47,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
       && report.mapLayout.preparedHeight >= 155
       && report.mapLayout.propertyPoint === true
       && report.propertyPoint))
-    && (mode !== "operation" || (report.address && !report.address.includes("—")
-      && report.result.includes("지역 평균 대비 ADR")
-      && report.metricLabels.join("|") === "ADR|OCC|RevPAR|적용 객실|지역 평균 ADR|지역 평균 OCC"
+     && (mode !== "operation" || (report.address && !report.address.includes("—")
+       && report.result.includes("월세 손익분기 OCC")
+       && report.metricLabels.join("|") === "RevPAR|호실 월 매출|호실 월 순수익|월세 대비|연 수익률"
       && report.sideMetricCount === 4
       && report.sideMetricValues.every(value => value && !value.startsWith("—"))
       && report.operationQuadrantsFit))
@@ -585,6 +585,7 @@ async function run() {
       roomCount: document.getElementById("operationRoomCount").textContent,
       appliedRoomCount: document.getElementById("operationRoomCountInput").value,
       detail: document.getElementById("operationDetail").textContent,
+      metrics: document.getElementById("operationCoreMetrics").textContent,
       adrBaseline: document.getElementById("operationAdrBaseline").textContent,
       occBaseline: document.getElementById("operationOccBaseline").textContent,
       uploadStatus: document.getElementById("operationFileStatus").textContent,
@@ -603,6 +604,7 @@ async function run() {
       roomCount: document.getElementById("operationRoomCount").textContent,
       appliedRoomCount: document.getElementById("operationRoomCountInput").value,
       detail: document.getElementById("operationDetail").textContent,
+      metrics: document.getElementById("operationCoreMetrics").textContent,
       topRows: document.querySelectorAll("#operationTopRows tr").length,
       chart: !!Chart.getChart("operationChart"),
       lodgingOptions: document.querySelectorAll("#operationLodging option").length,
@@ -619,11 +621,12 @@ async function run() {
     expect(operationResult.roomCount.includes("200실"), "선택 영업신고 업소의 객실 수가 운영분석에 자동 적용되지 않았습니다.");
     expect(uploadedOperationResult.roomCount.includes("200실")
       && uploadedOperationResult.appliedRoomCount === "200"
-      && uploadedOperationResult.detail.includes("선택 테스트 자산")
-      && uploadedOperationResult.detail.includes("200실")
-      && uploadedOperationResult.detail.includes("81,000원")
-      && uploadedOperationResult.detail.includes("자동분석"),
-      `업로드 후 선택 건물 기준 운영분석 결과가 유지되지 않았습니다: ${uploadedOperationResult.detail}`);
+      && uploadedOperationResult.renderState.selectedName === "선택 테스트 자산"
+      && uploadedOperationResult.metrics.includes("RevPAR")
+      && uploadedOperationResult.metrics.includes("호실 월 순수익")
+      && uploadedOperationResult.renderState.revpar === 81000
+      && Number.isFinite(uploadedOperationResult.renderState.monthlyNet),
+      `업로드 후 ADR·OCC 산출 운영지표가 유지되지 않았습니다: ${uploadedOperationResult.metrics}`);
     expect(operationResult.topRows === 5 && operationResult.chart,
       "운영 포지셔닝 차트 또는 지역 TOP 5가 표시되지 않았습니다.");
     expect(operationResult.lodgingOptions === 2 && operationResult.roomCount.includes("200실"),
@@ -632,7 +635,7 @@ async function run() {
       "자동 입력된 신고 객실 수를 사용자가 임의 수정할 수 없습니다.");
     expect(defaultOperationName === "선택 테스트 자산"
       && operationResult.operationName === "사용자 수정 상호"
-      && operationResult.detail.includes("사용자 수정 상호"),
+      && operationResult.renderState.selectedName === "사용자 수정 상호",
       "분석 상호가 건물명을 기본값으로 사용하거나 사용자 수정값을 반영하지 않습니다.");
     expect(uploadedOperationResult.adrBaseline.includes("원")
       && uploadedOperationResult.occBaseline.includes("%")
@@ -647,8 +650,8 @@ async function run() {
       && operationResult.detail.includes("180실"),
       "자동 입력된 신고 객실 수를 사용자가 임의 수정할 수 없습니다.");
     expect(operationResult.operationLayout.comparisonPoints === 6
-      && operationResult.operationLayout.comparisonColor === "#8798a8"
-      && operationResult.operationLayout.selectedRadius === 11
+      && operationResult.operationLayout.comparisonColor === "#7F77DD"
+      && operationResult.operationLayout.selectedRadius === 13
       && operationResult.operationLayout.pulseVisible
       && operationResult.operationLayout.baselineRegion === "속초시"
       && operationResult.operationLayout.baselineAdr === 210000

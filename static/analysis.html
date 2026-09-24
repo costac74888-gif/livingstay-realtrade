@@ -4,7 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>홈앤스테이 숙박자산 분석 | 부동산투자·임대수익·숙박운영</title>
 <meta name="description" content="관광수요와 숙박시설 실거래를 바탕으로 부동산투자, 임대수익, 숙박운영을 분석하는 홈앤스테이 숙박자산 분석">
-<link rel="icon" href="/static/img/favicon.ico"><link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/analysis.css"><link rel="stylesheet" href="/static/css/analysis-layout.css"><link rel="stylesheet" href="/static/css/analysis-mobile.css"><link rel="stylesheet" href="/static/css/analysis-chart-fixes.css"><link rel="stylesheet" href="/static/css/rental-analysis.css"><link rel="stylesheet" href="/static/css/rental-positioning.css">
+<link rel="icon" href="/static/img/favicon.ico"><link rel="stylesheet" href="/static/css/main.css"><link rel="stylesheet" href="/static/css/analysis.css"><link rel="stylesheet" href="/static/css/analysis-layout.css"><link rel="stylesheet" href="/static/css/analysis-mobile.css"><link rel="stylesheet" href="/static/css/analysis-chart-fixes.css"><link rel="stylesheet" href="/static/css/rental-analysis.css"><link rel="stylesheet" href="/static/css/rental-positioning.css"><link rel="stylesheet" href="/static/css/operation-redesign.css">
 <script src="/vendor/chart.umd.js?v=4.4.4"></script>
 <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey={{KAKAO_JS_KEY}}&autoload=false&_v={{KAKAO_SDK_V}}" defer></script>
 </head>
@@ -157,22 +157,45 @@
     <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>
     <section class="methodology"><strong>임대수익 계산 기준</strong><div class="formula">순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>자기자본 수익률 = 대출 원리금 차감 후 현금흐름 ÷ 실투자금<br>DSCR = 순영업소득 ÷ 연간 대출 원리금</div><div>재산세 자동값은 비주거용 자산의 매입가를 이용한 투자 참고 추정치이며 실제 과세표준·토지지분·공부상 용도에 따라 달라집니다. 세무 신고나 대출심사를 대신하지 않습니다.</div></section>
   </section>
-  <section id="operationAnalysis" class="hidden">
-    <div class="workspace">
-      <article class="analysis-card chart-card">
-        <div class="card-head"><div><h2>ADR × OCC 운영 포지셔닝 맵</h2><p>선택 숙박시설의 자기자료와 2024년 지역별 호텔업 운영현황을 비교합니다.</p></div></div>
-        <div class="operation-chart-wrap"><div class="operation-quadrant oq-tl"><b>② 고가동·저단가형</b><span>수요는 충분하지만 단가 개선 여지가 있습니다.</span></div><div class="operation-quadrant oq-tr"><b>① 프리미엄 우수운영</b><span>가격과 객실 판매가 모두 우수합니다.</span></div><div class="operation-quadrant oq-bl"><b>③ 운영개선 필요</b><span>판매채널과 가격전략을 함께 점검합니다.</span></div><div class="operation-quadrant oq-br"><b>④ 가격조정 필요</b><span>객실가격 또는 판매전략 점검이 필요합니다.</span></div><canvas id="operationChart" aria-label="ADR과 OCC 숙박 운영 포지셔닝 맵"></canvas><div id="operationSelectedPulse" class="selected-pulse operation-selected-pulse" aria-hidden="true"></div></div>
-         <div class="legend operation-legend"><span><i class="legend-selected"></i>선택 숙박시설</span><span><i class="legend-other"></i>같은 시도 시군구</span><span><i class="legend-line"></i>지역 평균 ADR</span><span><i class="legend-line"></i>지역 평균 OCC</span></div>
-         <div class="baseline-strip operation-baselines"><div class="baseline region-baseline">비교지역<b id="operationRegionBaseline">—</b></div><div class="baseline">평균 ADR<b id="operationAdrBaseline">—</b></div><div class="baseline">평균 OCC<b id="operationOccBaseline">—</b></div><div class="baseline">비교 표본<b id="operationSampleBaseline">—</b></div></div>
-      </article>
-      <aside class="analysis-card detail-card" id="operationDetail"><div class="detail-empty"><div><strong>건물과 운영자료를 입력해 주세요</strong>신고 객실 수와 자기 운영자료를 결합해<br>OCC·ADR·RevPAR를 바로 분석합니다.</div></div></aside>
+  <section id="operationAnalysis" class="hidden operation-analysis" aria-label="숙박운영분석">
+    <div class="operation-workspace">
+      <section id="operationSliders" class="analysis-card operation-sliders" aria-label="숙박 운영 조건"></section>
+      <section class="analysis-card chart-card operation-chart-card" id="operationChartCard">
+        <div class="card-head"><div><span class="eyebrow">ADR × OCC POSITION</span><h2>ADR × OCC 운영 포지션</h2><p>2024 지역별 호텔 운영현황과 현재 숙박 운영 조건을 비교합니다.</p></div></div>
+        <div class="operation-chart-wrap"><div class="operation-quadrant oq-tl"><b>② 고가동·저단가</b><span>가동률 개선, 단가 재검토</span></div><div class="operation-quadrant oq-tr"><b>① 프리미엄 우수운영</b><span>가격·가동률 모두 평균 이상</span></div><div class="operation-quadrant oq-bl"><b>③ 운영개선 필요</b><span>가격·판매전략을 함께 점검</span></div><div class="operation-quadrant oq-br"><b>④ 가격조정 필요</b><span>단가 또는 판매전략을 점검</span></div><canvas id="operationChart" aria-label="지역 평균 중앙 기준선, 내 호실, 시군구 ADR과 OCC 산점도 및 등수익 곡선"></canvas><div id="operationSelectedPulse" class="selected-pulse operation-selected-pulse" aria-hidden="true"></div></div>
+        <div class="legend operation-legend"><span><i class="legend-selected"></i>내 호실</span><span><i class="legend-nearby"></i>지역 평균</span><span><i class="legend-other"></i>시군구 호텔 평균</span><span><i class="legend-line"></i>지역 평균 매출선</span><span><i class="legend-line"></i>내 매출선</span></div>
+        <p class="operation-chart-explanation">같은 곡선 위의 점은 요금·가동률 조합이 달라도 객실당 매출이 같습니다.</p>
+        <p class="operation-benchmark-note">시군구 비교점은 2024년 지역별 호텔 운영현황 통계이며, 생활숙박시설의 위탁 운영실적과 다를 수 있습니다. 관측값이 없는 지역은 임의 추정하지 않습니다.</p>
+        <div class="baseline-strip operation-baselines"><div class="baseline region-baseline">비교지역<b id="operationRegionBaseline">—</b></div><div class="baseline">평균 ADR<b id="operationAdrBaseline">—</b></div><div class="baseline">평균 OCC<b id="operationOccBaseline">—</b></div><div class="baseline">비교 표본<b id="operationSampleBaseline">—</b></div></div>
+        <div class="operation-summary-chips"><section class="summary-grid operation-summary" id="operationSummary" aria-label="비교지역과 평균 요약"></section></div>
+      </section>
+      <section id="operationCoreMetrics" class="analysis-card operation-core-metrics" aria-label="숙박 운영 핵심 지표"></section>
+      <section id="operationSensitivity" class="analysis-card operation-sensitivity" aria-label="ADR과 OCC 민감도"></section>
+      <section id="operationVerdict" class="analysis-card operation-verdict" aria-live="polite"></section>
     </div>
-    <section class="analysis-card recommendation-card"><div class="recommendation-head"><h2 id="operationTopTitle">해당 지역 우수 숙박 운영지표 TOP 5</h2><span>RevPAR 우선 순위</span></div><div class="recommendation-scroll"><table><thead><tr><th>순위</th><th>지역</th><th>ADR</th><th>OCC</th><th>RevPAR</th><th>외국인 비율</th><th>운영평가</th></tr></thead><tbody id="operationTopRows"></tbody></table></div></section>
-    <section class="methodology"><strong>운영분석 산정근거</strong><div id="operationMethodRegion">선택 건물의 주소로 비교지역을 자동 산정합니다.</div><div class="formula">OCC = 판매 객실 수 ÷ (영업신고 객실 수 × 영업일 수) × 100<br>ADR = 객실매출 ÷ 판매 객실 수<br>RevPAR = ADR × OCC<br>사분면 기준선 = 선택 건물이 속한 시도의 시군구 운영지표 평균 ADR · 평균 OCC</div><div class="formula"><b>[가상 산정 예시] B 숙박시설의 30일 운영실적</b><br>가정: 영업신고 객실 20실, 영업일 30일, 판매 객실 450실박(Room Nights Sold), 객실매출 67,500,000원<br>① <b>공급가능 객실수(Room Nights Available)</b> = 20실 × 30일 = 600실박<br>② <b>OCC(Occupancy Rate·객실점유율)</b> = 450실박 ÷ 600실박 × 100 = 75.0%<br>③ <b>ADR(Average Daily Rate·평균판매객실단가)</b> = 67,500,000원 ÷ 450실박 = 150,000원<br>④ <b>RevPAR(Revenue per Available Room·판매가능객실당매출)</b> = ADR 150,000원 × OCC 75.0% = 112,500원<br>⑤ <b>사분면 판정</b>: 비교지역 평균이 ADR 130,000원·OCC 68.0%라면 B시설은 두 기준선을 모두 웃돌아 <b>‘프리미엄 우수운영’</b> 구간입니다.</div><div>위 숫자와 B시설은 계산 이해를 위한 가상 샘플이며 실제 운영실적이 아닙니다. 공공 비교점은 2024년 호텔업 운영현황의 지역·등급 집계이며 개별 호텔 실적이 아닙니다. 선택 숙박시설 수치는 사용자가 올린 자기자료를 자동 분석한 참고값입니다.</div></section>
-    <section class="summary-grid operation-summary" id="operationSummary"></section>
+    <details id="operationBasisDetails" class="analysis-card operation-details">
+      <summary>운영분석 산출근거 <span>ADR · OCC · RevPAR · 월 매출 및 비용 반영 방식</span></summary>
+      <div class="operation-methodology methodology">
+        <strong>운영분석 산정근거</strong>
+        <div id="operationMethodRegion">선택 건물의 주소로 비교지역을 자동 산정합니다.</div>
+        <div class="formula">OCC = 판매 객실 수 ÷ (영업신고 객실 수 × 영업일 수) × 100<br>ADR = 객실매출 ÷ 판매 객실 수<br>RevPAR = ADR × OCC<br>사분면 기준선 = 선택 건물이 속한 시도의 시군구 운영지표 평균 ADR · 평균 OCC</div>
+        <div class="formula"><b>위탁운영 비용 반영</b><br>호실 월 매출 = ADR × OCC × 월 일수 (기존 정의값, 없으면 30.4일)<br>매출이익 = 호실 월 매출 × (1 − 운영경비율)<br>호실 월 순수익 = 매출이익 × (1 − 위탁수수료율)<br>실질 공제율 = 1 − (1 − 운영경비율) × (1 − 위탁수수료율)<br>연 수익률 = 호실 월 순수익 × 12 ÷ 호실 매입가</div>
+        <div class="formula"><b>[가상 산정 예시] B 숙박시설의 30일 운영실적</b><br>가정: 영업신고 객실 20실, 영업일 30일, 판매 객실 450실박(Room Nights Sold), 객실매출 67,500,000원<br>① <b>공급가능 객실수(Room Nights Available)</b> = 20실 × 30일 = 600실박<br>② <b>OCC(Occupancy Rate·객실점유율)</b> = 450실박 ÷ 600실박 × 100 = 75.0%<br>③ <b>ADR(Average Daily Rate·평균판매객실단가)</b> = 67,500,000원 ÷ 450실박 = 150,000원<br>④ <b>RevPAR(Revenue per Available Room·판매가능객실당매출)</b> = ADR 150,000원 × OCC 75.0% = 112,500원<br>⑤ <b>사분면 판정</b>: 비교지역 평균이 ADR 130,000원·OCC 68.0%라면 B시설은 두 기준선을 모두 웃돌아 <b>‘프리미엄 우수운영’</b> 구간입니다.</div>
+        <p>위 숫자와 B시설은 계산 이해를 위한 가상 샘플이며 실제 운영실적이 아닙니다. 월 일수 자료를 확인할 수 없을 때는 30.4일을 가정값으로 사용합니다. 운영경비·위탁수수료 기본값은 참고용 가정값입니다. 실제 정산은 위탁운영 계약서와 월 정산서를 기준으로 하며, 계약 구조(정액·매출연동·이익배분)에 따라 달라질 수 있습니다.</p>
+      </div>
+    </details>
+    <details id="operationTopDetails" class="analysis-card operation-details">
+      <summary><span id="operationTopTitle">해당 지역 우수 숙박 운영지표 TOP 5</span><span>RevPAR 우선 순위 · 2024 지역별 호텔 운영현황</span></summary>
+      <div class="recommendation-scroll"><table class="operation-top-table"><thead><tr><th>순위</th><th>지역</th><th>ADR</th><th>OCC</th><th>RevPAR</th><th>외국인 비율</th><th>운영평가</th></tr></thead><tbody id="operationTopRows"></tbody></table></div>
+    </details>
+    <details id="operationBuildingDetails" class="analysis-card operation-details">
+      <summary>건물 전체 환산 <span>적용 객실 수 × 호실별 숙박 운영 수익</span></summary>
+      <div id="operationBuildingTotals" class="operation-building-totals" aria-live="polite"></div>
+    </details>
+    <aside class="analysis-card detail-card operation-detail-actions" id="operationDetail" aria-label="숙박 운영 보고서 작업"></aside>
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>
-<script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script><script src="/static/js/analysis-print.js"></script>
+ <script>window.PAGE_TITLE="";</script><script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/analysis.js"></script><script src="/static/js/operation-settings.js"></script><script src="/static/js/operation-analysis.js"></script><script src="/static/js/rental-analysis.js"></script><script src="/static/js/analysis-print.js"></script>
 </body>
 </html>

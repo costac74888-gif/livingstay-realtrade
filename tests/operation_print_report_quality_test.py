@@ -8,13 +8,18 @@ def main():
     script = (ROOT / "static/js/analysis-print.js").read_text(encoding="utf-8")
     css = (ROOT / "static/css/analysis.css").read_text(encoding="utf-8")
     required_script = [
-        '"#operationDetail .detail-address"',
-        "운영분석 완료",
-        '"지역 평균 대비 ADR "',
-        '["지역 평균 ADR"',
-        '["지역 평균 OCC"',
-        "normalizeOperation:true",
-        "normalizeOperation:true",
+        "function operationReport()",
+        "window.__operationAnalysisState",
+        '"#operationChartCard","#operationChart"',
+        '"operationSensitivity"',
+        '"operationBasisDetails"',
+        '"operationTopDetails"',
+        '"operationBuildingDetails"',
+        '"#operationCoreMetrics .metric-card',
+        "월세 손익분기 OCC",
+        "운영경비율",
+        "위탁수수료율",
+        "비교 기준·자료 출처",
         '[["적용 객실"',
         '<b>비교지역</b>',
     ]
