@@ -12,6 +12,20 @@
   var rentalBenchmarkItems = [];
   var benchmarkSource = "";
   var benchmarkNotice = "";
+  var positionChart = null;
+  var positionMode = "net";
+  var rafId = 0;
+  var vacancyAssumed = true;
+  var sliderInputs = {};
+  var lastCalculated = null;
+  var loadingSharedValues = false;
+  var sharedFieldParams = {
+    r_unit_area: "rentalUnitArea", r_purchase: "rentalPurchasePrice", r_deposit: "rentalDeposit",
+    r_rent: "rentalMonthlyRent", r_vacancy: "rentalVacancyMonths", r_loan: "rentalLoanAmount",
+    r_rate: "rentalLoanRate", r_years: "rentalLoanYears", r_method: "rentalLoanMethod",
+    r_management: "rentalManagementCost", r_other: "rentalOtherCost",
+  };
+  var sharedValuesRestored = false;
   var ids = [
     "rentalUnitArea", "rentalPurchasePrice", "rentalMarketPrice", "rentalDeposit", "rentalMonthlyRent",
     "rentalVacancyMonths", "rentalVacancyRate", "rentalAcquisitionTax", "rentalBrokerFee", "rentalPropertyTax",
@@ -46,6 +60,8 @@
   }
   var resultHelp = {
     "대출 후 월 순현금": "대출을 갚고 매달 남는 돈",
+    "월 순현금흐름": "이자 차감 후 매달 남는 금액",
+    "실투자금": "매입가·취득비용에서 보증금과 대출을 뺀 금액",
     "자기자본 수익률": "내가 실제 넣은 돈 대비 연간 수익",
     "비용 반영 순수익률": "공실·운영비를 뺀 실제 수익률",
     "표면수익률": "비용을 빼기 전 단순 임대수익률",
@@ -87,6 +103,143 @@
       + label + '</b><em>' + (resultHelp[label] || "") + '</em></small><strong>'
       + value + '</strong><span>' + note + "</span></article>";
   }
+  function formatInputValue(field, value) {
+    if (value === "" || value == null || !Number.isFinite(Number(value))) return "입력";
+    var suffix = field === "rentalVacancyMonths" ? "개월" : "만원";
+    return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 2 }) + suffix;
+  }
+  function nearestStep(value, step, min, max) {
+    return Math.max(min, Math.min(max, min + Math.round((value - min) / step) * step));
+  }
+  function purchaseBounds() {
+    var market = n("rentalMarketPrice");
+    var current = n("rentalPurchasePrice");
+    var base = market > 0 ? market : current > 0 ? current : 100;
+    var low = Math.max(0, Math.floor(base * 0.5 / 100) * 100);
+    var high = Math.ceil(base * 1.5 / 100) * 100;
+    if (current > 0) {
+      low = Math.min(low, Math.floor(current / 100) * 100);
+      high = Math.max(high, Math.ceil(current / 100) * 100);
+    }
+    return { min: low, max: Math.max(high, low + 100) };
+  }
+  function rentMaximum() {
+    var rent = n("rentalMonthlyRent");
+    var market = n("rentalMarketPrice");
+    return Math.ceil(Math.max(80, rent * 1.5, market * 0.02) / 5) * 5;
+  }
+  function loanMaximum() {
+    var purchase = n("rentalPurchasePrice");
+    var deposit = n("rentalDeposit");
+    var acq = n("rentalAcquisitionTax") + n("rentalBrokerFee");
+    return Math.max(0, Math.floor(Math.min(purchase * 0.7, purchase + acq - deposit - 100) / 100) * 100);
+  }
+  function syncSliderBounds() {
+    var bounds = {
+      rentalPurchasePrice: purchaseBounds(),
+      rentalLoanAmount: { min: 0, max: loanMaximum() },
+      rentalDeposit: { min: 0, max: Math.max(0, Math.floor(Math.min(n("rentalPurchasePrice") * 0.5, 2000) / 100) * 100) },
+      rentalMonthlyRent: { min: 10, max: rentMaximum() },
+      rentalVacancyMonths: { min: 0, max: 6 },
+    };
+    Object.keys(bounds).forEach(function (field) {
+      var range = sliderInputs[field];
+      if (!range) return;
+      range.min = String(bounds[field].min);
+      range.max = String(Math.max(bounds[field].max, bounds[field].min));
+      range.step = field === "rentalMonthlyRent" ? "5" : field === "rentalVacancyMonths" ? "1" : "100";
+      range.value = String(nearestStep(n(field), Number(range.step), bounds[field].min, bounds[field].max));
+    });
+    var loanCap = loanMaximum();
+    if (n("rentalLoanAmount") > loanCap) $("rentalLoanAmount").value = String(loanCap);
+    Object.keys(bounds).forEach(function (field) {
+      var button = document.querySelector('[data-rental-value="' + field + '"]');
+      if (button) button.textContent = formatInputValue(field, $(field).value);
+    });
+    var buyHeading = document.querySelector("#rentalSliders .rental-buy-heading");
+    if (buyHeading) buyHeading.textContent = "매수 조건 (대출금리 연 " + formatInputValue("rate", n("rentalLoanRate")).replace("만원", "%")
+      + ", " + $("rentalLoanMethod").selectedOptions[0].text + ")";
+  }
+  function makeSliderRow(field, label, step) {
+    return '<div class="rental-slider-row" data-rental-row="' + field + '"><div class="rental-slider-head"><label for="rentalSlider' + field.slice(6) + '">' + label + '</label>'
+      + '<span><button type="button" class="rental-value-button slider-value" data-rental-value="' + field + '" data-value-for="' + field + '" aria-label="' + label + ' 직접 입력">' + formatInputValue(field, $(field).value) + '</button>'
+      + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
+      + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '"></div>';
+  }
+  function setupRentalSliders() {
+    var host = $("rentalSliders");
+    if (!host) return;
+    host.innerHTML = '<div class="rental-panel-title"><div><span class="eyebrow">SCENARIO BUILDER</span><h3>조건을 조정해 수익을 확인하세요</h3></div></div>'
+      + '<section class="rental-slider-group"><h3 class="rental-buy-heading">매수 조건</h3><div class="rental-slider-list">'
+      + makeSliderRow("rentalPurchasePrice", "매수가", 100)
+      + makeSliderRow("rentalLoanAmount", "대출금", 100)
+      + '</div></section><section class="rental-slider-group"><h3>임대 조건</h3><div class="rental-slider-list">'
+      + makeSliderRow("rentalDeposit", "보증금", 100)
+      + makeSliderRow("rentalMonthlyRent", "월세", 5)
+      + makeSliderRow("rentalVacancyMonths", "공실", 1)
+      + '</div></section><p class="rental-slider-hint">값을 눌러 직접 입력할 수 있습니다. 슬라이더는 가장 가까운 단위에, 계산은 입력한 정확한 값에 맞춥니다.</p>';
+    host.querySelectorAll("[data-rental-slider]").forEach(function (range) {
+      sliderInputs[range.dataset.rentalSlider] = range;
+    });
+    host.addEventListener("input", function (event) {
+      var range = event.target.closest("[data-rental-slider]");
+      if (!range) return;
+      var field = range.dataset.rentalSlider;
+      if (field === "rentalVacancyMonths") vacancyAssumed = false;
+      $(field).value = range.value;
+      var valueButton = document.querySelector('[data-rental-value="' + field + '"]');
+      if (valueButton) valueButton.textContent = formatInputValue(field, range.value);
+      if (field === "rentalPurchasePrice") {
+        updateAcquisitionCosts();
+        updateEstimatedTax();
+      }
+      if (field === "rentalPurchasePrice" || field === "rentalDeposit") {
+        var cap = loanMaximum();
+        if (n("rentalLoanAmount") > cap) $("rentalLoanAmount").value = String(cap);
+      }
+      syncSliderBounds();
+      scheduleCalculate();
+    });
+    host.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-rental-value]");
+      if (!button) return;
+      var field = button.dataset.rentalValue;
+      if (button.querySelector("input")) return;
+      var input = document.createElement("input");
+      input.type = "number";
+      input.step = "1";
+      input.min = "0";
+      input.value = $(field).value;
+      input.setAttribute("aria-label", field === "rentalVacancyMonths" ? "연간 공실 개월" : "금액(만원)");
+      button.textContent = "";
+      button.appendChild(input);
+      input.focus();
+      input.select();
+      var commit = function () {
+        if (!button.contains(input)) return;
+        var raw = input.value.trim();
+        if (raw !== "" && Number.isFinite(Number(raw))) {
+          $(field).value = String(field === "rentalVacancyMonths"
+            ? Math.max(0, Math.min(6, Number(raw))) : Math.max(0, Number(raw)));
+          if (field === "rentalVacancyMonths") vacancyAssumed = false;
+          if (field === "rentalPurchasePrice") {
+            updateAcquisitionCosts();
+            updateEstimatedTax();
+          }
+          var cap = loanMaximum();
+          if (n("rentalLoanAmount") > cap) $("rentalLoanAmount").value = String(cap);
+        }
+        syncSliderBounds();
+        scheduleCalculate();
+      };
+      input.addEventListener("blur", commit, { once: true });
+      input.addEventListener("keydown", function (keyEvent) {
+        if (keyEvent.key === "Enter") { keyEvent.preventDefault(); input.blur(); }
+        if (keyEvent.key === "Escape") { input.value = $(field).value; input.blur(); }
+      });
+    });
+    syncSliderBounds();
+  }
   function benchmarkMonths() {
     if (!rentalBenchmark) return null;
     if (Number.isFinite(Number(rentalBenchmark))) return Number(rentalBenchmark);
@@ -96,55 +249,432 @@
     var rate = rentalBenchmark.vacancy_rate || rentalBenchmark.average_vacancy_rate;
     return Number.isFinite(Number(rate)) ? Number(rate) * 12 / 100 : null;
   }
-  function renderPositioning(yieldValue, months, userEntered) {
+  function vacancyTransform(months, averageMonths) {
+    if (months <= averageMonths) return averageMonths > 0 ? 0.5 * months / averageMonths : 0;
+    return averageMonths < 6 ? 0.5 + 0.5 * (months - averageMonths) / (6 - averageMonths) : 1;
+  }
+  function vacancyInverse(position, averageMonths) {
+    if (position <= 0.5) return averageMonths > 0 ? 2 * position * averageMonths : 0;
+    return averageMonths < 6 ? averageMonths + 2 * (position - 0.5) * (6 - averageMonths) : 6;
+  }
+  function benchmarkIncomeYield() {
+    var national = rentalBenchmarkItems.find(function (item) {
+      return item.region_level === "national" || String(item.region_code) === "00";
+    });
+    var candidate = national || (rentalBenchmark &&
+      (rentalBenchmark.region_level === "national" || String(rentalBenchmark.region_code) === "00")
+      ? rentalBenchmark : null);
+    var value = candidate && Number(candidate.income_yield);
+    return candidate && Number.isFinite(value) ? value : NaN;
+  }
+  function benchmarkName() {
+    var national = rentalBenchmarkItems.some(function (item) {
+      return item.region_level === "national" || String(item.region_code) === "00";
+    }) || rentalBenchmark && (rentalBenchmark.region_level === "national" || String(rentalBenchmark.region_code) === "00");
+    return national ? "전국 평균" : (rentalBenchmark && rentalBenchmark.region_name || "선택 지역") + " R-ONE 기준";
+  }
+  function normalizedRegionCode(value) {
+    var code = String(value || "").trim();
+    if (code.length >= 2 && /^\d+$/.test(code)) return ({ "51": "42", "52": "45" })[code.slice(0, 2)] || code.slice(0, 2);
+    return "";
+  }
+  function selectedProvinceCode() {
+    return normalizedRegionCode(loadedBuilding && (loadedBuilding.sgg_cd || loadedBuilding.region_code));
+  }
+  function selectedProvinceName() {
+    var building = loadedBuilding || {};
+    var text = [building.sido_nm, building.province_name, building.road_address, building.jibun_address, building.sgg_text]
+      .filter(Boolean).join(" ");
+    var names = [
+      ["서울", /서울/], ["부산", /부산/], ["대구", /대구/], ["인천", /인천/],
+      ["광주", /광주/], ["대전", /대전/], ["울산", /울산/], ["세종", /세종/],
+      ["경기", /경기/], ["강원", /강원/], ["충북", /충청북|충북/], ["충남", /충청남|충남/],
+      ["전북", /전북|전라북/], ["전남", /전라남|전남/], ["경북", /경상북|경북/],
+      ["경남", /경상남|경남/], ["제주", /제주/],
+    ];
+    var found = names.find(function (entry) { return entry[1].test(text); });
+    return found ? found[0] : "";
+  }
+  function selectedModeValue(result) {
+    return positionMode === "equity" ? result.cashReturn : result.netYield;
+  }
+  function rentalQuadrantLabel(result, benchmarkYield, benchmarkMonths) {
+    if (!result || result.vacancySource === "unavailable") return "조건 입력 대기";
+    if (!Number.isFinite(benchmarkYield) || !Number.isFinite(benchmarkMonths)
+        || !Number.isFinite(selectedModeValue(result))) return "판정 보류 · 비교 기준 자료 없음";
+    if (result.vacancySource === "rone") return "판정 보류 · 공실 가정값 사용 중";
+    var highReturn = selectedModeValue(result) >= benchmarkYield;
+    var stable = result.vacancyMonths <= benchmarkMonths;
+    if (highReturn && stable) return "고수익·안정";
+    if (highReturn) return "고수익·위험";
+    if (stable) return "안정·저수익";
+    return "수익개선 필요";
+  }
+  function drawRentalQuadrants(chart) {
+    var area = chart.chartArea;
+    if (!area) return;
+    var ctx = chart.ctx;
+    var midX = chart.scales.x.getPixelForValue(benchmarkIncomeYield());
+    var midY = chart.scales.y.getPixelForValue(0.5);
+    ctx.save();
+    ctx.fillStyle = "rgba(70,145,129,.035)";
+    ctx.fillRect(area.left, area.top, midX - area.left, midY - area.top);
+    ctx.fillStyle = "rgba(47,135,111,.065)";
+    ctx.fillRect(midX, area.top, area.right - midX, midY - area.top);
+    ctx.fillStyle = "rgba(132,147,164,.035)";
+    ctx.fillRect(area.left, midY, midX - area.left, area.bottom - midY);
+    ctx.fillStyle = "rgba(226,147,103,.055)";
+    ctx.fillRect(midX, midY, area.right - midX, area.bottom - midY);
+    ctx.strokeStyle = "rgba(71,92,109,.58)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(midX, area.top); ctx.lineTo(midX, area.bottom);
+    ctx.moveTo(area.left, midY); ctx.lineTo(area.right, midY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "600 10px 'Noto Sans KR', sans-serif";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(36,57,73,.68)";
+    ctx.fillText("안정·저수익", area.left + 8, area.top + 7);
+    ctx.textAlign = "right";
+    ctx.fillText("고수익·안정", area.right - 8, area.top + 7);
+    ctx.textBaseline = "bottom";
+    ctx.textAlign = "left";
+    ctx.fillText("수익개선 필요", area.left + 8, area.bottom - 7);
+    ctx.textAlign = "right";
+    ctx.fillText("고수익·위험", area.right - 8, area.bottom - 7);
+    ctx.restore();
+  }
+  function rentalChartPlugins() {
+    var quadrant = { id: "rentalQuadrants", beforeDraw: drawRentalQuadrants };
+    var selectedLabel = {
+      id: "rentalPointLabels",
+      beforeDatasetsDraw: function (chart) {
+        var selected = chart.data.datasets.find(function (set) { return set.key === "selected"; });
+        if (!selected || !selected.data.length) return;
+        var element = chart.getDatasetMeta(chart.data.datasets.indexOf(selected)).data[0];
+        if (!element) return;
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(element.x, element.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(235,104,52,.18)";
+        ctx.fill();
+        ctx.restore();
+      },
+      afterDatasetsDraw: function (chart) {
+        var ctx = chart.ctx;
+        var used = [];
+        var overlaps = function (a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; };
+        var drawBadge = function (element, text, foreground, background, border, font, force) {
+          ctx.font = font;
+          var w = Math.ceil(ctx.measureText(text).width) + 14;
+          var h = 24;
+          var area = chart.chartArea;
+          var candidates = [
+            { x: element.x + 11, y: element.y - h - 5 },
+            { x: element.x - w - 11, y: element.y - h - 5 },
+            { x: element.x + 11, y: element.y + 5 },
+            { x: element.x - w - 11, y: element.y + 5 },
+          ].map(function (box) {
+            return { x: Math.max(area.left + 2, Math.min(area.right - w - 2, box.x)), y: Math.max(area.top + 2, Math.min(area.bottom - h - 2, box.y)), w: w, h: h };
+          });
+          var box = candidates.find(function (candidate) { return !used.some(function (prior) { return overlaps(candidate, prior); }); });
+          if (!box && !force) return null;
+          if (!box) box = candidates[0];
+          used.push(box);
+          ctx.save();
+          ctx.font = font;
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = background;
+          ctx.strokeStyle = border;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(box.x, box.y, box.w, box.h, 8);
+          else ctx.rect(box.x, box.y, box.w, box.h);
+          ctx.fill(); ctx.stroke();
+          ctx.fillStyle = foreground;
+          ctx.textAlign = "center";
+          ctx.fillText(text, box.x + box.w / 2, box.y + box.h / 2);
+          ctx.restore();
+          return box;
+        };
+        var selectedSet = chart.data.datasets.find(function (set) { return set.key === "selected"; });
+        var selectedIndex = selectedSet && chart.data.datasets.indexOf(selectedSet);
+        var selectedElement = selectedSet && selectedSet.data.length
+          ? chart.getDatasetMeta(selectedIndex).data[0] : null;
+        var reservedSelectedBox = null;
+        if (selectedElement) {
+          var selectedPoint = selectedSet.data[0];
+          if (selectedPoint.offscale) {
+            ctx.font = "800 11px 'Noto Sans KR', sans-serif";
+            var offText = (selectedPoint.direction === "right" ? "▶ " : "◀ ") + percent(selectedPoint.actualX);
+            var offWidth = ctx.measureText(offText).width + 15;
+            reservedSelectedBox = {
+              x: selectedPoint.direction === "right" ? chart.chartArea.right - offWidth - 3 : chart.chartArea.left + 3,
+              y: Math.max(chart.chartArea.top + 3, Math.min(chart.chartArea.bottom - 25, selectedElement.y - 30)),
+              w: offWidth, h: 22,
+            };
+          } else {
+            ctx.font = "800 13px 'Noto Sans KR', sans-serif";
+            var ownWidth = Math.ceil(ctx.measureText("내 호실").width) + 14;
+            reservedSelectedBox = {
+              x: Math.max(chart.chartArea.left + 2, Math.min(chart.chartArea.right - ownWidth - 2, selectedElement.x + 11)),
+              y: Math.max(chart.chartArea.top + 2, Math.min(chart.chartArea.bottom - 26, selectedElement.y - 29)),
+              w: ownWidth, h: 24,
+            };
+          }
+          used.push(reservedSelectedBox);
+        }
+        chart.data.datasets.forEach(function (set, index) {
+          if (set.key === "selected") return;
+          var meta = chart.getDatasetMeta(index);
+          set.data.forEach(function (point, pointIndex) {
+            var element = meta.data[pointIndex];
+            if (!element || !point.badge) return;
+            drawBadge(element, point.badge, set.key === "national" ? "#18508a" : "#3C3489",
+              set.key === "national" ? "#edf5ff" : "#EEEDFE", set.key === "national" ? "#2a78d6" : "#b8b4ef",
+              "700 10px 'Noto Sans KR', sans-serif", false);
+          });
+        });
+        if (selectedSet && selectedSet.data.length) {
+          var element = selectedElement;
+          if (element) {
+            var point = selectedSet.data[0];
+            if (reservedSelectedBox) used.splice(used.indexOf(reservedSelectedBox), 1);
+            if (point.offscale) {
+              var area = chart.chartArea;
+              var ctx2 = chart.ctx;
+              ctx2.save();
+              ctx2.font = "800 11px 'Noto Sans KR', sans-serif";
+              var text = (point.direction === "right" ? "▶ " : "◀ ") + percent(point.actualX);
+              var width = ctx2.measureText(text).width + 15;
+              var x = point.direction === "right" ? area.right - width - 3 : area.left + 3;
+              var y = Math.max(area.top + 3, Math.min(area.bottom - 25, element.y - 30));
+              used.push({ x: x, y: y, w: width, h: 22 });
+              ctx2.fillStyle = "#fff2eb"; ctx2.strokeStyle = "#eb6834";
+              ctx2.beginPath();
+              if (ctx2.roundRect) ctx2.roundRect(x, y, width, 22, 7); else ctx2.rect(x, y, width, 22);
+              ctx2.fill(); ctx2.stroke();
+              ctx2.fillStyle = "#a64119"; ctx2.textBaseline = "middle"; ctx2.textAlign = "center";
+              ctx2.fillText(text, x + width / 2, y + 11);
+              ctx2.restore();
+            } else {
+              drawBadge(element, "내 호실", "#873714", "#fff4ec", "#eb6834", "800 13px 'Noto Sans KR', sans-serif", true);
+            }
+            element.draw(chart.ctx, chart.chartArea);
+          }
+        }
+      },
+    };
+    return [quadrant, selectedLabel];
+  }
+  function regionVacancyMonths(item, averageMonths) {
+    // This endpoint does not collect province-level small-retail vacancy.
+    // Every province currently carries the nationwide substitute, regardless
+    // of whether its numeric value happens to differ from another row.
+    return { months: averageMonths, hollow: true };
+  }
+  function chartPoint(item, averageMonths, badge) {
+    var vacancy = regionVacancyMonths(item, averageMonths);
+    return {
+      x: Number(item.income_yield), y: vacancyTransform(vacancy.months, averageMonths),
+      label: String(item.region_name || "지역 평균"), badge: badge || String(item.region_name || "지역") + " " + Number(item.income_yield).toFixed(1) + "%",
+      hollow: vacancy.hollow, months: vacancy.months, item: item,
+    };
+  }
+  function buildRentalDatasets(result) {
+    var averageYield = benchmarkIncomeYield();
+    var averageMonths = benchmarkMonths();
+    var datasets = [];
+    var national = rentalBenchmarkItems.find(function (item) { return item.region_level === "national" || String(item.region_code) === "00"; });
+    if (!national && rentalBenchmark && (rentalBenchmark.region_level === "national" || String(rentalBenchmark.region_code) === "00")) national = rentalBenchmark;
+    if (national && Number.isFinite(averageYield) && Number.isFinite(averageMonths)) {
+      var nationalPoint = chartPoint(national, averageMonths, "전국 " + averageYield.toFixed(2) + "%");
+      nationalPoint.x = averageYield;
+      nationalPoint.y = vacancyTransform(averageMonths, averageMonths);
+      nationalPoint.months = averageMonths;
+      datasets.push({
+        key: "national", label: "전국 평균", data: [nationalPoint], order: 1,
+        pointRadius: 9, pointHoverRadius: 10, pointStyle: "rectRot", pointBackgroundColor: "#2a78d6",
+        pointBorderColor: "#fff", pointBorderWidth: 2,
+      });
+    }
+    var provinceCode = selectedProvinceCode();
+    var provinceName = selectedProvinceName();
+    var provinceData = rentalBenchmarkItems.filter(function (item) {
+      return item.region_level !== "national" && String(item.region_code) !== "00"
+        && Number.isFinite(Number(item.income_yield));
+    }).map(function (item) {
+      var point = chartPoint(item, averageMonths);
+      point.selectedProvince = provinceCode && normalizedRegionCode(item.region_code) === provinceCode
+        || provinceName && String(item.region_name || "").indexOf(provinceName) >= 0;
+      point.badge = point.label + " " + Number(item.income_yield).toFixed(1) + "%";
+      return point;
+    });
+    if (provinceData.length) datasets.push({
+      key: "province", label: "지역 평균", data: provinceData, order: 2,
+      pointRadius: function (context) { return context.raw.selectedProvince ? 9 : 7; },
+      pointHoverRadius: function (context) { return context.raw.selectedProvince ? 11 : 9; },
+      pointStyle: "circle",
+      pointBackgroundColor: function (context) { return context.raw.hollow ? "#fff" : "#7F77DD"; },
+      pointBorderColor: function (context) { return context.raw.hollow ? "#7F77DD"
+        : context.raw.selectedProvince ? "#403b8d" : "#fff"; },
+      pointBorderWidth: function (context) { return context.raw.selectedProvince ? 3 : 2; },
+    });
+    var selectedYield = selectedModeValue(result);
+    if (Number.isFinite(selectedYield) && Number.isFinite(result.vacancyMonths)) {
+      var xMin = averageYield - 10;
+      var xMax = averageYield + 10;
+      var offscale = selectedYield < xMin || selectedYield > xMax;
+      var clipped = Math.max(xMin + 0.18, Math.min(xMax - 0.18, selectedYield));
+      datasets.push({
+        key: "selected", label: "내 호실", order: 0,
+        data: [{
+          x: clipped, actualX: selectedYield, y: vacancyTransform(result.vacancyMonths, averageMonths),
+          actualMonths: result.vacancyMonths, offscale: offscale,
+          direction: selectedYield > xMax ? "right" : "left",
+        }],
+        pointRadius: 13, pointHoverRadius: 15,
+        pointStyle: function (context) {
+          return context.raw.offscale ? "triangle" : "circle";
+        },
+        pointRotation: function (context) {
+          return context.raw.offscale && context.raw.direction === "right" ? 90
+            : context.raw.offscale ? -90 : 0;
+        },
+        pointBackgroundColor: "#eb6834", pointBorderColor: "#fff", pointBorderWidth: 3,
+      });
+    }
+    return datasets;
+  }
+  function renderPositioning(result) {
     var box = $("rentalPositioning");
-    if (!box) return;
-    var benchmarkYield = rentalBenchmark && Number(rentalBenchmark.income_yield);
-    var benchmarkVacancy = rentalBenchmark && Number(rentalBenchmark.vacancy_rate);
-    if (!Number.isFinite(benchmarkYield) || !Number.isFinite(benchmarkVacancy)) {
-      box.className = "analysis-card rental-positioning pending";
-      box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>시장가 수익률과 최근 1년 공실 기준을 함께 확인합니다.</p></div><div class="positioning-pending">판정 보류 · 현재 시장가와 R-ONE 기준자료가 모두 확인되어야 위치를 판정할 수 있습니다.</div>';
+    var canvas = $("rentalPositionChart");
+    if (!box || !canvas || typeof Chart === "undefined") return;
+    var averageYield = benchmarkIncomeYield();
+    var averageMonths = benchmarkMonths();
+    var ready = Number.isFinite(averageYield) && Number.isFinite(averageMonths);
+    Array.prototype.forEach.call(box.querySelectorAll(".positioning-quadrant"), function (label) {
+      label.classList.add("hidden");
+    });
+    var pending = box.querySelector(".positioning-pending");
+    if (pending) pending.classList.toggle("hidden", ready);
+    var equityNote = box.querySelector("[data-rental-equity-note]");
+    if (!equityNote) {
+      equityNote = document.createElement("p");
+      equityNote.className = "rental-equity-note hidden";
+      equityNote.dataset.rentalEquityNote = "true";
+      equityNote.textContent = "비교점은 대출 없는 공공통계 수익률입니다. 내 호실만 대출 효과가 반영된 위치입니다.";
+      box.appendChild(equityNote);
+    }
+    var toggleButtons = box.querySelectorAll("[data-mode]");
+    Array.prototype.forEach.call(toggleButtons, function (button) {
+      var active = button.dataset.mode === positionMode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+      if (!button.dataset.rentalModeBound) {
+        button.dataset.rentalModeBound = "true";
+        button.addEventListener("click", function () {
+          positionMode = button.dataset.mode === "equity" ? "equity" : "net";
+          renderPositioning(lastCalculated);
+          if (lastCalculated) {
+            renderSensitivity(lastCalculated);
+            renderVerdict(lastCalculated);
+          }
+        });
+      }
+    });
+    var note = box.querySelector("[data-rental-equity-note]");
+    if (note) note.classList.toggle("hidden", positionMode !== "equity");
+    var benchmarkNode = box.querySelector("[data-rental-benchmark-legend]");
+    if (benchmarkNode) benchmarkNode.textContent = ready
+      ? benchmarkName() + " · " + benchmarkSource + (rentalBenchmark && rentalBenchmark.period ? " · " + monthLabel(rentalBenchmark.period) : "")
+      : "R-ONE 수익률 자료를 불러오지 못했습니다.";
+    var regionLegend = box.querySelector("[data-rental-region-legend]");
+    if (regionLegend) regionLegend.textContent = "지역 평균 · " + benchmarkSource
+      + (rentalBenchmark && rentalBenchmark.period ? " · " + monthLabel(rentalBenchmark.period) : "") + " · 개별 호실 사례 아님";
+    var legend = box.querySelector(".rental-chart-legend");
+    if (!legend) {
+      legend = document.createElement("div");
+      legend.className = "rental-chart-legend";
+      box.appendChild(legend);
+    }
+    var period = rentalBenchmark && rentalBenchmark.period ? " · " + monthLabel(rentalBenchmark.period) : "";
+    legend.innerHTML = '<span class="legend-own">내 호실</span><span class="legend-national">'
+      + escapeHtml(benchmarkName()) + ' (' + escapeHtml(benchmarkSource || "R-ONE") + escapeHtml(period) + ')</span>'
+      + '<span class="legend-province">지역 평균 (R-ONE' + escapeHtml(period) + ') · 개별 호실 사례 아님</span>';
+    if (!ready) {
+      if (positionChart) { positionChart.destroy(); positionChart = null; }
       return;
     }
-    var hasPosition = Number.isFinite(yieldValue) && Number.isFinite(months);
-    var vacancyRate = hasPosition ? months / 12 * 100 : benchmarkVacancy;
-    var stable = 100 - vacancyRate;
-    var benchmarkStable = 100 - benchmarkVacancy;
-    var yieldSpan = Math.max(2, Math.abs(benchmarkYield) * 0.8);
-    var stableSpan = Math.max(12, benchmarkVacancy * 1.5);
-    var x = hasPosition ? Math.max(8, Math.min(92, 50 + (yieldValue - benchmarkYield) / yieldSpan * 42)) : 50;
-    var y = hasPosition ? Math.max(8, Math.min(92, 50 - (stable - benchmarkStable) / stableSpan * 42)) : 50;
-    var highYield = yieldValue >= benchmarkYield;
-    var highStable = stable >= benchmarkStable;
-    var verdict = !hasPosition ? "내 조건 입력 대기"
-      : !userEntered
-      ? (highYield ? "시장 대비 고수익 후보" : "수익개선 검토")
-      : highYield && highStable ? "고수익·안정형"
-        : highYield ? "고수익·위험형" : highStable ? "안정·저수익형" : "수익개선 필요형";
-    var source = !hasPosition
-      ? "R-ONE 오피스텔 수익률과 전국 공실 기준을 먼저 표시합니다."
-      : userEntered
-      ? "공실 기준: 사용자 입력 · 수익률 비교: " + benchmarkSource
-      : "공실 기준: 소규모 상가 전국 전체 평균 · 수익률 비교: " + benchmarkSource;
-    var comparison = "오피스텔 평균 수익률 " + benchmarkYield.toFixed(2) + "% · 적용 공실률 "
-      + benchmarkVacancy.toFixed(1) + "%";
-    var peerDots = rentalBenchmarkItems.map(function (item) {
-      var itemYield = Number(item.income_yield);
-      var itemStable = Number(item.stability_score);
-      if (!Number.isFinite(itemYield) || !Number.isFinite(itemStable)) return "";
-      var left = Math.max(4, Math.min(96, 50 + (itemYield - benchmarkYield) / yieldSpan * 42));
-      var top = Math.max(4, Math.min(96, 50 - (itemStable - benchmarkStable) / stableSpan * 42));
-      return '<i class="positioning-peer" style="left:' + left + '%;top:' + top
-        + '%" title="' + escapeHtml(item.region_name || "비교지역") + '"></i>';
-    }).join("");
-    var selectedDot = hasPosition
-      ? '<i class="positioning-dot" style="left:' + x + '%;top:' + y + '%"></i>' : "";
-    var selectedSummary = hasPosition
-      ? '<strong>공실 ' + months.toFixed(1) + '개월 · 순소득 ' + yieldValue.toFixed(2) + '%</strong><span>'
-        + (userEntered ? "사용자 입력" : "전국 전체 평균") + '</span>'
-      : '<strong>우측에 매입가와 임대조건을 입력하세요</strong><span>입력 즉시 내 건물 위치 표시</span>';
-    box.className = "analysis-card rental-positioning" + (hasPosition ? "" : " awaiting-input");
-    box.innerHTML = '<div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장가 기준 순소득수익률 × 공실안정성</h3><p>현재 실거래 기준가로 환산한 순소득수익률과 1년 공실 데이터를 오피스텔 수익률 기준선과 비교합니다.</p><strong class="positioning-verdict">' + escapeHtml(verdict) + '</strong><div class="positioning-source">' + escapeHtml(source) + '<br>' + escapeHtml(comparison) + '<br>' + escapeHtml(benchmarkNotice) + '</div></div><div><div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><span class="positioning-axis x">시장가 기준 순소득수익률 →</span><span class="positioning-axis y">공실안정성</span>' + peerDots + selectedDot + '</div><div class="positioning-legend"><span>R-ONE 비교지역</span>' + selectedSummary + '</div></div>';
+    var xMin = averageYield - 10;
+    var xMax = averageYield + 10;
+    var datasets = buildRentalDatasets(result || {});
+    var axisTicks = [];
+    for (var x = Math.ceil(xMin / 2) * 2; x <= xMax; x += 2) axisTicks.push(x);
+    if (!axisTicks.some(function (value) { return Math.abs(value - averageYield) < 0.01; })) axisTicks.push(averageYield);
+    axisTicks.sort(function (a, b) { return a - b; });
+    var options = {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: "nearest", intersect: true },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function () { return ""; },
+            label: function (context) {
+              var raw = context.raw;
+              var set = context.dataset;
+              if (set.key === "selected") return "내 호실 · " + percent(raw.actualX) + " · 연간 공실 " + raw.actualMonths.toFixed(1) + "개월";
+              var vacancyNote = raw.hollow ? "공실: 전국 대체값" : "공실: " + raw.months.toFixed(1) + "개월";
+              return (set.key === "national" ? "전국 평균" : raw.label) + " · " + percent(raw.x) + " · " + vacancyNote;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: "linear", min: xMin, max: xMax,
+          title: { display: true, text: positionMode === "equity" ? "자기자본 수익률 (%)" : "순수익률 (대출 전, %)" },
+          afterBuildTicks: function (scale) {
+            scale.ticks = axisTicks.map(function (value) { return { value: value }; });
+          },
+          ticks: {
+            callback: function (value) {
+              var tick = axisTicks.find(function (item) { return Math.abs(item - Number(value)) < 0.001; });
+              if (tick == null) return "";
+            return Math.abs(tick - averageYield) < 0.001 ? "기준 " + tick.toFixed(2) : tick.toFixed(0);
+            },
+          },
+        },
+        y: {
+          type: "linear", min: 0, max: 1, reverse: true,
+          afterBuildTicks: function (scale) {
+            scale.ticks = [0, 1, 2, 3, 4, 5, 6].map(function (months) {
+              return { value: vacancyTransform(months, averageMonths) };
+            });
+          },
+          title: { display: true, text: "← 공실 적음 · 연간 공실 개월 (평균 기준 상하 구간 척도)" },
+          ticks: {
+            callback: function (value) {
+              var months = vacancyInverse(Number(value), averageMonths);
+              var nearest = Math.round(months);
+              return Math.abs(months - nearest) < 0.02 ? nearest + "개월" : "";
+            },
+          },
+        },
+      },
+    };
+    if (!positionChart || positionChart.canvas !== canvas) {
+      if (positionChart) positionChart.destroy();
+      positionChart = new Chart(canvas, { type: "scatter", data: { datasets: datasets }, options: options, plugins: rentalChartPlugins() });
+    } else {
+      positionChart.data.datasets = datasets;
+      positionChart.options = options;
+      positionChart.update("none");
+    }
   }
   async function loadRentalBenchmark(id, seq) {
     rentalBenchmark = null; rentalBenchmarkItems = []; benchmarkSource = ""; benchmarkNotice = "";
@@ -175,16 +705,132 @@
     }
   }
   function calculate() {
+    scheduleCalculate();
+  }
+  function scheduleCalculate() {
+    if (rafId) return;
+    rafId = window.requestAnimationFrame(function () {
+      rafId = 0;
+      calculateNow();
+    });
+  }
+  function sensitivityYield(rent, vacancyMonths, result) {
+    var annualRent = rent * 12;
+    var noi = annualRent * (1 - vacancyMonths / 12) - result.costs;
+    if (positionMode === "equity") {
+      return result.invested > 0 ? (noi - result.annualInterest) / result.invested * 100 : NaN;
+    }
+    return result.returnBasis > 0 ? noi / result.returnBasis * 100 : NaN;
+  }
+  function renderSensitivity(result) {
+    var host = $("rentalSensitivity");
+    if (!host) return;
+    var rent = n("rentalMonthlyRent");
+    var maximum = rentMaximum();
+    var centerMin = 25;
+    var centerMax = Math.max(centerMin, maximum - 15);
+    var center = nearestStep(rent, 5, centerMin, centerMax);
+    center = Math.max(centerMin, Math.min(centerMax, center));
+    var rents = [center - 15, center - 10, center - 5, center, center + 5, center + 10, center + 15];
+    var columns = rents.map(function (amount) {
+      var actualAmount = Math.max(10, amount);
+      return { amount: actualAmount, distance: Math.abs(actualAmount - rent) };
+    });
+    var highlighted = 0;
+    columns.forEach(function (column, index) {
+      if (column.distance < columns[highlighted].distance) highlighted = index;
+    });
+    var averageYield = benchmarkIncomeYield();
+    var rows = [];
+    for (var months = 0; months <= 6; months += 1) {
+      rows.push('<tr><th scope="row">' + months + '개월</th>' + columns.map(function (column, index) {
+            var selected = Math.abs(months - result.vacancyMonths) < 0.01 && index === highlighted;
+            var scenarioRent = selected ? rent : column.amount;
+            var value = sensitivityYield(scenarioRent, months, result || {});
+        var color = !Number.isFinite(value) ? "unavailable" : value >= averageYield ? "above"
+          : value >= 3 ? "middle" : "below";
+        var tooltip = "입력값 " + rent.toLocaleString("ko-KR") + "만원 기준 "
+          + (Number.isFinite(value) ? value.toFixed(1) + "%" : "계산불가");
+        return '<td class="' + color + (selected ? " selected" : "") + '"'
+          + (selected ? ' aria-current="true"' : "")
+          + ' title="' + escapeHtml(tooltip) + '">'
+          + (Number.isFinite(value) ? value.toFixed(1) + "%" : "-") + "</td>";
+      }).join("") + "</tr>");
+    }
+    host.innerHTML = '<div class="rental-sensitivity-head"><h3>월세 × 공실 민감도 (' +
+      '매수가 ' + money(result.purchasePrice) + ' · 대출 ' + money(result.loan) + ' · 보증금 ' + money(result.deposit)
+      + ' 반영, ' + (positionMode === "equity" ? "자기자본 수익률" : "순수익률") + ')</h3></div>'
+      + '<div class="rental-sensitivity-scroll"><table class="rental-sensitivity-table"><thead><tr><th>공실 \\ 월세</th>'
+      + columns.map(function (column, index) {
+        return '<th' + (index === highlighted ? ' class="selected-column"' : "") + '>'
+          + column.amount.toLocaleString("ko-KR") + "만원</th>";
+      }).join("") + '</tr></thead><tbody>' + rows.join("") + '</tbody></table></div>'
+      + '<div class="rental-sensitivity-legend"><span><i class="above"></i>전국 평균 이상</span>'
+      + '<span><i class="middle"></i>3% 이상 ~ 전국 평균 미만</span><span><i class="below"></i>3% 미만</span>'
+      + '<span><i class="unavailable"></i>계산 불가</span></div>';
+  }
+  function renderVerdict(result) {
+    var host = $("rentalVerdict");
+    if (!host) return;
+    var averageYield = benchmarkIncomeYield();
+    var averageMonths = benchmarkMonths();
+    var modeYield = selectedModeValue(result);
+    var title = rentalQuadrantLabel(result, averageYield, averageMonths);
+    var explanation = result.vacancySource === "rone"
+      ? "공실은 R-ONE 소규모 상가 전국 대체값을 사용 중입니다. 최근 1년 실제 공실을 입력하면 판정을 표시합니다."
+      : "현재 조건 기준 " + (positionMode === "equity" ? "자기자본 수익률 " : "순수익률 ")
+        + percent(modeYield) + " · 공실 " + result.vacancyMonths.toFixed(1) + "개월";
+    host.innerHTML = '<strong>' + escapeHtml(title) + '</strong><span>' + escapeHtml(explanation) + '</span>';
+  }
+  function renderCoreMetrics(result) {
+    var host = $("rentalCoreMetrics");
+    if (!host) return;
+    var grid = host.querySelector(".metric-grid") || host;
+    var averageYield = benchmarkIncomeYield();
+    var returnClass = function (value) {
+      return !Number.isFinite(value) ? "" : value < 3 ? "danger" : value >= averageYield ? "success" : "";
+    };
+    grid.innerHTML = card("순수익률(대출 전)", percent(result.netYield), "NOI ÷ (매입가 + 취득부대 − 보증금)", returnClass(result.netYield))
+      + card("자기자본 수익률", percent(result.cashReturn), "이자 차감 후 현금흐름 ÷ 실투자금", returnClass(result.cashReturn))
+      + card("월 순현금흐름", money(result.cashFlow / 12, 1), "NOI에서 연 대출이자를 차감", result.cashFlow < 0 ? "danger" : "")
+      + card("실투자금", result.invested > 0 ? money(result.invested) : "계산불가", "매입가 + 취득부대 − 보증금 − 대출금", result.invested <= 0 ? "danger" : "");
+  }
+  function renderExtraMetrics(result) {
+    var host = $("rentalExtraMetrics");
+    if (!host) return;
+    var cards = [
+      card("표면수익률", percent(result.grossYield), "공실·비용 차감 전"),
+      card("현재 실거래 기준 수익률", Number.isFinite(result.marketYield) ? percent(result.marketYield) : "기준가 입력 필요",
+        Number.isFinite(result.marketYield) ? "현재 기준가 " + money(result.marketPrice) : "최근 실거래 자동연결 예정"),
+      card("비용 반영 순수익률", percent(result.netYield), "대출 전 NOI 기준 순수익률"),
+      card("연간 보유비용", money(result.costs), "보유세·관리비·수선비 합계"),
+    ];
+    if (result.loan > 0) {
+      cards.push(card("월 대출 상환액", money(result.debtMonthly, 1), $("rentalLoanMethod").selectedOptions[0].text));
+      cards.push(card("DSCR", result.dscr == null ? "계산불가" : result.dscr.toFixed(2) + "배",
+        result.dscr == null ? "연간 대출상환액 계산 불가" : (result.dscr >= 1.2 ? "임대수익 상환여력 양호" : "상환여력 주의"),
+        result.dscr != null && result.dscr < 1.2 ? "danger" : ""));
+    }
+    host.innerHTML = cards.join("");
+  }
+  function calculateNow() {
+    syncSliderBounds();
     var purchase = n("rentalPurchasePrice");
     var market = n("rentalMarketPrice");
     var deposit = n("rentalDeposit");
     var rent = n("rentalMonthlyRent");
     var enteredMonths = $("rentalVacancyMonths").value.trim() === "" ? null : n("rentalVacancyMonths");
-    var resolvedMonths = enteredMonths != null ? Math.min(12, Math.max(0, enteredMonths)) : benchmarkMonths();
+    var resolvedMonths = enteredMonths != null ? Math.min(6, Math.max(0, enteredMonths)) : benchmarkMonths();
+    if (enteredMonths == null && resolvedMonths != null) {
+      $("rentalVacancyMonths").value = String(Math.max(0, Math.min(6, Math.round(resolvedMonths))));
+      resolvedMonths = Number($("rentalVacancyMonths").value);
+    }
+    var assumptionBadge = document.querySelector("[data-vacancy-assumption]");
+    if (assumptionBadge) assumptionBadge.classList.toggle("hidden", !vacancyAssumed);
     $("rentalVacancyRate").value = resolvedMonths == null ? "" : (resolvedMonths / 12 * 100).toFixed(1);
     $("rentalVacancyRateHint").textContent = resolvedMonths == null
       ? "공실 개월을 입력하거나 전국 전체 평균을 불러와야 합니다."
-      : enteredMonths != null ? "사용자 입력 공실기간에서 자동계산" : "R-ONE 소규모 상가 전국 전체 평균 적용";
+      : vacancyAssumed ? "R-ONE 전국 대체 공실률 가정값 적용" : "사용자 입력 공실기간에서 자동계산";
     var vacancy = resolvedMonths == null ? 0 : resolvedMonths / 12;
     var acquisitionTax = n("rentalAcquisitionTax");
     var brokerFee = n("rentalBrokerFee");
@@ -196,7 +842,16 @@
     var loan = n("rentalLoanAmount");
     if (resolvedMonths == null) {
       $("rentalResults").innerHTML = '<div class="rental-calculation-warning"><b>공실 기준이 필요합니다</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 전국 전체 평균이 연결되어야 수익률을 계산합니다.</span></div>';
-      renderPositioning(NaN, null, false);
+      var metricGrid = $("rentalCoreMetrics").querySelector(".metric-grid");
+      if (metricGrid) metricGrid.innerHTML = [
+        "순수익률(대출 전)", "자기자본 수익률", "월 순현금흐름", "실투자금"
+      ].map(function (label) { return card(label, "계산불가", "공실 기준 확인 필요"); }).join("");
+      $("rentalExtraMetrics").innerHTML = "";
+      $("rentalSensitivity").innerHTML = '<h3>월세 × 공실 민감도</h3><p>공실 기준을 입력하거나 R-ONE 자료를 불러온 뒤 표시합니다.</p>';
+      var waiting = { vacancyMonths: 0, vacancySource: "unavailable", cashReturn: NaN, netYield: NaN };
+      lastCalculated = waiting;
+      renderPositioning(waiting);
+      renderVerdict(waiting);
       window.__rentalAnalysisResult = {
         purchasePrice: purchase, vacancyMonths: null, vacancyRate: null,
         vacancySource: "unavailable", benchmark: null, ready: false,
@@ -211,33 +866,42 @@
     var effectiveRent = annualRent * (1 - vacancy);
     var noi = effectiveRent - costs;
     var invested = purchase + acquisition - deposit - loan;
-    var cashFlow = noi - debt.annual;
+    var returnBasis = purchase + acquisition - deposit;
+    var annualInterest = loan * n("rentalLoanRate") / 100;
+    var cashFlow = noi - annualInterest;
     var grossYield = purchase > 0 ? annualRent / purchase * 100 : NaN;
-    var netYield = purchase > 0 ? noi / purchase * 100 : NaN;
+    var netYield = returnBasis > 0 ? noi / returnBasis * 100 : NaN;
     var cashReturn = invested > 0 ? cashFlow / invested * 100 : NaN;
     var marketYield = market > 0 ? noi / market * 100 : NaN;
     var dscr = debt.annual > 0 ? noi / debt.annual : null;
     $("rentalResults").innerHTML =
-      (resolvedMonths == null ? '<div class="rental-calculation-warning"><b>공실 기준 미반영 임시 계산</b><span>최근 1년 공실 개월을 입력하거나 R-ONE 전국 전체 평균이 연결되면 결과가 자동으로 갱신됩니다.</span></div>' : "")
-      + card("대출 후 월 순현금", money(cashFlow / 12, 1), "순영업소득에서 월 원리금 차감", "primary")
-      + card("자기자본 수익률", percent(cashReturn), "실투자금 " + money(invested), cashReturn < 0 ? "warning" : "")
-      + card("비용 반영 순수익률", percent(netYield), "순영업소득 " + money(noi) + "/년")
+      card("대출 후 월 순현금", money(cashFlow / 12, 1), "순영업소득에서 연 대출이자 차감", "primary")
+      + card("자기자본 수익률", invested > 0 ? percent(cashReturn) : "계산불가", "실투자금 " + money(invested), invested <= 0 || cashReturn < 0 ? "danger" : "")
+      + card("비용 반영 순수익률", percent(netYield), "NOI " + money(noi) + " ÷ 투자기준금액 " + money(returnBasis))
+      + card("실투자금", invested > 0 ? money(invested) : "계산불가", "매입가 + 취득부대 − 보증금 − 대출금")
       + card("표면수익률", percent(grossYield), "공실·비용 차감 전")
       + card("현재 실거래 기준 수익률", market ? percent(marketYield) : "기준가 입력 필요", market ? "현재 기준가 " + money(market) : "최근 실거래 자동연결 예정")
-      + card("월 대출 상환액", money(debt.monthly, 1), $("rentalLoanMethod").selectedOptions[0].text)
-      + card("DSCR", dscr == null ? "대출 없음" : dscr.toFixed(2) + "배", dscr == null ? "대출상환 부담 없음" : (dscr >= 1.2 ? "임대수익 상환여력 양호" : "상환여력 주의"), dscr != null && dscr < 1.2 ? "warning" : "")
+      + (loan > 0 ? card("월 대출 상환액", money(debt.monthly, 1), $("rentalLoanMethod").selectedOptions[0].text) : "")
+      + (loan > 0 ? card("DSCR", dscr == null ? "계산불가" : dscr.toFixed(2) + "배", dscr == null ? "연간 대출상환액 계산 불가" : (dscr >= 1.2 ? "임대수익 상환여력 양호" : "상환여력 주의"), dscr != null && dscr < 1.2 ? "danger" : "") : "")
        + card("연간 보유비용", money(costs), "보유세·관리비·수선비 합계");
-    renderPositioning(market > 0 ? marketYield : NaN, resolvedMonths, enteredMonths != null);
-    window.__rentalAnalysisResult = {
+    var source = vacancyAssumed && rentalBenchmark ? "rone" : "user";
+    lastCalculated = {
       purchasePrice: purchase, annualRent: annualRent, noi: noi, invested: invested,
-      debtService: debt.annual, cashFlow: cashFlow, grossYield: grossYield,
+      debtService: debt.annual, debtMonthly: debt.monthly, annualInterest: annualInterest, cashFlow: cashFlow, grossYield: grossYield,
       netYield: netYield, cashReturn: cashReturn, dscr: dscr,
+      returnBasis: returnBasis, costs: costs, loan: loan, deposit: deposit, marketPrice: market,
       marketYield: marketYield, vacancyMonths: resolvedMonths,
       vacancyRate: resolvedMonths == null ? null : resolvedMonths / 12 * 100,
-      vacancySource: enteredMonths != null ? "user" : rentalBenchmark ? "rone" : "unavailable",
+      vacancySource: source,
       benchmark: rentalBenchmark,
       ready: true,
     };
+    renderCoreMetrics(lastCalculated);
+    renderExtraMetrics(lastCalculated);
+    renderPositioning(lastCalculated);
+    renderSensitivity(lastCalculated);
+    renderVerdict(lastCalculated);
+    window.__rentalAnalysisResult = lastCalculated;
     if (loadedBuildingId) window.livingstayAnalysisReportActions(
       $("rentalReportActions"), loadedBuildingId,
        loadedBuilding && (loadedBuilding.display_building_name || loadedBuilding.building_name),
@@ -258,6 +922,15 @@
       ? String(Math.round(purchasePrice * 0.046 * 10) / 10) : "";
     $("rentalBrokerFee").value = purchasePrice
       ? String(Math.round(purchasePrice * 0.009 * 10) / 10) : "";
+  }
+  function updateMethodologyFormula() {
+    var formula = document.querySelector("#rentalAnalysis .methodology .formula");
+    if (!formula) return;
+    formula.innerHTML = "순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>"
+      + "순수익률(대출 전) = NOI ÷ (매입가 + 취득 부대비용 − 보증금)<br>"
+      + "실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>"
+      + "자기자본 수익률 = (NOI − 연 대출이자) ÷ 실투자금<br>"
+      + "DSCR = 순영업소득 ÷ 연간 대출 원리금";
   }
   function setMarketStatus(message, mode) {
     $("rentalMarketPriceHint").textContent = message;
@@ -362,6 +1035,45 @@
       }
     }
   }
+  function restoreSharedRentalValues() {
+    if (sharedValuesRestored) return;
+    var params = new URLSearchParams(location.search);
+    var hasRentalValues = Object.keys(sharedFieldParams).some(function (key) { return params.has(key); })
+      || params.has("r_yieldmode");
+    if (!hasRentalValues) return;
+    sharedValuesRestored = true;
+    loadingSharedValues = true;
+    Object.keys(sharedFieldParams).forEach(function (key) {
+      if (!params.has(key)) return;
+      var field = sharedFieldParams[key];
+      var value = params.get(key);
+      if (field === "rentalLoanMethod") {
+        if (["interest", "equal", "principal"].indexOf(value) >= 0) $(field).value = value;
+        return;
+      }
+      if (field === "rentalUnitArea") {
+        if (/^\d+(?:\.\d+)?$/.test(value)) $(field).value = value;
+        return;
+      }
+      if (field === "rentalVacancyMonths" && value === "") {
+        $("rentalVacancyMonths").value = "";
+        vacancyAssumed = true;
+        return;
+      }
+      if (value !== "" && Number.isFinite(Number(value)) && Number(value) >= 0) $(field).value = value;
+    });
+    var mode = params.get("r_yieldmode");
+    if (mode === "equity" || mode === "net") positionMode = mode;
+    loadingSharedValues = false;
+    if (n("rentalPurchasePrice") > 0) {
+      updateAcquisitionCosts();
+      updateEstimatedTax();
+    }
+    if (n("rentalVacancyMonths") > 0 || params.has("r_vacancy") && params.get("r_vacancy") !== "") {
+      vacancyAssumed = false;
+    }
+    syncSliderBounds();
+  }
   async function loadBuilding() {
     var id = new URLSearchParams(location.search).get("building_id");
     var seq = ++buildingSequence;
@@ -400,6 +1112,7 @@
       $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
       setMarketStatus("호실 면적 목록을 확인하고 있습니다.", "loading");
     }
+    restoreSharedRentalValues();
     try {
       var responses = await Promise.all([
         fetch("/api/building/" + encodeURIComponent(id), { credentials: "same-origin" }),
@@ -439,8 +1152,10 @@
       }
     }
   }
+  setupRentalSliders();
   ids.forEach(function (id) {
     $(id).addEventListener("input", function () {
+      if (id === "rentalVacancyMonths" && !loadingSharedValues) vacancyAssumed = false;
       if (id === "rentalPropertyTax") taxManuallyEdited = true;
       if (id === "rentalMarketPrice") {
         marketPriceManuallyEdited = true;
@@ -462,6 +1177,11 @@
         updateAcquisitionCosts();
         updateEstimatedTax();
       }
+      if (id === "rentalPurchasePrice" || id === "rentalDeposit") {
+        var cap = loanMaximum();
+        if (n("rentalLoanAmount") > cap) $("rentalLoanAmount").value = String(cap);
+      }
+      syncSliderBounds();
       calculate();
     });
   });
@@ -474,6 +1194,8 @@
     clearTimeout(areaLookupTimer);
     ids.forEach(function (id) { $(id).value = ""; });
     $("rentalVacancyMonths").value = "";
+    vacancyAssumed = true;
+    positionMode = "net";
     $("rentalVacancyRate").value = "";
     $("rentalManagementCost").value = "0";
     $("rentalOtherCost").value = "0";
@@ -484,11 +1206,13 @@
     $("rentalUnitAreaHint").textContent = loadedBuildingId
       ? "면적을 다시 선택하거나 입력해 주세요." : "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
     setMarketStatus("호실 전용면적을 선택하거나 입력하면 최근 실거래 중앙값을 조회합니다.", "");
-    $("rentalResults").innerHTML = '<article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>';
+    syncSliderBounds();
+    calculate();
   });
   window.addEventListener("livingstay:analysis-reset", function () {
     $("rentalReset").click();
   });
+  updateMethodologyFormula();
   window.loadRentalAnalysis = loadBuilding;
   loadBuilding();
 }());

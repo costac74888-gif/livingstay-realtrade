@@ -96,22 +96,32 @@
       <span class="rental-badge">호실 단위 분석</span>
     </div>
     <div id="rentalBuildingIdentity" class="analysis-card analysis-building-identity hidden" aria-live="polite"></div>
+    <div class="rental-condition-bar analysis-card">
+      <label><span>전용면적</span><div><input id="rentalUnitArea" type="text" inputmode="decimal" list="rentalUnitAreaOptions" placeholder="면적 선택 또는 입력"><b>㎡</b></div><datalist id="rentalUnitAreaOptions"></datalist><small id="rentalUnitAreaHint">건물을 선택하면 확인된 호실 면적을 불러옵니다.</small></label>
+      <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" min="0" step="0.01" value="4.5"><b>%</b></div></label>
+      <button class="am-btn" id="rentalReset" type="button">조건 초기화</button>
+    </div>
+    <input id="rentalPurchasePrice" type="hidden"><input id="rentalDeposit" type="hidden"><input id="rentalMonthlyRent" type="hidden"><input id="rentalVacancyMonths" type="hidden"><input id="rentalLoanAmount" type="hidden" value="0">
     <div class="rental-workspace">
+    <section id="rentalSliders" class="analysis-card rental-sliders-panel" aria-label="매수·임대 조건 슬라이더"></section>
     <section id="rentalPositioning" class="analysis-card rental-positioning" aria-live="polite">
       <div class="positioning-copy"><span class="eyebrow">MARKET POSITION</span><h3>시장 기준 임대 포지셔닝</h3><p>R-ONE 비교지역과 현재 시장 기준선을 먼저 확인한 뒤, 내 임대 조건을 같은 축 위에 놓습니다.</p></div>
-      <div class="positioning-pending">매입가·월세와 공실 기준을 입력하면 포지셔닝이 표시됩니다.</div>
+      <div class="positioning-map"><span class="positioning-quadrant pq-tl">안정·저수익형</span><span class="positioning-quadrant pq-tr">고수익·안정형</span><span class="positioning-quadrant pq-bl">수익개선 필요형</span><span class="positioning-quadrant pq-br">고수익·위험형</span><canvas id="rentalPositionChart" aria-label="시장 기준 임대 포지셔닝 차트"></canvas><div class="positioning-pending">매입가·월세와 공실 기준을 입력하면 포지셔닝이 표시됩니다.</div></div>
+      <div class="positioning-toggle" role="group" aria-label="수익률 표시"><button type="button" class="active" data-mode="net">순수익률</button><button type="button" data-mode="equity">자기자본</button></div>
     </section>
-    <section class="analysis-card rental-form">
+    <span id="rentalVacancyMonthsHint" class="rental-vacancy-hint">비워두면 서버가 제공한 R-ONE 평균을 사용하는 가정값입니다.</span>
+    <details id="rentalBasisDetails" class="analysis-card rental-form rental-basis-details">
+      <summary>계산 근거·상세 조건 <span>실거래 기준가·자동 산출 비용·대출 조건</span></summary>
       <div class="rental-group">
         <div class="rental-section-heading"><div><span class="eyebrow">REQUIRED INPUT</span><h3>필수 입력</h3></div><span>입력 즉시 반영</span></div>
         <div class="rental-fields">
-          <label><span>선택 호실 전용면적</span><div><input id="rentalUnitArea" type="text" inputmode="decimal" list="rentalUnitAreaOptions" placeholder="면적 선택 또는 입력"></div><datalist id="rentalUnitAreaOptions"></datalist><small id="rentalUnitAreaHint">건물을 선택하면 확인된 호실 면적을 불러옵니다.</small></label>
-          <label><span>본인 매입가</span><div><input id="rentalPurchasePrice" type="number" min="0" step="100" placeholder="예: 10000"><b>만원</b></div></label>
-          <label><span>임차인 보증금</span><div><input id="rentalDeposit" type="number" min="0" step="10" placeholder="예: 300"><b>만원</b></div></label>
-          <label><span>월 임대료</span><div><input id="rentalMonthlyRent" type="number" min="0" step="1" placeholder="예: 50"><b>만원</b></div></label>
-           <label class="rental-vacancy-months"><span>최근 1년 공실 개월</span><div><input id="rentalVacancyMonths" type="number" min="0" max="12" step="0.1" placeholder="직접 입력 시 우선"><b>개월</b></div><small id="rentalVacancyMonthsHint">비워두면 서버가 제공한 R-ONE 평균을 사용합니다.</small></label>
-          <label><span>대출금</span><div><input id="rentalLoanAmount" type="number" min="0" step="100" value="0"><b>만원</b></div></label>
-          <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" min="0" step="0.01" value="4.5"><b>%</b></div></label>
+          <label class="legacy-input"><span>선택 호실 전용면적</span><div><input data-legacy-field="rentalUnitArea" type="text" placeholder="면적 선택"></div></label>
+          <label class="legacy-input"><span>본인 매입가</span><div><input data-legacy-field="rentalPurchasePrice" type="number" placeholder="예: 10000"><b>만원</b></div></label>
+          <label class="legacy-input"><span>임차인 보증금</span><div><input data-legacy-field="rentalDeposit" type="number" placeholder="예: 300"><b>만원</b></div></label>
+          <label class="legacy-input"><span>월 임대료</span><div><input data-legacy-field="rentalMonthlyRent" type="number" placeholder="예: 50"><b>만원</b></div></label>
+          <label class="legacy-input rental-vacancy-months"><span>최근 1년 공실 개월</span><div><input data-legacy-field="rentalVacancyMonths" type="number" placeholder="직접 입력 시 우선"><b>개월</b></div></label>
+          <label class="legacy-input"><span>대출금</span><div><input data-legacy-field="rentalLoanAmount" type="number" value="0"><b>만원</b></div></label>
+          <label class="legacy-input"><span>연 대출금리</span><div><input data-legacy-field="rentalLoanRate" type="number" value="4.5"><b>%</b></div></label>
         </div>
       </div>
       <div class="rental-group">
@@ -134,10 +144,14 @@
           <label><span>상환방식</span><select id="rentalLoanMethod"><option value="interest">만기일시상환</option><option value="equal">원리금균등상환</option><option value="principal">원금균등상환</option></select></label>
         </div>
       </div></details>
-      <div class="rental-actions"><button class="am-btn" id="rentalReset" type="button">입력 초기화</button><span class="rental-live-note">입력하는 즉시 계산됩니다</span></div>
-    </section>
+       <div class="rental-actions"><span class="rental-live-note">입력하는 즉시 계산됩니다</span></div>
+    </details>
+    <section id="rentalCoreMetrics" class="rental-core-metrics" aria-label="핵심 지표"><div class="metric-heading"><span class="eyebrow">DECISION METRICS</span><h3>핵심 지표</h3></div><div class="metric-grid"><article class="analysis-card metric-card"><small>순수익률 (대출 전)</small><strong data-metric="netYield">—</strong><span>NOI ÷ 매입·취득부대비용·보증금</span></article><article class="analysis-card metric-card"><small>자기자본 수익률</small><strong data-metric="cashReturn">—</strong><span>대출 원리금 차감 후</span></article><article class="analysis-card metric-card"><small>월 순현금흐름</small><strong data-metric="cashFlow">—</strong><span>이자 차감 기준</span></article><article class="analysis-card metric-card"><small>실투자금</small><strong data-metric="invested">—</strong><span>내가 실제 투입하는 금액</span></article></div></section>
+    <section id="rentalSensitivity" class="analysis-card rental-sensitivity"><div class="section-topline"><div><span class="eyebrow">SENSITIVITY</span><h3>월세 × 공실 민감도</h3></div><span class="sensitivity-context">조건 입력 대기</span></div><div class="sensitivity-scroll"><table><thead><tr><th>공실 \ 월세</th><th>25만원</th><th>30만원</th><th>35만원</th><th>40만원</th><th>45만원</th><th>50만원</th><th>55만원</th></tr></thead><tbody><tr><th>0개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>1개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>2개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>3개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>4개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>5개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>6개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div><div class="sensitivity-legend"><span class="good">전국 평균 이상</span><span class="watch">3%~전국 평균</span><span class="bad">3% 미만</span></div></section>
+    <section id="rentalVerdict" class="analysis-card rental-verdict"><span class="eyebrow">READ THE SIGNAL</span><strong>조건을 입력하면 시장 대비 판정이 표시됩니다.</strong><p>수익률과 공실 안정성을 함께 보고, 실거래 기준가를 확인하세요.</p></section>
+    <details id="rentalDetails" class="rental-details"><summary>상세 지표 <span>표면수익률·기준가 수익률·보유비용·대출 지표</span></summary><section id="rentalExtraMetrics" class="rental-results" aria-live="polite"></section></details>
     </div>
-     <section class="rental-results" id="rentalResults" aria-live="polite">
+      <section class="rental-results rental-results-legacy" id="rentalResults" aria-live="polite">
       <article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>
     </section>
     <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>

@@ -228,19 +228,20 @@ async function run() {
         benchmark: {
           period: "2026-07-01",
           vacancy_period: "2026-04-01",
-          region_code: "42",
-          region_name: "강원 조사권역",
-          region_level: "province",
+          region_code: "00",
+          region_name: "전국",
+          region_level: "national",
           property_type: "officetel",
           property_type_name: "오피스텔",
-          income_yield: 5.2,
+          income_yield: 6.02,
           vacancy_rate: 10,
           stability_score: 90,
-          fallback_level: "province",
+          fallback_level: "national",
         },
         items: [
-          { region_name: "강원 조사권역", income_yield: 5.2, vacancy_rate: 10, stability_score: 90 },
-          { region_name: "인접 조사권역", income_yield: 4.8, vacancy_rate: 13, stability_score: 87 },
+          { region_code: "00", region_level: "national", region_name: "전국", income_yield: 6.02, vacancy_rate: 10, stability_score: 90 },
+          { region_code: "42", region_level: "province", region_name: "강원 조사권역", income_yield: 5.2, vacancy_rate: 10, stability_score: 90 },
+          { region_code: "11", region_level: "province", region_name: "인접 조사권역", income_yield: 4.8, vacancy_rate: 13, stability_score: 87 },
         ],
         source: {
           provider: "한국부동산원 R-ONE",
@@ -692,26 +693,27 @@ async function run() {
     expect(areaOptions.join("|") === "18.1㎡|18.2㎡|18.3㎡|21.2㎡|32.5㎡"
       && await page.locator("#rentalUnitArea").inputValue() === "",
       "임대수익분석 전용면적 목록이 중복 없이 ㎡ 단위로 모두 표시되어야 합니다.");
-    const rentalPreInput = await page.evaluate(() => ({
-      peerCount: document.querySelectorAll("#rentalPositioning .positioning-peer").length,
-      quadrantCount: document.querySelectorAll("#rentalPositioning .positioning-quadrant").length,
-      quadrantColors: Array.from(document.querySelectorAll("#rentalPositioning .positioning-quadrant"))
-        .map((el) => getComputedStyle(el, "::before").backgroundColor),
-      mapHeight: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().height,
-      selectedCount: document.querySelectorAll("#rentalPositioning .positioning-dot").length,
-      text: document.getElementById("rentalPositioning").textContent,
-      hasCalculateButton: Boolean(document.getElementById("rentalCalculate")),
-      marketReadonly: document.getElementById("rentalMarketPrice").readOnly,
-    }));
-    expect(rentalPreInput.peerCount === 2
+    const rentalPreInput = await page.evaluate(() => {
+      const chart = Chart.getChart(document.getElementById("rentalPositionChart"));
+      return {
+        sliderCount: document.querySelectorAll("#rentalSliders [data-rental-slider]").length,
+        quadrantCount: document.querySelectorAll("#rentalPositioning .positioning-quadrant").length,
+        mapHeight: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().height,
+        benchmarkDatasets: chart ? chart.data.datasets.map((set) => set.key) : [],
+        marketReadonly: document.getElementById("rentalMarketPrice").readOnly,
+        detailsCollapsed: !document.getElementById("rentalBasisDetails").open
+          && !document.getElementById("rentalDetails").open,
+      };
+    });
+    expect(rentalPreInput.sliderCount === 5
       && rentalPreInput.quadrantCount === 4
-      && new Set(rentalPreInput.quadrantColors).size === 4
       && rentalPreInput.mapHeight >= 230
-      && rentalPreInput.selectedCount === 0
-      && rentalPreInput.text.includes("내 조건 입력 대기")
-      && !rentalPreInput.hasCalculateButton
-      && rentalPreInput.marketReadonly,
-      "입력 전 R-ONE 4사분면 또는 읽기 전용 자동계산 구성이 표시되지 않았습니다.");
+      && rentalPreInput.benchmarkDatasets.includes("national")
+      && rentalPreInput.benchmarkDatasets.includes("province")
+      && rentalPreInput.marketReadonly
+      && rentalPreInput.detailsCollapsed,
+      `임대분석 5슬라이더·전국/지역 XY 기준점·읽기전용 계산근거·접이식 상세 구성이 표시되지 않았습니다: ${JSON.stringify(rentalPreInput)}`);
+    await page.locator("#rentalBasisDetails").evaluate((element) => { element.open = true; });
     await page.fill("#rentalUnitArea", "32.5");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
     const automaticMarketPrice = await page.evaluate(() => ({
@@ -748,16 +750,23 @@ async function run() {
       "실거래 표본이 부족할 때 임의 자동값 대신 자료 부족 사유가 표시되지 않았습니다.");
     await page.fill("#rentalUnitArea", "32.5");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
-    await page.fill("#rentalPurchasePrice", "10000");
+    const setRentalValue = async (field, value) => {
+      await page.locator(`[data-rental-value="${field}"]`).click();
+      const input = page.locator(`[data-rental-value="${field}"] input`);
+      await input.fill(String(value));
+      await input.press("Enter");
+      await page.waitForTimeout(60);
+    };
+    await setRentalValue("rentalPurchasePrice", 10000);
     const acquisitionCosts = await page.evaluate(() => ({
       acquisitionTax: document.getElementById("rentalAcquisitionTax").value,
       brokerFee: document.getElementById("rentalBrokerFee").value,
     }));
     expect(acquisitionCosts.acquisitionTax === "460" && acquisitionCosts.brokerFee === "90",
       "매입가 기준 취득세 4.6%와 중개보수 0.9%가 자동 계산되지 않았습니다.");
-    await page.fill("#rentalDeposit", "300");
-    await page.fill("#rentalMonthlyRent", "50");
-    await page.fill("#rentalLoanAmount", "6000");
+    await setRentalValue("rentalDeposit", 300);
+    await setRentalValue("rentalMonthlyRent", 50);
+    await setRentalValue("rentalLoanAmount", 6000);
     await page.fill("#rentalLoanRate", "4.5");
     await page.click(".rental-cost-details summary");
     await page.selectOption("#rentalLoanMethod", "interest");
@@ -766,46 +775,64 @@ async function run() {
       visible: !document.getElementById("rentalAnalysis").classList.contains("hidden"),
       selectedTab: document.getElementById("rentalTab").getAttribute("aria-selected"),
       tax: document.getElementById("rentalPropertyTax").value,
-      text: document.getElementById("rentalResults").textContent,
+      core: document.getElementById("rentalCoreMetrics").textContent,
+      extra: document.getElementById("rentalExtraMetrics").textContent,
       vacancyMonths: document.getElementById("rentalVacancyMonths").value,
       vacancyRate: document.getElementById("rentalVacancyRate").value,
       vacancyHint: document.getElementById("rentalVacancyMonthsHint").textContent,
       positioning: document.getElementById("rentalPositioning").textContent,
-      peerCount: document.querySelectorAll("#rentalPositioning .positioning-peer").length,
+      verdict: document.getElementById("rentalVerdict").textContent,
+      sensitivityRows: document.querySelectorAll("#rentalSensitivity tbody tr").length,
+      chartDatasets: Chart.getChart(document.getElementById("rentalPositionChart"))
+        ?.data.datasets.map((dataset) => ({ key: dataset.key, data: dataset.data })),
       calculation: window.__rentalAnalysisResult,
     }));
     expect(rentalResult.visible && rentalResult.selectedTab === "true",
       "임대수익분석 탭이 선택 상태로 표시되지 않았습니다.");
-    expect(Number(rentalResult.tax) > 0 && rentalResult.text.includes("자기자본 수익률")
-      && rentalResult.text.includes("DSCR") && rentalResult.text.includes("현재 실거래 기준 수익률"),
+    expect(Number(rentalResult.tax) > 0 && rentalResult.core.includes("자기자본 수익률")
+      && rentalResult.extra.includes("DSCR") && rentalResult.extra.includes("현재 실거래 기준 수익률"),
       "재산세·대출·현재 실거래를 반영한 임대수익 결과가 없습니다.");
-    expect(rentalResult.text.includes("내가 실제 넣은 돈 대비 연간 수익")
-      && rentalResult.text.includes("공실·운영비를 뺀 실제 수익률")
-      && rentalResult.text.includes("임대수익으로 대출을 갚을 수 있는 정도"),
-      "임대수익 전문용어 옆의 쉬운 설명이 누락됐습니다.");
+    expect(rentalResult.core.includes("이자 차감 후 현금흐름")
+      && rentalResult.extra.includes("임대수익으로 대출을 갚을 수 있는 정도"),
+      `새 핵심 수익률 산식 또는 DSCR 설명이 누락됐습니다: ${rentalResult.core} / ${rentalResult.extra}`);
+    const provincePoint = rentalResult.chartDatasets
+      .find((dataset) => dataset.key === "province").data[0];
     expect(Math.abs(rentalResult.calculation.annualRent - 600) < 0.01
       && Math.abs(rentalResult.calculation.debtService - 270) < 0.01
       && Math.abs(rentalResult.calculation.invested - 4250) < 0.01
-      && rentalResult.vacancyMonths === ""
-      && rentalResult.vacancyRate === "10.0"
-      && rentalResult.vacancyHint.includes("전국 전체 평균 1.2개월")
-      && rentalResult.positioning.includes("시장 대비 고수익 후보")
-      && rentalResult.positioning.includes("전국 전체 평균")
-      && rentalResult.positioning.includes("오피스텔 통계")
+      && rentalResult.calculation.returnBasis === 10250
+      && rentalResult.vacancyMonths === "1"
+      && rentalResult.vacancyRate === "8.3"
+      && rentalResult.vacancyHint.includes("소규모 상가 전국 전체 평균 1.2개월")
+      && rentalResult.verdict.includes("판정 보류")
+      && rentalResult.positioning.includes("개별 호실 사례 아님")
       && rentalResult.positioning.includes("2026년 7월")
-      && rentalResult.peerCount === 2
+      && provincePoint.hollow === true
+      && rentalResult.sensitivityRows === 7
       && rentalResult.calculation.vacancySource === "rone",
-      "보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다.");
-    await page.fill("#rentalVacancyMonths", "3");
+      `보증금·월세·대출을 반영한 임대수익 계산값이 올바르지 않습니다: ${JSON.stringify({
+        annualRent: rentalResult.calculation.annualRent,
+        debtService: rentalResult.calculation.debtService,
+        invested: rentalResult.calculation.invested,
+        returnBasis: rentalResult.calculation.returnBasis,
+        vacancyMonths: rentalResult.vacancyMonths,
+        vacancyRate: rentalResult.vacancyRate,
+        vacancyHint: rentalResult.vacancyHint,
+        verdict: rentalResult.verdict,
+        positioning: rentalResult.positioning,
+        provincePoint,
+        sensitivityRows: rentalResult.sensitivityRows,
+        vacancySource: rentalResult.calculation.vacancySource,
+      })}`);
+    await setRentalValue("rentalVacancyMonths", 3);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.vacancySource === "user");
     const userVacancy = await page.evaluate(() => ({
       rate: document.getElementById("rentalVacancyRate").value,
-      positioning: document.getElementById("rentalPositioning").textContent,
+      assumptionHidden: document.querySelector("[data-vacancy-assumption]").classList.contains("hidden"),
       calculation: window.__rentalAnalysisResult,
     }));
     expect(userVacancy.rate === "25.0"
-      && userVacancy.positioning.includes("사용자 입력")
-      && userVacancy.positioning.includes("R-ONE")
+      && userVacancy.assumptionHidden
       && userVacancy.calculation.vacancySource === "user"
       && Math.abs(userVacancy.calculation.vacancyRate - 25) < 0.01,
       "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
@@ -990,7 +1017,7 @@ async function run() {
     expect(await page.inputValue("#rentalMarketPrice") === "",
       "공통 건물 삭제 후 임대분석의 자동 실거래가가 남아 있습니다.");
 
-    await page.fill("#rentalMonthlyRent", "77");
+    await setRentalValue("rentalMonthlyRent", 77);
     await page.click("#operationTab");
     await page.fill("#operationOcc", "71");
     await page.fill("#buildingSearch", "선택 테스트");

@@ -82,3 +82,83 @@
   .positioning-legend{display:grid;grid-template-columns:1fr;gap:7px;text-align:left}
   .positioning-legend>span:last-child{text-align:left}
 }
+
+/* Final rental composition overrides */
+.rental-form{padding:0!important;overflow:hidden}
+.rental-form>.rental-group:first-child{display:none!important}
+.rental-form>summary{display:block;padding:14px 16px;color:#173d48;font-size:12px;font-weight:900;cursor:pointer}
+.rental-form>summary span{margin-left:8px;color:#78908a;font-size:10px;font-weight:600}
+.rental-form[open]{padding:0 16px 16px!important}
+.rental-form .rental-cost-details{display:block!important;margin-top:14px}
+.rental-form .rental-actions{display:none!important}
+.rental-workspace{grid-template-rows:auto auto auto auto auto auto auto}
+.rental-workspace>#rentalSliders{grid-column:1;grid-row:1}
+.rental-workspace>.rental-positioning{grid-column:1;grid-row:2 / span 3}
+.rental-workspace>.rental-vacancy-hint{grid-column:1;grid-row:5}
+.rental-workspace>#rentalCoreMetrics{grid-column:2;grid-row:1}
+.rental-workspace>#rentalSensitivity{grid-column:2;grid-row:2 / span 2}
+.rental-workspace>#rentalVerdict{grid-column:2;grid-row:4}
+.rental-workspace>#rentalBasisDetails{grid-column:1 / -1;grid-row:6}
+.rental-workspace>#rentalDetails{grid-column:1 / -1;grid-row:7}
+.rental-results-legacy{display:none!important}
+.rental-analysis{max-width:100%;overflow-x:hidden}
+.rental-methodology{font-size:12px!important;line-height:1.65}
+.rental-vacancy-hint{display:block;margin:-7px 0 0;color:#778883;font-size:10px}
+.rental-slider-group{padding:0;border:0;margin:0 0 15px}
+.rental-slider-group legend,.rental-slider-group h3{margin:0 0 8px;color:#173d48;font-size:11px;font-weight:900}
+.rental-slider-list{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.rental-slider-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.rental-slider-head label{font-size:11px;font-weight:800;color:#425a5c}
+.rental-positioning .positioning-map{min-height:360px}
+#rentalCoreMetrics .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#rentalCoreMetrics .rental-result,#rentalExtraMetrics .rental-result{min-width:0;padding:12px;border:1px solid #dce9e2;border-radius:9px;background:#fff;overflow-wrap:anywhere}
+#rentalExtraMetrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#rentalCoreMetrics .rental-result small,#rentalExtraMetrics .rental-result small{display:block;color:#526967;font-size:11px}
+#rentalCoreMetrics .rental-result small em,#rentalExtraMetrics .rental-result small em{display:block;font-size:9px;font-style:normal;font-weight:400}
+#rentalCoreMetrics .rental-result strong,#rentalExtraMetrics .rental-result strong{display:block;margin:8px 0 4px;color:#173d48;font-size:clamp(16px,2vw,22px)}
+#rentalCoreMetrics .rental-result span,#rentalExtraMetrics .rental-result span{display:block;color:#718683;font-size:10px}
+#rentalCoreMetrics .rental-result.success strong{color:#08745d}
+#rentalCoreMetrics .rental-result.danger strong,#rentalExtraMetrics .rental-result.danger strong{color:#b23b39}
+#rentalSensitivity td.above{background:#E1F5EE;color:#085041}
+#rentalSensitivity td.middle{background:#FAEEDA;color:#633806}
+#rentalSensitivity td.below{background:#FCEBEB;color:#791F1F}
+#rentalSensitivity td.unavailable{background:#f2f4f5;color:#657477}
+#rentalSensitivity td.selected{border:2px solid #2a78d6;font-weight:900}
+#rentalSensitivity .rental-sensitivity-legend{display:flex;flex-wrap:wrap;gap:7px 13px;margin-top:9px;font-size:10px;color:#526866}
+#rentalSensitivity .rental-sensitivity-legend i{display:inline-block;width:9px;height:9px;border-radius:2px}
+#rentalSensitivity .rental-sensitivity-legend i.above{background:#E1F5EE}
+#rentalSensitivity .rental-sensitivity-legend i.middle{background:#FAEEDA}
+#rentalSensitivity .rental-sensitivity-legend i.below{background:#FCEBEB}
+#rentalSensitivity .rental-sensitivity-legend i.unavailable{background:#f2f4f5}
+.rental-analysis>.methodology{padding:4px 0;background:none;border:0;box-shadow:none;color:#657772;font-size:12px;line-height:1.6}
+.rental-analysis>.methodology strong{font-size:12px}
+[data-rental-slider]{display:block;width:100%;height:5px;margin:7px 0 12px;accent-color:#d47a3a}
+.rental-slider-row input[type=range],.rental-slider-row .rental-range{display:block;width:100%;height:5px;margin:7px 0 12px;accent-color:#d47a3a}
+[data-rental-slider] label,[data-rental-slider] .rental-slider-label{color:#425a5c;font-size:11px;font-weight:800}
+[data-rental-slider] input[type=range]{grid-column:1/-1;width:100%;accent-color:#d47a3a}
+[data-rental-value]{border:0;background:transparent;color:#a45a28;font-size:12px;font-weight:900;text-align:right;cursor:pointer}
+[data-vacancy-assumption]{display:inline-block;margin-left:4px;padding:2px 5px;border-radius:4px;background:#e8ece9;color:#71807d;font-size:8px;font-style:normal}
+#rentalSensitivity .rental-sensitivity-scroll,#rentalSensitivity .sensitivity-scroll{max-width:100%;overflow-x:auto}
+#rentalSensitivity table{min-width:600px;width:100%;border-collapse:separate;border-spacing:3px;font-size:10px;text-align:center}
+#rentalSensitivity th{padding:7px 5px;background:#f0f5f2;color:#526866;white-space:nowrap}
+#rentalSensitivity td{padding:8px 6px;border:1px solid #e0e9e3;background:#fafcf9;color:#687a76}
+#rentalSensitivity td.is-current,#rentalSensitivity td.current{border:2px solid #367ec7;color:#173d48;font-weight:900}
+@media(max-width:900px){
+ .rental-workspace{grid-template-columns:1fr!important}
+ .rental-workspace>#rentalSliders,.rental-workspace>.rental-positioning,.rental-workspace>.rental-vacancy-hint,.rental-workspace>#rentalBasisDetails,.rental-workspace>#rentalCoreMetrics,.rental-workspace>#rentalSensitivity,.rental-workspace>#rentalVerdict,.rental-workspace>#rentalDetails{grid-column:1;grid-row:auto}
+ .rental-workspace>#rentalSliders{grid-row:1}
+ .rental-workspace>.rental-vacancy-hint{grid-row:2}
+ .rental-workspace>.rental-positioning{grid-row:3}
+ .rental-workspace>#rentalCoreMetrics{grid-row:4}
+ .rental-workspace>#rentalSensitivity{grid-row:5}
+ .rental-workspace>#rentalVerdict{grid-row:6}
+ .rental-workspace>#rentalBasisDetails{grid-row:7}
+ .rental-workspace>#rentalDetails{grid-row:8}
+}
+@media(max-width:650px){
+ .rental-slider-list{grid-template-columns:1fr}
+ .rental-positioning .positioning-map{min-height:255px}
+ #rentalExtraMetrics{grid-template-columns:1fr 1fr}
+ .rental-condition-bar,.rental-sliders-panel,.rental-positioning,.rental-core-metrics,.rental-sensitivity,.rental-verdict,.rental-details{max-width:100%;box-sizing:border-box}
+ .rental-sensitivity{overflow:hidden}.sensitivity-scroll{max-width:100%;overflow-x:auto}
+}
