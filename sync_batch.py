@@ -549,19 +549,32 @@ def _process_trades(
 
 def _notify_subscribers(cur, tx_id, building_name, address, price, deal_date, floor_val,
                         deal_type=None, area=None, pending_emails=None):
-    """방금 삽입된 실거래(tx_id)에 대해, 같은 (건물명, 주소)를 구독 중인 회원마다
+    """방금 삽입된 실거래(tx_id)에 대해, 같은 (건물명, 주소)를 저장/구독 중인 회원마다
     notifications 를 1건씩 만든다. 같은 거래로 같은 사용자에게 이미 만든 알림이 있으면
     (user_id, transaction_id) 유니크 제약으로 자동 스킵된다.
     인앱 알림이 새로 만들어진 사용자에게는 이메일도 함께 발송한다(실패해도 알림은 유지)."""
     try:
-        # 구독 매칭: 주소 일치 + (건물명 NULL끼리 or 건물명 일치) — 대상 기준은 기존 그대로.
+        # 관심단지는 별도 실거래 구독 버튼 없이 기본 수신. 건물별로 끈 경우만 제외한다.
+        # 독립적인 실거래 구독도 계속 지원하며, 둘 다 있으면 한 번만 보낸다.
         cur.execute("""
-            SELECT s.user_id, u.email, COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
-            FROM user_alert_subscriptions s
-            JOIN users u ON u.id = s.user_id
-            WHERE s.address = %s
-              AND ((s.building_name IS NULL AND %s IS NULL) OR s.building_name = %s)
-        """, (address, building_name, building_name))
+            WITH recipients AS (
+                SELECT f.user_id FROM user_favorites f
+                 WHERE f.address = %s
+                   AND ((f.building_name IS NULL AND %s IS NULL)
+                        OR f.building_name = %s)
+                   AND f.deal_email_alert_enabled = TRUE
+                UNION
+                SELECT s.user_id FROM user_alert_subscriptions s
+                 WHERE s.address = %s
+                   AND ((s.building_name IS NULL AND %s IS NULL)
+                        OR s.building_name = %s)
+            )
+            SELECT u.id AS user_id, u.email,
+                   COALESCE(u.email_alert_enabled, TRUE) AS email_alert_enabled
+              FROM recipients r JOIN users u ON u.id = r.user_id
+             WHERE COALESCE(u.status, 'active') <> 'withdrawn'
+        """, (address, building_name, building_name,
+              address, building_name, building_name))
         subs = cur.fetchall()
         if not subs:
             return

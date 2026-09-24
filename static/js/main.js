@@ -94,6 +94,7 @@ function toggleFav(item){
         return result;
       });
     })
+    .then(function(){ if (typeof window.refreshAlertsUI === "function") window.refreshAlertsUI(); })
     .catch(function(error){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백
       if (wasFav) {
@@ -153,6 +154,7 @@ function toggleFav(item){
         renderFavChips();
         syncFavBtn();
       }
+      if (typeof window.refreshAlertsUI === "function") window.refreshAlertsUI();
     })
     .catch(function(error){
       // 저장 실패 — 낙관적으로 바꿔둔 로컬 상태 롤백

@@ -196,18 +196,6 @@ task = "shell.exec"
 args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" SITE_URL=\"https://homenstay.com\" python -u weekly_digest.py --scheduled"
 
 [[workflows.workflow]]
-name = "Deal Alert Digest"
-author = "agent"
-schedule = "0 0 * * *"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python deal_alert_digest.py"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow]]
 name = "정기 API 통합 동기화"
 author = "agent"
 schedule = "30 2 * * *"

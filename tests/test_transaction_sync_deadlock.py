@@ -265,6 +265,56 @@ class TransactionSyncDeadlockTests(unittest.TestCase):
                 1000, "2026-09-01", "3",
             )
 
+    def test_saved_favorite_receives_one_immediate_trade_email_without_separate_subscription(self):
+        class Cursor:
+            def __init__(self):
+                self.queries = []
+
+            def execute(self, query, params):
+                self.queries.append((query, params))
+
+            def fetchall(self):
+                # The recipient query combines saved favorites and legacy subscriptions
+                # into one user row even when both exist.
+                return [
+                    {"user_id": 7, "email": "member@example.test", "email_alert_enabled": True},
+                    {"user_id": 8, "email": "off@example.test", "email_alert_enabled": False},
+                ]
+
+            def fetchone(self):
+                return {"id": 10}
+
+        cur = Cursor()
+        pending = []
+        sync_batch._notify_subscribers(
+            cur, 123, "아라트라움", "서울 테스트동 1-1",
+            15800, "2026-07-18", "12", deal_type="매매", area=33.06,
+            pending_emails=pending,
+        )
+        sql = cur.queries[0][0]
+        self.assertIn("FROM user_favorites f", sql)
+        self.assertIn("f.deal_email_alert_enabled = TRUE", sql)
+        self.assertIn("UNION", sql)
+        self.assertIn("COALESCE(u.status, 'active') <> 'withdrawn'", sql)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0][0:2], ("member@example.test", "아라트라움"))
+        self.assertEqual(len(cur.queries), 3)  # one lookup, two in-app notifications
+
+    def test_immediate_email_contains_only_new_transaction(self):
+        with patch("email_util.send_email", return_value=(True, "ok")) as send:
+            sync_batch._send_tx_email(
+                "member@example.test", "아라트라움", "매매", 33.06,
+                15800, "12", "2026-07-18",
+            )
+        self.assertEqual(send.call_count, 1)
+        subject = send.call_args.args[1]
+        body = send.call_args.args[2]
+        self.assertIn("아라트라움", subject)
+        self.assertIn("15,800만원", body)
+        self.assertIn("33.06㎡", body)
+        self.assertNotIn("숙박 뉴스레터", body)
+        self.assertNotIn("이번 주 기능 소개", body)
+
 
 if __name__ == "__main__":
     unittest.main()

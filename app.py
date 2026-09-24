@@ -10351,6 +10351,7 @@ def favorites_mine_signal_alert():
                        permit_change_alert_enabled = TRUE,
                        favorite_increase_alert_enabled = TRUE,
                        nearby_change_alert_enabled = TRUE,
+                       deal_email_alert_enabled = TRUE,
                        master_building_id = COALESCE(uf.master_building_id, %s)
                  WHERE uf.id = %s
                    AND uf.user_id = %s
@@ -10386,7 +10387,8 @@ def favorites_mine_signal_alert():
                        new_listing_alert_enabled = FALSE,
                        permit_change_alert_enabled = FALSE,
                        favorite_increase_alert_enabled = FALSE,
-                       nearby_change_alert_enabled = FALSE
+                       nearby_change_alert_enabled = FALSE,
+                       deal_email_alert_enabled = FALSE
                  WHERE id = %s AND user_id = %s
              RETURNING id, building_name, address
             """, [favorite_id, u["id"]])
@@ -10487,7 +10489,7 @@ def favorites_migrate():
 
 @app.route("/api/alerts/mine")
 def alerts_mine():
-    """로그인 회원의 실거래 알림 구독 목록 + 각 단지 최신 실거래가 + building_id."""
+    """실거래 알림을 받는 관심단지와 독립 구독 목록."""
     u = current_user()
     if not u:
         return jsonify({"ok": False, "message": "로그인이 필요합니다."}), 401
@@ -10495,11 +10497,24 @@ def alerts_mine():
     cur = conn.cursor()
     try:
         cur.execute("""
+            WITH alert_sources AS (
+                SELECT id, building_name, address, created_at
+                  FROM user_alert_subscriptions WHERE user_id = %s
+                UNION ALL
+                SELECT id, building_name, address, created_at
+                  FROM user_favorites
+                 WHERE user_id = %s AND deal_email_alert_enabled = TRUE
+            ), alerts AS (
+                SELECT DISTINCT ON (COALESCE(building_name, ''), address)
+                       id, building_name, address, created_at
+                  FROM alert_sources
+                 ORDER BY COALESCE(building_name, ''), address, created_at DESC, id DESC
+            )
             SELECT us.building_name, us.address, us.created_at,
                    lt.price, lt.deal_date, lt.area, lt.floor, lt.deal_type,
                    lt.lodging_type, lt.lodging_type_detail,
                    bid.id AS building_id
-            FROM user_alert_subscriptions us
+            FROM alerts us
             LEFT JOIN LATERAL (
                 SELECT t.price, t.deal_date, t.area, t.floor, t.deal_type,
                        t.lodging_type, t.lodging_type_detail
@@ -10522,9 +10537,8 @@ def alerts_mine():
                 ORDER BY (mb.building_name = us.building_name) DESC NULLS LAST, mb.id
                 LIMIT 1
             ) bid ON TRUE
-            WHERE us.user_id = %s
             ORDER BY us.created_at DESC, us.id DESC
-        """, (u["id"],))
+        """, (u["id"], u["id"]))
         rows = [dict(r) for r in cur.fetchall()]
     finally:
         cur.close()
@@ -10553,6 +10567,11 @@ def alerts_mine_add():
             "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
             (u["id"], name, addr),
         )
+        cur.execute(
+            "UPDATE user_favorites SET deal_email_alert_enabled = TRUE "
+            "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
+            (u["id"], name, addr),
+        )
         _best_effort_weekly_email_opt_in(cur, u["id"], "deal_alert_subscription")
         conn.commit()
     finally:
@@ -10577,6 +10596,11 @@ def alerts_mine_remove():
     try:
         cur.execute(
             "DELETE FROM user_alert_subscriptions "
+            "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
+            (u["id"], name, addr),
+        )
+        cur.execute(
+            "UPDATE user_favorites SET deal_email_alert_enabled = FALSE "
             "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
             (u["id"], name, addr),
         )
@@ -10613,6 +10637,11 @@ def alerts_migrate():
             cur.execute(
                 "INSERT INTO user_alert_subscriptions (user_id, building_name, address) VALUES (%s, %s, %s) "
                 "ON CONFLICT (user_id, COALESCE(building_name, ''), address) DO NOTHING",
+                (u["id"], name, addr),
+            )
+            cur.execute(
+                "UPDATE user_favorites SET deal_email_alert_enabled = TRUE "
+                "WHERE user_id = %s AND COALESCE(building_name,'') = COALESCE(%s,'') AND address = %s",
                 (u["id"], name, addr),
             )
         if pairs:
