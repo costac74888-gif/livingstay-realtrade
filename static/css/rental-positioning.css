@@ -331,6 +331,25 @@
   font-size: inherit;
   white-space: nowrap;
 }
+.rental-range-limits > .rental-range-knee {
+  color: #be3030;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+.rental-range-steps {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  grid-column: 1 / -1;
+  color: #667879;
+  font-size: 10px;
+  line-height: 1.35;
+  margin: -3px 0 8px;
+}
+.rental-range-steps > :last-child {
+  text-align: right;
+}
 .operation-slider-bounds > small {
   text-align: center;
   font-size: inherit;

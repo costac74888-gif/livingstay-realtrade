@@ -121,6 +121,10 @@
   }
   function clampField(field, rawValue) {
     var kind = hardCapKind(field);
+    // The shared caps allow zero for rental bars; operation comparison inputs
+    // still require a positive purchase price and monthly rent.
+    if ((field === "purchasePrice" && Number(rawValue) < 100)
+      || (field === "compareRent" && Number(rawValue) < 1)) return null;
     return kind && sliderUtils ? sliderUtils.clampHard(kind, rawValue) : null;
   }
   function refreshCompareRentBase() {

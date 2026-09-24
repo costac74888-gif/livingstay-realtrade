@@ -2,10 +2,10 @@
   "use strict";
 
   var HARD_CAPS = Object.freeze({
-    purchase: Object.freeze([100, 500000]),
-    loan: Object.freeze([0, 400000]),
-    deposit: Object.freeze([0, 5000]),
-    rent: Object.freeze([1, 1000]),
+    purchase: Object.freeze([0, 500000]),
+    loan: Object.freeze([0, 500000]),
+    deposit: Object.freeze([0, 50000]),
+    rent: Object.freeze([0, 1000]),
     vacancy: Object.freeze([0, 12]),
     adr: Object.freeze([10000, 2000000]),
     occ: Object.freeze([20, 100]),

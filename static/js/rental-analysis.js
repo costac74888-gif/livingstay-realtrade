@@ -139,8 +139,10 @@
     error.hidden = !message;
   }
   function rentalInputErrorMessage(field) {
-    if (field === "rentalMonthlyRent") return "월세는 1~1,000만원 범위로 입력하세요";
-    if (field === "rentalLoanAmount") return "대출금은 0~40억 범위로 입력하세요.";
+    if (field === "rentalMonthlyRent") return "월세는 0~1,000만원 범위로 입력하세요";
+    if (field === "rentalLoanAmount") return "대출금은 0~50억 범위로 입력하세요.";
+    if (field === "rentalDeposit") return "보증금은 0~5억 범위로 입력하세요.";
+    if (field === "rentalPurchasePrice") return "매수가는 0~50억 범위로 입력하세요.";
     return "입력값이 허용 범위를 벗어났습니다.";
   }
   function rentalLimitText(field, value) {
@@ -150,64 +152,57 @@
     if (value >= 10000 && value % 10000 === 0) return (value / 10000).toLocaleString("ko-KR") + "억";
     return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만";
   }
-  // Financial amounts remain in 만원; only the range controls use virtual ticks.
-  // The first five 억 occupies one third of each track.
-  var PRICE_SLIDER_KNEE = 50000;
-  var PURCHASE_SLIDER_TICKS = 900;
-  var PURCHASE_SLIDER_KNEE = 300;
-  function purchaseSliderPosition(amount, bounds) {
-    var min = bounds.min, max = bounds.max;
-    var safe = Math.max(min, Math.min(max, Number(amount)));
-    if (min >= PRICE_SLIDER_KNEE) {
-      return Math.round((safe - min) / (max - min) * PURCHASE_SLIDER_TICKS);
-    }
-    return safe <= PRICE_SLIDER_KNEE
-      ? Math.round((safe - min) / (PRICE_SLIDER_KNEE - min) * PURCHASE_SLIDER_KNEE)
-      : PURCHASE_SLIDER_KNEE + Math.round((safe - PRICE_SLIDER_KNEE)
-        / (max - PRICE_SLIDER_KNEE) * (PURCHASE_SLIDER_TICKS - PURCHASE_SLIDER_KNEE));
+  // Only the physical range uses ticks. Stored, calculated and shared values
+  // remain exact amounts in 만원; each half has its own selection increment.
+  var SPLIT_TICKS = 1000;
+  var SPLIT_MIDDLE = 500;
+  var rentalSplitScales = {
+    rentalPurchasePrice: { knee: 50000, max: 500000, lowStep: 1000, highStep: 10000,
+      lowLabel: "5억까지 1천만원 간격", highLabel: "이후 1억원 간격" },
+    rentalLoanAmount: { knee: 50000, max: 500000, lowStep: 1000, highStep: 10000,
+      lowLabel: "5억까지 1천만원 간격", highLabel: "이후 1억원 간격" },
+    rentalDeposit: { knee: 5000, max: 50000, lowStep: 100, highStep: 1000,
+      kneeLabel: "5천만원",
+      lowLabel: "5천만원까지 100만원 간격", highLabel: "이후 1천만원 간격" },
+    rentalMonthlyRent: { knee: 200, max: 1000, lowStep: 1, highStep: 10,
+      kneeLabel: "200만원",
+      lowLabel: "200만원까지 1만원 간격", highLabel: "이후 10만원 간격" },
+  };
+  function splitSliderPosition(field, amount, bounds) {
+    var scale = rentalSplitScales[field];
+    var safe = Math.max(bounds.min, Math.min(scale.max, Number(amount)));
+    return safe <= scale.knee
+      ? Math.round((safe - bounds.min) / (scale.knee - bounds.min) * SPLIT_MIDDLE)
+      : SPLIT_MIDDLE + Math.round((safe - scale.knee) / (scale.max - scale.knee)
+        * (SPLIT_TICKS - SPLIT_MIDDLE));
   }
-  function purchaseSliderAmount(position, bounds) {
-    var tick = Math.max(0, Math.min(PURCHASE_SLIDER_TICKS, Number(position)));
-    var amount = bounds.min >= PRICE_SLIDER_KNEE
-      ? bounds.min + tick / PURCHASE_SLIDER_TICKS * (bounds.max - bounds.min)
-      : tick <= PURCHASE_SLIDER_KNEE
-        ? bounds.min + tick / PURCHASE_SLIDER_KNEE * (PRICE_SLIDER_KNEE - bounds.min)
-        : PRICE_SLIDER_KNEE + (tick - PURCHASE_SLIDER_KNEE)
-          / (PURCHASE_SLIDER_TICKS - PURCHASE_SLIDER_KNEE) * (bounds.max - PRICE_SLIDER_KNEE);
-    return window.analysisSliderUtils.nearest(amount, bounds);
-  }
-  var LOAN_SLIDER_CAP = 400000;
-  var LOAN_SLIDER_TICKS = 1000;
-  var LOAN_SLIDER_KNEE = 333;
-  function loanSliderPosition(amount) {
-    var safe = Math.max(0, Math.min(LOAN_SLIDER_CAP, Number(amount)));
-    return safe <= PRICE_SLIDER_KNEE
-      ? Math.round(safe / PRICE_SLIDER_KNEE * LOAN_SLIDER_KNEE)
-      : LOAN_SLIDER_KNEE + Math.round((safe - PRICE_SLIDER_KNEE)
-        / (LOAN_SLIDER_CAP - PRICE_SLIDER_KNEE) * (LOAN_SLIDER_TICKS - LOAN_SLIDER_KNEE));
-  }
-  function loanSliderAmount(position) {
-    var tick = Math.max(0, Math.min(LOAN_SLIDER_TICKS, Number(position)));
-    var amount = tick <= LOAN_SLIDER_KNEE
-      ? tick / LOAN_SLIDER_KNEE * PRICE_SLIDER_KNEE
-      : PRICE_SLIDER_KNEE + (tick - LOAN_SLIDER_KNEE)
-        / (LOAN_SLIDER_TICKS - LOAN_SLIDER_KNEE) * (LOAN_SLIDER_CAP - PRICE_SLIDER_KNEE);
-    return Math.round(amount / 1000) * 1000;
+  function splitSliderAmount(field, position, bounds) {
+    var scale = rentalSplitScales[field];
+    var tick = Math.max(0, Math.min(SPLIT_TICKS, Number(position)));
+    var low = tick <= SPLIT_MIDDLE;
+    var amount = low
+      ? bounds.min + tick / SPLIT_MIDDLE * (scale.knee - bounds.min)
+      : scale.knee + (tick - SPLIT_MIDDLE) / (SPLIT_TICKS - SPLIT_MIDDLE)
+        * (scale.max - scale.knee);
+    var step = low ? scale.lowStep : scale.highStep;
+    return Math.max(bounds.min, Math.min(scale.max,
+      (low ? bounds.min : scale.knee) + Math.round((amount - (low ? bounds.min : scale.knee)) / step) * step));
   }
   function updateRentalLimitLabels(bounds) {
     Object.keys(bounds).forEach(function (field) {
       var node = document.querySelector('[data-rental-limits="' + field + '"]');
       var rangeBounds = bounds[field];
       if (!node) return;
-      var edges = node.querySelectorAll("span");
+      var minLabel = node.querySelector("[data-rental-limit-min]");
+      var maxLabel = node.querySelector("[data-rental-limit-max]");
       if (!rangeBounds) {
-        if (edges[0]) edges[0].textContent = "—";
-        if (edges[1]) edges[1].textContent = "—";
+        if (minLabel) minLabel.textContent = "—";
+        if (maxLabel) maxLabel.textContent = "—";
         return;
       }
-      if (edges[0]) edges[0].textContent = rentalLimitText(field, rangeBounds.min);
-      if (edges[1]) edges[1].textContent = rentalLimitText(field,
-        field === "rentalLoanAmount" ? LOAN_SLIDER_CAP : rangeBounds.max);
+      if (minLabel) minLabel.textContent = rentalLimitText(field, rangeBounds.min);
+      if (maxLabel) maxLabel.textContent = rentalLimitText(field,
+        rentalSplitScales[field] ? rentalSplitScales[field].max : rangeBounds.max);
     });
   }
   function cleanInvalidRentalParams(keys) {
@@ -224,11 +219,11 @@
     var utils = window.analysisSliderUtils;
     var market = utils.clampHard("purchase", n("rentalMarketPrice"));
     var current = utils.clampHard("purchase", n("rentalPurchasePrice"));
-    sliderBasePrice = market != null ? market : current;
+    sliderBasePrice = market > 0 ? market : current > 0 ? current : null;
     var safeBase = sliderBasePrice;
     if (safeBase == null) return null;
     var bounds = utils.purchaseBounds(safeBase);
-    bounds.min = Math.max(utils.HARD_CAPS.purchase[0], Math.floor(bounds.min / 1000) * 1000);
+    bounds.min = 0;
     bounds.max = utils.HARD_CAPS.purchase[1];
     bounds.step = 1000;
     return bounds;
@@ -289,7 +284,7 @@
     var depositMax = utils.HARD_CAPS.deposit[1];
     var rent = rentCenterBase == null ? null : utils.rentBounds(rentCenterBase);
     if (rent) {
-      rent.min = Math.max(utils.HARD_CAPS.rent[0], rent.min);
+      rent.min = 0;
       rent.max = utils.HARD_CAPS.rent[1];
       rent.step = 1;
     }
@@ -297,12 +292,10 @@
       rentalPurchasePrice: purchase,
       rentalLoanAmount: {
         min: 0,
-        max: LOAN_SLIDER_TICKS,
+        max: SPLIT_TICKS,
         step: 1,
       },
-      rentalDeposit: purchase && n("rentalPurchasePrice") > 0 ? {
-        min: 0, max: depositMax, step: 100,
-      } : null,
+      rentalDeposit: { min: 0, max: depositMax, step: 100 },
       rentalMonthlyRent: rent,
       rentalVacancyMonths: { min: 0, max: 12, step: 1 },
     };
@@ -322,7 +315,7 @@
       }
     });
     var bounds = rentalSliderConfiguration();
-    if (expandField && expandField !== "rentalLoanAmount" && bounds[expandField]) {
+    if (expandField && !rentalSplitScales[expandField] && bounds[expandField]) {
       bounds[expandField] = utils.includeValue(bounds[expandField], n(expandField));
     }
     sliderBounds = bounds;
@@ -335,17 +328,15 @@
         range.min = "0"; range.max = "0"; range.step = "1"; range.value = "0";
         return;
       }
-      range.min = String(field === "rentalPurchasePrice" ? 0 : rangeBounds.min);
-      range.max = String(field === "rentalPurchasePrice" ? PURCHASE_SLIDER_TICKS : rangeBounds.max);
-      range.step = String(field === "rentalPurchasePrice" ? 1 : rangeBounds.step);
+      range.min = String(rentalSplitScales[field] ? 0 : rangeBounds.min);
+      range.max = String(rentalSplitScales[field] ? SPLIT_TICKS : rangeBounds.max);
+      range.step = String(rentalSplitScales[field] ? 1 : rangeBounds.step);
       var amount = n(field);
-      range.value = String(field === "rentalLoanAmount"
-        ? loanSliderPosition(amount)
-        : field === "rentalPurchasePrice"
-          ? purchaseSliderPosition(amount || rangeBounds.min, rangeBounds)
+      range.value = String(rentalSplitScales[field]
+        ? splitSliderPosition(field, amount, rangeBounds)
         : amount > 0 || field === "rentalVacancyMonths"
           ? utils.nearest(amount, rangeBounds) : rangeBounds.min);
-      if (field === "rentalLoanAmount" || field === "rentalPurchasePrice") {
+      if (rentalSplitScales[field]) {
         range.setAttribute("aria-valuetext", formatInputValue(field, amount));
       }
     });
@@ -405,17 +396,21 @@
   }
   function makeSliderRow(field, label, step) {
     var units = {
-      rentalPurchasePrice: "천만원 단위",
-      rentalLoanAmount: "천만원 단위 · 절대 상한 40억",
-      rentalDeposit: "백만원 단위",
-      rentalMonthlyRent: "만원 단위",
       rentalVacancyMonths: "1개월 단위",
     };
+    var scale = rentalSplitScales[field];
+    var limitLabels = scale
+      ? '<span data-rental-limit-min>—</span><strong class="rental-range-knee">'
+        + (scale.kneeLabel || rentalLimitText(field, scale.knee)) + '</strong><span data-rental-limit-max>—</span>'
+      : '<span data-rental-limit-min>—</span><small>' + units[field]
+        + '</small><span data-rental-limit-max>—</span>';
     return '<div class="rental-slider-row" data-rental-row="' + field + '"><div class="rental-slider-head"><label for="rentalSlider' + field.slice(6) + '">' + label + '</label>'
       + '<span><button type="button" class="rental-value-button slider-value" data-rental-value="' + field + '" data-value-for="' + field + '" aria-label="' + label + ' 직접 입력">' + formatInputValue(field, $(field).value) + '</button>'
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
       + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
-      + '<span class="rental-range-limits" data-rental-limits="' + field + '"><span>—</span><small>' + units[field] + '</small><span>—</span></span>'
+      + '<span class="rental-range-limits" data-rental-limits="' + field + '">' + limitLabels + '</span>'
+      + (scale ? '<span class="rental-range-steps"><small>' + scale.lowLabel
+        + '</small><small>' + scale.highLabel + '</small></span>' : '')
       + '<span class="rental-slider-input-error" data-rental-input-error="' + field + '" role="alert" hidden></span></div>';
   }
   function setupRentalSliders() {
@@ -444,24 +439,17 @@
       if (!range) return;
       var field = range.dataset.rentalSlider;
       delete invalidRentalUrlFields[field];
-      var requested = field === "rentalLoanAmount"
-        ? loanSliderAmount(range.value)
-        : field === "rentalPurchasePrice"
-          ? purchaseSliderAmount(range.value, sliderBounds[field])
-        : range.value;
+      var scale = rentalSplitScales[field];
+      var requested = scale ? splitSliderAmount(field, range.value, sliderBounds[field]) : range.value;
       var safeValue = clampRentalValue(field, requested);
       if (safeValue == null) {
-        range.value = field === "rentalLoanAmount"
-          ? String(loanSliderPosition(n(field)))
-          : field === "rentalPurchasePrice"
-            ? String(purchaseSliderPosition(n(field), sliderBounds[field]))
-            : $(field).value || range.min;
+        range.value = scale ? String(splitSliderPosition(field, n(field), sliderBounds[field]))
+          : $(field).value || range.min;
         setRentalInputError(field, rentalInputErrorMessage(field));
         return;
       }
-      range.value = String(field === "rentalLoanAmount" ? loanSliderPosition(safeValue)
-        : field === "rentalPurchasePrice" ? purchaseSliderPosition(safeValue, sliderBounds[field]) : safeValue);
-      if (field === "rentalLoanAmount" || field === "rentalPurchasePrice") {
+      range.value = String(scale ? splitSliderPosition(field, safeValue, sliderBounds[field]) : safeValue);
+      if (scale) {
         range.setAttribute("aria-valuetext", formatInputValue(field, safeValue));
       }
       lastValidRentalInputs[field] = safeValue;
