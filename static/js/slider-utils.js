@@ -3,6 +3,7 @@
 
   var HARD_CAPS = Object.freeze({
     purchase: Object.freeze([100, 500000]),
+    loan: Object.freeze([0, 400000]),
     deposit: Object.freeze([0, 5000]),
     rent: Object.freeze([1, 1000]),
     vacancy: Object.freeze([0, 12]),
@@ -12,8 +13,8 @@
     mgmtFee: Object.freeze([0, 50]),
   });
 
-  function clampHard(kind, value, purchasePrice) {
-    var bounds = kind === "loan" ? [0, Math.min(400000, Number(purchasePrice))] : HARD_CAPS[kind];
+  function clampHard(kind, value) {
+    var bounds = HARD_CAPS[kind];
     if (!bounds) throw new Error("알 수 없는 슬라이더 항목: " + kind);
     if (value === "" || value === null || value === undefined) return null;
     var parsed = Number(value);

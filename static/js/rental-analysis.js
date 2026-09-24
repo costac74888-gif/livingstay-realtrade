@@ -130,8 +130,7 @@
   }
   function clampRentalValue(field, value) {
     var kind = rentalHardKind(field);
-    return kind ? window.analysisSliderUtils.clampHard(kind, value,
-      field === "rentalLoanAmount" ? n("rentalPurchasePrice") : undefined) : Number(value);
+    return kind ? window.analysisSliderUtils.clampHard(kind, value) : Number(value);
   }
   function setRentalInputError(field, message) {
     var error = document.querySelector('[data-rental-input-error="' + field + '"]');
@@ -141,7 +140,7 @@
   }
   function rentalInputErrorMessage(field) {
     if (field === "rentalMonthlyRent") return "월세는 1~1,000만원 범위로 입력하세요";
-    if (field === "rentalLoanAmount") return "대출금은 매수가 이내·절대 상한 40억으로 입력하세요.";
+    if (field === "rentalLoanAmount") return "대출금은 0~40억 범위로 입력하세요.";
     return "입력값이 허용 범위를 벗어났습니다.";
   }
   function rentalLimitText(field, value) {
@@ -194,29 +193,6 @@
       : PRICE_SLIDER_KNEE + (tick - LOAN_SLIDER_KNEE)
         / (LOAN_SLIDER_TICKS - LOAN_SLIDER_KNEE) * (LOAN_SLIDER_CAP - PRICE_SLIDER_KNEE);
     return Math.round(amount / 1000) * 1000;
-  }
-  function updateLoanCapNote() {
-    var note = document.querySelector("[data-rental-loan-cap]");
-    if (note) note.textContent = n("rentalPurchasePrice") > 0
-      ? "현재 매수가 기준 대출 한도 " + rentalLimitText("rentalLoanAmount", loanMaximum()) + "원"
-      : "";
-  }
-  function limitLoanAfterPurchaseChange() {
-    var cap = loanMaximum();
-    if (n("rentalLoanAmount") <= cap) return;
-    $("rentalLoanAmount").value = String(cap);
-    lastValidRentalInputs.rentalLoanAmount = cap;
-    var range = sliderInputs.rentalLoanAmount;
-    if (range) {
-      range.value = String(loanSliderPosition(cap));
-      range.setAttribute("aria-valuetext", formatInputValue("rentalLoanAmount", cap));
-    }
-    var button = document.querySelector('[data-rental-value="rentalLoanAmount"]');
-    if (button && !button.querySelector("input")) {
-      button.textContent = formatInputValue("rentalLoanAmount", cap);
-    }
-    setRentalInputError("rentalLoanAmount",
-      "매수가가 낮아져 대출금을 " + rentalLimitText("rentalLoanAmount", cap) + "원으로 조정했습니다.");
   }
   function updateRentalLimitLabels(bounds) {
     Object.keys(bounds).forEach(function (field) {
@@ -310,7 +286,6 @@
     var utils = window.analysisSliderUtils;
     if (!utils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
     var purchase = purchaseBounds();
-    var purchaseValue = n("rentalPurchasePrice");
     var depositMax = utils.HARD_CAPS.deposit[1];
     var rent = rentCenterBase == null ? null : utils.rentBounds(rentCenterBase);
     if (rent) {
@@ -320,21 +295,17 @@
     }
     return {
       rentalPurchasePrice: purchase,
-      rentalLoanAmount: purchase && purchaseValue > 0 ? {
+      rentalLoanAmount: {
         min: 0,
         max: LOAN_SLIDER_TICKS,
         step: 1,
-      } : null,
-      rentalDeposit: purchase && purchaseValue > 0 ? {
+      },
+      rentalDeposit: purchase && n("rentalPurchasePrice") > 0 ? {
         min: 0, max: depositMax, step: 100,
       } : null,
       rentalMonthlyRent: rent,
       rentalVacancyMonths: { min: 0, max: 12, step: 1 },
     };
-  }
-  function loanMaximum() {
-    var purchase = n("rentalPurchasePrice");
-    return Math.max(0, Math.min(purchase, 400000));
   }
   function syncSliderBounds(expandField, skipField) {
     var utils = window.analysisSliderUtils;
@@ -343,9 +314,7 @@
       "rentalVacancyMonths", "rentalLoanAmount"].forEach(function (field) {
       var value = $(field).value;
       if (value !== "" && clampRentalValue(field, value) == null) {
-        var corrected = field === "rentalLoanAmount" && n("rentalPurchasePrice") > 0
-          ? Math.min(Number(value), loanMaximum())
-          : lastValidRentalInputs[field];
+        var corrected = lastValidRentalInputs[field];
         $(field).value = corrected == null ? "" : String(corrected);
         if (corrected != null) lastValidRentalInputs[field] = corrected;
       } else if (value !== "") {
@@ -380,14 +349,11 @@
         range.setAttribute("aria-valuetext", formatInputValue(field, amount));
       }
     });
-    var loanCap = loanMaximum();
-    if (n("rentalLoanAmount") > loanCap) $("rentalLoanAmount").value = String(loanCap);
     Object.keys(bounds).forEach(function (field) {
       var button = document.querySelector('[data-rental-value="' + field + '"]');
       if (button) button.textContent = formatInputValue(field, $(field).value);
     });
     updateRentalLimitLabels(bounds);
-    updateLoanCapNote();
     var buyHeading = document.querySelector("#rentalSliders .rental-buy-heading");
     if (buyHeading) buyHeading.textContent = "매수 조건 (대출금리 연 " + formatInputValue("rate", n("rentalLoanRate")).replace("만원", "%")
       + ", " + $("rentalLoanMethod").selectedOptions[0].text + ")";
@@ -432,7 +398,6 @@
       var changedField = field;
       sliderChangeField = "";
       var dependentChange = changedField === "rentalPurchasePrice" || changedField === "rentalDeposit";
-      if (dependentChange) limitLoanAfterPurchaseChange();
       if (!directEntry && dependentChange) syncSliderBounds(null, changedField);
       updateRentalUrl();
       scheduleCalculate();
@@ -451,7 +416,6 @@
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
       + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
       + '<span class="rental-range-limits" data-rental-limits="' + field + '"><span>—</span><small>' + units[field] + '</small><span>—</span></span>'
-      + (field === "rentalLoanAmount" ? '<span class="rental-loan-cap" data-rental-loan-cap></span>' : '')
       + '<span class="rental-slider-input-error" data-rental-input-error="' + field + '" role="alert" hidden></span></div>';
   }
   function setupRentalSliders() {
@@ -460,7 +424,7 @@
     host.innerHTML = '<div class="rental-panel-title"><div><span class="eyebrow">SCENARIO BUILDER</span><h3>조건을 조정해 수익을 확인하세요</h3></div></div>'
       + '<section class="rental-slider-group"><h3 class="rental-buy-heading">매수 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalPurchasePrice", "매수가", 1)
-      + makeSliderRow("rentalLoanAmount", "대출금 (매수가 이내)", 1000)
+      + makeSliderRow("rentalLoanAmount", "대출금", 1000)
       + '</div></section><section class="rental-slider-group"><h3>임대 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalDeposit", "보증금", 100)
       + makeSliderRow("rentalMonthlyRent", "월세", 1)
@@ -481,7 +445,7 @@
       var field = range.dataset.rentalSlider;
       delete invalidRentalUrlFields[field];
       var requested = field === "rentalLoanAmount"
-        ? Math.min(loanSliderAmount(range.value), Math.floor(loanMaximum() / 1000) * 1000)
+        ? loanSliderAmount(range.value)
         : field === "rentalPurchasePrice"
           ? purchaseSliderAmount(range.value, sliderBounds[field])
         : range.value;
@@ -509,8 +473,6 @@
       var valueButton = document.querySelector('[data-rental-value="' + field + '"]');
       if (valueButton) valueButton.textContent = formatInputValue(field, safeValue);
       if (field === "rentalPurchasePrice") {
-        limitLoanAfterPurchaseChange();
-        updateLoanCapNote();
         updateAcquisitionCosts();
         updateEstimatedTax();
       }
@@ -533,8 +495,7 @@
       input.enterKeyHint = "done";
       input.step = field === "rentalVacancyMonths" ? "0.5" : "1";
       input.min = hardKind === "loan" ? "0" : hardBounds ? String(hardBounds[0]) : "0";
-      input.max = hardKind === "loan" ? String(loanMaximum())
-        : hardBounds ? String(hardBounds[1]) : "";
+      input.max = hardBounds ? String(hardBounds[1]) : "";
       input.value = $(field).value;
       input.setAttribute("aria-label", field === "rentalVacancyMonths" ? "연간 공실 개월" : "금액(만원)");
       setRentalInputError(field, "");
@@ -564,7 +525,6 @@
           rentCenterEdited = true;
           if (field === "rentalVacancyMonths") vacancyAssumed = false;
           if (field === "rentalPurchasePrice") {
-            limitLoanAfterPurchaseChange();
             updateAcquisitionCosts();
             updateEstimatedTax();
           }
@@ -1458,8 +1418,7 @@
         return;
       }
       var kind = rentalHardKind(field);
-      var normalized = kind ? window.analysisSliderUtils.clampHard(kind, value,
-        field === "rentalLoanAmount" ? n("rentalPurchasePrice") : undefined)
+      var normalized = kind ? window.analysisSliderUtils.clampHard(kind, value)
         : Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
       if (normalized == null) {
         invalidKeys.push(key);
