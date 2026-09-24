@@ -140,7 +140,7 @@
   }
   function operationSliderMessage(field) {
     return {
-      adr: "ADR는 50,000~2,000,000원 범위로 입력해 주세요.",
+      adr: "ADR는 10,000~2,000,000원 범위로 입력해 주세요.",
       occ: "OCC는 20~100% 범위로 입력해 주세요.",
       opexRatio: "운영경비율은 10~80% 범위로 입력해 주세요.",
       mgmtFeeRatio: "위탁수수료율은 0~50% 범위로 입력해 주세요.",
@@ -167,6 +167,26 @@
     if (error) error.remove();
   }
   function roundTo(valueToRound, step) { return Math.round(valueToRound / step) * step; }
+  // The first 1~10만원 occupies one third of the fixed ADR track; 10~200만원
+  // uses the remaining two thirds. Financial values stay in won everywhere else.
+  var ADR_KNEE = 100000;
+  var ADR_SLIDER_KNEE = 200;
+  var ADR_SLIDER_MAX = 600;
+  function adrSliderPosition(amount) {
+    var adr = Math.max(10000, Math.min(2000000, Number(amount) || 10000));
+    return adr <= ADR_KNEE
+      ? Math.round((adr - 10000) / (ADR_KNEE - 10000) * ADR_SLIDER_KNEE)
+      : ADR_SLIDER_KNEE + Math.round((adr - ADR_KNEE) / (2000000 - ADR_KNEE)
+        * (ADR_SLIDER_MAX - ADR_SLIDER_KNEE));
+  }
+  function adrSliderAmount(position) {
+    var tick = Math.max(0, Math.min(ADR_SLIDER_MAX, Number(position)));
+    var amount = tick <= ADR_SLIDER_KNEE
+      ? 10000 + tick / ADR_SLIDER_KNEE * (ADR_KNEE - 10000)
+      : ADR_KNEE + (tick - ADR_SLIDER_KNEE) / (ADR_SLIDER_MAX - ADR_SLIDER_KNEE)
+        * (2000000 - ADR_KNEE);
+    return roundTo(amount, 10000);
+  }
   function setAssumption(field, isAssumed) {
     assumed[field] = !!isAssumed;
     var row = document.querySelector('[data-operation-row="' + field + '"]');
@@ -518,7 +538,7 @@
     if (!sliderUtils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
     var baseline = regionalBaseline();
     var bounds = Object.create(null);
-    bounds.adr = { min: 50000, max: 2000000, step: 10000 };
+    bounds.adr = { min: 10000, max: 2000000, step: 10000 };
     bounds.occ = { min: 20, max: 100, step: 1 };
     bounds.opexRatio = { min: 10, max: 80, step: 1 };
     bounds.mgmtFeeRatio = { min: 0, max: 50, step: 1 };
@@ -542,7 +562,7 @@
       bounds.compareRent.max = Math.min(1000, bounds.compareRent.max);
     }
 
-    ["adr", "occ", "opexRatio", "mgmtFeeRatio"].forEach(function (field) {
+    ["occ", "opexRatio", "mgmtFeeRatio"].forEach(function (field) {
       bounds[field] = sliderUtils.includeValue(bounds[field], clampField(field, value(field)));
     });
     sliderBounds = bounds;
@@ -568,13 +588,14 @@
     var meta = labels[field], input = $(meta[0]), current = number(input.value);
     var computedBounds = sliderBounds[field];
     var bounds = computedBounds || { min: 0, max: 0, step: 1 };
-    var initial = current == null ? bounds.min
-      : Math.max(bounds.min, Math.min(bounds.max,
-        bounds.min + Math.round((current - bounds.min) / bounds.step) * bounds.step));
+    var rangeBounds = field === "adr" ? { min: 0, max: ADR_SLIDER_MAX, step: 1 } : bounds;
+    var initial = current == null ? rangeBounds.min
+      : field === "adr" ? adrSliderPosition(current) : sliderUtils.nearest(current, bounds);
     return '<div class="operation-slider-row" data-operation-row="' + field + '"><div class="operation-slider-head"><label for="operationSlider_' + field + '">' + meta[1] + '</label><span>'
       + '<button class="operation-value-button" type="button" data-operation-value="' + field + '">' + displayValue(field) + '</button>'
       + '<i data-operation-assumption' + (assumed[field] ? "" : ' class="hidden"') + '>' + (field === "adr" || field === "occ" ? "가정값(지역 평균)" : "가정값") + "</i>"
-      + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + bounds.min + '" max="' + bounds.max + '" step="' + bounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
+      + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + rangeBounds.min + '" max="' + rangeBounds.max + '" step="' + rangeBounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
+      + (field === "adr" ? ' aria-valuetext="' + format(current == null ? bounds.min : current, 0) + '원"' : "")
       + (((field === "purchasePrice" || field === "compareRent") && !computedBounds) ? " disabled" : "") + ">"
       + '<div class="operation-slider-bounds"><span data-slider-bound="min">'
       + sliderBoundText(field, computedBounds && computedBounds.min) + '</span><small>'
@@ -635,11 +656,13 @@
       var field = range.dataset.operationSlider, current = value(field);
       var bounds = sliderBounds[field];
       if (bounds && field !== activeSliderField) {
-        range.min = String(bounds.min);
-        range.max = String(bounds.max);
-        range.step = String(bounds.step);
+        range.min = String(field === "adr" ? 0 : bounds.min);
+        range.max = String(field === "adr" ? ADR_SLIDER_MAX : bounds.max);
+        range.step = String(field === "adr" ? 1 : bounds.step);
         range.disabled = false;
-        range.value = String(current == null ? bounds.min : sliderUtils.nearest(current, bounds));
+        range.value = String(field === "adr"
+          ? adrSliderPosition(current)
+          : current == null ? bounds.min : sliderUtils.nearest(current, bounds));
       } else if (!bounds && (field === "purchasePrice" || field === "compareRent")) {
         range.min = "0"; range.max = "0"; range.step = "1"; range.value = "0"; range.disabled = true;
       }
@@ -648,6 +671,8 @@
       var maximum = row && row.querySelector('[data-slider-bound="max"]');
       if (minimum) minimum.textContent = sliderBoundText(field, bounds && bounds.min);
       if (maximum) maximum.textContent = sliderBoundText(field, bounds && bounds.max);
+      if (field === "adr") range.setAttribute("aria-valuetext",
+        format(current == null ? bounds.min : current, 0) + "원");
       updateSliderLabel(field);
       updateSliderAssumptionBadge(field);
     });
@@ -1520,15 +1545,17 @@
       var range = event.target.closest("[data-operation-slider]");
       if (!range) return;
       var field = range.dataset.operationSlider;
-      var safeValue = clampField(field, range.value);
+      var safeValue = clampField(field, field === "adr" ? adrSliderAmount(range.value) : range.value);
       if (safeValue == null) {
-        range.value = String(value(field) == null ? Number(range.min) : value(field));
+        range.value = String(field === "adr" ? adrSliderPosition(value(field))
+          : value(field) == null ? Number(range.min) : value(field));
         showSliderValidation(field, operationSliderMessage(field));
         return;
       }
       clearSliderValidation(field);
       activeSliderField = field;
       setInput(field, safeValue);
+      if (field === "adr") range.setAttribute("aria-valuetext", format(safeValue, 0) + "원");
       if (field === "compareRent") compareRentUserChanged = true;
       assumed[field] = false;
       if (field === "compareRent") { compareRentSource = null; roneRentStatus = ""; }

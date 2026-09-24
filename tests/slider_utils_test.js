@@ -43,7 +43,7 @@ for (const [kind, min, max] of [
   ["deposit", 0, 5000],
   ["rent", 1, 1000],
   ["vacancy", 0, 12],
-  ["adr", 50000, 2000000],
+  ["adr", 10000, 2000000],
   ["occ", 20, 100],
   ["opex", 10, 80],
   ["mgmtFee", 0, 50],

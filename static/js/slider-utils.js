@@ -6,7 +6,7 @@
     deposit: Object.freeze([0, 5000]),
     rent: Object.freeze([1, 1000]),
     vacancy: Object.freeze([0, 12]),
-    adr: Object.freeze([50000, 2000000]),
+    adr: Object.freeze([10000, 2000000]),
     occ: Object.freeze([20, 100]),
     opex: Object.freeze([10, 80]),
     mgmtFee: Object.freeze([0, 50]),

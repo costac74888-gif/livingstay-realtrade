@@ -328,7 +328,7 @@ async function run() {
       && !first.content.includes("비교 조건"),
       "운영·비용 4개 슬라이더만 보여야 하며 비교 조건 가로바는 없어야 합니다.");
     expect(first.sliderLimits.adr?.length === 2
-      && first.sliderLimits.adr[0] === "5만원"
+      && first.sliderLimits.adr[0] === "1만원"
       && first.sliderLimits.adr[1] === "200만원"
       && first.sliderLimits.opexRatio[1] === "80%",
     `ADR·운영경비율의 단위/한도가 표시되지 않았습니다: ${JSON.stringify(first.sliderLimits)}`);
@@ -367,6 +367,26 @@ async function run() {
         path: "screenshots/slider-operation-verdict-1280.png",
       });
     }
+    const adrTrack = page.locator('[data-operation-slider="adr"]');
+    expect(await adrTrack.getAttribute("min") === "0"
+      && await adrTrack.getAttribute("max") === "600"
+      && await adrTrack.getAttribute("step") === "1",
+    "ADR 가로바의 고정 위치 눈금이 잘못되었습니다.");
+    for (const [tick, amount] of [[0, 10000], [200, 100000], [600, 2000000]]) {
+      await adrTrack.evaluate((slider, next) => {
+        slider.value = String(next);
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+      }, tick);
+      await page.waitForFunction((expected) => window.__operationAnalysisState?.adr === expected, amount);
+      expect(Number(await page.locator("#operationAdr").inputValue()) === amount
+        && await adrTrack.getAttribute("aria-valuetext") === `${amount.toLocaleString("ko-KR")}원`,
+      `ADR 위치 ${tick}에서 ${amount}원이 적용되지 않았습니다.`);
+    }
+    await valueFromLabel(page, "adr", 50000);
+    expect(Number(await adrTrack.inputValue()) === 89
+      && await adrTrack.getAttribute("max") === "600",
+    "ADR 5만원은 첫 1/3 구간 안에 위치하고 직접입력 후 범위가 고정돼야 합니다.");
 
     const anchor = await page.evaluate(() => document.querySelector("#operationCoreMetrics")
       .getBoundingClientRect().toJSON());
@@ -392,7 +412,7 @@ async function run() {
       adrSlider: Number(document.querySelector('[data-operation-slider="adr"]').value),
       occSlider: Number(document.querySelector('[data-operation-slider="occ"]').value),
     }));
-    expect(direct.state.adr === 162000 && direct.adrSlider === 160000 && direct.state.occ === 74,
+    expect(direct.state.adr === 162000 && direct.adrSlider === 213 && direct.state.occ === 74,
       "ADR 정확값과 1만원 단위 근접 슬라이더 위치를 보존하지 못했습니다.");
     expect(direct.occSlider === 74, "OCC 직접 입력값이 정확한 슬라이더 위치에 반영되지 않았습니다.");
 
@@ -665,7 +685,7 @@ async function run() {
       })));
     expect(await ordinaryPage.locator('[data-operation-slider="purchasePrice"], [data-operation-slider="compareRent"]').count() === 0,
       "삭제한 비교 조건의 가로바가 화면에 남았습니다.");
-    for (const [moving, next] of [["adr", "150000"], ["occ", "72"],
+    for (const [moving, next] of [["adr", "211"], ["occ", "72"],
       ["opexRatio", "35"], ["mgmtFeeRatio", "20"]]) {
       const before = await operationControls();
       await ordinaryPage.locator(`[data-operation-slider="${moving}"]`).evaluate((slider, nextValue) => {
