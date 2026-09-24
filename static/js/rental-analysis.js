@@ -139,12 +139,53 @@
     error.textContent = message || "";
     error.hidden = !message;
   }
+  function rentalInputErrorMessage(field) {
+    if (field === "rentalMonthlyRent") return "월세는 1~1,000만원 범위로 입력하세요";
+    if (field === "rentalLoanAmount") return "대출금은 매수가 이내·절대 상한 40억으로 입력하세요.";
+    return "입력값이 허용 범위를 벗어났습니다.";
+  }
   function rentalLimitText(field, value) {
     if (field === "rentalVacancyMonths") {
       return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) + "개월";
     }
     if (value >= 10000 && value % 10000 === 0) return (value / 10000).toLocaleString("ko-KR") + "억";
     return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만";
+  }
+  // Keep the loan thumb at a stable absolute position as purchase price changes.
+  // A logarithmic scale leaves low-price rooms usable without shrinking their
+  // entire 0-to-purchase range to a few pixels of a 40억 linear track.
+  var LOAN_SLIDER_CAP = 400000;
+  var LOAN_SLIDER_TICKS = 1000;
+  function loanSliderPosition(amount) {
+    return Math.round(LOAN_SLIDER_TICKS * Math.log1p(Math.max(0, amount) / 1000)
+      / Math.log1p(LOAN_SLIDER_CAP / 1000));
+  }
+  function loanSliderAmount(position) {
+    return Math.round(Math.expm1(Math.log1p(LOAN_SLIDER_CAP / 1000)
+      * Number(position) / LOAN_SLIDER_TICKS)) * 1000;
+  }
+  function updateLoanCapNote() {
+    var note = document.querySelector("[data-rental-loan-cap]");
+    if (note) note.textContent = n("rentalPurchasePrice") > 0
+      ? "현재 매수가 기준 대출 한도 " + rentalLimitText("rentalLoanAmount", loanMaximum()) + "원"
+      : "";
+  }
+  function limitLoanAfterPurchaseChange() {
+    var cap = loanMaximum();
+    if (n("rentalLoanAmount") <= cap) return;
+    $("rentalLoanAmount").value = String(cap);
+    lastValidRentalInputs.rentalLoanAmount = cap;
+    var range = sliderInputs.rentalLoanAmount;
+    if (range) {
+      range.value = String(loanSliderPosition(cap));
+      range.setAttribute("aria-valuetext", formatInputValue("rentalLoanAmount", cap));
+    }
+    var button = document.querySelector('[data-rental-value="rentalLoanAmount"]');
+    if (button && !button.querySelector("input")) {
+      button.textContent = formatInputValue("rentalLoanAmount", cap);
+    }
+    setRentalInputError("rentalLoanAmount",
+      "매수가가 낮아져 대출금을 " + rentalLimitText("rentalLoanAmount", cap) + "원으로 조정했습니다.");
   }
   function updateRentalLimitLabels(bounds) {
     Object.keys(bounds).forEach(function (field) {
@@ -158,7 +199,8 @@
         return;
       }
       if (edges[0]) edges[0].textContent = rentalLimitText(field, rangeBounds.min);
-      if (edges[1]) edges[1].textContent = rentalLimitText(field, rangeBounds.max);
+      if (edges[1]) edges[1].textContent = rentalLimitText(field,
+        field === "rentalLoanAmount" ? LOAN_SLIDER_CAP : rangeBounds.max);
     });
   }
   function cleanInvalidRentalParams(keys) {
@@ -249,8 +291,8 @@
       rentalPurchasePrice: purchase,
       rentalLoanAmount: purchase && purchaseValue > 0 ? {
         min: 0,
-        max: loanMaximum(),
-        step: 1000,
+        max: LOAN_SLIDER_TICKS,
+        step: 1,
       } : null,
       rentalDeposit: purchase && purchaseValue > 0 ? {
         min: 0, max: depositMax, step: 100,
@@ -280,7 +322,7 @@
       }
     });
     var bounds = rentalSliderConfiguration();
-    if (expandField && bounds[expandField]) {
+    if (expandField && expandField !== "rentalLoanAmount" && bounds[expandField]) {
       bounds[expandField] = utils.includeValue(bounds[expandField], n(expandField));
     }
     sliderBounds = bounds;
@@ -297,8 +339,13 @@
       range.max = String(rangeBounds.max);
       range.step = String(rangeBounds.step);
       var amount = n(field);
-      range.value = String(amount > 0 || field === "rentalVacancyMonths"
-        ? utils.nearest(amount, rangeBounds) : rangeBounds.min);
+      range.value = String(field === "rentalLoanAmount"
+        ? loanSliderPosition(amount)
+        : amount > 0 || field === "rentalVacancyMonths"
+          ? utils.nearest(amount, rangeBounds) : rangeBounds.min);
+      if (field === "rentalLoanAmount") {
+        range.setAttribute("aria-valuetext", formatInputValue(field, amount));
+      }
     });
     var loanCap = loanMaximum();
     if (n("rentalLoanAmount") > loanCap) $("rentalLoanAmount").value = String(loanCap);
@@ -307,6 +354,7 @@
       if (button) button.textContent = formatInputValue(field, $(field).value);
     });
     updateRentalLimitLabels(bounds);
+    updateLoanCapNote();
     var buyHeading = document.querySelector("#rentalSliders .rental-buy-heading");
     if (buyHeading) buyHeading.textContent = "매수 조건 (대출금리 연 " + formatInputValue("rate", n("rentalLoanRate")).replace("만원", "%")
       + ", " + $("rentalLoanMethod").selectedOptions[0].text + ")";
@@ -351,13 +399,7 @@
       var changedField = field;
       sliderChangeField = "";
       var dependentChange = changedField === "rentalPurchasePrice" || changedField === "rentalDeposit";
-      if (dependentChange) {
-        var cap = loanMaximum();
-        if (n("rentalLoanAmount") > cap) {
-          $("rentalLoanAmount").value = String(cap);
-          updateRentalUrl();
-        }
-      }
+      if (dependentChange) limitLoanAfterPurchaseChange();
       if (!directEntry && dependentChange) syncSliderBounds(null, changedField);
       updateRentalUrl();
       scheduleCalculate();
@@ -376,6 +418,7 @@
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
       + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
       + '<span class="rental-range-limits" data-rental-limits="' + field + '"><span>—</span><small>' + units[field] + '</small><span>—</span></span>'
+      + (field === "rentalLoanAmount" ? '<span class="rental-loan-cap" data-rental-loan-cap></span>' : '')
       + '<span class="rental-slider-input-error" data-rental-input-error="' + field + '" role="alert" hidden></span></div>';
   }
   function setupRentalSliders() {
@@ -393,19 +436,29 @@
     host.querySelectorAll("[data-rental-slider]").forEach(function (range) {
       sliderInputs[range.dataset.rentalSlider] = range;
     });
+    host.addEventListener("pointerdown", function (event) {
+      if (!event.target.closest("[data-rental-slider]")) return;
+      var active = document.activeElement;
+      if (active && active !== event.target && active.tagName === "INPUT"
+        && active.type !== "range") active.blur();
+    }, true);
     host.addEventListener("input", function (event) {
       var range = event.target.closest("[data-rental-slider]");
       if (!range) return;
       var field = range.dataset.rentalSlider;
       delete invalidRentalUrlFields[field];
-      var safeValue = clampRentalValue(field, range.value);
+      var requested = field === "rentalLoanAmount"
+        ? Math.min(loanSliderAmount(range.value), Math.floor(loanMaximum() / 1000) * 1000)
+        : range.value;
+      var safeValue = clampRentalValue(field, requested);
       if (safeValue == null) {
-        range.value = $(field).value || range.min;
-        setRentalInputError(field, field === "rentalMonthlyRent"
-          ? "월세는 1~1,000만원 범위로 입력하세요" : "입력값이 허용 범위를 벗어났습니다.");
+        range.value = field === "rentalLoanAmount"
+          ? String(loanSliderPosition(n(field))) : $(field).value || range.min;
+        setRentalInputError(field, rentalInputErrorMessage(field));
         return;
       }
-      range.value = String(safeValue);
+      range.value = String(field === "rentalLoanAmount" ? loanSliderPosition(safeValue) : safeValue);
+      if (field === "rentalLoanAmount") range.setAttribute("aria-valuetext", formatInputValue(field, safeValue));
       lastValidRentalInputs[field] = safeValue;
       invalidRentalInputs[field] = false;
       rentCenterEdited = true;
@@ -415,6 +468,8 @@
       var valueButton = document.querySelector('[data-rental-value="' + field + '"]');
       if (valueButton) valueButton.textContent = formatInputValue(field, safeValue);
       if (field === "rentalPurchasePrice") {
+        limitLoanAfterPurchaseChange();
+        updateLoanCapNote();
         updateAcquisitionCosts();
         updateEstimatedTax();
       }
@@ -434,6 +489,7 @@
       var hardBounds = hardKind && window.analysisSliderUtils.HARD_CAPS[hardKind];
       var input = document.createElement("input");
       input.type = "number";
+      input.enterKeyHint = "done";
       input.step = field === "rentalVacancyMonths" ? "0.5" : "1";
       input.min = hardKind === "loan" ? "0" : hardBounds ? String(hardBounds[0]) : "0";
       input.max = hardKind === "loan" ? String(loanMaximum())
@@ -451,8 +507,7 @@
         var raw = input.value.trim();
         var parsed = raw === "" ? null : clampRentalValue(field, raw);
         if (raw !== "" && Number.isFinite(Number(raw)) && parsed == null) {
-          setRentalInputError(field, field === "rentalMonthlyRent"
-            ? "월세는 1~1,000만원 범위로 입력하세요" : "입력값이 허용 범위를 벗어났습니다.");
+          setRentalInputError(field, rentalInputErrorMessage(field));
           button.textContent = formatInputValue(field, $(field).value);
           return;
         }
@@ -468,11 +523,10 @@
           rentCenterEdited = true;
           if (field === "rentalVacancyMonths") vacancyAssumed = false;
           if (field === "rentalPurchasePrice") {
+            limitLoanAfterPurchaseChange();
             updateAcquisitionCosts();
             updateEstimatedTax();
           }
-          var cap = loanMaximum();
-          if (n("rentalLoanAmount") > cap) $("rentalLoanAmount").value = String(cap);
           syncSliderBounds(field);
           scheduleCalculate();
           queueRentalSliderChange(field, true);
@@ -1493,6 +1547,14 @@
     }
   }
   setupRentalSliders();
+  ["rentalUnitArea", "rentalLoanRate"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.currentTarget.blur();
+      }
+    });
+  });
   ids.forEach(function (id) {
     $(id).addEventListener("input", function () {
       var hardKind = rentalHardKind(id);
@@ -1502,9 +1564,7 @@
         if (safeValue == null) {
           invalidRentalInputs[id] = true;
           $(id).value = lastValidRentalInputs[id] == null ? "" : String(lastValidRentalInputs[id]);
-          setRentalInputError(id, id === "rentalMonthlyRent"
-            ? "월세는 1~1,000만원 범위로 입력하세요"
-            : "입력값이 허용 범위를 벗어났습니다.");
+          setRentalInputError(id, rentalInputErrorMessage(id));
           return;
         }
         $(id).value = String(safeValue);

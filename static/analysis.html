@@ -97,8 +97,8 @@
     </div>
     <div id="rentalBuildingIdentity" class="analysis-card analysis-building-identity hidden" aria-live="polite"></div>
     <div class="rental-condition-bar analysis-card">
-      <label><span>전용면적</span><div><input id="rentalUnitArea" type="text" inputmode="decimal" list="rentalUnitAreaOptions" placeholder="면적 선택 또는 입력"><b>㎡</b></div><datalist id="rentalUnitAreaOptions"></datalist><small id="rentalUnitAreaHint">건물을 선택하면 확인된 호실 면적을 불러옵니다.</small></label>
-      <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" min="0" step="0.01" value="4.5"><b>%</b></div></label>
+      <label><span>전용면적</span><div><input id="rentalUnitArea" type="text" inputmode="decimal" enterkeyhint="done" list="rentalUnitAreaOptions" placeholder="면적 선택 또는 입력"><b>㎡</b></div><datalist id="rentalUnitAreaOptions"></datalist><small id="rentalUnitAreaHint">건물을 선택하면 확인된 호실 면적을 불러옵니다.</small></label>
+      <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" enterkeyhint="done" min="0" step="0.01" value="4.5"><b>%</b></div></label>
       <button class="am-btn" id="rentalReset" type="button">조건 초기화</button>
     </div>
     <input id="rentalPurchasePrice" type="hidden"><input id="rentalDeposit" type="hidden"><input id="rentalMonthlyRent" type="hidden"><input id="rentalVacancyMonths" type="hidden"><input id="rentalLoanAmount" type="hidden" value="0">

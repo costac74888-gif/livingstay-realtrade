@@ -316,6 +316,12 @@
 .rental-slider-row > .rental-slider-input-error {
   grid-column: 1 / -1;
 }
+.rental-slider-row > .rental-loan-cap {
+  grid-column: 1 / -1;
+  color: #667879;
+  font-size: 11px;
+  line-height: 1.4;
+}
 .rental-range-limits > :last-child,
 .operation-slider-bounds > :last-child {
   text-align: right;
