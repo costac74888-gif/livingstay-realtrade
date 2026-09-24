@@ -444,3 +444,31 @@ mtime_ms = 1790219268641
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6e2031e2-7d1f-4f9b-a117-bec512b87a8e/1bd1d2de-13e8-460b-b366-308fec6e9a5b"
 storage_version_token = "1790219294035361"
 content_type = "image/png"
+
+[[outputs]]
+id = "qZQ4kwFsDItUTbDgZKuqb"
+uri = "file://screenshots/operation-desktop-1280.png"
+type = "image"
+title = "숙박운영분석 데스크톱 화면"
+description = "1280px 브라우저 검증 캡처"
+logical_id = "50ab211f-dfc4-47af-b93b-2440a5991329"
+content_hash = "sha256:cdb07b430db4f06ad4a4e58d18df8f5eadbbbbf48c646d9ed0e77123e3eded01"
+size = 491010
+mtime_ms = 1790221307621
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/50ab211f-dfc4-47af-b93b-2440a5991329/c21b2229-dce1-40f2-a006-c13e94218dcd"
+storage_version_token = "1790221433216336"
+content_type = "image/png"
+
+[[outputs]]
+id = "A57A_BbtFvjejVUC4kBbJ"
+uri = "file://screenshots/operation-mobile-360.png"
+type = "image"
+title = "숙박운영분석 모바일 화면"
+description = "360px 모바일 브라우저 검증 캡처"
+logical_id = "e83715d5-ac4c-4ec4-9e0c-549305f28060"
+content_hash = "sha256:54b208b7feb0d864c459dad6415591a29034fd3017f5fc2ad4e15afaa6e3210b"
+size = 422269
+mtime_ms = 1790221310029
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/e83715d5-ac4c-4ec4-9e0c-549305f28060/0ac1bacb-2af8-40a4-a558-9fa322ed5867"
+storage_version_token = "1790221434684047"
+content_type = "image/png"
