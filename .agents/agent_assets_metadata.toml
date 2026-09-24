@@ -472,3 +472,45 @@ mtime_ms = 1790221310029
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/e83715d5-ac4c-4ec4-9e0c-549305f28060/0ac1bacb-2af8-40a4-a558-9fa322ed5867"
 storage_version_token = "1790221434684047"
 content_type = "image/png"
+
+[[outputs]]
+id = "0Xkmy3ms_k1ey0r4XeMoe"
+uri = "file://screenshots/slider-rental-chart-1280.png"
+type = "image"
+title = "임대 XY 차트 1280px"
+description = "슬라이더·레이아웃 검증 캡처"
+logical_id = "13ecaf03-1814-491e-ac4d-924787b14820"
+content_hash = "sha256:0f5fa25af28a58c76ab3f97b108a10f4c9d894679cc8eb88d141f20c7868a2c2"
+size = 92032
+mtime_ms = 1790228572281
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/13ecaf03-1814-491e-ac4d-924787b14820/e3dcd740-80c6-4df8-a1b9-a23da18422ba"
+storage_version_token = "1790228741496423"
+content_type = "image/png"
+
+[[outputs]]
+id = "JSz8RebWkMohnQxWEdPA7"
+uri = "file://screenshots/slider-rental-sensitivity-1280.png"
+type = "image"
+title = "임대 민감도 표 1280px"
+description = "슬라이더·레이아웃 검증 캡처"
+logical_id = "43b64429-9df2-4815-80ce-914101e3be7e"
+content_hash = "sha256:729fa7125b5acf13830b20f008fbb5e854d2e2209b7ee1bfec0f50a896fbe7e9"
+size = 63486
+mtime_ms = 1790228572381
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/43b64429-9df2-4815-80ce-914101e3be7e/ba39bf84-66ab-4b61-9209-73e2faa65a23"
+storage_version_token = "1790228742970715"
+content_type = "image/png"
+
+[[outputs]]
+id = "W8fw_j68TMxNSyDlwtxky"
+uri = "file://screenshots/slider-operation-verdict-1280.png"
+type = "image"
+title = "숙박 우측 열 1280px"
+description = "슬라이더·레이아웃 검증 캡처"
+logical_id = "297bc149-fa01-4ba1-b836-841764fa1941"
+content_hash = "sha256:1aa23a01d680ca0892a7da53af885cdf96f15b9e2783af193f18e915eef18404"
+size = 91344
+mtime_ms = 1790228579673
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/297bc149-fa01-4ba1-b836-841764fa1941/615040d0-979c-46f1-bf8c-2211be8dc315"
+storage_version_token = "1790228744246080"
+content_type = "image/png"
