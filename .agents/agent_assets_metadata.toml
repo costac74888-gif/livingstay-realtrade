@@ -421,28 +421,28 @@ content_type = "application/octet-stream"
 id = "zxXBTt4VO12L6j6_CL6hc"
 uri = "file://screenshots/rental-desktop-1280.png"
 type = "image"
-title = "임대수익분석 데스크톱 1280px"
-description = "검증용 R-ONE 및 호실 조건으로 캡처한 개편 화면입니다."
+title = "임대 슬라이더·범위 표시 (1280px)"
+description = "과대 금액 차단과 양 끝값 표시를 검증한 화면"
 logical_id = "1d984c6c-a1c3-43f0-850b-3e0b499e31ff"
-content_hash = "sha256:07609be90aeced3e677751b7453f15533dba1b8dd3fc13f59ce6a435e0f437ba"
-size = 222525
-mtime_ms = 1790219267661
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1d984c6c-a1c3-43f0-850b-3e0b499e31ff/3df37922-5c88-4c0c-84a3-d1a58891b71c"
-storage_version_token = "1790219292653401"
+content_hash = "sha256:2aece6bd0a3b53fbfd2205a7c31bfde041687d43939cb6c31d0dcea49d769e07"
+size = 462312
+mtime_ms = 1790231421732
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1d984c6c-a1c3-43f0-850b-3e0b499e31ff/e1d8b0c6-f1bb-4d4f-9769-7266b9dc6e10"
+storage_version_token = "1790231686308949"
 content_type = "image/png"
 
 [[outputs]]
 id = "qXJiw6u8Jj0i5n2l-JCZN"
 uri = "file://screenshots/rental-mobile-360.png"
 type = "image"
-title = "임대수익분석 모바일 360px"
-description = "동일 조건의 모바일 1열 화면 캡처입니다."
+title = "임대 슬라이더·범위 표시 (360px)"
+description = "모바일 가로바와 값 라벨 배치를 검증한 화면"
 logical_id = "6e2031e2-7d1f-4f9b-a117-bec512b87a8e"
-content_hash = "sha256:76336eb8643ac730c78a2dfc46d93d4c8e782e830d9ab54f849b34b04f64c11a"
-size = 170212
-mtime_ms = 1790219268641
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6e2031e2-7d1f-4f9b-a117-bec512b87a8e/1bd1d2de-13e8-460b-b366-308fec6e9a5b"
-storage_version_token = "1790219294035361"
+content_hash = "sha256:1d1f2ee06fc2b870916f3e5b944027f09569ddf9442694a8c25be6dd7b2cff68"
+size = 389834
+mtime_ms = 1790231429912
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6e2031e2-7d1f-4f9b-a117-bec512b87a8e/5d5a124d-f518-4527-bb6e-ae1f9864f4a1"
+storage_version_token = "1790231687727940"
 content_type = "image/png"
 
 [[outputs]]
