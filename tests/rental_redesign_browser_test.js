@@ -236,7 +236,7 @@ async function run() {
     expect(response && response.ok(), "분석 화면을 열지 못했습니다. 실행 중인 미리보기 주소를 확인하세요.");
     await waitForRental(page);
     await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000
-      && Number(document.querySelector('[data-rental-slider="rentalPurchasePrice"]').min) === 3000);
+      && document.querySelector('[data-rental-limits="rentalPurchasePrice"] span').textContent === "3,000만");
 
     const initial = await page.evaluate(() => {
       const result = window.__rentalAnalysisResult;
@@ -287,12 +287,12 @@ async function run() {
       "초과 수익률이 차트 경계의 방향 삼각형 데이터로 표시되지 않았습니다.");
     expect(initial.sensitivityRows === 7 && initial.sensitivityCells === 7,
       "민감도 표는 공실 0~6개월과 월세 7개 열이어야 합니다.");
-    expect(initial.sliders.rentalPurchasePrice.min === 3000
-      && initial.sliders.rentalPurchasePrice.max === 500000
-      && initial.sliders.rentalPurchasePrice.step === 1000
+    expect(initial.sliders.rentalPurchasePrice.min === 0
+      && initial.sliders.rentalPurchasePrice.max === 900
+      && initial.sliders.rentalPurchasePrice.step === 1
       && initial.sliders.rentalLoanAmount.max === 1000
       && initial.sliders.rentalLoanAmount.step === 1,
-    `시세 5,000만원 매수가 범위·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalPurchasePrice)}`);
+    `시세 5,000만원 매수가 가상 눈금·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalPurchasePrice)}`);
     expect((await page.locator("[data-rental-loan-cap]").textContent()).includes("4,000만원"),
       "현재 매수가에 따른 대출 한도가 표시되지 않았습니다.");
     expect(initial.sliders.rentalDeposit.max === 5000 && initial.sliders.rentalDeposit.step === 100,
@@ -474,7 +474,7 @@ async function run() {
     expect(leveraged.details.includes("DSCR") && leveraged.details.includes("월 대출 상환액"),
       "대출 1,500만원의 상세 상환 지표를 표시해야 합니다.");
     await page.locator('[data-rental-slider="rentalLoanAmount"]').evaluate((element) => {
-      element.value = "116";
+      element.value = "7";
       element.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await page.waitForFunction(() => window.__rentalAnalysisResult?.loan === 1000);
@@ -484,6 +484,7 @@ async function run() {
     expect(Number(await page.locator("#rentalLoanAmount").inputValue()) === 1000
       && (await page.locator('[data-rental-input-error="rentalLoanAmount"]').textContent()).includes("매수가 이내"),
     "매수가를 초과한 대출금 직접입력을 거부하고 이유를 표시해야 합니다.");
+    await page.waitForTimeout(400);
     await setValueFromLabel(page, "rentalLoanAmount", 1500);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.loan === 1500);
     const loanBeforePurchaseDrag = await page.evaluate(() => ({
@@ -719,6 +720,36 @@ async function run() {
         }
       }
     }
+    // 5억 is one third of both physical tracks. The visible limits and stored
+    // financial values must remain the original absolute amounts.
+    const purchaseTrack = page.locator('[data-rental-slider="rentalPurchasePrice"]');
+    const loanTrack = page.locator('[data-rental-slider="rentalLoanAmount"]');
+    for (const [tick, amount] of [[0, 3000], [300, 50000], [900, 500000]]) {
+      await purchaseTrack.evaluate((slider, value) => {
+        slider.value = String(value);
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+      }, tick);
+      expect(Number(await page.locator("#rentalPurchasePrice").inputValue()) === amount
+        && await purchaseTrack.getAttribute("aria-valuetext") ===
+          (amount >= 10000 ? amount / 10000 + "억원" : amount.toLocaleString("ko-KR") + "만원"),
+      `매수가 ${tick} 눈금에서 ${amount}만원이 선택되지 않았습니다.`);
+    }
+    await setValueFromLabel(page, "rentalLoanAmount", 0);
+    for (const [tick, amount] of [[0, 0], [333, 50000], [1000, 400000]]) {
+      await loanTrack.evaluate((slider, value) => {
+        slider.value = String(value);
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+      }, tick);
+      expect(Number(await page.locator("#rentalLoanAmount").inputValue()) === amount,
+        `대출금 ${tick} 눈금에서 ${amount}만원이 선택되지 않았습니다.`);
+    }
+    await setValueFromLabel(page, "rentalPurchasePrice", 56321);
+    expect(Number(await page.locator("#rentalPurchasePrice").inputValue()) === 56321
+      && Number(await purchaseTrack.inputValue()) > 300
+      && await purchaseTrack.getAttribute("max") === "900",
+    "정확한 매수가 직접입력은 유지하고 바 위치만 5억 이후 구간에 맞춰야 합니다.");
     if (failures.length) throw new Error(`임대수익 개편 회귀 실패:\n- ${failures.join("\n- ")}`);
     console.log("임대수익 개편 브라우저 회귀 테스트 통과");
   } finally {

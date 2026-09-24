@@ -151,18 +151,49 @@
     if (value >= 10000 && value % 10000 === 0) return (value / 10000).toLocaleString("ko-KR") + "억";
     return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만";
   }
-  // Keep the loan thumb at a stable absolute position as purchase price changes.
-  // A logarithmic scale leaves low-price rooms usable without shrinking their
-  // entire 0-to-purchase range to a few pixels of a 40억 linear track.
+  // Financial amounts remain in 만원; only the range controls use virtual ticks.
+  // The first five 억 occupies one third of each track.
+  var PRICE_SLIDER_KNEE = 50000;
+  var PURCHASE_SLIDER_TICKS = 900;
+  var PURCHASE_SLIDER_KNEE = 300;
+  function purchaseSliderPosition(amount, bounds) {
+    var min = bounds.min, max = bounds.max;
+    var safe = Math.max(min, Math.min(max, Number(amount)));
+    if (min >= PRICE_SLIDER_KNEE) {
+      return Math.round((safe - min) / (max - min) * PURCHASE_SLIDER_TICKS);
+    }
+    return safe <= PRICE_SLIDER_KNEE
+      ? Math.round((safe - min) / (PRICE_SLIDER_KNEE - min) * PURCHASE_SLIDER_KNEE)
+      : PURCHASE_SLIDER_KNEE + Math.round((safe - PRICE_SLIDER_KNEE)
+        / (max - PRICE_SLIDER_KNEE) * (PURCHASE_SLIDER_TICKS - PURCHASE_SLIDER_KNEE));
+  }
+  function purchaseSliderAmount(position, bounds) {
+    var tick = Math.max(0, Math.min(PURCHASE_SLIDER_TICKS, Number(position)));
+    var amount = bounds.min >= PRICE_SLIDER_KNEE
+      ? bounds.min + tick / PURCHASE_SLIDER_TICKS * (bounds.max - bounds.min)
+      : tick <= PURCHASE_SLIDER_KNEE
+        ? bounds.min + tick / PURCHASE_SLIDER_KNEE * (PRICE_SLIDER_KNEE - bounds.min)
+        : PRICE_SLIDER_KNEE + (tick - PURCHASE_SLIDER_KNEE)
+          / (PURCHASE_SLIDER_TICKS - PURCHASE_SLIDER_KNEE) * (bounds.max - PRICE_SLIDER_KNEE);
+    return window.analysisSliderUtils.nearest(amount, bounds);
+  }
   var LOAN_SLIDER_CAP = 400000;
   var LOAN_SLIDER_TICKS = 1000;
+  var LOAN_SLIDER_KNEE = 333;
   function loanSliderPosition(amount) {
-    return Math.round(LOAN_SLIDER_TICKS * Math.log1p(Math.max(0, amount) / 1000)
-      / Math.log1p(LOAN_SLIDER_CAP / 1000));
+    var safe = Math.max(0, Math.min(LOAN_SLIDER_CAP, Number(amount)));
+    return safe <= PRICE_SLIDER_KNEE
+      ? Math.round(safe / PRICE_SLIDER_KNEE * LOAN_SLIDER_KNEE)
+      : LOAN_SLIDER_KNEE + Math.round((safe - PRICE_SLIDER_KNEE)
+        / (LOAN_SLIDER_CAP - PRICE_SLIDER_KNEE) * (LOAN_SLIDER_TICKS - LOAN_SLIDER_KNEE));
   }
   function loanSliderAmount(position) {
-    return Math.round(Math.expm1(Math.log1p(LOAN_SLIDER_CAP / 1000)
-      * Number(position) / LOAN_SLIDER_TICKS)) * 1000;
+    var tick = Math.max(0, Math.min(LOAN_SLIDER_TICKS, Number(position)));
+    var amount = tick <= LOAN_SLIDER_KNEE
+      ? tick / LOAN_SLIDER_KNEE * PRICE_SLIDER_KNEE
+      : PRICE_SLIDER_KNEE + (tick - LOAN_SLIDER_KNEE)
+        / (LOAN_SLIDER_TICKS - LOAN_SLIDER_KNEE) * (LOAN_SLIDER_CAP - PRICE_SLIDER_KNEE);
+    return Math.round(amount / 1000) * 1000;
   }
   function updateLoanCapNote() {
     var note = document.querySelector("[data-rental-loan-cap]");
@@ -335,15 +366,17 @@
         range.min = "0"; range.max = "0"; range.step = "1"; range.value = "0";
         return;
       }
-      range.min = String(rangeBounds.min);
-      range.max = String(rangeBounds.max);
-      range.step = String(rangeBounds.step);
+      range.min = String(field === "rentalPurchasePrice" ? 0 : rangeBounds.min);
+      range.max = String(field === "rentalPurchasePrice" ? PURCHASE_SLIDER_TICKS : rangeBounds.max);
+      range.step = String(field === "rentalPurchasePrice" ? 1 : rangeBounds.step);
       var amount = n(field);
       range.value = String(field === "rentalLoanAmount"
         ? loanSliderPosition(amount)
+        : field === "rentalPurchasePrice"
+          ? purchaseSliderPosition(amount || rangeBounds.min, rangeBounds)
         : amount > 0 || field === "rentalVacancyMonths"
           ? utils.nearest(amount, rangeBounds) : rangeBounds.min);
-      if (field === "rentalLoanAmount") {
+      if (field === "rentalLoanAmount" || field === "rentalPurchasePrice") {
         range.setAttribute("aria-valuetext", formatInputValue(field, amount));
       }
     });
@@ -426,7 +459,7 @@
     if (!host) return;
     host.innerHTML = '<div class="rental-panel-title"><div><span class="eyebrow">SCENARIO BUILDER</span><h3>조건을 조정해 수익을 확인하세요</h3></div></div>'
       + '<section class="rental-slider-group"><h3 class="rental-buy-heading">매수 조건</h3><div class="rental-slider-list">'
-      + makeSliderRow("rentalPurchasePrice", "매수가", 1000)
+      + makeSliderRow("rentalPurchasePrice", "매수가", 1)
       + makeSliderRow("rentalLoanAmount", "대출금 (매수가 이내)", 1000)
       + '</div></section><section class="rental-slider-group"><h3>임대 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalDeposit", "보증금", 100)
@@ -449,16 +482,24 @@
       delete invalidRentalUrlFields[field];
       var requested = field === "rentalLoanAmount"
         ? Math.min(loanSliderAmount(range.value), Math.floor(loanMaximum() / 1000) * 1000)
+        : field === "rentalPurchasePrice"
+          ? purchaseSliderAmount(range.value, sliderBounds[field])
         : range.value;
       var safeValue = clampRentalValue(field, requested);
       if (safeValue == null) {
         range.value = field === "rentalLoanAmount"
-          ? String(loanSliderPosition(n(field))) : $(field).value || range.min;
+          ? String(loanSliderPosition(n(field)))
+          : field === "rentalPurchasePrice"
+            ? String(purchaseSliderPosition(n(field), sliderBounds[field]))
+            : $(field).value || range.min;
         setRentalInputError(field, rentalInputErrorMessage(field));
         return;
       }
-      range.value = String(field === "rentalLoanAmount" ? loanSliderPosition(safeValue) : safeValue);
-      if (field === "rentalLoanAmount") range.setAttribute("aria-valuetext", formatInputValue(field, safeValue));
+      range.value = String(field === "rentalLoanAmount" ? loanSliderPosition(safeValue)
+        : field === "rentalPurchasePrice" ? purchaseSliderPosition(safeValue, sliderBounds[field]) : safeValue);
+      if (field === "rentalLoanAmount" || field === "rentalPurchasePrice") {
+        range.setAttribute("aria-valuetext", formatInputValue(field, safeValue));
+      }
       lastValidRentalInputs[field] = safeValue;
       invalidRentalInputs[field] = false;
       rentCenterEdited = true;
