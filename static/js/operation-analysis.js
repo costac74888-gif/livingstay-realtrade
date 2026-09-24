@@ -140,11 +140,11 @@
   }
   function operationSliderMessage(field) {
     return {
-      adr: "ADR는 10,000~2,000,000원 범위로 입력해 주세요.",
-      occ: "OCC는 0~100% 범위로 입력해 주세요.",
-      opexRatio: "운영경비율은 0~90% 범위로 입력해 주세요.",
-      mgmtFeeRatio: "위탁수수료율은 0~90% 범위로 입력해 주세요.",
-      purchasePrice: "매입가는 100~300,000만원 범위로 입력해 주세요.",
+      adr: "ADR는 50,000~2,000,000원 범위로 입력해 주세요.",
+      occ: "OCC는 20~100% 범위로 입력해 주세요.",
+      opexRatio: "운영경비율은 10~80% 범위로 입력해 주세요.",
+      mgmtFeeRatio: "위탁수수료율은 0~50% 범위로 입력해 주세요.",
+      purchasePrice: "매입가는 100~500,000만원 범위로 입력해 주세요.",
       compareRent: "비교 월세는 1~1,000만원 범위로 입력해 주세요.",
     }[field] || "입력값이 허용 범위를 벗어났습니다.";
   }
@@ -518,27 +518,16 @@
     if (!sliderUtils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
     var baseline = regionalBaseline();
     var bounds = Object.create(null);
-    var safeBaselineAdr = sliderUtils.clampHard("adr", baseline.adr);
-    if (safeBaselineAdr != null && safeBaselineAdr > 0) {
-      var adrUnit = sliderUtils.niceStep(safeBaselineAdr / 100);
-      var adrMin = Math.max(10000, Math.round(safeBaselineAdr * 0.4 / adrUnit) * adrUnit);
-      var adrMax = Math.min(2000000, safeBaselineAdr * 2);
-      bounds.adr = {
-        min: adrMin, max: Math.max(adrMax, adrMin + 1),
-        step: sliderUtils.niceStep((adrMax - adrMin) / 60),
-      };
-    } else {
-      bounds.adr = { min: 50000, max: 300000, step: 5000 };
-    }
+    bounds.adr = { min: 50000, max: 2000000, step: 10000 };
     bounds.occ = { min: 20, max: 100, step: 1 };
-    bounds.opexRatio = { min: 10, max: 60, step: 1 };
+    bounds.opexRatio = { min: 10, max: 80, step: 1 };
     bounds.mgmtFeeRatio = { min: 0, max: 50, step: 1 };
 
     var purchaseBasis = currentPurchaseBasis();
     if (purchaseBasis != null) {
       bounds.purchasePrice = sliderUtils.purchaseBounds(purchaseBasis);
       bounds.purchasePrice.min = Math.max(100, bounds.purchasePrice.min);
-      bounds.purchasePrice.max = Math.min(300000, bounds.purchasePrice.max);
+      bounds.purchasePrice.max = Math.min(sliderUtils.HARD_CAPS.purchase[1], bounds.purchasePrice.max);
       bounds.purchasePrice = sliderUtils.includeValue(bounds.purchasePrice,
         sliderUtils.clampHard("purchase", value("purchasePrice")));
     } else {
@@ -569,6 +558,7 @@
   }
   function sliderBoundText(field, amount) {
     if (!Number.isFinite(amount)) return "—";
+    if (field === "adr") return format(amount / 10000, 0) + "만원";
     if (field === "purchasePrice" || field === "compareRent") {
       return sliderUtils.formatMan(amount, 0).replace(/원$/, "");
     }
@@ -586,8 +576,9 @@
       + '<i data-operation-assumption' + (assumed[field] ? "" : ' class="hidden"') + '>' + (field === "adr" || field === "occ" ? "가정값(지역 평균)" : "가정값") + "</i>"
       + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + bounds.min + '" max="' + bounds.max + '" step="' + bounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
       + (((field === "purchasePrice" || field === "compareRent") && !computedBounds) ? " disabled" : "") + ">"
-      + '<div class="operation-slider-bounds" aria-hidden="true"><span data-slider-bound="min">'
-      + sliderBoundText(field, computedBounds && computedBounds.min) + '</span><span data-slider-bound="max">'
+      + '<div class="operation-slider-bounds"><span data-slider-bound="min">'
+      + sliderBoundText(field, computedBounds && computedBounds.min) + '</span><small>'
+      + (field === "adr" ? "1만원 단위" : "1% 단위") + '</small><span data-slider-bound="max">'
       + sliderBoundText(field, computedBounds && computedBounds.max) + "</span></div></div>";
   }
   function syncOperationSliders() {
@@ -605,7 +596,6 @@
     var groups = [
       [operationGroupTitle, ["adr", "occ"]],
       ["비용 조건", ["opexRatio", "mgmtFeeRatio"]],
-      ["비교 조건", ["purchasePrice", "compareRent"]],
     ];
     var costTooltip = "위탁운영 계약서·월 정산서의 운영경비와 수수료율을 입력하세요. 기본값은 공개된 수도권 생숙 정산 사례(2021년 보도, 운영경비 매출의 26.65%, 매출이익 대비 위탁수수료 30%)를 참고한 가정값이며, 실제 비율은 건물·운영사·계약 구조에 따라 다릅니다.";
     host.innerHTML = groups.map(function (group) {
@@ -618,7 +608,6 @@
         + group[1].map(sliderMarkup).join("") + '</div></section>';
     }).join("") + '<p class="operation-slider-hint">값을 눌러 직접 입력할 수 있습니다. 월 산정 일수 '
       + format(dayBasis.days, 1) + "일 · " + escapeHtml(dayBasis.source) + ".</p>"
-      + '<p class="operation-rent-source hidden" id="operationRoneRentSource"></p>'
       + '<p class="operation-cost-share" id="operationCostShare"></p>';
     var costShare = $("operationCostShare");
     if (costShare && value("opexRatio") != null && value("mgmtFeeRatio") != null) {

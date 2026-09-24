@@ -236,7 +236,7 @@ async function run() {
     expect(response && response.ok(), "분석 화면을 열지 못했습니다. 실행 중인 미리보기 주소를 확인하세요.");
     await waitForRental(page);
     await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000
-      && Number(document.querySelector('[data-rental-slider="rentalPurchasePrice"]').min) === 3500);
+      && Number(document.querySelector('[data-rental-slider="rentalPurchasePrice"]').min) === 3000);
 
     const initial = await page.evaluate(() => {
       const result = window.__rentalAnalysisResult;
@@ -287,20 +287,35 @@ async function run() {
       "초과 수익률이 차트 경계의 방향 삼각형 데이터로 표시되지 않았습니다.");
     expect(initial.sensitivityRows === 7 && initial.sensitivityCells === 7,
       "민감도 표는 공실 0~6개월과 월세 7개 열이어야 합니다.");
-    expect(initial.sliders.rentalPurchasePrice.min === 3500
-      && initial.sliders.rentalPurchasePrice.max === 6500
-      && initial.sliders.rentalPurchasePrice.step === 100,
+    expect(initial.sliders.rentalPurchasePrice.min === 3000
+      && initial.sliders.rentalPurchasePrice.max === 500000
+      && initial.sliders.rentalPurchasePrice.step === 1000
+      && initial.sliders.rentalLoanAmount.max === 4000
+      && initial.sliders.rentalLoanAmount.step === 1000,
     `시세 5,000만원 매수가 범위·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalPurchasePrice)}`);
-    expect(initial.sliders.rentalDeposit.max === 1200 && initial.sliders.rentalDeposit.step === 50,
+    expect(initial.sliders.rentalDeposit.max === 5000 && initial.sliders.rentalDeposit.step === 100,
       `보증금 상한·간격이 잘못되었습니다: ${JSON.stringify(initial.sliders.rentalDeposit)}`);
     expect(initial.sliders.rentalMonthlyRent.min === 50
-      && initial.sliders.rentalMonthlyRent.max === 150
-      && initial.sliders.rentalMonthlyRent.step === 5
-      && initial.sliders.rentalVacancyMonths.step === 0.5,
+      && initial.sliders.rentalMonthlyRent.max === 1000
+      && initial.sliders.rentalMonthlyRent.step === 1
+      && initial.sliders.rentalVacancyMonths.max === 12
+      && initial.sliders.rentalVacancyMonths.step === 1,
     `월세·공실 슬라이더 범위가 기준 규칙과 다릅니다: ${JSON.stringify(initial.sliders)}`);
-    expect(JSON.stringify(initial.sliderLimits.rentalPurchasePrice) === JSON.stringify(["3,500만", "6,500만"])
-      && JSON.stringify(initial.sliderLimits.rentalMonthlyRent) === JSON.stringify(["50만", "150만"]),
+    expect(JSON.stringify(initial.sliderLimits.rentalPurchasePrice) === JSON.stringify(["3,000만", "50억"])
+      && JSON.stringify(initial.sliderLimits.rentalLoanAmount) === JSON.stringify(["0만", "4,000만"])
+      && JSON.stringify(initial.sliderLimits.rentalDeposit) === JSON.stringify(["0만", "5,000만"])
+      && JSON.stringify(initial.sliderLimits.rentalMonthlyRent) === JSON.stringify(["50만", "1,000만"])
+      && JSON.stringify(initial.sliderLimits.rentalVacancyMonths) === JSON.stringify(["0개월", "12개월"]),
     `슬라이더 아래 양 끝 범위 표시가 없거나 잘못되었습니다: ${JSON.stringify(initial.sliderLimits)}`);
+    expect(await page.locator('[data-rental-limits="rentalPurchasePrice"] small').textContent()
+      === "천만원 단위"
+      && await page.locator('[data-rental-limits="rentalLoanAmount"] small').textContent()
+      === "천만원 단위 · 절대 상한 40억"
+      && await page.locator('[data-rental-limits="rentalDeposit"] small').textContent()
+      === "백만원 단위"
+      && await page.locator('[data-rental-limits="rentalMonthlyRent"] small').textContent()
+      === "만원 단위",
+    "가로바의 조정 단위가 표시되지 않았습니다.");
     const purchaseValueRect = await page.locator('[data-rental-value="rentalPurchasePrice"]').evaluate((element) => ({
       client: element.clientWidth, scroll: element.scrollWidth, whiteSpace: getComputedStyle(element).whiteSpace,
     }));
@@ -318,6 +333,7 @@ async function run() {
     fs.mkdirSync("screenshots", { recursive: true });
     await awaitScreenshotFonts(page);
     await page.screenshot({ path: "screenshots/rental-desktop-1280.png", fullPage: true });
+    await page.locator("#rentalSliders").screenshot({ path: "screenshots/rental-slider-controls-1280.png" });
     await page.locator("#rentalPositioning").screenshot({
       path: "screenshots/slider-rental-chart-1280.png",
     });
@@ -336,7 +352,7 @@ async function run() {
       slider.dispatchEvent(new Event("change", { bubbles: true }));
       return { before, during };
     });
-    expect(rangeFreeze.before.min === "15" && rangeFreeze.before.max === "50"
+    expect(rangeFreeze.before.min === "15" && rangeFreeze.before.max === "1000"
       && rangeFreeze.before.step === "1"
       && JSON.stringify(rangeFreeze.during) === JSON.stringify(rangeFreeze.before),
     `월세 드래그 중 활성 슬라이더 범위가 고정되지 않았습니다: ${JSON.stringify(rangeFreeze)}`);
@@ -356,7 +372,7 @@ async function run() {
         expectedValue: result.netYield,
       };
     });
-    expect(rangeAfterRelease.min === 15 && rangeAfterRelease.max === 50
+    expect(rangeAfterRelease.min === 15 && rangeAfterRelease.max === 1000
       && rangeAfterRelease.step === 1 && rangeAfterRelease.rent === 32,
     `월세 슬라이더 change 후 고정 중심 범위가 유지되지 않았습니다: ${JSON.stringify(rangeAfterRelease)}`);
     expect(JSON.stringify(rangeAfterRelease.headers)
@@ -426,6 +442,7 @@ async function run() {
     expect(rejectedRent.value === stableRentBeforeInvalidEntry
       && rejectedRent.message === "월세는 1~1,000만원 범위로 입력하세요",
     `월세 5,000만원 직접 입력이 거부·안내되지 않았습니다: ${JSON.stringify(rejectedRent)}`);
+    await page.waitForTimeout(400);
     await setValueFromLabel(page, "rentalPurchasePrice", 4000);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.purchasePrice === 4000);
     const debtFree = await page.evaluate(() => ({
@@ -470,15 +487,15 @@ async function run() {
       element.value = element.max;
       element.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(400);
     await setValueFromLabel(page, "rentalPurchasePrice", 2000);
     const loanCap = await page.evaluate(() => ({
       purchase: Number(document.getElementById("rentalPurchasePrice").value),
       loan: Number(document.getElementById("rentalLoanAmount").value),
       max: Number(document.querySelector('[data-rental-slider="rentalLoanAmount"]').max),
     }));
-    expect(loanCap.purchase === 2000 && loanCap.loan === 1400 && loanCap.max === 1400,
-      `매입가 하향 시 대출 한도가 1,400만원으로 조정되지 않았습니다: ${JSON.stringify(loanCap)}`);
+    expect(loanCap.purchase === 2000 && loanCap.loan === 2000 && loanCap.max === 2000,
+      `매입가 하향 시 대출 한도가 매수가 이내로 조정되지 않았습니다: ${JSON.stringify(loanCap)}`);
 
     const vacancySlider = page.locator('[data-rental-slider="rentalVacancyMonths"]');
     await vacancySlider.evaluate((element) => {
@@ -496,10 +513,7 @@ async function run() {
     expect(zeroVacancy.highlighted && zeroVacancy.highlighted !== "—",
       "민감도 표에서 현재 조건 교차 셀이 강조되지 않았습니다.");
 
-    await vacancySlider.evaluate((element) => {
-      element.value = "0.5";
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await setValueFromLabel(page, "rentalVacancyMonths", 0.5);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.vacancyMonths === 0.5);
     const fractionalVacancy = await page.evaluate(() => {
       const headers = Array.from(document.querySelectorAll("#rentalSensitivity tbody th"))
@@ -552,6 +566,7 @@ async function run() {
     expect(mobile.endpointStyle === "11px", `모바일 월세 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
     await awaitScreenshotFonts(page);
     await page.screenshot({ path: "screenshots/rental-mobile-360.png", fullPage: true });
+    await page.locator("#rentalSliders").screenshot({ path: "screenshots/rental-slider-controls-360.png" });
 
     const printReady = await page.evaluate(async () => {
       await window.livingstayRenderAnalysisPrintReport();
@@ -608,6 +623,49 @@ async function run() {
     `잘못된 URL의 월세·매입가가 정화되지 않았습니다: ${JSON.stringify(cleanedUrl)}`);
     expect(sliderWarnings.length === 2,
       `잘못된 URL 값 2개에 대한 경고가 필요합니다: ${JSON.stringify(sliderWarnings)}`);
+    await setValueFromLabel(page, "rentalPurchasePrice", 500000);
+    const largePurchase = await page.evaluate(() => ({
+      purchase: Number(document.getElementById("rentalPurchasePrice").value),
+      loanMax: Number(document.querySelector('[data-rental-slider="rentalLoanAmount"]').max),
+      loanLabel: document.querySelector('[data-rental-limits="rentalLoanAmount"] span:last-child').textContent,
+    }));
+    expect(largePurchase.purchase === 500000 && largePurchase.loanMax === 400000
+      && largePurchase.loanLabel === "40억",
+    `50억 매수가·40억 대출금 한도가 맞지 않습니다: ${JSON.stringify(largePurchase)}`);
+    await setValueFromLabel(page, "rentalDeposit", 5001);
+    expect(Number(await page.locator("#rentalDeposit").inputValue()) <= 5000,
+      "보증금 직접입력에서 5,000만원 상한을 초과했습니다.");
+    const rentalControls = async () => page.evaluate(() =>
+      Object.fromEntries(["rentalPurchasePrice", "rentalLoanAmount", "rentalDeposit",
+        "rentalMonthlyRent", "rentalVacancyMonths"].map((field) => {
+        const slider = document.querySelector(`[data-rental-slider="${field}"]`);
+        return [field, {
+          value: document.getElementById(field).value,
+          min: slider.min, max: slider.max, step: slider.step,
+        }];
+      })));
+    for (const [moving, next] of [["rentalLoanAmount", "1000"], ["rentalDeposit", "400"],
+      ["rentalMonthlyRent", "30"], ["rentalVacancyMonths", "2"],
+      ["rentalPurchasePrice", "400000"]]) {
+      const before = await rentalControls();
+      await page.locator(`[data-rental-slider="${moving}"]`).evaluate((slider, nextValue) => {
+        slider.value = nextValue;
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+      }, next);
+      await page.waitForTimeout(400);
+      const after = await rentalControls();
+      for (const field of Object.keys(before)) {
+        if (field === moving) continue;
+        if (moving === "rentalPurchasePrice" && field === "rentalLoanAmount") {
+          expect(after[field].value === before[field].value,
+            "매수가 범위 변경이 한도 이내의 대출금 값까지 바꾸었습니다.");
+        } else {
+          expect(JSON.stringify(after[field]) === JSON.stringify(before[field]),
+            `${moving} 가로바 조작이 ${field} 가로바에 영향을 주었습니다.`);
+        }
+      }
+    }
     if (failures.length) throw new Error(`임대수익 개편 회귀 실패:\n- ${failures.join("\n- ")}`);
     console.log("임대수익 개편 브라우저 회귀 테스트 통과");
   } finally {

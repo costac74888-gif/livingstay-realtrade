@@ -2,18 +2,18 @@
   "use strict";
 
   var HARD_CAPS = Object.freeze({
-    purchase: Object.freeze([100, 300000]),
-    deposit: Object.freeze([0, 20000]),
+    purchase: Object.freeze([100, 500000]),
+    deposit: Object.freeze([0, 5000]),
     rent: Object.freeze([1, 1000]),
     vacancy: Object.freeze([0, 12]),
-    adr: Object.freeze([10000, 2000000]),
-    occ: Object.freeze([0, 100]),
-    opex: Object.freeze([0, 90]),
-    mgmtFee: Object.freeze([0, 90]),
+    adr: Object.freeze([50000, 2000000]),
+    occ: Object.freeze([20, 100]),
+    opex: Object.freeze([10, 80]),
+    mgmtFee: Object.freeze([0, 50]),
   });
 
   function clampHard(kind, value, purchasePrice) {
-    var bounds = kind === "loan" ? [0, Number(purchasePrice)] : HARD_CAPS[kind];
+    var bounds = kind === "loan" ? [0, Math.min(400000, Number(purchasePrice))] : HARD_CAPS[kind];
     if (!bounds) throw new Error("알 수 없는 슬라이더 항목: " + kind);
     if (value === "" || value === null || value === undefined) return null;
     var parsed = Number(value);

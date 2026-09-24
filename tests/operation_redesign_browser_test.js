@@ -309,7 +309,7 @@ async function run() {
         sliderLimits: Object.fromEntries(Array.from(document.querySelectorAll(
           "#operationSliders .operation-slider-bounds",
         )).map((node) => [node.closest("[data-operation-row]")?.dataset.operationRow,
-          Array.from(node.children).map((child) => child.textContent.trim())])),
+          Array.from(node.querySelectorAll("[data-slider-bound]")).map((child) => child.textContent.trim())])),
         emptyPanel: document.querySelector("#operationAnalysis .detail-empty"),
         resultsColumn: document.querySelector(".operation-results-column")?.getBoundingClientRect().toJSON(),
         sensitivityBox: document.getElementById("operationSensitivity").getBoundingClientRect().toJSON(),
@@ -324,11 +324,14 @@ async function run() {
     expect(near(first.state.monthlyDays, 30.4, 0.001), "월 일수 30.4 정의값이 적용되지 않았습니다.");
     expect(first.costShare.includes("48.9%") && first.costShare.includes("51.1%"),
     "실질 공제율 48.9%와 소유주 몫 51.1%가 일치하지 않습니다.");
-    expect(first.sliderCount === 6 && first.metricCount === 5,
-      "운영 2개·비용 2개·비교 2개 슬라이더 또는 핵심지표 5개가 누락됐습니다.");
-    expect(first.sliderLimits.compareRent?.length === 2
-      && first.sliderLimits.compareRent.every((value) => /만(?:원)?$/.test(value)),
-    `비교 월세 슬라이더의 min/max 라벨이 없습니다: ${JSON.stringify(first.sliderLimits)}`);
+    expect(first.sliderCount === 4 && first.metricCount === 5
+      && !first.content.includes("비교 조건"),
+      "운영·비용 4개 슬라이더만 보여야 하며 비교 조건 가로바는 없어야 합니다.");
+    expect(first.sliderLimits.adr?.length === 2
+      && first.sliderLimits.adr[0] === "5만원"
+      && first.sliderLimits.adr[1] === "200만원"
+      && first.sliderLimits.opexRatio[1] === "80%",
+    `ADR·운영경비율의 단위/한도가 표시되지 않았습니다: ${JSON.stringify(first.sliderLimits)}`);
     expect(first.assumptions.length >= 4, "지역 ADR/OCC 및 비용 기본값 가정 배지가 표시되지 않습니다.");
     expect(!first.emptyPanel, "자료 입력 전 빈 결과 패널이 남아 있습니다.");
     expect(first.source.includes("호텔") && first.source.includes("생활숙박"),
@@ -359,6 +362,7 @@ async function run() {
       fs.mkdirSync("screenshots", { recursive: true });
       await awaitScreenshotFonts(page);
       await page.screenshot({ path: "screenshots/operation-desktop-1280.png", fullPage: true });
+      await page.locator("#operationSliders").screenshot({ path: "screenshots/operation-slider-controls-1280.png" });
       await page.locator(".operation-results-column").screenshot({
         path: "screenshots/slider-operation-verdict-1280.png",
       });
@@ -388,8 +392,8 @@ async function run() {
       adrSlider: Number(document.querySelector('[data-operation-slider="adr"]').value),
       occSlider: Number(document.querySelector('[data-operation-slider="occ"]').value),
     }));
-    expect(direct.state.adr === 162000 && direct.adrSlider === 164000 && direct.state.occ === 74,
-      "ADR 정확값과 동적 범위 5,000원 단위 근접 슬라이더 위치를 보존하지 못했습니다.");
+    expect(direct.state.adr === 162000 && direct.adrSlider === 160000 && direct.state.occ === 74,
+      "ADR 정확값과 1만원 단위 근접 슬라이더 위치를 보존하지 못했습니다.");
     expect(direct.occSlider === 74, "OCC 직접 입력값이 정확한 슬라이더 위치에 반영되지 않았습니다.");
 
     await valueFromLabel(page, "adr", 180000);
@@ -426,14 +430,13 @@ async function run() {
     "위탁수수료 조정으로 월세 대비 부호와 손익 교차 OCC가 바뀌지 않았습니다.");
 
     await valueFromLabel(page, "adr", 60000);
-    await valueFromLabel(page, "compareRent", 150);
     const impossible = await page.evaluate(() => ({
       result: window.__operationAnalysisState,
       verdict: document.getElementById("operationVerdict").textContent,
     }));
     expect(impossible.result.breakEvenOcc > 100
       && impossible.verdict.includes("100%"),
-    "ADR 60,000원·월세 150만원의 100% 초과 손익교차 OCC 경고가 없습니다.");
+    "ADR 60,000원의 100% 초과 손익교차 OCC 경고가 없습니다.");
 
     await page.locator("#operationFiles").setInputFiles({
       name: "monthly.csv", mimeType: "text/csv",
@@ -458,9 +461,9 @@ async function run() {
         .every((details) => !details.open),
       sliderTouchAction: getComputedStyle(document.querySelector('[data-operation-slider="adr"]')).touchAction,
       sliderRowHeight: document.querySelector('[data-operation-row="adr"]').getBoundingClientRect().height,
-      endpointStyle: getComputedStyle(document.querySelector(
-        '[data-operation-row="compareRent"] .operation-slider-bounds',
-      )).fontSize,
+       endpointStyle: getComputedStyle(document.querySelector(
+         '[data-operation-row="adr"] .operation-slider-bounds',
+       )).fontSize,
     }));
     expect(mobile.scroll <= mobile.viewport && mobile.body <= mobile.viewport,
       `360px 모바일 가로 넘침: ${JSON.stringify(mobile)}`);
@@ -468,7 +471,7 @@ async function run() {
     expect(mobile.sliderTouchAction === "pan-y" && mobile.sliderRowHeight >= 44,
       `모바일 운영 슬라이더의 터치 영역·세로 스크롤 설정이 부족합니다: ${JSON.stringify(mobile)}`);
     expect(mobile.endpointStyle === "11px",
-      `모바일 비교 월세 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
+      `모바일 ADR 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
     expect(mobile.chartLayout
       && Math.abs(mobile.chartLayout.baselinePixelX - mobile.chartLayout.chartCenterX) < 2
       && Math.abs(mobile.chartLayout.baselinePixelY - mobile.chartLayout.chartCenterY) < 2,
@@ -476,6 +479,7 @@ async function run() {
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
       await awaitScreenshotFonts(page);
       await page.screenshot({ path: "screenshots/operation-mobile-360.png", fullPage: true });
+      await page.locator("#operationSliders").screenshot({ path: "screenshots/operation-slider-controls-360.png" });
     }
 
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
@@ -498,8 +502,6 @@ async function run() {
     await valueFromLabel(page, "occ", 72);
     await valueFromLabel(page, "opexRatio", 35);
     await valueFromLabel(page, "mgmtFeeRatio", 20);
-    await valueFromLabel(page, "purchasePrice", 4800);
-    await valueFromLabel(page, "compareRent", 150);
     const beforeBuildingSwitch = await page.evaluate(() => ({
       state: window.__operationAnalysisState,
       uploadStatus: document.getElementById("operationFileStatus").textContent,
@@ -509,8 +511,6 @@ async function run() {
     }));
     expect(beforeBuildingSwitch.state.adr === 168000 && beforeBuildingSwitch.state.occ === 72
       && beforeBuildingSwitch.state.opexRatio === 35 && beforeBuildingSwitch.state.mgmtFeeRatio === 20
-      && beforeBuildingSwitch.state.purchasePrice === 4800
-      && beforeBuildingSwitch.state.compareRent === 150
       && beforeBuildingSwitch.uploadStatus.includes("162,000"),
     `건물 전환 전 A의 입력·업로드 상태가 준비되지 않았습니다: ${JSON.stringify(beforeBuildingSwitch)}`);
     await page.locator("#buildingSearch").fill("B운영 테스트 빌딩");
@@ -550,10 +550,8 @@ async function run() {
       && afterBuildingSwitch.state.assumed.adr && afterBuildingSwitch.state.assumed.occ,
     `B의 신고 객실수·성남시 기준선으로 새 운영 조건이 초기화되지 않았습니다: ${JSON.stringify(afterBuildingSwitch.state)}`);
     expect(afterBuildingSwitch.state.opexRatio === 27 && afterBuildingSwitch.state.mgmtFeeRatio === 30
-      && afterBuildingSwitch.state.assumed.opexRatio && afterBuildingSwitch.state.assumed.mgmtFeeRatio
-      && afterBuildingSwitch.state.purchasePrice !== 4800
-      && afterBuildingSwitch.state.compareRent !== 150,
-    `A의 비용·매입가·월세 입력이 B로 누출되었습니다: ${JSON.stringify(afterBuildingSwitch.state)}`);
+      && afterBuildingSwitch.state.assumed.opexRatio && afterBuildingSwitch.state.assumed.mgmtFeeRatio,
+    `A의 비용 입력이 B로 누출되었습니다: ${JSON.stringify(afterBuildingSwitch.state)}`);
     expect(afterBuildingSwitch.source.includes("B 건물 전용 운영 통계")
       && !afterBuildingSwitch.source.includes("엠제이스톤")
       && afterBuildingSwitch.region === "성남시"
@@ -656,31 +654,34 @@ async function run() {
       && ordinaryReturned.params.rent === "90",
     `일반 링크의 시나리오 파라미터가 임대 탭 왕복 후 보존되지 않았습니다: ${JSON.stringify(ordinaryReturned.params)}`);
 
-    const compareRentSlider = ordinaryPage.locator('[data-operation-slider="compareRent"]');
-    const stableCompareRentMax = await compareRentSlider.getAttribute("max");
-    for (let index = 0; index < 5; index++) {
-      await compareRentSlider.evaluate((element) => {
-        element.value = element.max;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await ordinaryPage.waitForTimeout(350);
-      await ordinaryPage.locator('[data-operation-slider="purchasePrice"]').evaluate((element, cycle) => {
-        element.value = cycle % 2 === 0 ? element.min : element.max;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      }, index);
-      await ordinaryPage.waitForTimeout(350);
-      await compareRentSlider.evaluate((element) => {
-        element.value = element.max;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-        element.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      await ordinaryPage.waitForTimeout(350);
+    const operationControls = async () => ordinaryPage.evaluate(() =>
+      Object.fromEntries(["adr", "occ", "opexRatio", "mgmtFeeRatio"].map((field) => {
+        const slider = document.querySelector(`[data-operation-slider="${field}"]`);
+        const hidden = document.getElementById({
+          adr: "operationAdr", occ: "operationOcc",
+          opexRatio: "operationOpexRatio", mgmtFeeRatio: "operationMgmtFeeRatio",
+        }[field]);
+        return [field, { value: hidden.value, min: slider.min, max: slider.max, step: slider.step }];
+      })));
+    expect(await ordinaryPage.locator('[data-operation-slider="purchasePrice"], [data-operation-slider="compareRent"]').count() === 0,
+      "삭제한 비교 조건의 가로바가 화면에 남았습니다.");
+    for (const [moving, next] of [["adr", "150000"], ["occ", "72"],
+      ["opexRatio", "35"], ["mgmtFeeRatio", "20"]]) {
+      const before = await operationControls();
+      await ordinaryPage.locator(`[data-operation-slider="${moving}"]`).evaluate((slider, nextValue) => {
+        slider.value = nextValue;
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+        slider.dispatchEvent(new Event("change", { bubbles: true }));
+      }, next);
+      await ordinaryPage.waitForTimeout(400);
+      const after = await operationControls();
+      for (const field of ["adr", "occ", "opexRatio", "mgmtFeeRatio"]) {
+        if (field !== moving) {
+          expect(JSON.stringify(after[field]) === JSON.stringify(before[field]),
+            `${moving} 가로바 조작이 ${field} 가로바에 영향을 주었습니다.`);
+        }
+      }
     }
-    const finalCompareRentMax = await compareRentSlider.getAttribute("max");
-    expect(finalCompareRentMax === stableCompareRentMax,
-      `매입가 변경 후 숙박 비교 월세 상한이 이동했습니다: ${stableCompareRentMax} → ${finalCompareRentMax}`);
 
     const malformedOperation = new URL("/analysis", BASE_URL);
     malformedOperation.searchParams.set("building_id", String(BUILDING_ID));
@@ -775,49 +776,18 @@ async function run() {
       && fallback.state.purchasePrice === 5000 && fallback.state.compareRent === 25
       && fallback.state.assumed.compareRent,
     `매입가 5,000만원 조건의 R-ONE 기준 월세 25만원이 임대 탭에 연결되지 않았거나 기존 월세가 누출되었습니다: ${JSON.stringify(fallback)}`);
-    expect(fallback.assumption === "가정값(R-ONE 수익률)"
-      && fallback.source.includes("6.02%") && fallback.source.includes("오피스텔"),
-    `R-ONE 수익률 출처와 가정 배지가 표시되지 않았습니다: ${JSON.stringify(fallback)}`);
+    expect(!fallback.assumption && !fallback.source,
+      `삭제한 비교 조건의 안내가 화면에 남았습니다: ${JSON.stringify(fallback)}`);
     expect(fallbackCalls.some((call) => call.path === "/api/analysis/rental-benchmark"),
       "R-ONE 비교 월세 대체값 산출을 위해 임대 벤치마크를 조회하지 않았습니다.");
 
-    const purchaseSlider = fallbackPage.locator('[data-operation-slider="purchasePrice"]');
-    const beforeDragCalls = fallbackCalls.filter((call) => call.path === "/api/analysis/rental-benchmark").length;
-    const purchaseRange = await purchaseSlider.evaluate((slider) => {
-      const bounds = { min: slider.min, max: slider.max, step: slider.step };
-      slider.value = "6000";
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
-      return {
-        bounds,
-        during: { min: slider.min, max: slider.max, step: slider.step },
-      };
-    });
-    expect(purchaseRange.bounds.min === "3500" && purchaseRange.bounds.max === "6500"
-      && purchaseRange.bounds.step === "100"
-      && JSON.stringify(purchaseRange.during) === JSON.stringify(purchaseRange.bounds),
-    `매입가 5,000만원 기준 범위가 틀리거나 드래그 중 변했습니다: ${JSON.stringify(purchaseRange)}`);
-    expect(fallbackCalls.filter((call) => call.path === "/api/analysis/rental-benchmark").length === beforeDragCalls,
-      "매입가 슬라이더 input 중 R-ONE 요청이 발생했습니다.");
-    await purchaseSlider.dispatchEvent("change");
-    await fallbackPage.waitForTimeout(400);
-    expect(fallbackCalls.filter((call) => call.path === "/api/analysis/rental-benchmark").length <= beforeDragCalls + 1,
-      "매입가 change 후 디바운스에서 R-ONE 요청이 1회를 초과했습니다.");
-
-    await valueFromLabel(fallbackPage, "compareRent", 32);
-    const fallback32 = await fallbackPage.evaluate(() => ({
+    const fallbackSelected = await fallbackPage.evaluate(() => ({
       state: window.__operationAnalysisState,
-      rentRange: (() => {
-        const slider = document.querySelector('[data-operation-slider="compareRent"]');
-        return { min: Number(slider.min), max: Number(slider.max), step: Number(slider.step) };
-      })(),
       selected: document.querySelector("#operationSensitivity td.selected")?.getAttribute("aria-current"),
       tableCurrentNet: document.getElementById("operationSensitivity").dataset.currentMonthlyNet,
     }));
-    expect(fallback32.rentRange.min === 16 && fallback32.rentRange.max === 52
-      && fallback32.rentRange.step === 1 && fallback32.state.compareRent === 32,
-    `비교 월세 32만원 슬라이더 범위가 동적 기준에 맞지 않습니다: ${JSON.stringify(fallback32)}`);
-    expect(fallback32.selected === "true"
-      && fallback32.tableCurrentNet === String(fallback32.state.monthlyNet),
+    expect(fallbackSelected.selected === "true"
+      && fallbackSelected.tableCurrentNet === String(fallbackSelected.state.monthlyNet),
     "운영 민감도 표에서 현재 ADR×OCC 칸이 핵심 월 순수익과 일치하지 않습니다.");
     await fallbackContext.close();
 
@@ -831,20 +801,13 @@ async function run() {
     largePriceUrl.searchParams.set("rent", "32");
     await largePricePage.goto(largePriceUrl.toString(), { waitUntil: "domcontentloaded" });
     await ready(largePricePage);
-    const highPrice = await largePricePage.evaluate(() => {
-      const slider = document.querySelector('[data-operation-slider="purchasePrice"]');
-      return {
-        min: Number(slider.min),
-        max: Number(slider.max),
-        step: Number(slider.step),
-        label: document.querySelector('[data-operation-value="purchasePrice"]').textContent.trim(),
-        rentLabel: document.querySelector('[data-operation-value="compareRent"]').textContent.trim(),
-      };
-    });
-    expect(highPrice.min === 36400 && highPrice.max === 67600 && highPrice.step === 1000,
-      `52,000만원 기준 운영 매입가 범위·간격이 잘못되었습니다: ${JSON.stringify(highPrice)}`);
-    expect(highPrice.label === "5억 2,000만원" && highPrice.rentLabel === "32만원",
-      `고액 매입가 또는 월세 단위 라벨이 잘못되었습니다: ${JSON.stringify(highPrice)}`);
+    const highPrice = await largePricePage.evaluate(() => ({
+      purchase: window.__operationAnalysisState.purchasePrice,
+      rent: window.__operationAnalysisState.compareRent,
+      controls: document.querySelectorAll('[data-operation-slider="purchasePrice"], [data-operation-slider="compareRent"]').length,
+    }));
+    expect(highPrice.purchase === 52000 && highPrice.rent === 32 && highPrice.controls === 0,
+      `고액 매입가·월세는 내부 계산에 유지하되 비교 조건 UI는 제거해야 합니다: ${JSON.stringify(highPrice)}`);
     await largePricePage.close();
 
     const staleContext = await browser.newContext({
@@ -869,7 +832,11 @@ async function run() {
     }
     expect(staleCalls.some((call) => call.path === "/api/analysis/rental-benchmark"),
       "지연 응답 경쟁 조건 시나리오에서 R-ONE 요청이 시작되지 않았습니다.");
-    await valueFromLabel(stalePage, "compareRent", 80);
+    await stalePage.locator("#rentalTab").click();
+    await stalePage.waitForFunction(() => window.__rentalAnalysisResult?.ready === true);
+    await rentalValueFromLabel(stalePage, "rentalMonthlyRent", 80);
+    await stalePage.locator("#operationTab").click();
+    await ready(stalePage);
     await stalePage.waitForTimeout(900);
     const afterStaleResponse = await stalePage.evaluate(() => window.__operationAnalysisState);
     expect(afterStaleResponse.compareRent === 80 && afterStaleResponse.assumed.compareRent === false,

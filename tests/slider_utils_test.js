@@ -39,14 +39,14 @@ assert.equal(utils.formatMan(52000), "5억 2,000만원");
 assert.equal(utils.formatMan(32), "32만원");
 
 for (const [kind, min, max] of [
-  ["purchase", 100, 300000],
-  ["deposit", 0, 20000],
+  ["purchase", 100, 500000],
+  ["deposit", 0, 5000],
   ["rent", 1, 1000],
   ["vacancy", 0, 12],
-  ["adr", 10000, 2000000],
-  ["occ", 0, 100],
-  ["opex", 0, 90],
-  ["mgmtFee", 0, 90],
+  ["adr", 50000, 2000000],
+  ["occ", 20, 100],
+  ["opex", 10, 80],
+  ["mgmtFee", 0, 50],
 ]) {
   assert.equal(utils.HARD_CAPS[kind][0], min, `${kind} hard minimum`);
   assert.equal(utils.HARD_CAPS[kind][1], max, `${kind} hard maximum`);
@@ -58,6 +58,8 @@ for (const [kind, min, max] of [
 assert.equal(utils.clampHard("loan", 0, 5000), 0);
 assert.equal(utils.clampHard("loan", 5000, 5000), 5000);
 assert.equal(utils.clampHard("loan", 5001, 5000), null);
+assert.equal(utils.clampHard("loan", 400000, 500000), 400000);
+assert.equal(utils.clampHard("loan", 400001, 500000), null);
 assert.equal(utils.clampHard("loan", 1, 0), null);
 for (const invalid of ["", null, undefined, "NaN", "Infinity", -Infinity, NaN]) {
   assert.equal(utils.clampHard("rent", invalid), null, `rent rejects ${String(invalid)}`);

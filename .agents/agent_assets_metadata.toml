@@ -435,14 +435,14 @@ content_type = "image/png"
 id = "qXJiw6u8Jj0i5n2l-JCZN"
 uri = "file://screenshots/rental-mobile-360.png"
 type = "image"
-title = "임대 슬라이더·범위 표시 (360px)"
-description = "모바일 가로바와 값 라벨 배치를 검증한 화면"
+title = "임대수익 모바일 360px"
+description = "작은 화면에서 가로바·끝값 배치 검증"
 logical_id = "6e2031e2-7d1f-4f9b-a117-bec512b87a8e"
-content_hash = "sha256:1d1f2ee06fc2b870916f3e5b944027f09569ddf9442694a8c25be6dd7b2cff68"
-size = 389834
-mtime_ms = 1790231429912
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6e2031e2-7d1f-4f9b-a117-bec512b87a8e/5d5a124d-f518-4527-bb6e-ae1f9864f4a1"
-storage_version_token = "1790231687727940"
+content_hash = "sha256:38f8cbe65018ac788490618f5d155b672f54fa44525b1c826269f92349e25da0"
+size = 396456
+mtime_ms = 1790241908982
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6e2031e2-7d1f-4f9b-a117-bec512b87a8e/e21315dd-06df-42d3-b119-4cdc25499205"
+storage_version_token = "1790242028406343"
 content_type = "image/png"
 
 [[outputs]]
@@ -513,4 +513,46 @@ size = 91344
 mtime_ms = 1790228579673
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/297bc149-fa01-4ba1-b836-841764fa1941/615040d0-979c-46f1-bf8c-2211be8dc315"
 storage_version_token = "1790228744246080"
+content_type = "image/png"
+
+[[outputs]]
+id = "-JiQ-Ch8zrrV590c24W0c"
+uri = "file://screenshots/rental-slider-controls-1280.png"
+type = "image"
+title = "임대수익 가로바 1280px"
+description = "단위·실제 끝값·절대 상한 표시"
+logical_id = "0c3cce34-4986-46d5-98e8-92ab2403e51f"
+content_hash = "sha256:fcfe384fbe77e0d74d3c490747728613ecab5f0eee30c9261cf7ba4b9e897068"
+size = 43566
+mtime_ms = 1790241898949
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0c3cce34-4986-46d5-98e8-92ab2403e51f/f06370aa-a870-4eb5-b1ac-fb38d0e6771b"
+storage_version_token = "1790242027026331"
+content_type = "image/png"
+
+[[outputs]]
+id = "jlaclMbClUFMc0dEa76g5"
+uri = "file://screenshots/operation-slider-controls-1280.png"
+type = "image"
+title = "숙박운영 가로바 — 데스크톱"
+description = "비교 조건 삭제 및 단위·한도 적용 화면"
+logical_id = "c7e9040b-b941-450a-ae84-03a17323446a"
+content_hash = "sha256:ac7f3de07f5236e3a71aafe246fcdb4e87024558a5a3a7f630559dbf6126d446"
+size = 36314
+mtime_ms = 1790242566080
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/c7e9040b-b941-450a-ae84-03a17323446a/c2ebbc1b-8972-451b-b480-83854ec92efa"
+storage_version_token = "1790242677024016"
+content_type = "image/png"
+
+[[outputs]]
+id = "P_zz1IA8SCuqz4dkmQhVb"
+uri = "file://screenshots/operation-slider-controls-360.png"
+type = "image"
+title = "숙박운영 가로바 — 모바일"
+description = "360px 화면에서 단위·한도 표시 확인"
+logical_id = "19cbde18-07b9-49fe-a057-c7947119056c"
+content_hash = "sha256:e62820c448e97e53337243458ec61b85da32fee6c7d9d651af17af4bdc2c5aaf"
+size = 38437
+mtime_ms = 1790242569460
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/19cbde18-07b9-49fe-a057-c7947119056c/a74c6ba5-d9a7-4cda-9c1a-736f1f81ca51"
+storage_version_token = "1790242678397316"
 content_type = "image/png"

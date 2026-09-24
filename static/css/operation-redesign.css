@@ -656,7 +656,9 @@
   font-variant-numeric: tabular-nums;
 }
 .operation-slider-bounds {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  width: 100%;
   min-width: 0;
   align-items: center;
   justify-content: space-between;
@@ -670,6 +672,10 @@
 }
 .operation-slider-bounds > :last-child {
   text-align: right;
+}
+.operation-slider-bounds > small {
+  font-size: inherit;
+  text-align: center;
 }
 @media (max-width: 650px) {
   .operation-slider-list {

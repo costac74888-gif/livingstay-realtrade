@@ -143,6 +143,7 @@
     if (field === "rentalVacancyMonths") {
       return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 1 }) + "개월";
     }
+    if (value >= 10000 && value % 10000 === 0) return (value / 10000).toLocaleString("ko-KR") + "억";
     return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 }) + "만";
   }
   function updateRentalLimitLabels(bounds) {
@@ -178,9 +179,9 @@
     var safeBase = sliderBasePrice;
     if (safeBase == null) return null;
     var bounds = utils.purchaseBounds(safeBase);
-    bounds.min = Math.max(utils.HARD_CAPS.purchase[0], bounds.min);
-    bounds.max = Math.min(utils.HARD_CAPS.purchase[1], bounds.max);
-    bounds.step = utils.niceStep((bounds.max - bounds.min) / 40);
+    bounds.min = Math.max(utils.HARD_CAPS.purchase[0], Math.floor(bounds.min / 1000) * 1000);
+    bounds.max = utils.HARD_CAPS.purchase[1];
+    bounds.step = 1000;
     return bounds;
   }
   function rentCenter() {
@@ -237,33 +238,30 @@
     if (!utils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
     var purchase = purchaseBounds();
     var purchaseValue = n("rentalPurchasePrice");
-    var depositMax = Math.max(0, Math.min(purchaseValue * 0.3, 5000));
+    var depositMax = utils.HARD_CAPS.deposit[1];
     var rent = rentCenterBase == null ? null : utils.rentBounds(rentCenterBase);
     if (rent) {
       rent.min = Math.max(utils.HARD_CAPS.rent[0], rent.min);
-      rent.max = Math.min(utils.HARD_CAPS.rent[1], rent.max);
-      rent.step = utils.niceStep((rent.max - rent.min) / 40);
+      rent.max = utils.HARD_CAPS.rent[1];
+      rent.step = 1;
     }
     return {
       rentalPurchasePrice: purchase,
       rentalLoanAmount: purchase && purchaseValue > 0 ? {
         min: 0,
-        max: Math.max(0, Math.min(purchaseValue * 0.7,
-          purchaseValue + n("rentalAcquisitionTax") + n("rentalBrokerFee") - n("rentalDeposit") - 100)),
-        step: purchase.step,
+        max: loanMaximum(),
+        step: 1000,
       } : null,
       rentalDeposit: purchase && purchaseValue > 0 ? {
-        min: 0, max: depositMax, step: utils.niceStep(Math.max(1, depositMax / 40)),
+        min: 0, max: depositMax, step: 100,
       } : null,
       rentalMonthlyRent: rent,
-      rentalVacancyMonths: { min: 0, max: 6, step: 0.5 },
+      rentalVacancyMonths: { min: 0, max: 12, step: 1 },
     };
   }
   function loanMaximum() {
     var purchase = n("rentalPurchasePrice");
-    var deposit = n("rentalDeposit");
-    var acq = n("rentalAcquisitionTax") + n("rentalBrokerFee");
-    return Math.max(0, Math.min(purchase * 0.7, purchase + acq - deposit - 100));
+    return Math.max(0, Math.min(purchase, 400000));
   }
   function syncSliderBounds(expandField, skipField) {
     var utils = window.analysisSliderUtils;
@@ -366,11 +364,18 @@
     }, 300);
   }
   function makeSliderRow(field, label, step) {
+    var units = {
+      rentalPurchasePrice: "천만원 단위",
+      rentalLoanAmount: "천만원 단위 · 절대 상한 40억",
+      rentalDeposit: "백만원 단위",
+      rentalMonthlyRent: "만원 단위",
+      rentalVacancyMonths: "1개월 단위",
+    };
     return '<div class="rental-slider-row" data-rental-row="' + field + '"><div class="rental-slider-head"><label for="rentalSlider' + field.slice(6) + '">' + label + '</label>'
       + '<span><button type="button" class="rental-value-button slider-value" data-rental-value="' + field + '" data-value-for="' + field + '" aria-label="' + label + ' 직접 입력">' + formatInputValue(field, $(field).value) + '</button>'
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
       + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
-      + '<span class="rental-range-limits" data-rental-limits="' + field + '" aria-hidden="true"><span>—</span><span>—</span></span>'
+      + '<span class="rental-range-limits" data-rental-limits="' + field + '"><span>—</span><small>' + units[field] + '</small><span>—</span></span>'
       + '<span class="rental-slider-input-error" data-rental-input-error="' + field + '" role="alert" hidden></span></div>';
   }
   function setupRentalSliders() {
@@ -378,11 +383,11 @@
     if (!host) return;
     host.innerHTML = '<div class="rental-panel-title"><div><span class="eyebrow">SCENARIO BUILDER</span><h3>조건을 조정해 수익을 확인하세요</h3></div></div>'
       + '<section class="rental-slider-group"><h3 class="rental-buy-heading">매수 조건</h3><div class="rental-slider-list">'
-      + makeSliderRow("rentalPurchasePrice", "매수가", 100)
-      + makeSliderRow("rentalLoanAmount", "대출금", 100)
+      + makeSliderRow("rentalPurchasePrice", "매수가", 1000)
+      + makeSliderRow("rentalLoanAmount", "대출금 (매수가 이내)", 1000)
       + '</div></section><section class="rental-slider-group"><h3>임대 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalDeposit", "보증금", 100)
-      + makeSliderRow("rentalMonthlyRent", "월세", 5)
+      + makeSliderRow("rentalMonthlyRent", "월세", 1)
       + makeSliderRow("rentalVacancyMonths", "공실", 1)
       + '</div></section><p class="rental-slider-hint">값을 눌러 직접 입력할 수 있습니다. 슬라이더는 가장 가까운 단위에, 계산은 입력한 정확한 값에 맞춥니다.</p>';
     host.querySelectorAll("[data-rental-slider]").forEach(function (range) {
@@ -431,7 +436,7 @@
       input.type = "number";
       input.step = field === "rentalVacancyMonths" ? "0.5" : "1";
       input.min = hardKind === "loan" ? "0" : hardBounds ? String(hardBounds[0]) : "0";
-      input.max = hardKind === "loan" ? String(n("rentalPurchasePrice"))
+      input.max = hardKind === "loan" ? String(loanMaximum())
         : hardBounds ? String(hardBounds[1]) : "";
       input.value = $(field).value;
       input.setAttribute("aria-label", field === "rentalVacancyMonths" ? "연간 공실 개월" : "금액(만원)");
