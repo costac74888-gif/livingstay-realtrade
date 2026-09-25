@@ -45,6 +45,51 @@
   var correctRentalReportBase=correctRentalReport,correctOperationReportBase=correctOperationReport,propertyReportBase=propertyReport;
   correctRentalReport=function(report){report=correctRentalReportBase(report);report.graph=scalePrintQuadrants(report.graph,1120,650);return report};
   correctOperationReport=function(report){var state=window.__operationAnalysisState||{};report=correctOperationReportBase(report);report.graph=scalePrintQuadrants(report.graph,1120,560);var numeric=function(key){return state[key]==null||state[key]===""?NaN:Number(state[key])},monthlyNet=numeric("monthlyNet"),comparisonRent=numeric("compareRent"),annualYield=numeric("annualYield"),breakEven=numeric("breakEvenOcc"),annualNet=numeric("annualNet"),holding=numeric("annualHoldingCosts"),purchase=numeric("purchasePrice")*10000,acquisition=numeric("acquisitionCosts"),investment=numeric("investmentBasis"),overview=document.createElement("div");overview.innerHTML=report.overview;var headline=overview.querySelector(".print-result-line"),valueNode=headline&&headline.querySelector("strong"),subtitle=headline&&headline.querySelector("span"),yieldNote=overview.querySelector(".print-operation-yield-note");if(!Number.isFinite(monthlyNet)||!Number.isFinite(comparisonRent)){if(valueNode)valueNode.textContent="비교 자료 없음";if(subtitle)subtitle.textContent="월세 비교 자료를 확인할 수 없습니다."}if(yieldNote)yieldNote.textContent="손익분기 OCC "+(Number.isFinite(breakEven)?breakEven.toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1})+"%":"—")+" · 연 수익률 "+(Number.isFinite(annualYield)?annualYield.toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1})+"%":"—")+"(임대 동일 기준)";report.overview=overview.innerHTML;var all=[annualNet,monthlyNet,holding,purchase,acquisition,investment];if(all.every(Number.isFinite)){var man=function(amount){return(amount/10000).toLocaleString("ko-KR",{maximumFractionDigits:1})+"만원"};report.basis+="<p>연 순수익 "+man(annualNet)+" = 월 순수익 "+man(monthlyNet)+" × 12 − 연간 보유비용 "+man(holding)+" · 투자금 "+man(investment)+" = 매입가 "+man(purchase)+" + 취득부대 "+man(acquisition)+"</p>"}return report};
+  // The source cards remain interactive on screen, but the fixed one-page print frame
+  // contains only the position chart. Never let a cropped sensitivity table look complete.
+  var rentalWithScreenExtras=correctRentalReport,operationWithScreenExtras=correctOperationReport;
+  correctRentalReport=function(report){
+    report=rentalWithScreenExtras(report);
+    window.__analysisPrintChartCapture=true;
+    try{
+      report.graph='<div class="print-rental-position">'+chartSnapshot(
+        "#rentalPositioning","#rentalPositionChart",{width:1120,height:560})+'</div>';
+    }finally{window.__analysisPrintChartCapture=false}
+    report.graphTitle="3.1 임대수익 포지션";
+    return report;
+  };
+  correctOperationReport=function(report){
+    report=operationWithScreenExtras(report);
+    var graph=document.createElement("div");
+    graph.innerHTML=report.graph;
+    report.graph=graph.firstElementChild?graph.firstElementChild.outerHTML:report.graph;
+    report.graphTitle="3.1 ADR × OCC 포지션 · 등수익 곡선";
+    report.basis=report.basis
+      .replace(/<p>연 수익률은 임대수익분석과 같은 기준[^<]*<\/p>/,"")
+      .replace(/<p>연 순수익 [^<]*<\/p>/,"");
+    // The screen adds equivalent formulas twice; keep the full interactive detail
+    // there, but use the same math in a compact print-only formula block.
+    var basis=document.createElement("div");
+    basis.innerHTML=report.basis;
+    var formula=basis.querySelector(".formula");
+    if(formula){
+      formula.innerHTML="OCC = 판매 객실 수 ÷ (신고 객실 수 × 영업일 수) × 100 · ADR = 객실매출 ÷ 판매 객실 수<br>"+
+        "RevPAR = ADR × OCC · 호실 월 매출 = ADR × OCC × 월 일수<br>"+
+        "매출이익 = 호실 월 매출 × (1 − 운영경비율) · 호실 월 순수익 = 매출이익 × (1 − 위탁수수료율)<br>"+
+        "연 순수익 = 호실 월 순수익 × 12 − 연 보유비용 · 투자금 = 매입가 + 취득부대<br>"+
+        "사분면 기준선 = 해당 시도 시군구 운영지표 평균 ADR·OCC";
+      report.basis=basis.innerHTML;
+    }
+    var state=window.__operationAnalysisState||{};
+    var net=Number(state.annualNet),investment=Number(state.investmentBasis),yieldRate=Number(state.annualYield);
+    if(Number.isFinite(net)&&Number.isFinite(investment)&&investment>0&&Number.isFinite(yieldRate)){
+      var man=function(amount){return(amount/10000).toLocaleString("ko-KR",{maximumFractionDigits:1})+"만"};
+      report.basis+="<p>연 수익률(임대 동일 기준) = (월 순수익×12 − 연 보유비용) ÷ (매입가 + 취득부대) = "+
+        man(net)+" ÷ "+man(investment)+" = "+
+        yieldRate.toLocaleString("ko-KR",{minimumFractionDigits:1,maximumFractionDigits:1})+"%</p>";
+    }
+    return report;
+  };
   propertyReport=function(){var report=propertyReportBase();report.graph=scalePrintQuadrants(report.graph,1120,500);return report};
   function renderPrintReport(){var mode=activeMode(),report=mode==="rental"?rentalReport():mode==="operation"?operationReport():propertyReport(),generated=text("#generatedAt",""),building=selectedBuilding(),number=reportSerial(mode,building,generated);if(mode==="rental")report=correctRentalReport(report);if(mode==="operation")report=correctOperationReport(report);if(mode==="property"){report.overview=formatMoneyHtml(report.overview);report.graph=formatMoneyHtml(report.graph);report.basis=formatMoneyHtml(report.basis)}$("printReportTitle").textContent=report.title;$("printReportTypes").innerHTML=reportTypeMarkup(mode,false);$("printReportLegend").innerHTML=reportTypeMarkup(mode,true);$("printReportSerial").textContent="보고서 생성 일련번호 "+number;$("printReportMeta").textContent=kstTimestamp(generated)+" · 홈앤스테이";$("printOverview").innerHTML=report.overview;$("printGraphTitle").textContent=report.graphTitle;$("printGraph").innerHTML=report.graph;$("printBasis").innerHTML=report.basis;modeSidePrint(mode);$("printMapTitle").textContent="3.3 지도위치";$("printReport").dataset.mode=mode;return renderMap(building).then(function(){window.__analysisPrintReport={mode:mode,title:report.title,serial:number,zones:5,pages:1,ready:true}})}
   var originalTitle=document.title;

@@ -141,6 +141,28 @@ async function createReport(browser, baseUrl, tokens, item) {
   }
   await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
   await page.emulateMedia({ media: "print" });
+  if (item.mode === "operation") {
+    const headlineLayout = await page.evaluate(() => {
+      const box = document.querySelector("#printReport .print-result-line");
+      const note = box?.querySelector(".print-operation-yield-note");
+      const overview = document.querySelector("#printReport .print-overview");
+      const content = document.querySelector("#printReport #printOverview");
+      const rect = (el) => el ? { y: el.getBoundingClientRect().y,
+        bottom: el.getBoundingClientRect().bottom, height: el.getBoundingClientRect().height } : null;
+      return { box: rect(box), note: rect(note), overview: rect(overview),
+        content: rect(content), cssHeight: getComputedStyle(box).height,
+        basis: rect(document.querySelector("#printReport .print-basis")),
+        paragraphs: Array.from(document.querySelectorAll("#printReport .print-basis > #printBasis > p")).map(rect),
+        formula: rect(document.querySelector("#printReport .print-basis .formula")),
+        caution: rect(document.querySelector("#printReport .print-caution")),
+        legend: rect(document.querySelector("#printReport .print-report-legend")) };
+    });
+    if (headlineLayout.note.bottom > headlineLayout.content.bottom
+      || headlineLayout.caution.bottom > headlineLayout.basis.bottom
+      || headlineLayout.legend.bottom > headlineLayout.basis.bottom) {
+      throw new Error(`숙박 보고서 텍스트/주의사항/탭 잘림: ${JSON.stringify(headlineLayout)}`);
+    }
+  }
   const report = await page.evaluate(() => {
     const root = document.querySelector("#printReport");
     const text = root?.innerText || "";
@@ -166,6 +188,15 @@ async function createReport(browser, baseUrl, tokens, item) {
   if (report.mode !== item.mode || report.quadrantCount !== 4 || !report.graphImage) {
     throw new Error(`${item.mode}: 보고서 구조/차트 검증 실패: ${JSON.stringify({ ...report, text: undefined })}`);
   }
+  if (!report.text.includes("엠제이스톤 레지던스")) {
+    throw new Error(`${item.mode}: 인쇄 화면에 건물명이 없습니다: ${JSON.stringify({
+      prepared, reportText: report.text.slice(0, 330),
+      selected: await page.evaluate(() => window.livingstaySelectedAnalysisBuilding?.()?.building_id),
+    })}`);
+  }
+  if (item.mode !== "property" && report.text.includes("민감도")) {
+    throw new Error(`${item.mode}: 인쇄 보고서에 민감도 표가 남아 있습니다.`);
+  }
   if (pageErrors.length) {
     throw new Error(`${item.mode}: 브라우저 오류: ${pageErrors.join(" | ")}`);
   }
@@ -183,19 +214,32 @@ async function createReport(browser, baseUrl, tokens, item) {
   fs.mkdirSync(OUTPUT, { recursive: true });
   const outPath = path.join(OUTPUT, `홈앤스테이_엠제이스톤_레지던스_2026-09-25_${item.suffix}.pdf`);
   const bytes = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
-  fs.writeFileSync(outPath, bytes);
   await page.close();
   await context.close();
 
-  const check = execFileSync("python", ["-c", [
-    "import fitz,json,sys",
-    "d=fitz.open(sys.argv[1])",
-    "print(json.dumps({'pages':len(d),'text':d[0].get_text(),'rect':[d[0].rect.width,d[0].rect.height]}))",
-  ].join(";"), outPath], { encoding: "utf8" });
-  const pdf = JSON.parse(check.trim().split("\n").filter(Boolean).pop());
-  if (pdf.pages !== 1) throw new Error(`${item.mode}: PDF가 ${pdf.pages}페이지입니다.`);
-  for (const required of ["엠제이스톤 레지던스", "2026-09-25"]) {
-    if (!pdf.text.includes(required)) throw new Error(`${item.mode}: PDF 본문에서 ${required} 확인 실패`);
+  const tmpPath = outPath + ".tmp.pdf";
+  fs.writeFileSync(tmpPath, bytes);
+  let pdf;
+  try {
+    const check = execFileSync("python", ["-c", [
+      "import fitz,json,sys",
+      "d=fitz.open(sys.argv[1])",
+      "print(json.dumps({'pages':len(d),'text':d[0].get_text(),'rect':[d[0].rect.width,d[0].rect.height]}))",
+    ].join(";"), tmpPath], { encoding: "utf8" });
+    pdf = JSON.parse(check.trim().split("\n").filter(Boolean).pop());
+    if (pdf.pages !== 1) throw new Error(`${item.mode}: PDF가 ${pdf.pages}페이지입니다.`);
+    for (const required of ["엠제이스톤 레지던스", "2026-09-25"]) {
+      if (!pdf.text.includes(required)) throw new Error(`${item.mode}: PDF 본문에서 ${required} 확인 실패`);
+    }
+    if (item.mode === "operation" && !pdf.text.includes("손익분기 OCC")) {
+      throw new Error("숙박 PDF 헤드라인 둘째 줄이 잘렸습니다.");
+    }
+    if (item.mode !== "property" && pdf.text.includes("민감도")) {
+      throw new Error(`${item.mode}: PDF에 민감도 표가 인쇄됐습니다.`);
+    }
+    fs.renameSync(tmpPath, outPath);
+  } finally {
+    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
   }
   console.log(JSON.stringify({
     mode: item.mode,

@@ -105,3 +105,4 @@
 - [통합 계정과 복수 사업장](unified-account-business-roles.md) — 이메일별 로그인은 하나만 유지하고 일반회원·복수 사업자 역할과 사업장을 연결해 전환한다.
 - [건축HUB 배포 연결과 실패 격리](building-hub-deployment-egress.md) — 워크스페이스와 배포 환경의 data.go.kr 연결성이 다르며, 지속 실패 지번은 완료 처리 없이 대기열로 격리한다.
 - [최근 분석 재진입 정책](recent-analysis-policy.md) — 실제 계산된 건물·마지막 모드만 회원별 30개 기록하며, 재진입은 최신 자료로 재계산하고 계정·건물 간 가정을 격리한다.
+- [분석 보고서 인쇄 그리드 잘림](analysis-print-grid-overflow.md) — A4 고정 그리드에서 100% 높이는 클리핑 해결이 아닐 수 있어 실제 자식·부모 경계를 비교한다.

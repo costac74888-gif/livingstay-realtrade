@@ -650,13 +650,14 @@
       },
     };
     ctx.save();
-    ctx.fillStyle = "rgba(70,145,129,.035)";
+    var printCapture = window.__analysisPrintChartCapture === true;
+    ctx.fillStyle = printCapture ? "rgba(71,170,145,.19)" : "rgba(70,145,129,.035)";
     ctx.fillRect(area.left, area.top, midX - area.left, midY - area.top);
-    ctx.fillStyle = "rgba(47,135,111,.065)";
+    ctx.fillStyle = printCapture ? "rgba(58,143,212,.19)" : "rgba(47,135,111,.065)";
     ctx.fillRect(midX, area.top, area.right - midX, midY - area.top);
-    ctx.fillStyle = "rgba(132,147,164,.035)";
+    ctx.fillStyle = printCapture ? "rgba(143,154,186,.18)" : "rgba(132,147,164,.035)";
     ctx.fillRect(area.left, midY, midX - area.left, area.bottom - midY);
-    ctx.fillStyle = "rgba(226,147,103,.055)";
+    ctx.fillStyle = printCapture ? "rgba(230,148,100,.19)" : "rgba(226,147,103,.055)";
     ctx.fillRect(midX, midY, area.right - midX, area.bottom - midY);
     ctx.strokeStyle = "rgba(71,92,109,.58)";
     ctx.lineWidth = 1;

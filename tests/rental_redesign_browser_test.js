@@ -687,8 +687,8 @@ async function run() {
     })}`);
     expect(printReady.summary.includes("매수가 2,000만원")
       && printReady.summary.includes("월세 30만원")
-      && printReady.graphHasSensitivity,
-      `인쇄 미리보기에서 현재 조건·민감도 표를 확인할 수 없습니다: ${JSON.stringify({
+      && !printReady.graphHasSensitivity,
+      `인쇄 미리보기에서 현재 조건이 누락되거나 민감도 표가 남았습니다: ${JSON.stringify({
         hasPurchase: printReady.summary.includes("매수가 2,000만원"),
         hasRent: printReady.summary.includes("월세 30만원"),
         graphHasSensitivity: printReady.graphHasSensitivity,
