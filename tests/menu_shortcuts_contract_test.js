@@ -32,6 +32,7 @@ expect(
   "모바일 바로가기가 2열 버튼과 전체 폭 이용안내로 구성되지 않았습니다.",
 );
 
-expect(!menu.includes('href="/analysis"'), "공용 햄버거 메뉴에 자산분석이 남아 있습니다.");
+expect(menu.includes('<a class="menu-link" href="/analysis">📊 자산분석</a>'),
+  "비로그인 상태에서도 전체 메뉴에서 자산분석 링크가 보여야 합니다.");
 
 console.log("menu shortcut layout checks passed");

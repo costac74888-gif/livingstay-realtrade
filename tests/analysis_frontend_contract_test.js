@@ -139,12 +139,18 @@ expect(
   "건물 사진 또는 보고서 산정 근거가 없습니다.",
 );
 expect(
-  !menu.includes('href="/analysis"'),
-  "모바일 전체 메뉴에 자산분석 링크가 남아 있습니다.",
+  menu.includes('<a class="menu-link" href="/analysis">📊 자산분석</a>'),
+  "전체 메뉴의 자산분석 링크가 항상 표시되어야 합니다.",
 );
 expect(
-  !fs.readFileSync("static/js/header.js", "utf8").includes('href="/analysis"'),
-  "PC 상단 메뉴에 자산분석 링크가 남아 있습니다.",
+  fs.readFileSync("static/js/header.js", "utf8").includes('class="hnav-btn" href="/analysis"')
+    && !fs.readFileSync("static/js/header.js", "utf8").includes('id="adminAnalysisNav"'),
+  "공용 상단 메뉴의 자산분석 링크가 관리자 세션과 무관하게 표시되어야 합니다.",
+);
+expect(
+  js.includes("member=detail.loggedIn===true") && !js.includes('accountType==="user"')
+    && js.includes('if(!shareToken&&!analysisAccountAllowed)return'),
+  "일반회원·파트너의 로그인 분석 접근 또는 비로그인 차단 조건이 올바르지 않습니다.",
 );
 expect(
   html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")

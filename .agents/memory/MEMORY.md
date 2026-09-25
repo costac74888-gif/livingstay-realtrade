@@ -101,7 +101,7 @@
 - [자동검사 외부 알림 차단](test-notification-isolation.md) — 임시 신청을 만드는 자동검사는 실제 이메일·SMS를 절대 발송하지 않도록 최하위 발송 함수에서 차단한다.
 - [관리자 액션센터 알림 정책](admin-action-center-policy.md) — 관리자 업무 기준화면은 통합 액션센터; 긴급은 즉시, 일반은 일일 요약하며 수신자는 회사소개 문의 이메일을 따른다.
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
-- [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 운영 앱 메뉴는 관리자에게만 노출하되 서명된 비회원 공유 링크의 직접 열람은 유지한다.
+- [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 메뉴는 항상 노출하고 분석 이용은 로그인한 일반회원·파트너에게 허용하며 서명 공유 링크는 유지한다.
 - [통합 계정과 복수 사업장](unified-account-business-roles.md) — 이메일별 로그인은 하나만 유지하고 일반회원·복수 사업자 역할과 사업장을 연결해 전환한다.
 - [건축HUB 배포 연결과 실패 격리](building-hub-deployment-egress.md) — 워크스페이스와 배포 환경의 data.go.kr 연결성이 다르며, 지속 실패 지번은 완료 처리 없이 대기열로 격리한다.
 - [최근 분석 재진입 정책](recent-analysis-policy.md) — 실제 계산된 건물·마지막 모드만 회원별 30개 기록하며, 재진입은 최신 자료로 재계산하고 계정·건물 간 가정을 격리한다.

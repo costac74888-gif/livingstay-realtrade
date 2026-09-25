@@ -1203,6 +1203,13 @@
   white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
 }
 .hnav-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+@media (min-width:521px) and (max-width:1360px){
+  #siteHeader .brand, #siteHeader .page-title{flex-shrink:0;white-space:nowrap;}
+  #siteHeader .header-actions, #siteHeader .header-menu{gap:8px;}
+  #siteHeader .header-nav{gap:2px;}
+  #siteHeader .hnav-btn{padding:6px 7px;font-size:12px;}
+  #siteHeader .auth-btn{white-space:nowrap;flex-shrink:0;}
+}
 .hnav-dropdown{ position:relative; }
 .hnav-panel{
   display:none; position:absolute; top:calc(100% + 6px); right:0; z-index:1200;

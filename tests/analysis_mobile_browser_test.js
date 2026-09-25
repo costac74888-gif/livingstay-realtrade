@@ -1129,9 +1129,8 @@ async function run() {
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("livingstay:auth", {
       detail: { loggedIn: true, user: { id: 1, name: "사업자 계정", account_type: "operator" } },
     })));
-    await page.waitForFunction(() => document.getElementById("workspace").classList.contains("hidden")
-      && document.getElementById("quickBuildings").textContent === ""
-      && document.getElementById("state").textContent.includes("회원 로그인"));
+    await page.waitForFunction(() => !document.getElementById("workspace").classList.contains("hidden")
+      && document.getElementById("detailCard").textContent.includes("선택 테스트 자산"));
     delayNextMemberAssets = true;
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("livingstay:auth", {
       detail: { loggedIn: true, user: { id: 1, name: "테스트 회원", account_type: "user" } },
@@ -1154,9 +1153,9 @@ async function run() {
       user: { id: 3, name: "사업자 계정", account_type: "operator" },
     };
     await page.evaluate(() => window.livingstayRefreshAuth());
-    await page.waitForFunction(() => document.getElementById("workspace").classList.contains("hidden")
-      && document.getElementById("quickBuildings").textContent === ""
-      && document.getElementById("state").textContent.includes("회원 로그인"));
+    await page.waitForFunction(() => !document.getElementById("workspace").classList.contains("hidden")
+      && document.getElementById("detailCard").textContent.includes("선택 테스트 자산")
+      && document.getElementById("quickBuildings").textContent === "");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {
