@@ -35,7 +35,7 @@ expect(
     && js.includes('y:{position:"left",beginAtZero:true') && js.includes('y1:{position:"right",beginAtZero:true')
     && printJs.includes("<th>층</th><th>거래금액</th>")
     && js.includes("Number(tx.price)") && js.includes("transactionTrendChart=new Chart")
-    && printJs.includes("printFilename") && printJs.includes('toLocaleDateString("sv-SE")')
+    && printJs.includes("printFilename") && printJs.includes("kstDay(new Date())")
     && printJs.includes('"홈앤스테이_"+name+"_"+day+"_부동산투자보고서"')
     && printJs.includes("print-map-preparing") && printJs.includes("map.relayout")
     && printJs.includes("print-map-property-point") && css.includes(".print-map-property-point")
@@ -148,11 +148,13 @@ expect(
 );
 expect(
   html.includes('id="quickBuildings"') && js.includes("/api/favorites/mine")
-    && js.includes('"hs_recent_buildings"') && js.includes("viewed_at:Date.now()")
+    && js.includes("/api/analysis/recent") && js.includes(".slice(0,30)")
+    && js.includes('group("최근 분석"') && js.includes("openRecentBuilding(item)")
+    && !js.includes("hs_recent_buildings")
     && js.includes("favorites.slice(0,3)") && js.includes("+더보기(")
-    && js.includes('window.addEventListener("storage"')
+    && js.includes('window.addEventListener("livingstay:auth"')
     && js.includes('window.addEventListener("pageshow"'),
-  "관심단지 또는 최근 조회가 홈 지도 검색영역과 같은 기준으로 동기화되지 않았습니다.",
+  "관심단지 또는 최근 분석 목록의 저장·복원 기준이 일치하지 않습니다.",
 );
 expect(
   js.includes("/api/analysis/share-link")
@@ -220,16 +222,20 @@ expect(
   "투자 후보 3개 탭·5개씩 더보기·비교대상 산정기준 표시가 없습니다.",
 );
 expect(
-  js.includes("loadSeq===0&&!state.payload")
+  js.includes("handleAnalysisAuthChange")
+    && js.includes("setAnalysisMode(state.analysisMode,true)")
+    && js.includes("member&&!memberSessionSeen")
+    && js.includes("if(member&&!memberSessionSeen){memberSessionSeen=true;renderQuickBuildings();setAnalysisMode(state.analysisMode,true);return}")
     && js.includes("기존 분석 유지 · 갱신 실패"),
-  "초기 중복 요청 차단 또는 후속 갱신 실패 시 정상 화면 보존이 없습니다.",
+  "초기 인증 재검증의 시나리오 보존, 계정 전환 후 분석 재로딩 또는 후속 갱신 보존이 없습니다.",
 );
 expect(
   js.includes("incomplete=tourism==null||price==null")
     && js.includes("priceDisplayCap") && js.includes("Math.abs(price)>priceDisplayCap")
     && js.includes('String(i.building_id)===String(state.selected)')
     && js.includes('if(c.raw.incomplete)return c.raw.displayOnly?"#b8c1ca":"#758596"')
-    && js.includes('points[idx].incomplete?"#758596"')
+    && js.includes('if(c.raw.incomplete)return c.raw.displayOnly?"#b8c1ca":"#758596"')
+    && js.includes('String(i.building_id)===String(state.selected)?"#eb6834"')
     && js.includes("displayOffset(i.building_id")
     && js.includes("displayOnly=tourism==null&&price==null"),
   "비교기간이 부족한 건물의 회색 분산 표시가 없습니다.",

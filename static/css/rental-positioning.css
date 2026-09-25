@@ -31,8 +31,7 @@
   background:#dcece8;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.45),0 10px 24px rgba(24,75,74,.10);
 }
-.positioning-map:before,.positioning-map:after{z-index:3;background:rgba(21,63,69,.38)}
-.positioning-map:before{width:2px}.positioning-map:after{height:2px}
+.positioning-map:before,.positioning-map:after{content:none;display:none}
 .positioning-quadrant{
   z-index:1; display:flex; flex-direction:column; gap:4px;
   width:50%; height:50%; padding:16px 18px;

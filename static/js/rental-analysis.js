@@ -13,6 +13,28 @@
   var benchmarkSource = "";
   var benchmarkNotice = "";
   var positionChart = null;
+  window.__rentalChartPrintLayout = {
+    resize: function (width, height) {
+      if (positionChart) {
+        positionChart.resize(width || 1120, height || 560);
+        positionChart.update("none");
+      }
+      return window.__analysisChartLayout && window.__analysisChartLayout.rental || null;
+    },
+    restore: function () {
+      if (positionChart) {
+        positionChart.resize();
+        positionChart.update("none");
+      }
+      return window.__analysisChartLayout && window.__analysisChartLayout.rental || null;
+    },
+  };
+  window.addEventListener("beforeprint", function () {
+    window.__rentalChartPrintLayout.resize(1120, 560);
+  });
+  window.addEventListener("afterprint", function () {
+    window.__rentalChartPrintLayout.restore();
+  });
   var positionMode = "net";
   var rafId = 0;
   var vacancyAssumed = true;
@@ -80,12 +102,7 @@
     "연간 보유비용": "1년간 드는 세금·관리비·수선비",
   };
   function estimateTax(purchasePrice) {
-    if (!purchasePrice) return 0;
-    var estimatedTaxBase = purchasePrice * 0.6;
-    var propertyTax = estimatedTaxBase * 0.0025;
-    var urbanAreaTax = estimatedTaxBase * 0.0014;
-    var educationTax = propertyTax * 0.2;
-    return Math.round((propertyTax + urbanAreaTax + educationTax) * 10) / 10;
+    return window.livingstayRentalCosts.estimateAnnualTax(purchasePrice);
   }
   function annualDebtService(amount, annualRate, years, method) {
     if (amount <= 0) return { annual: 0, monthly: 0, firstPrincipal: 0 };
@@ -608,6 +625,30 @@
     var ctx = chart.ctx;
     var midX = chart.scales.x.getPixelForValue(benchmarkIncomeYield());
     var midY = chart.scales.y.getPixelForValue(0.5);
+    var quadrants = [
+      { left: area.left, top: area.top, right: midX, bottom: midY },
+      { left: midX, top: area.top, right: area.right, bottom: midY },
+      { left: area.left, top: midY, right: midX, bottom: area.bottom },
+      { left: midX, top: midY, right: area.right, bottom: area.bottom },
+    ].map(function (box) {
+      return {
+        left: box.left, top: box.top, right: box.right, bottom: box.bottom,
+        width: box.right - box.left, height: box.bottom - box.top,
+      };
+    });
+    window.__analysisChartLayout = window.__analysisChartLayout || {};
+    window.__analysisChartLayout.rental = {
+      baseline: {
+        x: midX, y: midY, valueX: benchmarkIncomeYield(), valueY: 0.5,
+        canvas: { width: chart.width, height: chart.height },
+        chartArea: { left: area.left, top: area.top, right: area.right, bottom: area.bottom },
+      },
+      quadrants: quadrants,
+      boundaries: {
+        vertical: [quadrants[0].right, quadrants[1].left, quadrants[2].right, quadrants[3].left],
+        horizontal: [quadrants[0].bottom, quadrants[2].top, quadrants[1].bottom, quadrants[3].top],
+      },
+    };
     ctx.save();
     ctx.fillStyle = "rgba(70,145,129,.035)";
     ctx.fillRect(area.left, area.top, midX - area.left, midY - area.top);
@@ -1160,11 +1201,12 @@
       ? "공실 개월을 입력하거나 전국 전체 평균을 불러와야 합니다."
       : vacancyAssumed ? "R-ONE 전국 대체 공실률 가정값 적용" : "사용자 입력 공실기간에서 자동계산";
     var vacancy = resolvedMonths == null ? 0 : resolvedMonths / 12;
-    var acquisitionTax = n("rentalAcquisitionTax");
-    var brokerFee = n("rentalBrokerFee");
-    var acquisition = acquisitionTax + brokerFee;
+    var acquisitionCosts = window.livingstayRentalCosts.acquisitionCosts(purchase);
+    var acquisition = acquisitionCosts.tax + acquisitionCosts.brokerFee;
     var tax = n("rentalPropertyTax");
-    var costs = tax + n("rentalManagementCost") + n("rentalOtherCost");
+    var costs = window.livingstayRentalCosts.annualHoldingCosts(
+      tax, n("rentalManagementCost"), n("rentalOtherCost")
+    );
     var basisTotal = costs;
     if ($("rentalBasisTotal")) $("rentalBasisTotal").value = basisTotal ? money(basisTotal, 1).replace("만원", "") : "";
     var loan = n("rentalLoanAmount");
@@ -1198,7 +1240,7 @@
     var annualInterest = loan * n("rentalLoanRate") / 100;
     var cashFlow = noi - annualInterest;
     var grossYield = purchase > 0 ? annualRent / purchase * 100 : NaN;
-    var netYield = returnBasis > 0 ? noi / returnBasis * 100 : NaN;
+    var netYield = window.livingstayRentalCosts.annualNetYield(noi, returnBasis);
     var cashReturn = invested > 0 ? cashFlow / invested * 100 : NaN;
     var marketYield = market > 0 ? noi / market * 100 : NaN;
     var dscr = debt.annual > 0 ? noi / debt.annual : null;
@@ -1246,10 +1288,9 @@
   }
   function updateAcquisitionCosts() {
     var purchasePrice = n("rentalPurchasePrice");
-    $("rentalAcquisitionTax").value = purchasePrice
-      ? String(Math.round(purchasePrice * 0.046 * 10) / 10) : "";
-    $("rentalBrokerFee").value = purchasePrice
-      ? String(Math.round(purchasePrice * 0.009 * 10) / 10) : "";
+    var costs = window.livingstayRentalCosts.acquisitionCosts(purchasePrice);
+    $("rentalAcquisitionTax").value = purchasePrice ? String(costs.tax) : "";
+    $("rentalBrokerFee").value = purchasePrice ? String(costs.brokerFee) : "";
   }
   function updateMethodologyFormula() {
     var formula = document.querySelector("#rentalAnalysis .methodology .formula");
@@ -1378,6 +1419,56 @@
       }
     }
   }
+  function resetRentalScenarioForBuildingChange() {
+    clearTimeout(areaLookupTimer);
+    areaLookupTimer = null;
+    cancelRentalSliderChange();
+    sharedValuesRestored = true;
+    loadingSharedValues = false;
+    loadedBuildingId = "";
+    loadedBuilding = null;
+    window.__rentalAnalysisBuilding = null;
+    rentalBenchmark = null;
+    rentalBenchmarkItems = [];
+    benchmarkSource = "";
+    benchmarkNotice = "";
+    taxManuallyEdited = false;
+    marketPriceManuallyEdited = false;
+    automaticMarketPrice = null;
+    clearMarketEvidence();
+    sliderBasePrice = null;
+    sliderBounds = Object.create(null);
+    rentCenterBase = null;
+    rentCenterEdited = false;
+    vacancyAssumed = true;
+    positionMode = "net";
+    lastValidRentalInputs = Object.create(null);
+    invalidRentalInputs = Object.create(null);
+    invalidRentalUrlFields = Object.create(null);
+    ids.forEach(function (id) { $(id).value = ""; });
+    $("rentalUnitArea").value = "";
+    $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
+    $("rentalVacancyMonths").value = "";
+    $("rentalVacancyRate").value = "";
+    $("rentalManagementCost").value = "0";
+    $("rentalOtherCost").value = "0";
+    $("rentalLoanAmount").value = "0";
+    $("rentalLoanRate").value = "4.5";
+    $("rentalLoanYears").value = "20";
+    $("rentalLoanMethod").value = "interest";
+    $("rentalUnitAreaOptions").innerHTML = "";
+    $("rentalBuildingName").textContent = "건물 정보를 불러오는 중";
+    if (window.livingstayRenderAnalysisBuildingIdentity) {
+      window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), null);
+    }
+    $("rentalReportActions").classList.add("hidden");
+    $("rentalReportActions").replaceChildren();
+    $("rentalUnitAreaHint").textContent = "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
+    $("rentalVacancyMonthsHint").textContent = "건물을 선택하면 R-ONE 전국 전체 공실 평균을 확인합니다.";
+    setMarketStatus("건물과 호실 면적을 선택하면 최근 실거래 중앙값을 불러옵니다.", "");
+    syncSliderBounds();
+    calculate();
+  }
   function restoreSharedRentalValues() {
     if (sharedValuesRestored) return;
     var params = new URLSearchParams(location.search);
@@ -1450,6 +1541,7 @@
     var seq = ++buildingSequence;
     cancelRentalSliderChange();
     if (!id) {
+      if (loadedBuildingId) resetRentalScenarioForBuildingChange();
       rentCenterBase = null;
       rentCenterEdited = false;
       loadedBuildingId = "";
@@ -1480,6 +1572,7 @@
       return;
     }
     if (loadedBuildingId !== String(id)) {
+      if (loadedBuildingId) resetRentalScenarioForBuildingChange();
       loadedBuildingId = String(id);
       marketPriceManuallyEdited = false;
       automaticMarketPrice = null;
@@ -1526,6 +1619,11 @@
         setMarketStatus("호실 전용면적을 직접 입력하면 최근 실거래를 조회합니다.", "unavailable");
         sliderBasePrice = null;
         syncSliderBounds();
+      }
+      if (data && window.livingstayTrackAnalyzedBuilding) {
+        window.livingstayTrackAnalyzedBuilding(data.building_id || id,
+          data.display_building_name || data.building_name || "선택 건물",
+          data.road_address || data.jibun_address || "", "rental");
       }
     } catch (ignore) {
       if (seq === buildingSequence) {
@@ -1646,7 +1744,8 @@
     queueRentalSliderChange("rentalPurchasePrice", true);
   });
   window.addEventListener("livingstay:analysis-reset", function () {
-    $("rentalReset").click();
+    resetRentalScenarioForBuildingChange();
+    loadBuilding();
   });
   updateMethodologyFormula();
   window.loadRentalAnalysis = loadBuilding;

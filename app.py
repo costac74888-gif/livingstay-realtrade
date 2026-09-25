@@ -33636,6 +33636,127 @@ def _analysis_session_or_share(mode, building_id=None):
     return _analysis_share_valid(request.args.get("share"), candidate_id, mode)
 
 
+def _analysis_recent_rows(cur, user_id):
+    cur.execute("""
+        SELECT recent.building_id,
+               recent.last_mode,
+               recent.analyzed_at,
+               COALESCE(NULLIF(trim(building.building_name), ''), '건물명 미확인')
+                   AS building_name,
+               COALESCE(NULLIF(trim(building.road_address), ''),
+                        NULLIF(trim(building.jibun_address), ''), '')
+                   AS address
+        FROM user_recent_analysis recent
+        JOIN master_buildings building ON building.id = recent.building_id
+        WHERE recent.user_id = %s
+        ORDER BY recent.analyzed_at DESC, recent.building_id DESC
+        LIMIT 30
+    """, (user_id,))
+    items = []
+    for row in cur.fetchall():
+        analyzed_at = row["analyzed_at"]
+        items.append({
+            "building_id": row["building_id"],
+            "building_name": row["building_name"],
+            "address": row["address"],
+            "last_mode": row["last_mode"],
+            "analyzed_at": analyzed_at.isoformat() if hasattr(analyzed_at, "isoformat")
+                else str(analyzed_at),
+        })
+    return items
+
+
+@app.route("/api/analysis/recent", methods=["GET", "POST"])
+@limiter.limit("60 per minute")
+def analysis_recent():
+    """현재 일반회원의 마지막 분석 건물 30개를 조회하거나 갱신한다."""
+    user = current_user()
+    if not user:
+        return jsonify({
+            "ok": False,
+            "requires_login": True,
+            "message": "로그인이 필요합니다.",
+        }), 401
+    user_id = int(user["id"])
+
+    building_id = None
+    mode = None
+    if request.method == "POST":
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"ok": False, "message": "JSON 객체로 분석 이력을 보내 주세요."}), 400
+        raw_id = data.get("building_id")
+        if isinstance(raw_id, bool) or not isinstance(raw_id, (str, int)):
+            return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+        try:
+            raw_id = str(raw_id).strip()
+            if not raw_id or not raw_id.isdecimal():
+                raise ValueError
+            building_id = int(raw_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+        if building_id <= 0:
+            return jsonify({"ok": False, "message": "building_id가 올바르지 않습니다."}), 400
+        mode = data.get("mode")
+        if not isinstance(mode, str) or mode not in _ANALYSIS_SHARE_MODES:
+            return jsonify({
+                "ok": False,
+                "message": "mode는 property, rental, operation 중 하나여야 합니다.",
+            }), 400
+
+    conn = cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        if request.method == "POST":
+            cur.execute("""
+                SELECT id
+                FROM master_buildings
+                WHERE id = %s
+            """, (building_id,))
+            if not cur.fetchone():
+                return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
+
+            # 한 사용자의 병렬 탭 저장도 30개 초과로 남지 않도록 해당 사용자 범위만 직렬화한다.
+            cur.execute("SELECT pg_advisory_xact_lock(83991, %s)", (user_id,))
+            cur.execute("""
+                INSERT INTO user_recent_analysis (user_id, building_id, last_mode, analyzed_at)
+                VALUES (%s, %s, %s, clock_timestamp())
+                ON CONFLICT (user_id, building_id) DO UPDATE
+                SET last_mode = EXCLUDED.last_mode, analyzed_at = clock_timestamp()
+            """, (user_id, building_id, mode))
+            cur.execute("""
+                WITH ranked AS (
+                    SELECT building_id,
+                           ROW_NUMBER() OVER (
+                               ORDER BY analyzed_at DESC, building_id DESC
+                           ) AS position
+                    FROM user_recent_analysis
+                    WHERE user_id = %s
+                )
+                DELETE FROM user_recent_analysis recent
+                USING ranked
+                WHERE recent.user_id = %s
+                  AND recent.building_id = ranked.building_id
+                  AND ranked.position > 30
+            """, (user_id, user_id))
+            conn.commit()
+
+        items = _analysis_recent_rows(cur, user_id)
+        response = {"ok": True, "items": items, "limit": 30}
+        if request.method == "POST":
+            response["item"] = next(
+                (item for item in items if item["building_id"] == building_id),
+                None,
+            )
+        return jsonify(response)
+    finally:
+        if cur is not None:
+            cur.close()
+        if conn is not None:
+            conn.close()
+
+
 @app.route("/api/analysis/share-link", methods=["POST"])
 @limiter.limit("30 per minute")
 def analysis_share_link():

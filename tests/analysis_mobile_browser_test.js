@@ -48,13 +48,13 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
       && report.mapLayout.propertyPoint === true
       && report.propertyPoint))
      && (mode !== "operation" || (report.address && !report.address.includes("—")
-       && report.result.includes("월세 손익분기 OCC")
+        && report.result.includes("손익분기 OCC")
        && report.metricLabels.join("|") === "RevPAR|호실 월 매출|호실 월 순수익|월세 대비|연 수익률"
       && report.sideMetricCount === 4
       && report.sideMetricValues.every(value => value && !value.startsWith("—"))
       && report.operationQuadrantsFit))
     && pages === 1,
-  `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify(report)}`);
+   `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify({ ...report, graphImage: report.graphImage.slice(0, 28) })}`);
 }
 
 function chromiumExecutable() {
@@ -181,12 +181,42 @@ async function run() {
   let uploadHasOccupancyBasis = true;
   let favoriteItems = [];
   let favoriteMutations = [];
+  let recentAnalysisItems = [];
+  let recentAnalysisMutations = [];
+  let currentAuth = { logged_in: true, account_type: "user", user: { id: 1, name: "테스트 회원" } };
+  let delayNextMemberAssets = false;
+  let recentAnalysisPostInFlight = 0;
+  let maxRecentAnalysisPostInFlight = 0;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname === "/api/auth/me") return json(route, { logged_in: true, user: { id: 1, name: "테스트 회원" } });
+    if (url.pathname === "/api/auth/me") return json(route, currentAuth);
+    if (url.pathname === "/api/analysis/recent") {
+      if (route.request().method() === "GET") return json(route, {
+        items: Number(currentAuth.user?.id) === 1 && currentAuth.account_type === "user" ? recentAnalysisItems : [],
+      });
+      const body = route.request().postDataJSON();
+      recentAnalysisPostInFlight += 1;
+      maxRecentAnalysisPostInFlight = Math.max(maxRecentAnalysisPostInFlight, recentAnalysisPostInFlight);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        recentAnalysisMutations.push(body);
+        recentAnalysisItems = recentAnalysisItems.filter((entry) => Number(entry.building_id) !== Number(body.building_id));
+        recentAnalysisItems.unshift({
+          building_id: Number(body.building_id),
+          building_name: "선택 테스트 자산",
+          address: "강원특별자치도 속초시 테스트로 1",
+          last_mode: body.mode,
+          analyzed_at: new Date().toISOString(),
+        });
+        recentAnalysisItems = recentAnalysisItems.slice(0, 30);
+        return json(route, { ok: true });
+      } finally {
+        recentAnalysisPostInFlight -= 1;
+      }
+    }
     if (url.pathname === "/api/analysis/building-search") return json(route, {
       items: [{
         building_id: SELECTED_ID,
@@ -197,6 +227,14 @@ async function run() {
     });
     if (url.pathname === "/api/analysis/assets") {
       const payload = fixture(incompleteSelected, incompleteFinalTrajectory);
+      const delayedOldAccountResponse = Number(currentAuth.user?.id) === 1 && delayNextMemberAssets;
+      if (delayedOldAccountResponse) {
+        delayNextMemberAssets = false;
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        payload.items[0].name = "이전 회원 분석 자산";
+      } else if (Number(currentAuth.user?.id) === 2) {
+        payload.items[0].name = "새 회원 분석 자산";
+      }
       const incompleteItem = payload.items.find((entry) => entry.building_id === 301);
       payload.items = payload.items
         .filter((entry) => entry.building_id !== 301)
@@ -295,7 +333,9 @@ async function run() {
     });
     if (url.pathname === "/api/favorites/mine") {
       const method = route.request().method();
-      if (method === "GET") return json(route, { items: favoriteItems });
+      if (method === "GET") return json(route, {
+        items: Number(currentAuth.user?.id) === 1 && currentAuth.account_type === "user" ? favoriteItems : [],
+      });
       const body = route.request().postDataJSON();
       favoriteMutations.push({ method, body });
       if (method === "POST") {
@@ -324,7 +364,8 @@ async function run() {
       ],
     });
     if (url.pathname === `/api/building/${SELECTED_ID}`) return json(route, {
-      building_name: "선택 테스트 자산", road_address: "강원특별자치도 속초시 테스트로 1",
+      building_name: Number(currentAuth.user?.id) === 2 ? "새 회원 분석 자산" : "선택 테스트 자산",
+      road_address: "강원특별자치도 속초시 테스트로 1",
       sido: "강원특별자치도", lodging_type: "생활숙박시설",
       lodging_room_total: 348,
       lodgings: [
@@ -674,6 +715,7 @@ async function run() {
       && !await page.locator("#rentalAnalysis").evaluate((el) => el.classList.contains("hidden")),
       "장기임대 안내에서 임대수익분석으로 이동하지 못했습니다.");
     await page.click("#operationTab");
+    const operationWritesBeforePartialState = recentAnalysisMutations.filter((entry) => entry.mode === "operation").length;
     uploadHasOccupancyBasis = false;
     await page.setInputFiles("#operationFiles", {
       name: "missing-period.csv",
@@ -685,6 +727,9 @@ async function run() {
       return !document.getElementById("operationOcc").value
         && status.includes("운영분석 보류") && status.includes("OCC 계산 불가");
     });
+    await page.waitForTimeout(100);
+    expect(recentAnalysisMutations.filter((entry) => entry.mode === "operation").length === operationWritesBeforePartialState,
+      "ADR·OCC·수익률이 완성되지 않은 부분 숙박운영 분석이 최근 분석에 저장되었습니다.");
     await gotoWithTransientRetry(
       page,
       `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`,
@@ -716,6 +761,8 @@ async function run() {
       && rentalPreInput.marketReadonly
       && rentalPreInput.detailsCollapsed,
       `임대분석 5슬라이더·전국/지역 XY 기준점·읽기전용 계산근거·접이식 상세 구성이 표시되지 않았습니다: ${JSON.stringify(rentalPreInput)}`);
+    expect(!recentAnalysisMutations.some((entry) => entry.mode === "rental"),
+      "호실 면적·매입가·월세 입력 전의 부분 임대 시나리오가 최근 분석에 저장되었습니다.");
     await page.locator("#rentalBasisDetails").evaluate((element) => { element.open = true; });
     await page.fill("#rentalUnitArea", "32.5");
     await page.waitForFunction(() => document.getElementById("rentalMarketPrice").value === "9876");
@@ -827,6 +874,9 @@ async function run() {
         sensitivityRows: rentalResult.sensitivityRows,
         vacancySource: rentalResult.calculation.vacancySource,
       })}`);
+    await page.waitForFunction(() => Array.from(document.querySelectorAll("#quickBuildings .quick-group"))
+      .find((group) => group.querySelector("strong")?.textContent === "최근 분석")
+      ?.querySelector('button[data-mode="rental"]'));
     await setRentalValue("rentalVacancyMonths", 3);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.vacancySource === "user");
     const userVacancy = await page.evaluate(() => ({
@@ -841,6 +891,10 @@ async function run() {
       "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
     await expectSinglePageReport(page, "rental", "임대수익분석", false);
     await page.click("#propertyTab");
+    await page.waitForFunction(() => Array.from(document.querySelectorAll("#quickBuildings .quick-group"))
+      .find((group) => group.querySelector("strong")?.textContent === "최근 분석")
+      ?.querySelector('button[data-mode="property"]'));
+    const recentCountBeforePreview = recentAnalysisMutations.length;
     await page.fill("#buildingSearch", "선택 테스트");
     await page.waitForSelector("#searchResults .search-result");
     await page.click("#searchResults .search-result");
@@ -850,6 +904,8 @@ async function run() {
     }));
     expect(pendingBuilding.status.includes("선택 예정") && !pendingBuilding.disabled,
       "검색 결과를 건물 선택 버튼으로 확정하는 흐름이 없습니다.");
+    expect(recentAnalysisMutations.length === recentCountBeforePreview,
+      "검색 결과를 미리보기만 했는데 최근 분석 이력에 저장되었습니다.");
     await page.click("#buildingSelectionApply");
     for (const tab of [
       { id: "propertyTab", mode: null },
@@ -878,19 +934,39 @@ async function run() {
           && document.querySelector("#operationBuildingIdentity img"));
       }
     }
+    await page.waitForFunction(() => {
+      const operationReady = window.__operationAnalysisState?.ready === true
+        && document.getElementById("operationTab").getAttribute("aria-selected") === "true";
+      const group = Array.from(document.querySelectorAll("#quickBuildings .quick-group"))
+        .find((node) => node.querySelector("strong")?.textContent === "최근 분석");
+      return operationReady && group?.querySelector('button[data-mode="operation"]');
+    });
     const recentSelection = await page.evaluate(() => {
-      const items = JSON.parse(localStorage.getItem("hs_recent_buildings") || "[]");
+      const group = Array.from(document.querySelectorAll("#quickBuildings .quick-group"))
+        .find((node) => node.querySelector("strong")?.textContent === "최근 분석");
+      const button = group?.querySelector("button[data-mode]");
       return {
-        first: items[0],
+        first: button ? {
+          id: button.dataset.id,
+          name: button.dataset.name,
+          mode: button.dataset.mode,
+        } : null,
         quickText: document.getElementById("quickBuildings").textContent,
       };
     });
     expect(String(recentSelection.first?.id) === "101"
       && recentSelection.first?.name === "선택 테스트 자산"
-      && recentSelection.first?.addr.includes("강원특별자치도 속초시")
-      && Number.isFinite(recentSelection.first?.viewed_at)
-      && recentSelection.quickText.includes("최근 조회"),
-      "세 분석의 공통 건물 선택이 최근 조회 목록에 저장되지 않았습니다.");
+      && recentSelection.first?.mode === "operation"
+      && recentAnalysisMutations.some((entry) => entry.mode === "property")
+      && recentAnalysisMutations.some((entry) => entry.mode === "rental")
+      && recentAnalysisMutations.some((entry) => entry.mode === "operation")
+      && recentSelection.quickText.includes("최근 분석"),
+      `성공한 세 분석만 최근 분석 목록에 저장되고 마지막 분석 탭을 기억해야 합니다: ${JSON.stringify({ recentSelection, recentAnalysisMutations })}`);
+    expect(maxRecentAnalysisPostInFlight === 1
+      && recentAnalysisMutations.every((entry, index) => index === 0
+        || entry.building_id !== recentAnalysisMutations[index - 1].building_id
+        || entry.mode !== recentAnalysisMutations[index - 1].mode),
+      `최근 분석 저장 요청이 동시에 실행되거나 같은 건물·탭이 연속 중복 저장되었습니다: ${JSON.stringify({ maxRecentAnalysisPostInFlight, recentAnalysisMutations })}`);
     await page.click("#propertyTab");
     await page.waitForFunction(() => document.querySelectorAll("#recommendationRows tr[data-id]").length > 0);
     await page.click("#favoriteBtn");
@@ -905,8 +981,16 @@ async function run() {
       && String(favoriteMutations[0].body.building_id) === "101",
       "부동산투자분석의 관심저장 버튼이 선택 건물을 저장하지 않았습니다.");
     expect(syncedQuickGroups.some((group) => group.title === "관심단지" && group.ids.includes("101"))
-      && syncedQuickGroups.some((group) => group.title === "최근 조회" && group.ids.includes("101")),
-      "같은 건물이 홈과 동일하게 관심단지·최근 조회 양쪽에 동기화되지 않았습니다.");
+      && syncedQuickGroups.some((group) => group.title === "최근 분석" && group.ids.includes("101")),
+      "관심단지와 최근 분석이 독립 목록으로 동기화되지 않았습니다.");
+    await page.click("#quickBuildings .quick-group:nth-child(2) button[data-mode]");
+    await page.waitForFunction(() => {
+      const query = new URLSearchParams(location.search);
+      return query.get("building_id") === "101" && query.get("mode") === "operation"
+        && document.getElementById("operationBusinessName").value === "선택 테스트 자산";
+    });
+    expect(await page.locator("#buildingSelectionApply").isDisabled(),
+      "최근 분석을 눌렀을 때 검색 선택 단계를 다시 요구합니다.");
     await page.click("#rentalTab");
     await page.waitForFunction(() =>
       document.querySelector('#rentalReportActions [data-report-action="favorite"]')?.textContent === "관심해제");
@@ -1037,6 +1121,42 @@ async function run() {
       && await page.inputValue("#rentalVacancyMonths") === ""
       && await page.inputValue("#rentalVacancyRate") === "",
       "전체 초기화가 임대수익 입력을 기본값으로 되돌리지 못했습니다.");
+    currentAuth = { logged_in: true, account_type: "user", user: { id: 1, name: "테스트 회원" } };
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}`);
+    await page.waitForFunction(() => document.getElementById("detailCard").textContent.includes("선택 테스트 자산")
+      && !document.getElementById("workspace").classList.contains("hidden"));
+    await page.waitForFunction(() => document.querySelector('#quickBuildings button[data-mode][data-id="101"]'));
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("livingstay:auth", {
+      detail: { loggedIn: true, user: { id: 1, name: "사업자 계정", account_type: "operator" } },
+    })));
+    await page.waitForFunction(() => document.getElementById("workspace").classList.contains("hidden")
+      && document.getElementById("quickBuildings").textContent === ""
+      && document.getElementById("state").textContent.includes("회원 로그인"));
+    delayNextMemberAssets = true;
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("livingstay:auth", {
+      detail: { loggedIn: true, user: { id: 1, name: "테스트 회원", account_type: "user" } },
+    })));
+    currentAuth = { logged_in: true, account_type: "user", user: { id: 2, name: "새 회원" } };
+    await page.evaluate(() => window.livingstayRefreshAuth());
+    await page.waitForFunction(() => !document.getElementById("workspace").classList.contains("hidden")
+      && document.querySelector("#detailCard .detail-name")?.textContent === "새 회원 분석 자산");
+    await page.waitForTimeout(600);
+    const switchedAccount = await page.evaluate(() => ({
+      buildingName: document.querySelector("#detailCard .detail-name")?.textContent || "",
+      recentIds: Array.from(document.querySelectorAll("#quickBuildings button[data-mode]")).map((button) => button.dataset.id),
+      workspaceVisible: !document.getElementById("workspace").classList.contains("hidden"),
+    }));
+    expect(switchedAccount.workspaceVisible && switchedAccount.buildingName === "새 회원 분석 자산"
+      && !switchedAccount.recentIds.includes("101"),
+      `계정 전환 뒤 이전 회원의 지연 분석 또는 최근 목록이 새 계정에 표시되었습니다: ${JSON.stringify(switchedAccount)}`);
+    currentAuth = {
+      logged_in: true, account_type: "operator",
+      user: { id: 3, name: "사업자 계정", account_type: "operator" },
+    };
+    await page.evaluate(() => window.livingstayRefreshAuth());
+    await page.waitForFunction(() => document.getElementById("workspace").classList.contains("hidden")
+      && document.getElementById("quickBuildings").textContent === ""
+      && document.getElementById("state").textContent.includes("회원 로그인"));
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {

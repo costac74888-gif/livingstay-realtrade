@@ -376,6 +376,7 @@
             // __livingstayLoggedIn = false 를 유지해 알림 뱃지 등 회원 전용 API 호출 차단.
             window.__livingstayLoggedIn = false;
             window.__livingstayAccountType = d.account_type;
+            emitAuthChange(true, d);
             return;
           }
 

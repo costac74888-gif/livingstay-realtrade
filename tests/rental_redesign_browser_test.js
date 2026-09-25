@@ -650,11 +650,20 @@ async function run() {
     await page.locator("#rentalSliders").screenshot({ path: "screenshots/rental-slider-controls-360.png" });
 
     const printReady = await page.evaluate(async () => {
+      const map = document.querySelector("#rentalPositioning .positioning-map");
+      const before = getComputedStyle(map, "::before");
+      const after = getComputedStyle(map, "::after");
       await window.livingstayRenderAnalysisPrintReport();
       const image = document.querySelector("#printGraph .print-chart-image");
+      if (image && image.src) await image.decode();
+      const layout = window.__analysisChartLayout?.rental;
       return {
         ready: window.__analysisPrintReport?.ready === true,
         hasImage: (image?.getAttribute("src") || "").startsWith("data:image/png"),
+        imageWidth: image?.naturalWidth || 0,
+        imageHeight: image?.naturalHeight || 0,
+        layout,
+        pseudoDividersSuppressed: before.display === "none" && after.display === "none",
         summary: document.getElementById("printOverview").textContent,
         graphHasSensitivity: document.getElementById("printGraph").textContent.includes("민감도"),
         details: document.querySelector("#printGraph .print-rental-details")?.textContent || "",
@@ -662,11 +671,25 @@ async function run() {
     });
     expect(printReady.ready && printReady.hasImage,
       `임대 분석 인쇄용 차트 렌더링이 준비되지 않았습니다: ${JSON.stringify(printReady)}`);
-    expect(printReady.summary.includes("매수가 2000만원")
+    const layout = printReady.layout;
+    expect(printReady.imageWidth === 1120 && printReady.imageHeight === 560
+      && printReady.pseudoDividersSuppressed
+      && layout?.baseline
+      && layout.boundaries?.vertical.length === 4
+      && layout.boundaries?.horizontal.length === 4
+      && layout.boundaries.vertical.every((edge) => Math.abs(edge - layout.baseline.x) <= 1)
+      && layout.boundaries.horizontal.every((edge) => Math.abs(edge - layout.baseline.y) <= 1),
+    `임대 인쇄 이미지 크기·라이브 4분면 경계가 기준선과 ±1px 이내로 맞지 않습니다: ${JSON.stringify({
+      image: [printReady.imageWidth, printReady.imageHeight],
+      baseline: layout?.baseline,
+      boundaries: layout?.boundaries,
+      pseudoDividersSuppressed: printReady.pseudoDividersSuppressed,
+    })}`);
+    expect(printReady.summary.includes("매수가 2,000만원")
       && printReady.summary.includes("월세 30만원")
       && printReady.graphHasSensitivity,
       `인쇄 미리보기에서 현재 조건·민감도 표를 확인할 수 없습니다: ${JSON.stringify({
-        hasPurchase: printReady.summary.includes("매수가 2000만원"),
+        hasPurchase: printReady.summary.includes("매수가 2,000만원"),
         hasRent: printReady.summary.includes("월세 30만원"),
         graphHasSensitivity: printReady.graphHasSensitivity,
       })}`);
@@ -686,6 +709,13 @@ async function run() {
     malformed.searchParams.set("r_purchase", "356240000");
     malformed.searchParams.set("preserve", "1");
     await page.goto(malformed.toString(), { waitUntil: "domcontentloaded" });
+    await page.waitForFunction((buildingId) => {
+      const params = new URLSearchParams(location.search);
+      return params.get("mode") === "rental"
+        && params.get("building_id") === String(buildingId)
+        && params.get("r_unit_area") === "17.6"
+        && params.get("preserve") === "1";
+    }, BUILDING_ID, { timeout: 5000 });
     await waitForRental(page);
     await page.waitForFunction(() => {
       const params = new URLSearchParams(location.search);

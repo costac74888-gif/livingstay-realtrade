@@ -1,6 +1,7 @@
 (function () {
   "use strict";
   var uploadedOccupancyBasis = null;
+  var liveOperationChart = null;
 
   var building = null;
   var benchmarks = [];
@@ -14,6 +15,7 @@
   var uploadSequence = 0;
   var assumed = { adr: true, occ: true, opexRatio: true, mgmtFeeRatio: true, purchasePrice: true, compareRent: true };
   var purchasePriceBase = null;
+  var purchasePriceBaseBuildingId = "";
   var uploadedMonthlyDayBasis = null;
   var uploadedMonthPeriod = null;
   var compareRentSource = null;
@@ -368,6 +370,10 @@
     $(labels[field][0]).value = String(safeValue);
     return true;
   }
+  function setPurchasePriceBase(nextValue) {
+    purchasePriceBase = nextValue;
+    purchasePriceBaseBuildingId = nextValue == null ? "" : buildingId();
+  }
   function rentalScenarioMatchesBuilding() {
     var rentalBuilding = window.__rentalAnalysisBuilding;
     if (!rentalBuilding || !buildingId()) return false;
@@ -410,7 +416,7 @@
       setInput(field, "");
     });
     assumed = { adr: true, occ: true, opexRatio: true, mgmtFeeRatio: true, purchasePrice: true, compareRent: true };
-    purchasePriceBase = null;
+    setPurchasePriceBase(null);
     compareRentBase = null;
     compareRentUserChanged = false;
     compareRentSource = null;
@@ -467,9 +473,9 @@
         && rentalScenarioMatchesBuilding()
         ? sharedPurchaseValue() : null;
       if (purchaseSource && (purchasePriceBase == null || assumed.purchasePrice)) {
-        purchasePriceBase = purchaseSource.value;
+        setPurchasePriceBase(purchaseSource.value);
       } else if (!purchaseSource && assumed.purchasePrice) {
-        purchasePriceBase = null;
+        setPurchasePriceBase(null);
       }
       if (baseline.adr != null && (value("adr") == null || assumed.adr)) {
         setInput("adr", roundTo(baseline.adr, 5000)); setAssumption("adr", true);
@@ -489,7 +495,7 @@
         if (parsed != null) {
           setInput(field, parsed); setAssumption(field, false);
           if (field === "compareRent") { compareRentSource = null; roneRentStatus = ""; }
-          if (field === "purchasePrice" && purchasePriceBase == null) purchasePriceBase = parsed;
+          if (field === "purchasePrice" && purchasePriceBase == null) setPurchasePriceBase(parsed);
           if (field === "compareRent") compareRentUserChanged = true;
         } else {
           console.warn("[slider] 비정상 값 무시:", key, raw);
@@ -525,15 +531,18 @@
     return bounds ? bounds.max : 0;
   }
   function currentPurchaseBasis() {
-    var market = number(document.getElementById("rentalMarketPrice")
-      && document.getElementById("rentalMarketPrice").value);
-    var safe = sliderUtils && sliderUtils.clampHard("purchase", market);
-    if (safe != null && safe > 0) return safe;
-    safe = sliderUtils && sliderUtils.clampHard("purchase", purchasePriceBase);
+    if (rentalScenarioMatchesBuilding()) {
+      var market = number(document.getElementById("rentalMarketPrice")
+        && document.getElementById("rentalMarketPrice").value);
+      var marketPrice = sliderUtils && sliderUtils.clampHard("purchase", market);
+      if (marketPrice != null && marketPrice > 0) return marketPrice;
+    }
+    var safe = purchasePriceBaseBuildingId === buildingId()
+      ? sliderUtils && sliderUtils.clampHard("purchase", purchasePriceBase) : null;
     if (safe != null && safe > 0) return safe;
     var source = sharedPurchaseValue();
     if (source && source.value > 0) {
-      purchasePriceBase = source.value;
+      setPurchasePriceBase(source.value);
       return purchasePriceBase;
     }
     return null;
@@ -891,12 +900,16 @@
       : "선택 건물의 주소로 비교지역을 자동 산정합니다.";
     var method = document.querySelector("#operationAnalysis .methodology");
     var formula = method && method.querySelector(".formula");
-    if (formula && !method.textContent.includes("실질 공제율")) {
+    if (formula && formula.dataset.operationReturnBasis !== "shared") {
       formula.innerHTML += "<br>매출이익 = 매출 × (1 − 운영경비율)<br>"
         + "호실 월 순수익 = 매출이익 × (1 − 위탁수수료율)<br>"
         + "실질 공제율 = 1 − (1 − 운영경비율) × (1 − 위탁수수료율)<br>"
-        + "호실 월 매출 = ADR × OCC × 월 일수<br>연 수익률 = 호실 월 순수익 × 12 ÷ 호실 매입가";
-      formula.dataset.costFormula = "true";
+        + "호실 월 매출 = ADR × OCC × 월 일수<br>"
+        + "연 순수익 = 호실 월 순수익 × 12 − 연간 보유비용<br>"
+        + "투자금 = 호실 매입가 + 취득부대비용(취득세·중개보수)<br>"
+        + "연 수익률 = 연 순수익 ÷ 투자금<br>"
+        + "연 수익률은 임대수익분석과 같은 기준(보유비용 차감, 취득부대 포함)입니다.";
+      formula.dataset.operationReturnBasis = "shared";
     }
     if (method && !method.textContent.includes("위탁운영 계약서")) {
       var disclaimer = document.createElement("p");
@@ -1025,7 +1038,8 @@
         state.monthlyNet == null || state.compareRent == null ? "비교 월세 입력 필요"
           : state.monthlyNet / 10000 >= state.compareRent ? "숙박위탁이 유리 · 클릭해 월세 분석" : "장기임대가 유리 · 클릭해 월세 분석",
         "rent"],
-      ["연 수익률", state.annualYield == null ? "매입가 입력 필요" : state.annualYield.toFixed(2) + "%", "월 순수익 × 12 ÷ 호실 매입가"],
+      ["연 수익률", state.annualYield == null ? "매입가 입력 필요" : state.annualYield.toFixed(2) + "%",
+        "보유비용 차감 · 취득부대 포함"],
     ];
     host.innerHTML = rows.map(function (row, index) {
       var cls = row[3] === "net" ? " owner-net" : row[3] === "rent"
@@ -1130,10 +1144,25 @@
     var revpar = adr != null && occ != null ? adr * occ / 100 : null;
     var revenue = adr != null && occ != null ? adr * occ / 100 * days : null;
     var net = monthRevenue(adr, occ, days, opex, fee);
+    var sharedCosts = window.livingstayRentalCosts;
+    var purchaseAcquisition = buy != null && sharedCosts
+      ? sharedCosts.acquisitionCosts(buy) : null;
+    var acquisitionCostMan = purchaseAcquisition
+      ? purchaseAcquisition.tax + purchaseAcquisition.brokerFee : null;
+    var propertyTax = buy != null && sharedCosts
+      ? sharedCosts.estimateAnnualTax(buy) : null;
+    var annualHoldingCostsMan = buy != null && sharedCosts
+      ? sharedCosts.annualHoldingCosts(propertyTax, 0, 0) : null;
+    var annualNetMan = net != null && annualHoldingCostsMan != null
+      ? net / 10000 * 12 - annualHoldingCostsMan : null;
+    var investmentBasisMan = buy != null && acquisitionCostMan != null
+      ? buy + acquisitionCostMan : null;
+    var annualYield = annualNetMan != null && investmentBasisMan != null && sharedCosts
+      ? sharedCosts.annualNetYield(annualNetMan, investmentBasisMan) : NaN;
     var breakEven = adr != null && opex != null && fee != null && adr > 0 && rent != null
       ? rent * 10000 / (adr * days * (1 - opex / 100) * (1 - fee / 100)) * 100 : null;
     var state = {
-      selectedName: operationName(), roomCount: selectedRooms(), adr: adr, occ: occ,
+      selectedName: operationName(), buildingId: buildingId(), roomCount: selectedRooms(), adr: adr, occ: occ,
       baseAdr: base.adr, baseOcc: base.occ, benchmarkCount: benchmarks.length,
       opexRatio: opex, mgmtFeeRatio: fee, purchasePrice: buy, compareRent: rent,
       compareRentAssumed: assumed.compareRent,
@@ -1142,7 +1171,12 @@
       monthlyDaysSource: dayBasis.source,
       monthlyProfit: revenue == null || opex == null ? null : revenue * (1 - opex / 100),
       monthlyNet: net, breakEvenOcc: breakEven,
-      annualYield: buy != null && buy > 0 && net != null ? net * 12 / (buy * 10000) * 100 : null,
+      annualYield: Number.isFinite(annualYield) ? annualYield : null,
+      annualNet: annualNetMan == null ? null : annualNetMan * 10000,
+      annualHoldingCosts: annualHoldingCostsMan == null ? null : annualHoldingCostsMan * 10000,
+      annualHoldingCostsAssumption: "매입가 기준 추정 보유세만 반영. 관리비·기타비용은 동일 호실 조건 확인 전 0원 가정.",
+      acquisitionCosts: acquisitionCostMan == null ? null : acquisitionCostMan * 10000,
+      investmentBasis: investmentBasisMan == null ? null : investmentBasisMan * 10000,
       assumed: Object.assign({}, assumed),
       ready: adr != null && occ != null && opex != null && fee != null,
     };
@@ -1158,6 +1192,7 @@
     if (!settings()) {
       var missingSettingsChart = Chart.getChart($("operationChart"));
       if (missingSettingsChart) missingSettingsChart.destroy();
+      liveOperationChart = null;
       var errorCanvas = $("operationChart"), errorWrap = errorCanvas.parentElement;
       var errorMessage = $("operationChartEmpty");
       if (!errorMessage && errorWrap) {
@@ -1352,6 +1387,14 @@
           ctx.fillText(label, chart.chartArea.right - 4, chart.chartArea.top + 12 + revparLines.indexOf(line) * 13);
           ctx.restore();
         });
+        var quadrantBoxes = Array.from(wrapper.querySelectorAll(".operation-quadrant")).map(function (quadrant) {
+          return {
+            left: parseFloat(quadrant.style.left),
+            top: parseFloat(quadrant.style.top),
+            width: parseFloat(quadrant.style.width),
+            height: parseFloat(quadrant.style.height),
+          };
+        });
         window.__operationChartLayout = {
           ready: true,
           comparisonPoints: comparisons.length,
@@ -1366,18 +1409,17 @@
           selectedRadius: selectedElement ? 13 : 0,
           pulseVisible: !!selectedElement,
           isoRevparLines: revparLines.length,
-          quadrantBoxes: Array.from(wrapper.querySelectorAll(".operation-quadrant")).map(function (quadrant) {
-            return {
-              left: parseFloat(quadrant.style.left),
-              top: parseFloat(quadrant.style.top),
-              width: parseFloat(quadrant.style.width),
-              height: parseFloat(quadrant.style.height),
-            };
-          }),
+          quadrantBoxes: quadrantBoxes,
+          quadrantBoundaries: {
+            vertical: quadrantBoxes[0].left + quadrantBoxes[0].width,
+            horizontal: quadrantBoxes[0].top + quadrantBoxes[0].height,
+          },
         };
+        window.__analysisChartLayout = window.__analysisChartLayout || {};
+        window.__analysisChartLayout.operation = window.__operationChartLayout;
       },
     };
-    new Chart(canvas, {
+    liveOperationChart = new Chart(canvas, {
       type: "scatter", data: { datasets: datasets },
       options: {
         responsive: true, maintainAspectRatio: false, parsing: false,
@@ -1399,6 +1441,24 @@
       },
       plugins: [chartPlugin],
     });
+    window.__operationChartRelayout = function () {
+      if (!liveOperationChart || liveOperationChart.canvas !== canvas) {
+        liveOperationChart = Chart.getChart(canvas) || null;
+      }
+      if (!liveOperationChart || liveOperationChart._destroyed) return null;
+      liveOperationChart.resize();
+      liveOperationChart.update("none");
+      return window.__operationChartLayout;
+    };
+    if (!window.__operationChartPrintHooksBound) {
+      window.__operationChartPrintHooksBound = true;
+      window.addEventListener("beforeprint", function () {
+        if (window.__operationChartRelayout) window.__operationChartRelayout();
+      });
+      window.addEventListener("afterprint", function () {
+        if (window.__operationChartRelayout) window.__operationChartRelayout();
+      });
+    }
     window.__operationChartLayout = window.__operationChartLayout || {};
   }
   function renderChart() {
@@ -1595,7 +1655,7 @@
         var safeValue = parsed == null ? null : clampField(field, parsed);
         if (safeValue != null) {
           setInput(field, safeValue);
-          if (field === "purchasePrice" && purchasePriceBase == null) purchasePriceBase = parsed;
+          if (field === "purchasePrice" && purchasePriceBase == null) setPurchasePriceBase(parsed);
           assumed[field] = false;
           clearSliderValidation(field);
           if (field === "compareRent") {
@@ -1632,7 +1692,7 @@
       && String(generatedRent.buildingId) === buildingId() && generatedRent.value === rent.value);
     if (purchase && value("purchasePrice") !== purchase.value) {
       setInput("purchasePrice", purchase.value); setAssumption("purchasePrice", purchase.assumed);
-      purchasePriceBase = purchase.value;
+      setPurchasePriceBase(purchase.value);
       changedFields.push("purchasePrice");
     }
     if (rent && !isGeneratedRent
@@ -1774,6 +1834,12 @@
       setupOperationSliders();
       seedScenario();
       renderChart();
+       if (window.__operationAnalysisState && window.__operationAnalysisState.ready
+         && window.livingstayTrackAnalyzedBuilding) {
+         window.livingstayTrackAnalyzedBuilding(building.building_id,
+           building.display_building_name || building.building_name || "선택 건물",
+           building.road_address || building.jibun_address || "", "operation");
+       }
     }).catch(function () {
       if (sequence !== loadSequence) return;
       benchmarkLoadError = "운영분석 자료를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
@@ -1909,7 +1975,7 @@
     }
     setInput("purchasePrice", "");
     setInput("compareRent", "");
-    purchasePriceBase = null;
+    setPurchasePriceBase(null);
     compareRentBase = null;
     compareRentUserChanged = false;
     compareRentSource = null;
