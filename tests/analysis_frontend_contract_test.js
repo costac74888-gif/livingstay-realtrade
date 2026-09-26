@@ -139,7 +139,7 @@ expect(
   "건물 사진 또는 보고서 산정 근거가 없습니다.",
 );
 expect(
-  menu.includes('<a class="menu-link" href="/analysis">📊 자산분석</a>'),
+  menu.includes('<a class="menu-link" href="/analysis">📊 자산분석<span class="nav-badge nav-badge-new">NEW</span></a>'),
   "전체 메뉴의 자산분석 링크가 항상 표시되어야 합니다.",
 );
 expect(

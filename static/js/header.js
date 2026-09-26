@@ -77,8 +77,8 @@
           '<button type="button" class="hnav-btn" id="myPriceBtnMenu">🏨 <span class="hnav-label">내건물시세</span></button>' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
           '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
-          '<a class="hnav-btn" href="/analysis">📊 <span class="hnav-label">자산분석</span></a>' +
-          '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span></a>' +
+          '<a class="hnav-btn" href="/analysis">📊 <span class="hnav-label">자산분석</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
+          '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span><span class="nav-badge nav-badge-hot">HOT</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
         '</nav>' +
         '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +

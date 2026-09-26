@@ -39,8 +39,8 @@
       <a class="menu-link menu-link-primary" href="/">🗺️ 지도 홈</a>
       <button type="button" class="menu-link menu-link-primary menu-action-link" id="menuMyPriceShortcut">🏨 내건물시세</button>
       <a class="menu-link" href="/listings">🏠 직거래매물</a>
-      <a class="menu-link" href="/transactions">📋 실거래목록</a>
-      <a class="menu-link" href="/analysis">📊 자산분석</a>
+      <a class="menu-link" href="/transactions">📋 실거래목록<span class="nav-badge nav-badge-hot">HOT</span></a>
+      <a class="menu-link" href="/analysis">📊 자산분석<span class="nav-badge nav-badge-new">NEW</span></a>
       <a class="menu-link" href="/mypage" id="menuMypageLink" style="display:none;">👤 마이페이지</a>
       <button type="button" class="menu-link menu-action-link" id="menuAlertShortcut">🔔 알림</button>
       <button type="button" class="menu-link menu-action-link" id="menuChatShortcut">💬 채팅</button>
@@ -101,10 +101,11 @@
     display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;
   }
   .menu-shortcuts-grid .menu-link {
-    min-width:0; min-height:58px; padding:12px; border:1px solid var(--line, #e8eaed);
+    position:relative; min-width:0; min-height:58px; padding:12px; border:1px solid var(--line, #e8eaed);
     border-radius:10px; background:#f7f9fb; font-size:14px; font-weight:700;
     line-height:1.35; white-space:nowrap;
   }
+  .menu-shortcuts-grid .nav-badge { top:4px; right:6px; }
   .menu-shortcuts-grid .menu-link-primary {
     border-color:#b9cfe2; background:#edf5fb; color:#173b59;
   }

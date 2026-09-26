@@ -1,6 +1,7 @@
 const fs = require("fs");
 
 const menu = fs.readFileSync("static/menu.html", "utf8");
+const header = fs.readFileSync("static/js/header.js", "utf8");
 
 function expect(ok, message) {
   if (!ok) throw new Error(message);
@@ -32,7 +33,11 @@ expect(
   "모바일 바로가기가 2열 버튼과 전체 폭 이용안내로 구성되지 않았습니다.",
 );
 
-expect(menu.includes('<a class="menu-link" href="/analysis">📊 자산분석</a>'),
-  "비로그인 상태에서도 전체 메뉴에서 자산분석 링크가 보여야 합니다.");
+expect(menu.includes('<a class="menu-link" href="/transactions">📋 실거래목록<span class="nav-badge nav-badge-hot">HOT</span></a>')
+  && menu.includes('<a class="menu-link" href="/analysis">📊 자산분석<span class="nav-badge nav-badge-new">NEW</span></a>'),
+  "전체 메뉴에 실거래목록 HOT·자산분석 NEW 배지가 보여야 합니다.");
+expect(header.includes('href="/transactions">📊 <span class="hnav-label">실거래목록</span><span class="nav-badge nav-badge-hot">HOT</span>')
+  && header.includes('href="/analysis">📊 <span class="hnav-label">자산분석</span><span class="nav-badge nav-badge-new">NEW</span>'),
+  "상단 메뉴에 실거래목록 HOT·자산분석 NEW 배지가 보여야 합니다.");
 
 console.log("menu shortcut layout checks passed");

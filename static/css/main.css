@@ -1196,6 +1196,7 @@
 
 /* 헤더 네비게이션 (알림설정 / 공지사항 / 마이페이지) */
 .header-nav{ display:flex; align-items:center; gap:6px; }
+.header-nav .hnav-btn{ position:relative; }
 .hnav-btn{
   font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:600;
   color:var(--ink-soft); background:transparent; border:1px solid transparent;
@@ -1203,6 +1204,17 @@
   white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
 }
 .hnav-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
+.nav-badge{
+  position:absolute; top:-8px; right:2px; padding:2px 4px;
+  border-radius:3px; color:#fff; font-size:9px; font-weight:800;
+  line-height:1.1; letter-spacing:.02em; white-space:nowrap;
+  pointer-events:none;
+}
+.nav-badge-hot{ background:#CF3037; }
+.nav-badge-new{ background:#246BB5; }
+@media (max-width:520px){
+  .header-menu .nav-badge{ top:2px; right:10px; }
+}
 @media (min-width:521px) and (max-width:1360px){
   #siteHeader .brand, #siteHeader .page-title{flex-shrink:0;white-space:nowrap;}
   #siteHeader .header-actions, #siteHeader .header-menu{gap:8px;}
