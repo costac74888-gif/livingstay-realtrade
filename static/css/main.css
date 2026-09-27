@@ -1092,6 +1092,12 @@
 .stats-card-wide{ grid-column:1 / -1; }
 .stats-card-title{ margin:0 0 14px; font-size:15px; color:var(--ink); font-weight:700; }
 .stats-card-hint{ font-size:12px; color:var(--ink-soft); font-weight:400; margin-left:6px; }
+.stats-views-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.stats-views-head .stats-card-title{ margin-bottom:4px; }
+.stats-views-head .stats-card-hint{ margin-left:0; }
+.stats-views-select{ display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:12px; color:var(--ink-soft); }
+.stats-views-select select{ min-height:36px; padding:5px 10px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; cursor:pointer; }
+.stats-views-select select:focus-visible{ outline:2px solid var(--brass); outline-offset:2px; }
 .stats-toggle-btn{ font-size:12px; padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink-soft); cursor:pointer; font-weight:600; }
 .stats-toggle-btn.is-active{ background:var(--brass); border-color:var(--brass); color:#fff; }
 .stats-chart-box{ position:relative; height:280px; }

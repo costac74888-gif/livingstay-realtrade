@@ -2349,7 +2349,19 @@
           </section>
 
           <section class="stats-card stats-card-wide">
-            <h3 class="stats-card-title">일별 방문자 추이 <span class="stats-card-hint">데이터 수집 시작: ${dgEscape(collectStart)}부터 (이전 기록은 없습니다)</span></h3>
+            <div class="stats-views-head">
+              <div>
+                <h3 class="stats-card-title" id="viewsTrendTitle">일별 방문자 추이</h3>
+                <span class="stats-card-hint" id="viewsTrendHint">페이지뷰 기준 · 당월 1일~오늘 · 데이터 수집 시작: ${dgEscape(collectStart)} (이전 기록은 없습니다)</span>
+              </div>
+              <label class="stats-views-select">표시 단위
+                <select id="viewsTrendPeriod" aria-label="방문자 추이 표시 단위">
+                  <option value="daily">일별</option>
+                  <option value="monthly">월별</option>
+                  <option value="yearly">연도별</option>
+                </select>
+              </label>
+            </div>
             <div class="stats-chart-box"><canvas id="chartViews"></canvas></div>
             <div id="statsTopPaths" class="stats-toppaths"></div>
           </section>
@@ -2545,29 +2557,49 @@
         plugins: [ChartDataLabels],
       }));
 
-      // 일별 방문자 추이 (선) — 14일 이하일 때 꼭짓점에 숫자 표시
-      const daily = (d.views && d.views.daily) || [];
-      statsCharts.push(new Chart(document.getElementById("chartViews"), {
-        type: "line",
-        data: {
-          labels: daily.map((r) => r.day.slice(5)),
-          datasets: [{ label: "일별 방문(페이지뷰)", data: daily.map((r) => r.count), borderColor: BRAND.brass, backgroundColor: BRAND.brassSoft, fill: true, tension: 0.3, pointRadius: 3 }],
-        },
-        options: Object.assign({}, commonOpts, {
-          plugins: {
-            legend: { display: false },
-            datalabels: {
-              display: daily.length <= 14,
-              anchor: "end", align: "top",
-              formatter: (v) => v > 0 ? num(v) : null,
-              color: BRAND.ink, font: { size: 10 },
-            },
+      // 일/월/연도별 페이지뷰는 같은 측정값을 서로 다른 기간으로 묶는다.
+      let viewsChart = null;
+      function renderViewsChart(period) {
+        const rows = ((d.views || {})[period] || []);
+        const labels = { daily: "일별", monthly: "월별", yearly: "연도별" };
+        const field = { daily: "day", monthly: "month", yearly: "year" }[period];
+        document.getElementById("viewsTrendTitle").textContent = `${labels[period]} 방문자 추이`;
+        document.getElementById("viewsTrendHint").textContent =
+          `페이지뷰 기준 · ${period === "daily" ? "당월 1일~오늘" : "수집 시작~현재"} · 데이터 수집 시작: ${collectStart} (이전 기록은 없습니다)`;
+        if (viewsChart) {
+          viewsChart.destroy();
+          statsCharts = statsCharts.filter((chart) => chart !== viewsChart);
+        }
+        viewsChart = new Chart(document.getElementById("chartViews"), {
+          type: "line",
+          data: {
+            labels: rows.map((row) => period === "daily" ? row[field].slice(5) : row[field]),
+            datasets: [{
+              label: `${labels[period]} 방문(페이지뷰)`, data: rows.map((row) => row.count),
+              borderColor: BRAND.brass, backgroundColor: BRAND.brassSoft,
+              fill: true, tension: 0.3, pointRadius: rows.length > 20 ? 2 : 3,
+            }],
           },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0, color: BRAND.ink } }, x: { ticks: { color: BRAND.ink } } },
-          layout: { padding: { top: 20 } },
-        }),
-        plugins: [ChartDataLabels],
-      }));
+          options: Object.assign({}, commonOpts, {
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: (items) => rows[items[0].dataIndex][field] } },
+              datalabels: {
+                display: rows.length <= 14,
+                anchor: "end", align: "top",
+                formatter: (value) => value > 0 ? num(value) : null,
+                color: BRAND.ink, font: { size: 10 },
+              },
+            },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0, color: BRAND.ink } }, x: { ticks: { color: BRAND.ink, maxRotation: 0, autoSkip: true } } },
+            layout: { padding: { top: 20 } },
+          }),
+          plugins: [ChartDataLabels],
+        });
+        statsCharts.push(viewsChart);
+      }
+      document.getElementById("viewsTrendPeriod").addEventListener("change", (event) => renderViewsChart(event.target.value));
+      renderViewsChart("daily");
 
       // 오늘 경로별 조회수 상위 5
       const top = (d.views && d.views.top_paths) || [];

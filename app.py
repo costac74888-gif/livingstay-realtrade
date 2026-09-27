@@ -32863,18 +32863,51 @@ def admin_stats():
     """)
     operator_by_category = [{"category": r["category"], "count": int(r["count"])} for r in cur.fetchall()]
 
-    # 5) 방문: 최근 14일 일별 페이지뷰 — 0인 날도 채움
+    # 5) 방문: 당월 1일~오늘 일별 페이지뷰 — 0인 날도 채움
     cur.execute("""
         WITH days AS (
-            SELECT generate_series(CURRENT_DATE - 13, CURRENT_DATE, INTERVAL '1 day')::date AS d
+            SELECT generate_series(
+                date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE, INTERVAL '1 day'
+            )::date AS d
+        ), counts AS (
+            SELECT viewed_at::date AS d, COUNT(*) AS count
+            FROM page_views
+            WHERE viewed_at >= date_trunc('month', CURRENT_DATE)
+              AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+            GROUP BY 1
         )
-        SELECT to_char(days.d, 'YYYY-MM-DD') AS day, COUNT(pv.id) AS count
+        SELECT to_char(days.d, 'YYYY-MM-DD') AS day, COALESCE(counts.count, 0) AS count
         FROM days
-        LEFT JOIN page_views pv ON pv.viewed_at::date = days.d
-        GROUP BY days.d
+        LEFT JOIN counts ON counts.d = days.d
         ORDER BY days.d
     """)
     views_daily = [{"day": r["day"], "count": int(r["count"])} for r in cur.fetchall()]
+
+    # 월별은 최초 기록부터 이번 달까지, 연도별은 같은 월별 합계로 계산한다.
+    cur.execute("""
+        WITH counts AS (
+            SELECT date_trunc('month', viewed_at)::date AS month, COUNT(*) AS count
+            FROM page_views
+            WHERE viewed_at < CURRENT_DATE + INTERVAL '1 day'
+            GROUP BY 1
+        ), months AS (
+            SELECT generate_series(
+                COALESCE((SELECT MIN(month) FROM counts), date_trunc('month', CURRENT_DATE)::date),
+                date_trunc('month', CURRENT_DATE)::date,
+                INTERVAL '1 month'
+            )::date AS month
+        )
+        SELECT to_char(months.month, 'YYYY-MM') AS month, COALESCE(counts.count, 0) AS count
+        FROM months
+        LEFT JOIN counts ON counts.month = months.month
+        ORDER BY months.month
+    """)
+    views_monthly = [{"month": r["month"], "count": int(r["count"])} for r in cur.fetchall()]
+    yearly_totals = {}
+    for month in views_monthly:
+        year = month["month"][:4]
+        yearly_totals[year] = yearly_totals.get(year, 0) + month["count"]
+    views_yearly = [{"year": year, "count": count} for year, count in yearly_totals.items()]
 
     # 경로별 조회수 상위 5 (오늘 기준)
     cur.execute("""
@@ -32929,7 +32962,10 @@ def admin_stats():
                       "pre_completion_count": building_pre_completion_count},
         "members": members,
         "operators": {"by_category": operator_by_category},
-        "views": {"daily": views_daily, "top_paths": views_top_paths, "collect_start": collect_start},
+        "views": {
+            "daily": views_daily, "monthly": views_monthly, "yearly": views_yearly,
+            "top_paths": views_top_paths, "collect_start": collect_start,
+        },
         "revenue": {"month_total": revenue_month_total},
     })
 
