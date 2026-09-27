@@ -489,7 +489,7 @@ async function run() {
             beforeDetail: trendRect.bottom <= detailCardRect.top + 1,
             sameRightColumn: Math.abs(trendRect.left - verdictRect.left) < 1
               && Math.abs(trendRect.right - verdictRect.right) < 1,
-            belowPositioningOnMobile: trendRect.top >= positionCardRect.bottom - 1,
+            beforePositioningOnMobile: trendRect.bottom <= positionCardRect.top + 1,
          },
          yAxis: {
            width: yAxisRect.width,
@@ -520,8 +520,8 @@ async function run() {
            && result.layout.axis.xMax - 50 > (50 - result.layout.axis.xMin) * 1.7,
           `${width}px 관광수요 중심선이 모바일 그래프의 왼쪽으로 충분히 이동하지 않았습니다.`);
         expect(result.trendPlacement.insideRightColumn && result.trendPlacement.belowVerdict
-          && result.trendPlacement.beforeDetail && result.trendPlacement.belowPositioningOnMobile,
-          `${width}px 실거래 추이 그래프가 종합평가 다음, 상세 패널 전에 표시되지 않았습니다.`);
+           && result.trendPlacement.beforeDetail && result.trendPlacement.beforePositioningOnMobile,
+           `${width}px 실거래 추이 그래프가 종합평가 다음, 사분면·상세 패널 전에 표시되지 않았습니다.`);
       } else {
          expect(result.trendPlacement.insideRightColumn && result.trendPlacement.belowVerdict
            && result.trendPlacement.beforeDetail && result.trendPlacement.sameRightColumn,
@@ -550,6 +550,10 @@ async function run() {
        }
        const reportLayout = await page.evaluate(() => ({
          duplicatePhoto: getComputedStyle(document.querySelector("#detailCard .detail-photo")).display,
+          purchaseTop: document.querySelector(".property-purchase-bar").getBoundingClientRect().top,
+          purchaseBottom: document.querySelector(".property-purchase-bar").getBoundingClientRect().bottom,
+          builderTop: document.querySelector(".property-scenario-builder").getBoundingClientRect().top,
+          builderBottom: document.querySelector(".property-scenario-builder").getBoundingClientRect().bottom,
          verdictTop: document.getElementById("propertyVerdict").getBoundingClientRect().top,
          verdictBottom: document.getElementById("propertyVerdict").getBoundingClientRect().bottom,
          chartTop: document.querySelector("#workspace .chart-card").getBoundingClientRect().top,
@@ -564,9 +568,12 @@ async function run() {
        }));
        expect(reportLayout.duplicatePhoto === "none"
          && reportLayout.verdictInRightColumn
-         && Math.abs(reportLayout.verdictTop - reportLayout.chartTop) < 2
+          && Math.abs(reportLayout.verdictTop - reportLayout.purchaseTop) < 2
+          && reportLayout.purchaseBottom < reportLayout.builderTop
+          && reportLayout.builderBottom <= reportLayout.chartTop
           && reportLayout.verdictBottom < reportLayout.trendTop
-          && reportLayout.trendBottom < reportLayout.detailTop
+          && reportLayout.trendBottom <= reportLayout.detailTop
+          && Math.abs(reportLayout.chartTop - reportLayout.detailTop) < 2
          && reportLayout.evidenceInsideDisclosure && reportLayout.evidenceHasSource
          && !reportLayout.sourceInSideCard,
        `PC 보고서의 중복 사진·상단 종합평가·하단 접힌 근거 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
@@ -609,15 +616,28 @@ async function run() {
       await page.fill("#propertyPurchasePrice", "3600");
       const offer = await page.evaluate(() => ({
         comparison: document.querySelector("#propertyPriceComparison").textContent,
+        scenario: document.querySelector("#propertyScenarioSummary").textContent,
         point: window.__propertyAssumptionPoint,
         market: window.__analysisChartLayout.points.find((point) => point.selected),
         url: location.search,
       }));
-      expect(offer.comparison.includes("+18%") && offer.comparison.includes("3,600만원 ÷ 18.1㎡")
-        && offer.comparison.includes("수요 대비 저평가 후보 (가정 판정)")
+      expect(offer.comparison.includes("최근 12개월 실거래 중앙값")
+        && offer.comparison.includes("+18%")
+        && offer.scenario.includes("-0.6%")
+        && offer.scenario.includes("참고 자기자금")
         && Math.abs(offer.point.gap - (3600 / 18.1 / 200 - 1) * 100) < 0.001
         && offer.market.color === "#eb6834" && offer.url.includes("p_purchase=3600"),
       `제시 매수가와 시장가격 점을 별도로 비교하지 못했습니다: ${JSON.stringify(offer)}`);
+      await page.locator("#propertyLoanSlider").fill("30");
+      const loan = await page.evaluate(() => ({
+        loan: document.querySelector("#propertyLoanSliderValue").textContent,
+        summary: document.querySelector("#propertyScenarioSummary").textContent,
+        url: location.search,
+        point: window.__propertyAssumptionPoint,
+      }));
+      expect(loan.loan.includes("3,000만원") && loan.summary.includes("600만원")
+        && loan.url.includes("p_loan=3000") && loan.point.gap === offer.point.gap,
+      `대출금 슬라이더가 시장점과 매수가 가정을 바꾸지 않고 독립적으로 동작해야 합니다: ${JSON.stringify(loan)}`);
       await page.evaluate(() => {
         navigator.share = async (data) => { window.__propertySharedUrl = data.url; };
       });
@@ -626,8 +646,9 @@ async function run() {
       const sharedOffer = new URL(await page.evaluate(() => window.__propertySharedUrl));
       expect(sharedOffer.searchParams.get("p_purchase") === "3600"
         && sharedOffer.searchParams.get("p_area") === "18.1"
+        && sharedOffer.searchParams.get("p_loan") === "3000"
         && sharedOffer.searchParams.has("share"),
-      "서명 공유 링크에 면적과 제시 매수가가 함께 포함되지 않았습니다.");
+      "서명 공유 링크에 면적과 매수가·대출금이 함께 포함되지 않았습니다.");
       expect((await recommendationOrder()).map((row) => row.id).join("|") === candidatesBeforeOffer,
         "매수가 입력으로 원본 투자 후보 순위가 변경됐습니다.");
       await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
@@ -645,12 +666,12 @@ async function run() {
       expect(offerPrintFits && (offerPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length === 1,
         "제시 매수가 비교가 인쇄 보고서에서 잘리거나 2페이지로 나뉩니다.");
       await page.fill("#rentalUnitArea", "20");
-      expect((await page.locator("#propertyPriceComparison").textContent()).includes("-10%")
+      expect((await page.locator("#propertyScenarioSummary").textContent()).includes("-10%")
         && new URL(page.url()).searchParams.get("p_area") === "20",
       "공통 면적 변경 후 ㎡당 제시 매수가가 다시 계산되지 않았습니다.");
       await page.reload({ waitUntil: "domcontentloaded" });
       try {
-        await page.waitForFunction(() => document.querySelector("#propertyPriceComparison").textContent.includes("-10%"), null, { timeout: 8000 });
+        await page.waitForFunction(() => document.querySelector("#propertyScenarioSummary").textContent.includes("-10%"), null, { timeout: 8000 });
       } catch (error) {
         throw new Error(`URL 복원 실패: ${JSON.stringify(await page.evaluate(() => ({
           url: location.href, input: document.querySelector("#propertyPurchasePrice").value,
@@ -661,13 +682,14 @@ async function run() {
         })))}`, { cause: error });
       }
       expect(await page.inputValue("#propertyPurchasePrice") === "3600"
-        && await page.inputValue("#rentalUnitArea") === "20",
-      "공유 URL에서 제시 매수가와 공통 면적을 복원하지 못했습니다.");
+        && await page.inputValue("#rentalUnitArea") === "20"
+        && (await page.locator("#propertyLoanSliderValue").textContent()).includes("3,000만원"),
+      "공유 URL에서 매수가·대출금과 공통 면적을 복원하지 못했습니다.");
       const extremeOfferUrl = new URL(sharedOffer);
       extremeOfferUrl.searchParams.set("p_purchase", "500000");
       extremeOfferUrl.searchParams.set("p_area", "20");
       await gotoWithTransientRetry(page, extremeOfferUrl.toString());
-      await page.waitForFunction(() => document.querySelector("#propertyPriceComparison").textContent.includes("500,000만원"));
+      await page.waitForFunction(() => document.querySelector("#propertyScenarioSummary").textContent.includes("+"), null, { timeout: 8000 });
       const visibleOfferPoint = () => page.evaluate(() => {
         const chart = window.Chart.getChart(document.getElementById("scatterChart"));
         const dot = window.__analysisChartLayout?.assumption;
@@ -679,7 +701,7 @@ async function run() {
       });
       let offerPoint = await visibleOfferPoint();
       expect(offerPoint.dot?.visible && offerPoint.dot.y >= offerPoint.top && offerPoint.dot.y <= offerPoint.bottom,
-        `큰 매수가를 공유 링크로 복원했는데 파란 가정 점이 차트 밖입니다: ${JSON.stringify(offerPoint)}`);
+        `큰 매수가를 공유 링크로 복원했는데 보라색 가정 점이 차트 밖입니다: ${JSON.stringify(offerPoint)}`);
       await page.click('#chartMode [data-mode="current"]');
       offerPoint = await visibleOfferPoint();
       expect(offerPoint.dot?.visible && offerPoint.dot.y >= offerPoint.top && offerPoint.dot.y <= offerPoint.bottom,
@@ -693,6 +715,15 @@ async function run() {
       expect(!(await page.evaluate(() => window.__propertyAssumptionPoint))
         && (await page.locator("#propertyPriceComparison").textContent()).includes("시장가격 점"),
       "시장 기준 복귀 후 가정 점이 남아 있습니다.");
+      await page.locator("#propertyPurchaseSlider").fill("40");
+      expect(await page.inputValue("#propertyPurchasePrice") === "4000"
+        && !!(await page.evaluate(() => window.__propertyAssumptionPoint))
+        && new URL(page.url()).searchParams.get("p_purchase") === "4000",
+      "매수가 슬라이더가 제시 매수가와 보라색 가정 점을 갱신하지 못했습니다.");
+      await page.click('[data-property-step="purchase"][data-direction="1"]');
+      expect(await page.inputValue("#propertyPurchasePrice") === "4100",
+      "매수가 + 버튼이 현재 슬라이더 값을 한 단계 올리지 못했습니다.");
+      await page.click("#propertyPurchaseReset");
       await page.fill("#rentalUnitArea", "");
       expect(await page.isDisabled("#propertyPurchasePrice")
         && (await page.locator("#propertyPurchaseHint").textContent()).includes("전용면적"),
@@ -1292,7 +1323,7 @@ async function run() {
             belowVerdict: cardRect.top >= verdictRect.bottom - 1,
             beforeDetail: cardRect.bottom <= detailRect.top + 1,
             sameRightColumn: Math.abs(cardRect.left - verdictRect.left) < 1 && Math.abs(cardRect.right - verdictRect.right) < 1,
-            belowPositioningOnMobile: cardRect.top >= positionRect.bottom - 1,
+             beforePositioningOnMobile: cardRect.bottom <= positionRect.top + 1,
          },
         months: window.__analysisTransactionTrend?.months || 0,
         area: window.__analysisTransactionTrend?.area || "",
@@ -1309,7 +1340,7 @@ async function run() {
        && transactionTrend.layout.belowVerdict
        && transactionTrend.layout.beforeDetail
        && transactionTrend.layout.sameRightColumn
-       && transactionTrend.layout.belowPositioningOnMobile
+        && transactionTrend.layout.beforePositioningOnMobile
       && transactionTrend.area === "100.0"
        && transactionTrend.options.join("|") === "80.0|100.0"
        && transactionTrend.lineLabel === "평균 거래금액(만원)"
