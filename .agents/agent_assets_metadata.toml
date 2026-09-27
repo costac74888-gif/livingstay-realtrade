@@ -598,3 +598,45 @@ mtime_ms = 1790299395381
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/cc2db2d0-c382-4041-a113-986d4d28b67e/48c48fcd-e396-41bf-a529-324f14b7e02e"
 storage_version_token = "1790299441792433"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "bQs-XBUCMdRirYEctLBZu"
+uri = "file://screenshots/analysis-report-property.pdf"
+type = "pdf"
+title = "부동산투자 보고서"
+description = "A4 한 페이지 검증 캡처"
+logical_id = "7b0bd847-ed3e-40de-8761-433b371ba981"
+content_hash = "sha256:b05f651a6280b932dc89e29e9a34d7685a5e418200daa20961acc40494ee6d62"
+size = 1434458
+mtime_ms = 1790471361258
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/7b0bd847-ed3e-40de-8761-433b371ba981/fbf5f387-4bcd-4a00-b344-6706c8439b2d"
+storage_version_token = "1790471795465127"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "WHTLRzN-t5nuLoM4xcp8Q"
+uri = "file://screenshots/analysis-report-rental.pdf"
+type = "pdf"
+title = "임대수익 보고서"
+description = "A4 한 페이지 검증 캡처"
+logical_id = "331136f4-1a7e-4a42-9e84-63ee0e1818cf"
+content_hash = "sha256:5352fa2c2ffacdfa02e1dfad1cd8bf14c0b8e04aca52cce4933d60e0e5b25618"
+size = 1371788
+mtime_ms = 1790471347886
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/331136f4-1a7e-4a42-9e84-63ee0e1818cf/fe9ad853-8a4b-4ec8-95d7-031c0a0a631d"
+storage_version_token = "1790471796832963"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "kB2y5zC_-GxD-It2PTzW4"
+uri = "file://screenshots/analysis-report-operation.pdf"
+type = "pdf"
+title = "숙박운영 보고서"
+description = "A4 한 페이지 검증 캡처"
+logical_id = "f858d0f1-1ad1-4a52-8be0-b873d7b7e49a"
+content_hash = "sha256:faa60e01c56013bc149961e8e6464a20c11a5e14e14725d30db9cb52c7a36998"
+size = 1575475
+mtime_ms = 1790471338810
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/f858d0f1-1ad1-4a52-8be0-b873d7b7e49a/4ec631c5-b457-49d5-911f-af6c7ed69898"
+storage_version_token = "1790471798161444"
+content_type = "application/pdf"
