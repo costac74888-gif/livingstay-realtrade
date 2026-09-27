@@ -221,6 +221,7 @@ async function run() {
   const page = await context.newPage();
   const errors = [];
   let incompleteSelected = false;
+  let missingPriceSelected = false;
   let incompleteFinalTrajectory = false;
   let comparisonItemCount = 8;
   let rentalMarketRequest = "";
@@ -276,6 +277,7 @@ async function run() {
     });
     if (url.pathname === "/api/analysis/assets") {
       const payload = fixture(incompleteSelected, incompleteFinalTrajectory);
+      if (missingPriceSelected) payload.items[0].peer_price_median = null;
       const delayedOldAccountResponse = Number(currentAuth.user?.id) === 1 && delayNextMemberAssets;
       if (delayedOldAccountResponse) {
         delayNextMemberAssets = false;
@@ -399,7 +401,7 @@ async function run() {
       return json(route, { ok: true });
     }
     if (url.pathname === "/api/analysis/share-link") {
-      const body = request.postDataJSON();
+      const body = route.request().postDataJSON();
       const mode = body.mode === "property" ? "" : `&mode=${encodeURIComponent(body.mode)}`;
       return json(route, {
         ok: true,
@@ -602,6 +604,99 @@ async function run() {
       expect((await recommendationOrder()).map((row) => row.id).join("|") === "205|204|401|206|402"
         && await page.getAttribute("#recommendationSortAsc", "aria-pressed") === "true",
         "유사자산 대비 가격 오름차순 버튼이 적용되지 않았습니다.");
+      // A purchase offer is a separate assumption, never a replacement for the market point or candidate ranking.
+      const candidatesBeforeOffer = (await recommendationOrder()).map((row) => row.id).join("|");
+      await page.fill("#propertyPurchasePrice", "3600");
+      const offer = await page.evaluate(() => ({
+        comparison: document.querySelector("#propertyPriceComparison").textContent,
+        point: window.__propertyAssumptionPoint,
+        market: window.__analysisChartLayout.points.find((point) => point.selected),
+        url: location.search,
+      }));
+      expect(offer.comparison.includes("+18%") && offer.comparison.includes("3,600만원 ÷ 18.1㎡")
+        && offer.comparison.includes("수요 대비 저평가 후보 (가정 판정)")
+        && Math.abs(offer.point.gap - (3600 / 18.1 / 200 - 1) * 100) < 0.001
+        && offer.market.color === "#eb6834" && offer.url.includes("p_purchase=3600"),
+      `제시 매수가와 시장가격 점을 별도로 비교하지 못했습니다: ${JSON.stringify(offer)}`);
+      await page.evaluate(() => {
+        navigator.share = async (data) => { window.__propertySharedUrl = data.url; };
+      });
+      await page.click("#shareBtn");
+      await page.waitForFunction(() => !!window.__propertySharedUrl);
+      const sharedOffer = new URL(await page.evaluate(() => window.__propertySharedUrl));
+      expect(sharedOffer.searchParams.get("p_purchase") === "3600"
+        && sharedOffer.searchParams.get("p_area") === "18.1"
+        && sharedOffer.searchParams.has("share"),
+      "서명 공유 링크에 면적과 제시 매수가가 함께 포함되지 않았습니다.");
+      expect((await recommendationOrder()).map((row) => row.id).join("|") === candidatesBeforeOffer,
+        "매수가 입력으로 원본 투자 후보 순위가 변경됐습니다.");
+      await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
+      expect((await page.locator("#printBasis").textContent()).includes("3,600만원")
+        && (await page.locator("#printBasis").textContent()).includes("가정 판정"),
+      "인쇄 보고서에 제시 매수가와 가정 판정이 포함되지 않았습니다.");
+      await page.emulateMedia({ media: "print" });
+      const offerPrintFits = await page.evaluate(() => {
+        const zone = document.querySelector("#printBasis").getBoundingClientRect();
+        const comparison = document.querySelector("#printBasis .print-property-comparison")?.getBoundingClientRect();
+        return comparison && comparison.bottom <= zone.bottom - 1;
+      });
+      const offerPdf = await page.pdf({ format: "A4", printBackground: true });
+      await page.emulateMedia({ media: "screen" });
+      expect(offerPrintFits && (offerPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length === 1,
+        "제시 매수가 비교가 인쇄 보고서에서 잘리거나 2페이지로 나뉩니다.");
+      await page.fill("#rentalUnitArea", "20");
+      expect((await page.locator("#propertyPriceComparison").textContent()).includes("-10%")
+        && new URL(page.url()).searchParams.get("p_area") === "20",
+      "공통 면적 변경 후 ㎡당 제시 매수가가 다시 계산되지 않았습니다.");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      try {
+        await page.waitForFunction(() => document.querySelector("#propertyPriceComparison").textContent.includes("-10%"), null, { timeout: 8000 });
+      } catch (error) {
+        throw new Error(`URL 복원 실패: ${JSON.stringify(await page.evaluate(() => ({
+          url: location.href, input: document.querySelector("#propertyPurchasePrice").value,
+          area: document.querySelector("#rentalUnitArea").value,
+          hint: document.querySelector("#propertyPurchaseHint").textContent,
+          comparison: document.querySelector("#propertyPriceComparison").textContent,
+          workspace: document.querySelector("#workspace").className,
+        })))}`, { cause: error });
+      }
+      expect(await page.inputValue("#propertyPurchasePrice") === "3600"
+        && await page.inputValue("#rentalUnitArea") === "20",
+      "공유 URL에서 제시 매수가와 공통 면적을 복원하지 못했습니다.");
+      const extremeOfferUrl = new URL(sharedOffer);
+      extremeOfferUrl.searchParams.set("p_purchase", "500000");
+      extremeOfferUrl.searchParams.set("p_area", "20");
+      await gotoWithTransientRetry(page, extremeOfferUrl.toString());
+      await page.waitForFunction(() => document.querySelector("#propertyPriceComparison").textContent.includes("500,000만원"));
+      const visibleOfferPoint = () => page.evaluate(() => {
+        const chart = window.Chart.getChart(document.getElementById("scatterChart"));
+        const dot = window.__analysisChartLayout?.assumption;
+        return {
+          dot,
+          top: chart?.chartArea.top, bottom: chart?.chartArea.bottom,
+          min: chart?.scales.y.min, max: chart?.scales.y.max,
+        };
+      });
+      let offerPoint = await visibleOfferPoint();
+      expect(offerPoint.dot?.visible && offerPoint.dot.y >= offerPoint.top && offerPoint.dot.y <= offerPoint.bottom,
+        `큰 매수가를 공유 링크로 복원했는데 파란 가정 점이 차트 밖입니다: ${JSON.stringify(offerPoint)}`);
+      await page.click('#chartMode [data-mode="current"]');
+      offerPoint = await visibleOfferPoint();
+      expect(offerPoint.dot?.visible && offerPoint.dot.y >= offerPoint.top && offerPoint.dot.y <= offerPoint.bottom,
+        `차트를 다시 그린 뒤 가정 점이 사라졌습니다: ${JSON.stringify(offerPoint)}`);
+      await page.fill("#propertyPurchasePrice", "500001");
+      expect((await page.locator("#propertyPurchaseHint").textContent()).includes("500,000")
+        && !(await page.evaluate(() => window.__propertyAssumptionPoint))
+        && !new URL(page.url()).searchParams.has("p_purchase"),
+      "과대 매수가가 입력 가정이나 URL에 수용됐습니다.");
+      await page.click("#propertyPurchaseReset");
+      expect(!(await page.evaluate(() => window.__propertyAssumptionPoint))
+        && (await page.locator("#propertyPriceComparison").textContent()).includes("시장가격 점"),
+      "시장 기준 복귀 후 가정 점이 남아 있습니다.");
+      await page.fill("#rentalUnitArea", "");
+      expect(await page.isDisabled("#propertyPurchasePrice")
+        && (await page.locator("#propertyPurchaseHint").textContent()).includes("전용면적"),
+      "면적이 없는데 제시 매수가 계산이 활성화됐습니다.");
     }
     expect(Math.abs(baseline.x - baseline.quadrantRight[0]) < 0.6 && Math.abs(baseline.x - baseline.quadrantRight[1]) < 0.6,
       "세로 0% 점선과 사분면 배경 경계가 일치하지 않습니다.");
@@ -697,6 +792,14 @@ async function run() {
       "부족한 비교축이 관광 자료임을 구체적으로 안내하지 않습니다.");
     expect(incompleteResult.transactionCount.includes("229건"),
       "기간 거래건수가 비교기간 부족 안내와 함께 보존되지 않았습니다.");
+    missingPriceSelected = true;
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}&p_purchase=3600&p_area=20`);
+    await page.waitForFunction(() => document.querySelector("#propertyPurchaseHint").textContent.includes("비교 표본"));
+    expect(await page.isDisabled("#propertyPurchasePrice")
+      && (await page.locator("#propertyPriceComparison").textContent()).includes("비교 표본")
+      && !(await page.evaluate(() => window.__propertyAssumptionPoint)),
+    "가격 정보가 부족한데 가정 판정이나 계산값을 표시했습니다.");
+    missingPriceSelected = false;
     await gotoWithTransientRetry(
       page,
       `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`,
@@ -1363,6 +1466,13 @@ async function run() {
     await page.waitForFunction(() => !document.getElementById("workspace").classList.contains("hidden")
       && document.getElementById("detailCard").textContent.includes("선택 테스트 자산")
       && document.getElementById("quickBuildings").textContent === "");
+    await page.fill("#rentalUnitArea", "20");
+    await page.fill("#propertyPurchasePrice", "3600");
+    await page.locator("#recommendationRows tr[data-id]").first().click();
+    await page.click("#buildingSelectionApply");
+    expect(await page.inputValue("#propertyPurchasePrice") === ""
+      && !new URL(page.url()).searchParams.has("p_purchase"),
+    "다른 건물로 바꿨는데 이전 건물의 매수가 가정이 남았습니다.");
     expect(errors.length === 0, `브라우저 오류가 발생했습니다: ${errors.join(" | ")}`);
     console.log("OK  인증된 모바일 투자분석 차트 경계·색상·라벨 배치");
   } finally {

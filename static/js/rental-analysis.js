@@ -400,7 +400,9 @@
       + ", " + $("rentalLoanMethod").selectedOptions[0].text + ")";
   }
   function updateRentalUrl() {
-    if (window.__analysisShareToken) return;
+    // The area field is shared by all three analyses. Rental calculations may
+    // run in the background, but must not switch an active property URL to rental.
+    if (window.__analysisShareToken || $("rentalAnalysis").classList.contains("hidden")) return;
     var params = new URLSearchParams(location.search);
     params.set("mode", "rental");
     Object.keys(sharedFieldParams).forEach(function (key) {
