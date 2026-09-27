@@ -180,11 +180,22 @@ async function awaitScreenshotFonts(page) {
 }
 
 async function waitForRental(page) {
-  await page.waitForFunction(() => {
-    const result = window.__rentalAnalysisResult;
-    return result && result.ready && Number(result.purchasePrice) > 0
-      && document.querySelectorAll("#rentalSensitivity tbody tr").length === 7;
-  }, null, { timeout: 15000 });
+  try {
+    await page.waitForFunction(() => {
+      const result = window.__rentalAnalysisResult;
+      return result && result.ready && Number(result.purchasePrice) > 0
+        && document.querySelectorAll("#rentalSensitivity tbody tr").length === 7;
+    }, null, { timeout: 15000 });
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      url: location.href,
+      result: window.__rentalAnalysisResult,
+      area: document.getElementById("rentalUnitArea")?.value,
+      marketPrice: document.getElementById("rentalMarketPrice")?.value,
+      sensitivityRows: document.querySelectorAll("#rentalSensitivity tbody tr").length,
+    }));
+    throw new Error(`임대 분석 준비 실패: ${error.message}; ${JSON.stringify(state)}`);
+  }
 }
 
 async function setValueFromLabel(page, field, value) {
@@ -243,7 +254,8 @@ async function run() {
       const chart = window.Chart && Chart.getChart(document.getElementById("rentalPositionChart"));
       const own = chart && chart.data.datasets.find((set) => set.key === "selected");
       return {
-        title: document.getElementById("rentalBuildingName").textContent,
+        title: document.querySelector("#analysisBuildingIdentity h3")?.textContent || "",
+        commonPanelVisible: !document.getElementById("analysisCommonBuilding").classList.contains("hidden"),
         area: document.getElementById("rentalUnitArea").value,
         purchase: Number(document.getElementById("rentalPurchasePrice").value),
         deposit: Number(document.getElementById("rentalDeposit").value),
@@ -276,6 +288,9 @@ async function run() {
       };
     });
     expect(initial.title === "엠제이스톤 레지던스", "선택 건물명이 로드되지 않았습니다.");
+    expect(initial.commonPanelVisible
+      && !await page.locator("#rentalBuildingName, #rentalBuildingIdentity, #operationBuildingIdentity, .rental-heading").count(),
+    "건물명·사진·전용면적이 단일 공통 패널로 통합되지 않았습니다.");
     expect(initial.area === "17.6", "공유 URL의 전용면적이 복원되지 않았습니다.");
     expect(initial.purchase === 4000 && initial.deposit === 300 && initial.rent === 100,
       "공유 URL의 매입·보증금·월세 값이 복원되지 않았습니다.");
@@ -348,6 +363,45 @@ async function run() {
       `데스크톱 임대 민감도 표의 7개 열에 가로 스크롤이 필요합니다: ${initial.sensitivityOverflow}px`);
     expect(initial.hasVacancyParam && initial.vacancyParam === "",
       "가정 공실이 공유 URL에서 직접 입력값으로 바뀌었습니다.");
+
+    const interactiveUrl = new URL(firstUrl);
+    interactiveUrl.searchParams.delete("share");
+    await page.goto(interactiveUrl.toString(), { waitUntil: "domcontentloaded" });
+    await waitForRental(page);
+    await page.fill("#rentalUnitArea", "17.6");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000);
+    await page.click("#propertyTab");
+    await page.waitForFunction(() => {
+      const panel = document.getElementById("analysisCommonBuilding");
+      return panel && !panel.classList.contains("hidden")
+        && document.querySelector("#analysisBuildingIdentity h3")?.textContent === "엠제이스톤 레지던스";
+    });
+    const photoCallsAfterPropertyActivation = apiCalls.filter((call) => call.path.endsWith("/photos")).length;
+    await page.click("#rentalTab");
+    await page.waitForFunction(() => {
+      const panel = document.getElementById("analysisCommonBuilding");
+      return panel && !panel.classList.contains("hidden")
+        && document.querySelector("#analysisBuildingIdentity h3")?.textContent === "엠제이스톤 레지던스";
+    });
+    const photoCallsAfterRentalSwitch = apiCalls.filter((call) => call.path.endsWith("/photos")).length;
+    expect(photoCallsAfterRentalSwitch === photoCallsAfterPropertyActivation
+      && await page.locator("#rentalUnitArea").inputValue() === "17.6"
+      && await page.locator("#rentalMonthlyRent").inputValue() === "100",
+    `공통 카드가 준비된 뒤 탭 전환이 면적·임대조건을 보존하고 사진 API를 재호출하지 않아야 합니다: photos ${photoCallsAfterPropertyActivation}→${photoCallsAfterRentalSwitch}`);
+
+    await page.fill("#rentalLoanRate", "6");
+    await page.click("#rentalReset");
+    expect(await page.locator("#rentalUnitArea").inputValue() === "17.6"
+      && await page.locator("#rentalPurchasePrice").inputValue() === ""
+      && await page.locator("#rentalDeposit").inputValue() === ""
+      && await page.locator("#rentalMonthlyRent").inputValue() === ""
+      && await page.locator("#rentalLoanRate").inputValue() === "4.5"
+      && await page.locator("#analysisCommonBuilding").evaluate((panel) => !panel.classList.contains("hidden")),
+    "임대 조건 초기화는 입력 조건을 초기화하되 공통 전용면적과 선택 건물을 유지해야 합니다.");
+    await page.goto(firstUrl.toString(), { waitUntil: "domcontentloaded" });
+    await waitForRental(page);
+    await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000);
+
     fs.mkdirSync("screenshots", { recursive: true });
     await awaitScreenshotFonts(page);
     await page.screenshot({ path: "screenshots/rental-desktop-1280.png", fullPage: true });
@@ -696,7 +750,7 @@ async function run() {
 
     const unexpectedWrites = apiCalls.filter((call) =>
       call.method !== "GET" && call.method !== "HEAD"
-        && !["/api/favorites/migrate", "/api/alerts/migrate"].includes(call.path));
+        && !["/api/favorites/migrate", "/api/alerts/migrate", "/api/analysis/recent"].includes(call.path));
     expect(unexpectedWrites.length === 0,
       `테스트 중 알 수 없는 쓰기 API가 호출되었습니다: ${JSON.stringify(unexpectedWrites)}`);
     expect(pageErrors.length === 0, `브라우저 JS 오류: ${pageErrors.join(" | ")}`);
@@ -716,7 +770,7 @@ async function run() {
         && params.get("r_unit_area") === "17.6"
         && params.get("preserve") === "1";
     }, BUILDING_ID, { timeout: 5000 });
-    await waitForRental(page);
+    await page.waitForFunction(() => window.__rentalAnalysisResult?.ready === true);
     await page.waitForFunction(() => {
       const params = new URLSearchParams(location.search);
       return !params.has("r_rent") && !params.has("r_purchase")
@@ -734,6 +788,10 @@ async function run() {
     `잘못된 URL의 월세·매입가가 정화되지 않았습니다: ${JSON.stringify(cleanedUrl)}`);
     expect(sliderWarnings.length === 2,
       `잘못된 URL 값 2개에 대한 경고가 필요합니다: ${JSON.stringify(sliderWarnings)}`);
+    // The malformed-link assertion only needs the URL sanitizer; reselect a
+    // valid common area before exercising sliders that require a market base.
+    await page.fill("#rentalUnitArea", "17.6");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000);
     await setValueFromLabel(page, "rentalPurchasePrice", 500000);
     const largePurchase = await page.evaluate(() => ({
       purchase: Number(document.getElementById("rentalPurchasePrice").value),
@@ -793,7 +851,7 @@ async function run() {
       expect(Number(await page.locator("#rentalPurchasePrice").inputValue()) === amount
         && await purchaseTrack.getAttribute("aria-valuetext") ===
           (amount >= 10000 ? amount / 10000 + "억원" : amount.toLocaleString("ko-KR") + "만원"),
-      `매수가 ${tick} 눈금에서 ${amount}만원이 선택되지 않았습니다.`);
+      `매수가 ${tick} 눈금에서 ${amount}만원이 선택되지 않았습니다: input=${await page.locator("#rentalPurchasePrice").inputValue()} slider=${await purchaseTrack.inputValue()} label=${await purchaseTrack.getAttribute("aria-valuetext")}`);
     }
     await setValueFromLabel(page, "rentalLoanAmount", 0);
     for (const [tick, amount] of [[0, 0], [500, 50000], [1000, 500000]]) {
@@ -818,6 +876,7 @@ async function run() {
     independentUrl.searchParams.set("r_loan", "50000");
     await page.goto(independentUrl.toString(), { waitUntil: "domcontentloaded" });
     await waitForRental(page);
+    await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000);
     expect(Number(await page.locator("#rentalPurchasePrice").inputValue()) === 4000
       && Number(await page.locator("#rentalLoanAmount").inputValue()) === 50000
       && Number(await page.locator('[data-rental-slider="rentalLoanAmount"]').inputValue()) === 500,
@@ -834,9 +893,19 @@ async function run() {
           slider.dispatchEvent(new Event("input", { bubbles: true }));
         }, tick);
         expect(Number(await page.locator(`#${field}`).inputValue()) === amount,
-          `${field} ${tick}눈금의 실제 선택값이 ${amount}만원이어야 합니다.`);
+          `${field} ${tick}눈금의 실제 선택값이 ${amount}만원이어야 합니다. actual=${await page.locator(`#${field}`).inputValue()} slider=${await page.locator(`[data-rental-slider="${field}"]`).inputValue()}`);
       }
     }
+    const resetUrl = new URL(firstUrl);
+    resetUrl.searchParams.delete("share");
+    await page.goto(resetUrl.toString(), { waitUntil: "domcontentloaded" });
+    await waitForRental(page);
+    await page.waitForFunction(() => !document.getElementById("analysisCommonBuilding").classList.contains("hidden"));
+    await page.click("#analysisResetAll");
+    await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id")
+      && document.getElementById("analysisCommonBuilding").classList.contains("hidden"));
+    expect(await page.locator("#rentalUnitArea").inputValue() === "",
+      "전체 초기화는 임대 조건뿐 아니라 공통 전용면적과 선택 건물도 초기화해야 합니다.");
     if (failures.length) throw new Error(`임대수익 개편 회귀 실패:\n- ${failures.join("\n- ")}`);
     console.log("임대수익 개편 브라우저 회귀 테스트 통과");
   } finally {

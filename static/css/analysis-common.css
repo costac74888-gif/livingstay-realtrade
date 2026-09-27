@@ -1,0 +1,89 @@
+/* The selected building and area are shared by all three analysis modes. */
+.analysis-common-building {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  align-items: stretch;
+  gap: 18px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.analysis-common-building .analysis-building-identity {
+  min-width: 0;
+  padding: 0;
+}
+.common-area-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 12px;
+  background: #eef6f2;
+  color: #173d48;
+}
+.common-area-field > span {
+  font-size: 12px;
+  font-weight: 900;
+}
+.common-area-field > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid #bfd9d0;
+  border-radius: 8px;
+  background: #fff;
+}
+.common-area-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #173d48;
+  font: inherit;
+}
+.common-area-field b {
+  font-size: 12px;
+}
+.common-area-field small {
+  margin-top: 7px;
+  color: #527089;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.analysis-mode-bar {
+  display: block;
+  margin: 4px 0 16px;
+}
+.analysis-mode-bar h2 {
+  margin-bottom: 12px;
+}
+.analysis-mode-bar .analysis-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+.analysis-mode-bar .analysis-tabs button {
+  min-width: 0;
+  width: 100%;
+  height: 56px;
+  white-space: nowrap;
+}
+@media (max-width: 850px) {
+  .analysis-common-building {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .analysis-mode-bar .analysis-tabs {
+    gap: 6px;
+  }
+  .analysis-mode-bar .analysis-tabs button {
+    padding: 0 2px;
+    font-size: 13px;
+  }
+}

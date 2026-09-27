@@ -1458,10 +1458,6 @@
     $("rentalLoanYears").value = "20";
     $("rentalLoanMethod").value = "interest";
     $("rentalUnitAreaOptions").innerHTML = "";
-    $("rentalBuildingName").textContent = "건물 정보를 불러오는 중";
-    if (window.livingstayRenderAnalysisBuildingIdentity) {
-      window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), null);
-    }
     $("rentalReportActions").classList.add("hidden");
     $("rentalReportActions").replaceChildren();
     $("rentalUnitAreaHint").textContent = "건물을 선택하면 확인된 호실 면적을 불러옵니다.";
@@ -1549,7 +1545,6 @@
       loadedBuilding = null;
       sliderBasePrice = null;
       sliderBounds = Object.create(null);
-      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), null);
       rentalBenchmark = null;
       rentalBenchmarkItems = [];
       benchmarkSource = "";
@@ -1560,8 +1555,6 @@
       marketPriceManuallyEdited = false;
       automaticMarketPrice = null;
       clearMarketEvidence();
-      $("rentalBuildingName").textContent = "분석할 건물을 선택해 주세요";
-      $("rentalUnitArea").value = "";
       $("rentalUnitAreaOptions").innerHTML = "";
       $("rentalMarketPrice").value = "";
       $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
@@ -1580,7 +1573,6 @@
       sliderBasePrice = null;
       sliderBounds = Object.create(null);
       clearMarketEvidence();
-      $("rentalUnitArea").value = "";
       $("rentalMarketPrice").value = "";
       $("rentalMarketPrice").placeholder = "호실 면적을 먼저 선택";
       setMarketStatus("호실 면적 목록을 확인하고 있습니다.", "loading");
@@ -1599,8 +1591,9 @@
         data.building_id = data.building_id || data.id || Number(id);
         loadedBuilding = data;
         window.__rentalAnalysisBuilding = data;
-        $("rentalBuildingName").textContent = data.display_building_name || data.building_name || "선택 건물";
-        if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), data);
+        if (window.livingstaySetAnalysisBuildingIdentity) {
+          window.livingstaySetAnalysisBuildingIdentity(data);
+        }
         if (window.setAnalysisBuildingStatus) {
           window.setAnalysisBuildingStatus(data.display_building_name || data.building_name || "선택 건물");
         }
@@ -1723,7 +1716,9 @@
     sliderBasePrice = null;
     rentCenterBase = null;
     rentCenterEdited = false;
-    ids.forEach(function (id) { $(id).value = ""; });
+    ids.forEach(function (id) {
+      if (id !== "rentalUnitArea") $(id).value = "";
+    });
     lastValidRentalInputs = Object.create(null);
     invalidRentalUrlFields = Object.create(null);
     $("rentalVacancyMonths").value = "";

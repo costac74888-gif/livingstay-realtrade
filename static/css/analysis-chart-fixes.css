@@ -72,8 +72,7 @@
   padding-left: 17px;
 }
 
-.analysis-shell.operation-mode #summaryGrid,
-.analysis-shell.operation-mode .analysis-mode-bar {
+.analysis-shell.operation-mode #summaryGrid {
   display: none;
 }
 

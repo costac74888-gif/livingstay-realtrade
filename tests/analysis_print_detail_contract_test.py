@@ -25,6 +25,10 @@ def main():
         "오전|오후",
         "UTC|GMT",
         "function correctRentalReport(report)",
+        "function selectedBuildingName(building,fallback)",
+        'text("#analysisBuildingIdentity h3","")',
+        "name=selectedBuildingName(selectedBuilding())",
+        '<em>호실 단위 분석</em>',
         'report.graphTitle="3.1 임대수익 포지션"',
         'window.__analysisPrintChartCapture=true',
         'report.graph=graph.firstElementChild?graph.firstElementChild.outerHTML:report.graph',
@@ -50,6 +54,8 @@ def main():
     ]
     missing = [token for token in required_js if token not in js]
     missing += [token for token in required_css if token not in css]
+    if "#rentalBuildingName" in js:
+        missing.append("삭제 예정 임대 제목 요소에 대한 보고서 의존성")
     if '#printReport[data-mode="rental"] .print-rental-position .positioning-toggle{display:none}' in css:
         missing.append("임대 포지셔닝 선택 토글 인쇄 숨김 규칙")
     rental_print = js.split("correctRentalReport=function(report){")[-1].split(

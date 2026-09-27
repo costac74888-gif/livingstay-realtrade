@@ -441,9 +441,6 @@
     if ($("operationLodging")) $("operationLodging").innerHTML = '<option value="">건물 운영자료 불러오는 중…</option>';
     if ($("operationBusinessName")) $("operationBusinessName").value = "";
     if ($("operationRoomCountInput")) $("operationRoomCountInput").value = "";
-    if (window.livingstayRenderAnalysisBuildingIdentity) {
-      window.livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), null);
-    }
     renderRoomCount();
     setupOperationSliders();
     if (config) syncOperationSliders();
@@ -1786,7 +1783,6 @@
       benchmarkLoadError = "";
       window.__operationBenchmarkSource = "";
       window.__operationAnalysisBuilding = null;
-      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), null);
       $("operationLodging").innerHTML = '<option value="">건물을 먼저 선택해 주세요</option>';
       $("operationBusinessName").value = "";
       $("operationRoomCountInput").value = "";
@@ -1828,7 +1824,9 @@
       region = results[1] && results[1].sido || "";
       subregion = results[1] && results[1].sgg || "";
       $("operationBusinessName").value = building.display_building_name || building.building_name || "";
-      if (window.livingstayRenderAnalysisBuildingIdentity) window.livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), building);
+      if (window.livingstaySetAnalysisBuildingIdentity) {
+        window.livingstaySetAnalysisBuildingIdentity(building);
+      }
       setBuildingStatus(building.display_building_name || building.building_name || "선택 건물", true);
       renderLodgingOptions();
       setupOperationSliders();

@@ -170,15 +170,23 @@ expect(
   "비회원용 서명 공유 링크 또는 공유화면 범위 제한이 없습니다.",
 );
 expect(
-  html.includes('id="rentalBuildingIdentity"')
-    && html.includes('id="operationBuildingIdentity"')
+  html.includes('id="analysisCommonBuilding"')
+    && html.includes('id="analysisBuildingIdentity"')
+    && html.includes('id="rentalUnitArea"')
+    && html.indexOf('id="analysisCommonBuilding"') < html.indexOf('id="analysisTabs"')
+    && html.indexOf('id="rentalUnitArea"') < html.indexOf('id="analysisTabs"')
+    && !html.includes('id="rentalBuildingIdentity"')
+    && !html.includes('id="operationBuildingIdentity"')
+    && !html.includes('class="rental-heading"')
     && js.includes("livingstayRenderAnalysisBuildingIdentity")
     && js.includes('"/photos",{credentials:"same-origin"}')
     && js.includes('"/streetview?view=building-v9"')
-    && rentalJs.includes('livingstayRenderAnalysisBuildingIdentity($("rentalBuildingIdentity"), data)')
-    && operationJs.includes('livingstayRenderAnalysisBuildingIdentity($("operationBuildingIdentity"), building)')
+    && js.includes("window.livingstayRenderAnalysisBuildingIdentity(holder,building)")
+    && js.includes('var holder=$("analysisBuildingIdentity")')
+    && js.includes('$("analysisCommonBuilding").classList.remove("hidden")')
+    && printJs.includes('text("#analysisBuildingIdentity h3","")')
     && css.includes(".analysis-building-identity"),
-  "임대수익·숙박운영분석에 선택 건물 사진·주소 안내가 없습니다.",
+  "공통 건물·면적 패널의 배치, 공통 건물 렌더링 또는 보고서 건물명 연결이 없습니다.",
 );
 expect(
   html.includes("가격 부담") && html.includes("기타 단지")
@@ -231,7 +239,7 @@ expect(
   js.includes("handleAnalysisAuthChange")
     && js.includes("setAnalysisMode(state.analysisMode,true)")
     && js.includes("member&&!memberSessionSeen")
-    && js.includes("if(member&&!memberSessionSeen){memberSessionSeen=true;renderQuickBuildings();setAnalysisMode(state.analysisMode,true);return}")
+    && /if\(member&&!memberSessionSeen\)\{memberSessionSeen=true;[^}]*setAnalysisMode\(state.analysisMode,true\);return\}/.test(js)
     && js.includes("기존 분석 유지 · 갱신 실패"),
   "초기 인증 재검증의 시나리오 보존, 계정 전환 후 분석 재로딩 또는 후속 갱신 보존이 없습니다.",
 );
@@ -273,7 +281,7 @@ expect(
     && html.includes('id="operationSelectedPulse"')
     && html.includes("장기임대(월세)인 경우에는 ‘임대수익분석’을 활용하세요.")
     && html.includes('id="operationRentalGuide"')
-    && js.includes('$("operationRentalGuide").onclick=function(){setAnalysisMode("rental")}')
+    && js.includes('$("operationRentalGuide").onclick=function(){setAnalysisMode("rental",false,true)}')
     && operationJs.includes("regionalBaseline()") && operationJs.includes("officialRooms")
     && operationJs.includes("building.display_building_name || building.building_name")
     && operationJs.includes("comparisonPoints: benchmarks.length")

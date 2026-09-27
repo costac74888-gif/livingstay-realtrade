@@ -22,6 +22,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     mapLayout: window.__analysisPrintMapLayout || null,
     propertyPoint: !!document.querySelector("#printMap .print-map-property-point"),
     address: document.querySelector("#printOverview .print-building span")?.textContent || "",
+    buildingName: document.querySelector("#printOverview .print-building b")?.textContent || "",
+    rentalBadge: document.querySelector("#printOverview .print-building em")?.textContent || "",
+    rentalArea: document.querySelector("#printOverview .print-building span")?.textContent || "",
     result: document.querySelector("#printOverview .print-result-line")?.textContent || "",
     metricLabels: Array.from(document.querySelectorAll("#printOverview .print-metrics small")).map(node => node.textContent),
     sideMetricCount: document.querySelectorAll("#printTransactionTrend .print-side-metrics article").length,
@@ -53,6 +56,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
       && report.sideMetricCount === 4
       && report.sideMetricValues.every(value => value && !value.startsWith("—"))
       && report.operationQuadrantsFit))
+     && (mode !== "rental" || (report.buildingName === "선택 테스트 자산"
+       && report.rentalBadge === "호실 단위 분석"
+       && report.rentalArea.includes("전용면적")))
     && pages === 1,
    `${titleText} 인쇄보고서가 A4 한 장·5개 존으로 구성되지 않았습니다. pages=${pages} report=${JSON.stringify({ ...report, graphImage: report.graphImage.slice(0, 28) })}`);
 }
@@ -125,7 +131,7 @@ function fixture(incompleteSelected = false, incompleteFinalTrajectory = false) 
   };
   if (incompleteSelected) {
     payload.items[0].tourism_demand_index = null;
-    payload.items[0].peer_price_gap = 0.8;
+    payload.items[0].peer_price_gap = 3;
     payload.items[0].quadrant = "관광 비교자료 부족";
     payload.items[0].transaction_count = 229;
     payload.items.push(item(301, "비선택 극단값", "경상남도", "통영시", null, 4464, "관광 비교자료 부족"));
@@ -187,6 +193,7 @@ async function run() {
   let delayNextMemberAssets = false;
   let recentAnalysisPostInFlight = 0;
   let maxRecentAnalysisPostInFlight = 0;
+  let analysisBuildingPhotoCalls = 0;
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
   await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
@@ -357,12 +364,15 @@ async function run() {
         path: `/analysis?building_id=${body.building_id}${mode}&share=test-signed-token`,
       });
     }
-    if (url.pathname.endsWith("/photos")) return json(route, {
-      photos: [
-        { url: "/missing-analysis-photo.jpg" },
-        { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Crect width='2' height='2' fill='%23ddd'/%3E%3C/svg%3E" },
-      ],
-    });
+    if (url.pathname.endsWith("/photos")) {
+      analysisBuildingPhotoCalls += 1;
+      return json(route, {
+        photos: [
+          { url: "/missing-analysis-photo.jpg" },
+          { url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2'%3E%3Crect width='2' height='2' fill='%23ddd'/%3E%3C/svg%3E" },
+        ],
+      });
+    }
     if (url.pathname === `/api/building/${SELECTED_ID}`) return json(route, {
       building_name: Number(currentAuth.user?.id) === 2 ? "새 회원 분석 자산" : "선택 테스트 자산",
       road_address: "강원특별자치도 속초시 테스트로 1",
@@ -384,6 +394,9 @@ async function run() {
         `${BASE_URL}/analysis?building_id=${SELECTED_ID}`,
       );
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
+      // The detail photo is lazy-loaded below the fold; at 320px it remains
+      // pending unless the test brings the card into the viewport.
+      await page.locator("#detailCard .detail-photo").scrollIntoViewIfNeeded();
       try {
         await page.waitForFunction(() => {
           const layout = window.__analysisChartLayout;
@@ -394,7 +407,22 @@ async function run() {
             && photo && photo.dataset.photoState === "loaded";
         });
       } catch (error) {
-        throw new Error(`${width}px 분석 화면 준비 실패: ${error.message}; 브라우저 오류: ${errors.join(" | ") || "없음"}`);
+        const readiness = await page.evaluate(() => {
+          const layout = window.__analysisChartLayout;
+          const photo = document.querySelector("#detailCard .detail-photo");
+          return {
+            layout: layout && {
+              ready: layout.ready,
+              baseline: layout.baseline,
+              labelCount: layout.labels && layout.labels.length,
+              selectedPoint: layout.points && layout.points.some((point) => point.selected),
+            },
+            photo: photo && { state: photo.dataset.photoState, html: photo.innerHTML.slice(0, 180) },
+            selected: document.getElementById("detailCard")?.textContent.slice(0, 120) || "",
+            chartWidth: document.getElementById("scatterChart")?.getBoundingClientRect().width || 0,
+          };
+        });
+        throw new Error(`${width}px 분석 화면 준비 실패: ${error.message}; 브라우저 오류: ${errors.join(" | ") || "없음"}; 상태: ${JSON.stringify(readiness)}`);
       }
 
       const result = await page.evaluate(() => {
@@ -590,7 +618,10 @@ async function run() {
     expect(Math.abs(incompleteResult.selected.x - incompleteResult.baseline.x) > 0.6,
       "관광 비교기간 부족 건물이 중앙 기준선에 겹쳐 표시됐습니다.");
     expect(Math.abs(incompleteResult.selected.y - incompleteResult.baseline.y) > 0.6,
-      "가격변동 값이 있는 건물이 중앙점으로 잘못 표시됐습니다.");
+      `가격변동 값이 있는 건물이 중앙점으로 잘못 표시됐습니다: ${JSON.stringify({
+        selected: { x: incompleteResult.selected.x, y: incompleteResult.selected.y },
+        baseline: incompleteResult.baseline,
+      })}`);
     expect(incompleteResult.detail.includes("관광 비교자료 부족"),
       "부족한 비교축이 관광 자료임을 구체적으로 안내하지 않습니다.");
     expect(incompleteResult.transactionCount.includes("229건"),
@@ -710,11 +741,15 @@ async function run() {
         - operationResult.operationLayout.baselinePixelY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
     await expectSinglePageReport(page, "operation", "숙박운영분석", true);
+    expect(await page.locator(".analysis-mode-bar").isVisible(),
+      "숙박운영분석에서도 공통 분석 버튼이 표시되어야 합니다.");
     await page.click("#operationRentalGuide");
     expect(await page.getAttribute("#rentalTab", "aria-selected") === "true"
       && !await page.locator("#rentalAnalysis").evaluate((el) => el.classList.contains("hidden")),
       "장기임대 안내에서 임대수익분석으로 이동하지 못했습니다.");
     await page.click("#operationTab");
+    await page.waitForFunction(() => document.getElementById("operationTab").getAttribute("aria-selected") === "true"
+      && !document.getElementById("operationInputs").classList.contains("hidden"));
     const operationWritesBeforePartialState = recentAnalysisMutations.filter((entry) => entry.mode === "operation").length;
     uploadHasOccupancyBasis = false;
     await page.setInputFiles("#operationFiles", {
@@ -734,7 +769,7 @@ async function run() {
       page,
       `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`,
     );
-    await page.waitForFunction(() => document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산");
+    await page.waitForFunction(() => document.querySelector("#analysisBuildingIdentity h3")?.textContent === "선택 테스트 자산");
     await page.waitForFunction(() => document.querySelectorAll("#rentalUnitAreaOptions option").length === 5);
     const areaOptions = await page.locator("#rentalUnitAreaOptions option").evaluateAll((options) =>
       options.map((option) => option.value));
@@ -907,6 +942,7 @@ async function run() {
     expect(recentAnalysisMutations.length === recentCountBeforePreview,
       "검색 결과를 미리보기만 했는데 최근 분석 이력에 저장되었습니다.");
     await page.click("#buildingSelectionApply");
+    let photoCallsWhenCommonPanelReady = null;
     for (const tab of [
       { id: "propertyTab", mode: null },
       { id: "rentalTab", mode: "rental" },
@@ -919,21 +955,33 @@ async function run() {
       }, tab.mode);
       await page.waitForFunction(() =>
         document.getElementById("buildingSelectionStatus").textContent.includes("선택 건물 · 선택 테스트 자산"));
+      await page.waitForFunction(() => {
+        const panel = document.getElementById("analysisCommonBuilding");
+        return panel && !panel.classList.contains("hidden")
+          && document.querySelector("#analysisBuildingIdentity h3")?.textContent === "선택 테스트 자산"
+          && document.querySelector("#analysisBuildingIdentity img");
+      });
+      if (photoCallsWhenCommonPanelReady === null) {
+        photoCallsWhenCommonPanelReady = analysisBuildingPhotoCalls;
+      }
       if (tab.id === "propertyTab") {
         await page.waitForFunction(() =>
           document.querySelector("#detailCard .detail-name")?.textContent === "선택 테스트 자산");
       } else if (tab.id === "rentalTab") {
         await page.waitForFunction(() =>
-          document.getElementById("rentalBuildingName").textContent === "선택 테스트 자산"
-          && document.getElementById("rentalBuildingIdentity").textContent.includes("강원특별자치도 속초시 테스트로 1")
-          && document.querySelector("#rentalBuildingIdentity img"));
+          document.getElementById("analysisBuildingIdentity").textContent.includes("강원특별자치도 속초시 테스트로 1"));
       } else {
         await page.waitForFunction(() =>
           document.getElementById("operationBusinessName").value === "선택 테스트 자산"
-          && document.getElementById("operationBuildingIdentity").textContent.includes("강원특별자치도 속초시 테스트로 1")
-          && document.querySelector("#operationBuildingIdentity img"));
+          && document.getElementById("analysisBuildingIdentity").textContent.includes("강원특별자치도 속초시 테스트로 1"));
       }
     }
+    expect(photoCallsWhenCommonPanelReady >= 1
+      && analysisBuildingPhotoCalls === photoCallsWhenCommonPanelReady,
+      `공통 건물 패널이 준비된 뒤 탭 전환에서 사진 API를 재요청하지 않아야 합니다: ${photoCallsWhenCommonPanelReady}→${analysisBuildingPhotoCalls}`);
+    expect(await page.locator("#analysisCommonBuilding").evaluate((panel) => !panel.classList.contains("hidden"))
+      && await page.locator("#analysisBuildingIdentity h3").textContent() === "선택 테스트 자산",
+      "세 분석 탭을 전환해도 공통 건물 패널이 유지되지 않았습니다.");
     await page.waitForFunction(() => {
       const operationReady = window.__operationAnalysisState?.ready === true
         && document.getElementById("operationTab").getAttribute("aria-selected") === "true";
@@ -967,8 +1015,9 @@ async function run() {
         || entry.building_id !== recentAnalysisMutations[index - 1].building_id
         || entry.mode !== recentAnalysisMutations[index - 1].mode),
       `최근 분석 저장 요청이 동시에 실행되거나 같은 건물·탭이 연속 중복 저장되었습니다: ${JSON.stringify({ maxRecentAnalysisPostInFlight, recentAnalysisMutations })}`);
-    await page.click("#propertyTab");
-    await page.waitForFunction(() => document.querySelectorAll("#recommendationRows tr[data-id]").length > 0);
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}`);
+    await page.waitForFunction(() => document.getElementById("propertyTab").getAttribute("aria-selected") === "true"
+      && document.querySelectorAll("#recommendationRows tr[data-id]").length > 0);
     await page.click("#favoriteBtn");
     await page.waitForFunction(() => document.getElementById("favoriteBtn").textContent === "관심해제");
     const syncedQuickGroups = await page.evaluate(() =>
@@ -986,18 +1035,19 @@ async function run() {
     await page.click("#quickBuildings .quick-group:nth-child(2) button[data-mode]");
     await page.waitForFunction(() => {
       const query = new URLSearchParams(location.search);
-      return query.get("building_id") === "101" && query.get("mode") === "operation"
-        && document.getElementById("operationBusinessName").value === "선택 테스트 자산";
+      return query.get("building_id") === "101" && !query.has("mode")
+        && document.querySelector("#detailCard .detail-name")?.textContent === "선택 테스트 자산";
     });
     expect(await page.locator("#buildingSelectionApply").isDisabled(),
       "최근 분석을 눌렀을 때 검색 선택 단계를 다시 요구합니다.");
-    await page.click("#rentalTab");
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=rental`);
     await page.waitForFunction(() =>
       document.querySelector('#rentalReportActions [data-report-action="favorite"]')?.textContent === "관심해제");
-    await page.click("#operationTab");
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}&mode=operation`);
     await page.waitForFunction(() =>
       document.querySelector('#operationReportActions [data-report-action="favorite"]')?.textContent === "관심해제");
-    await page.click("#propertyTab");
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}`);
+    await page.waitForFunction(() => document.getElementById("propertyTab").getAttribute("aria-selected") === "true");
     const transactionTrend = await page.evaluate(() => {
       const card = document.getElementById("transactionTrendCard");
       const canvas = document.getElementById("transactionTrendChart");
@@ -1030,7 +1080,7 @@ async function run() {
        && transactionTrend.layout.belowPositioning
        && transactionTrend.layout.afterDetailOnMobile
       && transactionTrend.area === "100.0"
-      && transactionTrend.options.join("|") === "80.0|100.0"
+       && transactionTrend.options.join("|") === "80.0|100.0"
        && transactionTrend.lineLabel === "평균 거래금액(만원)"
       && transactionTrend.lineValues.includes(41000)
       && !transactionTrend.lineValues.includes(410)
@@ -1060,6 +1110,22 @@ async function run() {
       && selectedTransactions.rows.length > 0 && selectedTransactions.rows.length <= 5
       && selectedTransactions.rows[0].includes("만원") && selectedTransactions.beforeRecommendations,
       `선택 건물 최근 실거래표가 그래프와 가격 매력 후보 사이에 표시되지 않았습니다. ${JSON.stringify(selectedTransactions)}`);
+    // Add a fixture option for the requested shared-area synchronization case;
+    // this building's transaction sample otherwise only offers 80㎡ and 100㎡.
+    await page.locator("#transactionAreaSelect").evaluate((select) => {
+      select.add(new Option("17.6㎡", "17.6"));
+    });
+    await page.click("#rentalTab");
+    await page.fill("#rentalUnitArea", "17.6");
+    await page.click("#propertyTab");
+    await page.waitForFunction(() => document.getElementById("transactionAreaSelect").value === "17.6");
+    expect(await page.locator("#rentalUnitArea").inputValue() === "17.6"
+      && await page.locator("#analysisCommonBuilding").evaluate((panel) => !panel.classList.contains("hidden")),
+      "공통 전용면적 17.6㎡가 부동산 탭으로 유지되지 않았습니다.");
+    await page.selectOption("#transactionAreaSelect", "80.0");
+    expect(await page.locator("#transactionAreaSelect").inputValue() === "80.0"
+      && await page.locator("#rentalUnitArea").inputValue() === "17.6",
+      "실거래 추이 카드의 개별 면적 선택이 공통 전용면적을 덮어썼습니다.");
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
     await page.emulateMedia({ media: "print" });
     const printReport = await page.evaluate(() => {
@@ -1098,12 +1164,11 @@ async function run() {
     await page.waitForFunction(() => !new URLSearchParams(location.search).has("building_id"));
     expect((await page.textContent("#buildingSelectionStatus")).includes("검색 결과에서 건물을 선택"),
       "건물명 × 버튼으로 공통 선택 건물이 지워지지 않았습니다.");
-    await page.click("#rentalTab");
-    await page.waitForFunction(() =>
-      document.getElementById("rentalBuildingName").textContent === "분석할 건물을 선택해 주세요");
-    expect(await page.inputValue("#rentalMarketPrice") === "",
-      "공통 건물 삭제 후 임대분석의 자동 실거래가가 남아 있습니다.");
+    expect(await page.locator("#analysisCommonBuilding").evaluate((panel) => panel.classList.contains("hidden"))
+      && await page.inputValue("#rentalUnitArea") === "",
+      "건물 선택 해제 시 공통 건물 패널과 전용면적이 초기화되지 않았습니다.");
 
+    await page.click("#rentalTab");
     await setRentalValue("rentalMonthlyRent", 77);
     await page.click("#operationTab");
     await page.fill("#operationOcc", "71");
@@ -1116,11 +1181,12 @@ async function run() {
     expect(await page.inputValue("#buildingSearch") === ""
       && await page.inputValue("#operationOcc") === "",
       "전체 초기화가 검색어·선택 건물·숙박운영 입력을 지우지 못했습니다.");
-    await page.click("#rentalTab");
+    await gotoWithTransientRetry(page, `${BASE_URL}/analysis?mode=rental`);
     expect(await page.inputValue("#rentalMonthlyRent") === ""
       && await page.inputValue("#rentalVacancyMonths") === ""
-      && await page.inputValue("#rentalVacancyRate") === "",
-      "전체 초기화가 임대수익 입력을 기본값으로 되돌리지 못했습니다.");
+      && await page.inputValue("#rentalVacancyRate") === ""
+      && await page.inputValue("#rentalUnitArea") === "",
+      "전체 초기화가 임대수익 입력과 공통 전용면적을 기본값으로 되돌리지 못했습니다.");
     currentAuth = { logged_in: true, account_type: "user", user: { id: 1, name: "테스트 회원" } };
     await gotoWithTransientRetry(page, `${BASE_URL}/analysis?building_id=${SELECTED_ID}`);
     await page.waitForFunction(() => document.getElementById("detailCard").textContent.includes("선택 테스트 자산")

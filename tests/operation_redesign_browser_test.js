@@ -513,10 +513,9 @@ async function run() {
       && printed.overview.includes("운영경비율") && printed.overview.includes("위탁수수료율"),
     "인쇄 개요에서 여섯 입력 조건 및 가정 배지를 일반 텍스트로 출력하지 않습니다.");
     expect(printed.image.startsWith("data:image/png")
-      && printed.graph.includes("민감도")
-      && printed.graph.includes("건물 전체 환산")
-      && printed.graph.includes("시군구"),
-    "인쇄 미리보기에 차트·민감도·접이식 세부가 포함되지 않았습니다.");
+      && printed.graph.includes("시군구")
+      && printed.basis.includes("RevPAR"),
+    "인쇄 미리보기에 차트·비교 기준·산출근거가 포함되지 않았습니다.");
 
     await valueFromLabel(page, "adr", 168000);
     await valueFromLabel(page, "occ", 72);
