@@ -153,6 +153,34 @@
   flex-direction: column;
   gap: 16px;
 }
+#propertyAnalysis .workspace { grid-template-areas: "position detail"; }
+.property-results-column > .transaction-trend-card {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+}
+.property-results-column .transaction-trend-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.property-results-column .transaction-area-field {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  white-space: normal;
+}
+.property-results-column .transaction-area-field select {
+  width: min(100%, 180px);
+  min-width: 0;
+  max-width: 100%;
+}
+.property-results-column .transaction-trend-wrap { height: 230px; }
+.property-results-column .transaction-trend-legend { flex-wrap: wrap; gap: 8px; }
+@media (max-width: 1080px) {
+  #propertyAnalysis .workspace { grid-template-areas: "position" "detail"; }
+}
 .property-results-column > .analysis-report-verdict,
 .rental-results-column > .analysis-report-verdict,
 .operation-results-column > .analysis-report-verdict {

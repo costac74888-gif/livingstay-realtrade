@@ -71,12 +71,12 @@
 .analysis-building-identity{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;align-items:center;padding:14px;overflow:hidden}.operation-inputs>.analysis-building-identity{grid-column:1/-1;background:#f8fbfe;border:1px solid var(--line);border-radius:14px}.analysis-building-photo{height:118px;border-radius:13px;overflow:hidden;background:#e9eff4}.analysis-building-photo img{width:100%;height:100%;object-fit:cover}.analysis-building-photo .photo-placeholder{height:100%;border-radius:0}.analysis-building-copy h3{margin:0;color:var(--navy);font-size:20px;letter-spacing:-.04em}.analysis-building-title{display:flex;align-items:center;gap:10px;margin:4px 0 7px}.analysis-building-title span{padding:4px 8px;border-radius:999px;background:#e8f2ff;color:var(--blue);font-size:10px;font-weight:800}.analysis-building-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}.analysis-building-copy small{display:block;margin-top:8px;color:#527089;font-weight:700}
 @media(max-width:650px){.analysis-building-identity{grid-template-columns:1fr;padding:12px}.analysis-building-photo{height:150px}.analysis-building-copy h3{font-size:18px}}
 @media print{
-  #printReport[data-mode="rental"] .print-rental-position{display:block!important;width:100%;margin-bottom:1mm}
-  #printReport[data-mode="rental"] .print-rental-position .rental-positioning{display:grid!important;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:1mm;height:79mm;min-height:0;padding:2mm;overflow:hidden}
+  #printReport[data-mode="rental"] .print-rental-position{display:block!important;width:100%;height:100%;min-height:0;margin-bottom:0}
+  #printReport[data-mode="rental"] .print-rental-position .rental-positioning{display:grid!important;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:1mm;height:100%;min-height:0;padding:2mm;overflow:hidden}
   #printReport[data-mode="rental"] .print-rental-position .positioning-header{grid-row:1;min-height:0}
   #printReport[data-mode="rental"] .print-rental-position .positioning-copy h3{font-size:14px!important}
   #printReport[data-mode="rental"] .print-rental-position .positioning-copy p{font-size:10px!important;line-height:1.25}
-  #printReport[data-mode="rental"] .print-rental-position .positioning-map{grid-row:2;height:57mm;min-height:57mm;max-height:57mm}
+  #printReport[data-mode="rental"] .print-rental-position .positioning-map{grid-row:2;height:100%;min-height:0;max-height:none}
   #printReport[data-mode="rental"] .print-rental-position .positioning-map .print-chart-image{display:block;width:100%!important;height:100%!important;object-fit:fill}
   #printReport[data-mode="rental"] .print-rental-position .positioning-source-note{grid-row:3;margin:0;font-size:7px;line-height:1.15}
   #printReport[data-mode="rental"] .print-side-summary{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:1mm;height:100%;min-height:0}

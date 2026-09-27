@@ -30,7 +30,7 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
     await page.locator("#printReport").screenshot({ path: `screenshots/analysis-report-${mode}.png` });
   }
-  const report = await page.evaluate(() => ({
+  const report = await page.evaluate((mode) => ({
     display: getComputedStyle(document.getElementById("printReport")).display,
     mode: document.getElementById("printReport").dataset.mode,
     zones: document.querySelectorAll("#printReport .print-zone").length,
@@ -47,14 +47,29 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     metricLabels: Array.from(document.querySelectorAll("#printOverview .print-metrics small")).map(node => node.textContent),
     sideMetricCount: document.querySelectorAll("#printTransactionTrend .print-side-metrics article").length,
     sideMetricValues: Array.from(document.querySelectorAll("#printTransactionTrend .print-side-metrics strong")).map(node => node.textContent),
+    rentalGraphLayout: mode === "rental" ? (() => {
+      const zone = document.querySelector("#printReport .print-graph").getBoundingClientRect();
+      const side = document.querySelector("#printReport .print-side").getBoundingClientRect();
+      const card = document.querySelector("#printGraph .rental-positioning").getBoundingClientRect();
+      const plot = document.querySelector("#printGraph .positioning-map").getBoundingClientRect();
+      const source = document.querySelector("#printGraph .positioning-source-note").getBoundingClientRect();
+      return {
+        plotHeight: plot.height, zoneHeight: zone.height,
+        cardBottom: card.bottom, sideBottom: side.bottom,
+        zoneBottom: zone.bottom, sourceBottom: source.bottom,
+      };
+    })() : null,
     operationQuadrantsFit: Array.from(document.querySelectorAll("#printGraph .operation-quadrant")).every(node => {
       const rect = node.getBoundingClientRect();
       const wrap = node.parentElement.getBoundingClientRect();
       return rect.left >= wrap.left - 1 && rect.right <= wrap.right + 1
         && rect.top >= wrap.top - 1 && rect.bottom <= wrap.bottom + 1;
     }),
-  }));
+  }), mode);
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+  if (process.env.CAPTURE_RENTAL_REPORT && mode === "rental") {
+    fs.writeFileSync(process.env.CAPTURE_RENTAL_REPORT + ".pdf", pdf);
+  }
   if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
     fs.writeFileSync(`screenshots/analysis-report-${mode}.pdf`, pdf);
   }
@@ -65,6 +80,10 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   await page.emulateMedia({ media: "screen" });
   expect(report.display === "block" && report.mode === mode && report.zones === 5
     && report.title.includes(titleText) && !report.exampleIncluded
+    && (mode !== "rental" || (report.rentalGraphLayout.plotHeight >= report.rentalGraphLayout.zoneHeight * 0.56
+      && report.rentalGraphLayout.sourceBottom <= report.rentalGraphLayout.cardBottom + 1
+      && report.rentalGraphLayout.cardBottom <= report.rentalGraphLayout.zoneBottom + 1
+      && Math.abs(report.rentalGraphLayout.cardBottom - report.rentalGraphLayout.sideBottom) <= 38))
     && (!graphRequired || report.graphImage.startsWith("data:image/png"))
     && (mode !== "property" || (report.mapLayout
       && report.mapLayout.preparedWidth >= 200
@@ -454,6 +473,7 @@ async function run() {
       const canvas = document.getElementById("scatterChart").getBoundingClientRect();
        const trendRect = document.getElementById("transactionTrendCard").getBoundingClientRect();
        const positionCardRect = document.querySelector(".workspace > .chart-card").getBoundingClientRect();
+        const verdictRect = document.getElementById("propertyVerdict").getBoundingClientRect();
        const detailCardRect = document.getElementById("detailCard").getBoundingClientRect();
        const yAxis = document.querySelector(".y-axis-guide");
        const yAxisRect = yAxis.getBoundingClientRect();
@@ -462,11 +482,12 @@ async function run() {
         wrap: { w: wrap.width, h: wrap.height },
         canvas: { left: canvas.left - wrap.left, top: canvas.top - wrap.top, right: canvas.right - wrap.left, bottom: canvas.bottom - wrap.top },
          trendPlacement: {
-           insideWorkspace: document.getElementById("transactionTrendCard").parentElement.id === "workspace",
-           belowPositioning: trendRect.top >= positionCardRect.bottom - 1,
-           sameLeftColumn: Math.abs(trendRect.left - positionCardRect.left) < 1
-             && Math.abs(trendRect.right - positionCardRect.right) < 1,
-           afterDetail: trendRect.top >= detailCardRect.bottom - 1,
+            insideRightColumn: document.getElementById("transactionTrendCard").parentElement.classList.contains("property-results-column"),
+            belowVerdict: trendRect.top >= verdictRect.bottom - 1,
+            beforeDetail: trendRect.bottom <= detailCardRect.top + 1,
+            sameRightColumn: Math.abs(trendRect.left - verdictRect.left) < 1
+              && Math.abs(trendRect.right - verdictRect.right) < 1,
+            belowPositioningOnMobile: trendRect.top >= positionCardRect.bottom - 1,
          },
          yAxis: {
            width: yAxisRect.width,
@@ -496,12 +517,13 @@ async function run() {
          expect(result.layout.baseline.x < result.wrap.w * 0.53
            && result.layout.axis.xMax - 50 > (50 - result.layout.axis.xMin) * 1.7,
           `${width}px 관광수요 중심선이 모바일 그래프의 왼쪽으로 충분히 이동하지 않았습니다.`);
-        expect(result.trendPlacement.insideWorkspace && result.trendPlacement.afterDetail,
-          `${width}px 실거래 추이 그래프가 상세 패널 다음 순서로 표시되지 않았습니다.`);
+        expect(result.trendPlacement.insideRightColumn && result.trendPlacement.belowVerdict
+          && result.trendPlacement.beforeDetail && result.trendPlacement.belowPositioningOnMobile,
+          `${width}px 실거래 추이 그래프가 종합평가 다음, 상세 패널 전에 표시되지 않았습니다.`);
       } else {
-        expect(result.trendPlacement.insideWorkspace && result.trendPlacement.belowPositioning
-          && result.trendPlacement.sameLeftColumn,
-          "데스크톱 실거래 추이 그래프가 포지셔닝 그래프 아래 왼쪽 공간에 배치되지 않았습니다.");
+         expect(result.trendPlacement.insideRightColumn && result.trendPlacement.belowVerdict
+           && result.trendPlacement.beforeDetail && result.trendPlacement.sameRightColumn,
+           "실거래 추이 그래프가 종합평가 아래 우측 결과 열에 배치되지 않았습니다.");
      }
     expect(result.baselineText[0] === "50" && result.baselineText[1] === "0%", "관광수요 50점·유사자산 가격 0% 기준선 표시가 다릅니다.");
     const { baseline, points, labels } = result.layout;
@@ -529,6 +551,8 @@ async function run() {
          verdictTop: document.getElementById("propertyVerdict").getBoundingClientRect().top,
          verdictBottom: document.getElementById("propertyVerdict").getBoundingClientRect().bottom,
          chartTop: document.querySelector("#workspace .chart-card").getBoundingClientRect().top,
+          trendTop: document.getElementById("transactionTrendCard").getBoundingClientRect().top,
+          trendBottom: document.getElementById("transactionTrendCard").getBoundingClientRect().bottom,
          detailTop: document.getElementById("detailCard").getBoundingClientRect().top,
          verdictInRightColumn: Boolean(document.querySelector(".property-results-column > #propertyVerdict")),
          evidenceInsideDisclosure: document.getElementById("methodology")
@@ -539,7 +563,8 @@ async function run() {
        expect(reportLayout.duplicatePhoto === "none"
          && reportLayout.verdictInRightColumn
          && Math.abs(reportLayout.verdictTop - reportLayout.chartTop) < 2
-         && reportLayout.verdictBottom < reportLayout.detailTop
+          && reportLayout.verdictBottom < reportLayout.trendTop
+          && reportLayout.trendBottom < reportLayout.detailTop
          && reportLayout.evidenceInsideDisclosure && reportLayout.evidenceHasSource
          && !reportLayout.sourceInSideCard,
        `PC 보고서의 중복 사진·상단 종합평가·하단 접힌 근거 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
@@ -1117,16 +1142,18 @@ async function run() {
       const rect = canvas.getBoundingClientRect();
        const cardRect = card.getBoundingClientRect();
        const positionRect = document.querySelector(".workspace > .chart-card").getBoundingClientRect();
+        const verdictRect = document.getElementById("propertyVerdict").getBoundingClientRect();
        const detailRect = document.getElementById("detailCard").getBoundingClientRect();
       return {
         visible: getComputedStyle(card).display !== "none",
         width: rect.width,
         height: rect.height,
          layout: {
-           insideWorkspace: card.parentElement.id === "workspace",
-           belowPositioning: cardRect.top >= positionRect.bottom - 1,
-           sameLeftColumn: Math.abs(cardRect.left - positionRect.left) < 1 && Math.abs(cardRect.right - positionRect.right) < 1,
-           afterDetailOnMobile: cardRect.top >= detailRect.bottom - 1,
+            insideRightColumn: card.parentElement.classList.contains("property-results-column"),
+            belowVerdict: cardRect.top >= verdictRect.bottom - 1,
+            beforeDetail: cardRect.bottom <= detailRect.top + 1,
+            sameRightColumn: Math.abs(cardRect.left - verdictRect.left) < 1 && Math.abs(cardRect.right - verdictRect.right) < 1,
+            belowPositioningOnMobile: cardRect.top >= positionRect.bottom - 1,
          },
         months: window.__analysisTransactionTrend?.months || 0,
         area: window.__analysisTransactionTrend?.area || "",
@@ -1139,9 +1166,11 @@ async function run() {
     });
     expect(transactionTrend.visible && transactionTrend.width > 240
       && transactionTrend.height >= 200 && transactionTrend.months > 0
-       && transactionTrend.layout.insideWorkspace
-       && transactionTrend.layout.belowPositioning
-       && transactionTrend.layout.afterDetailOnMobile
+       && transactionTrend.layout.insideRightColumn
+       && transactionTrend.layout.belowVerdict
+       && transactionTrend.layout.beforeDetail
+       && transactionTrend.layout.sameRightColumn
+       && transactionTrend.layout.belowPositioningOnMobile
       && transactionTrend.area === "100.0"
        && transactionTrend.options.join("|") === "80.0|100.0"
        && transactionTrend.lineLabel === "평균 거래금액(만원)"
