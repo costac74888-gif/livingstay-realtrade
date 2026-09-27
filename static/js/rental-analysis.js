@@ -205,6 +205,35 @@
     return Math.max(bounds.min, Math.min(scale.max,
       (low ? bounds.min : scale.knee) + Math.round((amount - (low ? bounds.min : scale.knee)) / step) * step));
   }
+  function rentalSliderTicks(field) {
+    var bounds = sliderBounds[field];
+    if (!bounds) return [];
+    return rentalSplitScales[field]
+      ? window.analysisSliderUtils.mappedTicks(SPLIT_TICKS, function (position) {
+        return splitSliderAmount(field, position, bounds);
+      })
+      : window.analysisSliderUtils.rangeTicks(bounds);
+  }
+  function syncRentalStepButtons(field) {
+    var range = sliderInputs[field];
+    if (!range) return;
+    var row = range.closest("[data-rental-row]");
+    window.analysisSliderUtils.syncStepButtons(row, n(field), rentalSliderTicks(field));
+  }
+  function moveRentalSlider(field, direction) {
+    var range = sliderInputs[field], bounds = sliderBounds[field];
+    if (!range || range.disabled || !bounds) return false;
+    var ticks = rentalSliderTicks(field);
+    var next = window.analysisSliderUtils.adjacentTick(n(field), ticks, direction);
+    if (next == null) {
+      syncRentalStepButtons(field);
+      return false;
+    }
+    range.value = String(rentalSplitScales[field] ? ticks.indexOf(next) : next);
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
   function updateRentalLimitLabels(bounds) {
     Object.keys(bounds).forEach(function (field) {
       var node = document.querySelector('[data-rental-limits="' + field + '"]');
@@ -343,6 +372,7 @@
       range.disabled = !rangeBounds;
       if (!rangeBounds) {
         range.min = "0"; range.max = "0"; range.step = "1"; range.value = "0";
+        syncRentalStepButtons(field);
         return;
       }
       range.min = String(rentalSplitScales[field] ? 0 : rangeBounds.min);
@@ -360,6 +390,7 @@
     Object.keys(bounds).forEach(function (field) {
       var button = document.querySelector('[data-rental-value="' + field + '"]');
       if (button) button.textContent = formatInputValue(field, $(field).value);
+      syncRentalStepButtons(field);
     });
     updateRentalLimitLabels(bounds);
     var buyHeading = document.querySelector("#rentalSliders .rental-buy-heading");
@@ -424,7 +455,9 @@
     return '<div class="rental-slider-row" data-rental-row="' + field + '"><div class="rental-slider-head"><label for="rentalSlider' + field.slice(6) + '">' + label + '</label>'
       + '<span><button type="button" class="rental-value-button slider-value" data-rental-value="' + field + '" data-value-for="' + field + '" aria-label="' + label + ' 직접 입력">' + formatInputValue(field, $(field).value) + '</button>'
       + (field === "rentalVacancyMonths" ? '<i class="rental-assumption-badge" data-vacancy-assumption>가정값</i>' : '')
-      + '</span></div><input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
+      + '</span></div><div class="rental-slider-control"><button type="button" class="rental-slider-step" data-slider-step data-slider-direction="-1" data-rental-step="' + field + '" aria-label="' + label + ' 한 단계 줄이기"><span aria-hidden="true">−</span></button>'
+      + '<input class="rental-range" type="range" id="rentalSlider' + field.slice(6) + '" data-rental-slider="' + field + '" min="0" max="100" step="' + step + '" value="0" aria-label="' + label + '">'
+      + '<button type="button" class="rental-slider-step" data-slider-step data-slider-direction="1" data-rental-step="' + field + '" aria-label="' + label + ' 한 단계 늘리기"><span aria-hidden="true">+</span></button></div>'
       + '<span class="rental-range-limits" data-rental-limits="' + field + '">' + limitLabels + '</span>'
       + (scale ? '<span class="rental-range-steps"><small>' + scale.lowLabel
         + '</small><small>' + scale.highLabel + '</small></span>' : '')
@@ -444,6 +477,9 @@
       + '</div></section><p class="rental-slider-hint">값을 눌러 직접 입력할 수 있습니다. 슬라이더는 가장 가까운 단위에, 계산은 입력한 정확한 값에 맞춥니다.</p>';
     host.querySelectorAll("[data-rental-slider]").forEach(function (range) {
       sliderInputs[range.dataset.rentalSlider] = range;
+    });
+    window.analysisSliderUtils.bindStepButtons(host, function (button) {
+      return moveRentalSlider(button.dataset.rentalStep, Number(button.dataset.sliderDirection));
     });
     host.addEventListener("pointerdown", function (event) {
       if (!event.target.closest("[data-rental-slider]")) return;
@@ -481,12 +517,20 @@
         updateAcquisitionCosts();
         updateEstimatedTax();
       }
+      syncRentalStepButtons(field);
       scheduleCalculate();
     });
     host.addEventListener("change", function (event) {
       var range = event.target.closest("[data-rental-slider]");
       if (!range) return;
       queueRentalSliderChange(range.dataset.rentalSlider, false);
+    });
+    host.addEventListener("keydown", function (event) {
+      var range = event.target.closest("[data-rental-slider]");
+      if (!range || !/^Arrow(Left|Right|Up|Down)$/.test(event.key)) return;
+      event.preventDefault();
+      var direction = event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1;
+      moveRentalSlider(range.dataset.rentalSlider, direction);
     });
     host.addEventListener("click", function (event) {
       var button = event.target.closest("[data-rental-value]");

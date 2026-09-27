@@ -358,6 +358,79 @@ async function run() {
     expect(datasetNames.includes("매출선") || datasetNames.includes("RevPAR"),
       "차트에 지역·내 등수익 곡선이 없습니다.");
 
+    await valueFromLabel(page, "occ", 66);
+    const occStepPlus = page.locator(
+      '[data-operation-step="occ"][data-slider-direction="1"]',
+    );
+    const occStepMinus = page.locator(
+      '[data-operation-step="occ"][data-slider-direction="-1"]',
+    );
+    expect(await occStepMinus.getAttribute("aria-label") === "OCC 한 단계 줄이기"
+      && await occStepPlus.getAttribute("aria-label") === "OCC 한 단계 늘리기",
+    "OCC 단계 버튼의 접근성 레이블이 지정되지 않았습니다.");
+    for (const expected of [67, 68, 69, 70, 71]) {
+      await occStepPlus.click();
+      await page.waitForFunction((amount) =>
+        window.__operationAnalysisState?.occ === amount, expected);
+    }
+    await page.waitForFunction(() => {
+      const state = window.__operationAnalysisState;
+      const chart = Chart.getChart(document.getElementById("operationChart"));
+      const point = chart?.data.datasets.find((set) => set.key === "selected")?.data[0];
+      const table = document.getElementById("operationSensitivity");
+      return state && point?.actualOcc === 71
+        && table.dataset.currentMonthlyNet === String(state.monthlyNet);
+    });
+    const steppedOperation = await page.evaluate(() => {
+      const state = window.__operationAnalysisState;
+      const chart = Chart.getChart(document.getElementById("operationChart"));
+      const selectedPoint = chart?.data.datasets.find((set) => set.key === "selected")?.data[0];
+      const selectedCell = document.querySelector("#operationSensitivity td.selected");
+      return {
+        state,
+        actualOcc: selectedPoint?.actualOcc,
+        selectedNet: Number(selectedCell?.textContent.trim()),
+        sensitivityNet: Number(document.getElementById("operationSensitivity").dataset.currentMonthlyNet),
+        cards: document.getElementById("operationCoreMetrics").textContent,
+      };
+    });
+    expect(steppedOperation.state.occ === 71 && steppedOperation.actualOcc === 71
+      && near(steppedOperation.selectedNet, steppedOperation.state.monthlyNet / 10000, 0.1)
+      && steppedOperation.sensitivityNet === steppedOperation.state.monthlyNet
+      && steppedOperation.cards.includes(Math.round(steppedOperation.state.revpar).toLocaleString("ko-KR") + "원"),
+    `OCC + 5회 후 값·결과 카드·차트·민감도 표가 일치하지 않습니다: ${JSON.stringify(steppedOperation)}`);
+    const occRange = page.locator('[data-operation-slider="occ"]');
+    await occRange.focus();
+    await occRange.press("ArrowRight");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 72);
+    await occRange.press("ArrowLeft");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 71);
+    await occStepPlus.focus();
+    await occStepPlus.press("Enter");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 72);
+    await occStepMinus.focus();
+    await occStepMinus.press("Space");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 71);
+
+    await valueFromLabel(page, "occ", 20);
+    expect(await occStepMinus.isDisabled(), "OCC 최솟값에서 − 버튼이 비활성화되지 않았습니다.");
+    await valueFromLabel(page, "occ", 100);
+    expect(await occStepPlus.isDisabled(), "OCC 최댓값에서 + 버튼이 비활성화되지 않았습니다.");
+    await valueFromLabel(page, "occ", 66);
+    const holdStart = Number(await page.locator("#operationOcc").inputValue());
+    await occStepPlus.scrollIntoViewIfNeeded();
+    const holdBox = await occStepPlus.boundingBox();
+    await page.mouse.move(holdBox.x + holdBox.width / 2, holdBox.y + holdBox.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(850);
+    const heldOcc = Number(await page.locator("#operationOcc").inputValue());
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const stoppedOcc = Number(await page.locator("#operationOcc").inputValue());
+    expect(heldOcc >= holdStart + 3 && stoppedOcc === heldOcc,
+      `운영 슬라이더 길게 누르기 반복 또는 release 중단이 잘못되었습니다: ${holdStart}→${heldOcc}→${stoppedOcc}`);
+    await valueFromLabel(page, "occ", 66);
+
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
       fs.mkdirSync("screenshots", { recursive: true });
       await awaitScreenshotFonts(page);
@@ -481,6 +554,12 @@ async function run() {
         .every((details) => !details.open),
       sliderTouchAction: getComputedStyle(document.querySelector('[data-operation-slider="adr"]')).touchAction,
       sliderRowHeight: document.querySelector('[data-operation-row="adr"]').getBoundingClientRect().height,
+      stepTouchTarget: (() => {
+        const rect = document.querySelector(
+          '[data-operation-step="occ"][data-slider-direction="1"]',
+        ).getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      })(),
        endpointStyle: getComputedStyle(document.querySelector(
          '[data-operation-row="adr"] .operation-slider-bounds',
        )).fontSize,
@@ -490,12 +569,37 @@ async function run() {
     expect(mobile.detailsClosed, "접이식 산출근거·TOP5·건물환산 세부가 기본으로 열려 있습니다.");
     expect(mobile.sliderTouchAction === "pan-y" && mobile.sliderRowHeight >= 44,
       `모바일 운영 슬라이더의 터치 영역·세로 스크롤 설정이 부족합니다: ${JSON.stringify(mobile)}`);
+    expect(mobile.stepTouchTarget.width >= 44 && mobile.stepTouchTarget.height >= 44,
+      `모바일 운영 ± 버튼 터치 영역이 44px보다 작습니다: ${JSON.stringify(mobile.stepTouchTarget)}`);
     expect(mobile.endpointStyle === "11px",
       `모바일 ADR 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
     expect(mobile.chartLayout
       && Math.abs(mobile.chartLayout.baselinePixelX - mobile.chartLayout.chartCenterX) < 2
       && Math.abs(mobile.chartLayout.baselinePixelY - mobile.chartLayout.chartCenterY) < 2,
     "모바일 ADR/OCC 기준선이 차트 한가운데에 배치되지 않았습니다.");
+    await valueFromLabel(page, "occ", 66);
+    const mobileOccPlus = page.locator(
+      '[data-operation-step="occ"][data-slider-direction="1"]',
+    );
+    await mobileOccPlus.scrollIntoViewIfNeeded();
+    const mobileOccBox = await mobileOccPlus.boundingBox();
+    const touchSession = await page.context().newCDPSession(page);
+    await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: mobileOccBox.x + mobileOccBox.width / 2,
+        y: mobileOccBox.y + mobileOccBox.height / 2, id: 1 }],
+    });
+    await page.waitForTimeout(850);
+    const mobileHeldOcc = Number(await page.locator("#operationOcc").inputValue());
+    await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(250);
+    const mobileReleasedOcc = Number(await page.locator("#operationOcc").inputValue());
+    expect(mobileHeldOcc >= 69 && mobileReleasedOcc === mobileHeldOcc,
+      `모바일 실제 터치에서 + 반복·해제가 되지 않았습니다: 66→${mobileHeldOcc}→${mobileReleasedOcc}`);
+    await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await touchSession.detach();
+    await valueFromLabel(page, "occ", 66);
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
       await awaitScreenshotFonts(page);
       await page.screenshot({ path: "screenshots/operation-mobile-360.png", fullPage: true });

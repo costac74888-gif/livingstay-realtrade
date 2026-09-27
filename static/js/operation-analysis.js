@@ -594,6 +594,36 @@
     }
     return format(amount, field === "adr" ? 0 : 0) + labels[field][2];
   }
+  function operationSliderTicks(field, bounds) {
+    if (!bounds) return [];
+    return field === "adr"
+      ? sliderUtils.mappedTicks(ADR_SLIDER_MAX, function (position) {
+        return adrSliderAmount(position);
+      })
+      : sliderUtils.rangeTicks(bounds);
+  }
+  function syncOperationStepButtons(field) {
+    var range = document.querySelector('[data-operation-slider="' + field + '"]');
+    if (!range) return;
+    var bounds = sliderBounds[field];
+    sliderUtils.syncStepButtons(range.closest("[data-operation-row]"), value(field),
+      operationSliderTicks(field, bounds));
+  }
+  function moveOperationSlider(field, direction) {
+    var range = document.querySelector('[data-operation-slider="' + field + '"]');
+    var bounds = sliderBounds[field], current = value(field);
+    if (!range || range.disabled || !bounds || current == null) return false;
+    var ticks = operationSliderTicks(field, bounds);
+    var next = sliderUtils.adjacentTick(current, ticks, direction);
+    if (next == null) {
+      syncOperationStepButtons(field);
+      return false;
+    }
+    range.value = String(field === "adr" ? ticks.indexOf(next) : next);
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+    range.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
   function sliderMarkup(field) {
     var meta = labels[field], input = $(meta[0]), current = number(input.value);
     var computedBounds = sliderBounds[field];
@@ -604,9 +634,11 @@
     return '<div class="operation-slider-row" data-operation-row="' + field + '"><div class="operation-slider-head"><label for="operationSlider_' + field + '">' + meta[1] + '</label><span>'
       + '<button class="operation-value-button" type="button" data-operation-value="' + field + '">' + displayValue(field) + '</button>'
       + '<i data-operation-assumption' + (assumed[field] ? "" : ' class="hidden"') + '>' + (field === "adr" || field === "occ" ? "가정값(지역 평균)" : "가정값") + "</i>"
-      + '</span></div><input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + rangeBounds.min + '" max="' + rangeBounds.max + '" step="' + rangeBounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
+      + '</span></div><div class="operation-slider-control"><button type="button" class="operation-slider-step" data-slider-step data-slider-direction="-1" data-operation-step="' + field + '" aria-label="' + meta[1] + ' 한 단계 줄이기"><span aria-hidden="true">−</span></button>'
+      + '<input id="operationSlider_' + field + '" type="range" data-operation-slider="' + field + '" min="' + rangeBounds.min + '" max="' + rangeBounds.max + '" step="' + rangeBounds.step + '" value="' + initial + '" aria-label="' + meta[1] + '"'
       + (field === "adr" ? ' aria-valuetext="' + format(current == null ? bounds.min : current, 0) + '원"' : "")
       + (((field === "purchasePrice" || field === "compareRent") && !computedBounds) ? " disabled" : "") + ">"
+      + '<button type="button" class="operation-slider-step" data-slider-step data-slider-direction="1" data-operation-step="' + field + '" aria-label="' + meta[1] + ' 한 단계 늘리기"><span aria-hidden="true">+</span></button></div>'
       + '<div class="operation-slider-bounds"><span data-slider-bound="min">'
       + sliderBoundText(field, computedBounds && computedBounds.min) + '</span><small>'
       + (field === "adr" ? "1만원 단위" : "1% 단위") + '</small><span data-slider-bound="max">'
@@ -640,6 +672,9 @@
     }).join("") + '<p class="operation-slider-hint">값을 눌러 직접 입력할 수 있습니다. 월 산정 일수 '
       + format(dayBasis.days, 1) + "일 · " + escapeHtml(dayBasis.source) + ".</p>"
       + '<p class="operation-cost-share" id="operationCostShare"></p>';
+    sliderUtils.bindStepButtons(host, function (button) {
+      return moveOperationSlider(button.dataset.operationStep, Number(button.dataset.sliderDirection));
+    });
     var costShare = $("operationCostShare");
     if (costShare && value("opexRatio") != null && value("mgmtFeeRatio") != null) {
       var owner = (1 - value("opexRatio") / 100) * (1 - value("mgmtFeeRatio") / 100) * 100;
@@ -685,6 +720,7 @@
         format(current == null ? bounds.min : current, 0) + "원");
       updateSliderLabel(field);
       updateSliderAssumptionBadge(field);
+      syncOperationStepButtons(field);
     });
     var costShare = $("operationCostShare");
     if (costShare && value("opexRatio") != null && value("mgmtFeeRatio") != null) {
@@ -1427,12 +1463,12 @@
             + format(item.revpar || raw.actualAdr * raw.actualOcc / 100 || raw.x * raw.y / 100, 0) + "원";
         } } } },
         scales: {
-          x: { min: xMin, max: xMax, title: { display: true, text: "판매객실 평균요금 ADR (천원)" },
+          x: { min: xMin, max: xMax, title: { display: true, text: window.livingstayAnalysisTerms.label("ADR") + " (천원)" },
             ticks: { callback: function (tick) {
               var axisValue = Number(tick);
               return axisValue < 0 ? "" : format(axisValue / 1000, 0) + "천";
             } } },
-          y: { min: 0, max: 100, title: { display: true, text: "객실 이용률 OCC (%)" },
+          y: { min: 0, max: 100, title: { display: true, text: window.livingstayAnalysisTerms.label("OCC") + " (%)" },
             ticks: { callback: function (tick) { return format(inverseOcc(Number(tick)), 0) + "%"; } } },
         },
       },
@@ -1514,9 +1550,9 @@
         } } } },
         scales: {
           x: { min: baseAdr - xDeviation * 1.08, max: baseAdr + xDeviation * 1.08,
-            title: { display: true, text: "판매객실 평균요금 ADR (원)" } },
+            title: { display: true, text: window.livingstayAnalysisTerms.label("ADR") + " (원)" } },
           y: { min: baseOcc - yDeviation * 1.08, max: baseOcc + yDeviation * 1.08,
-            title: { display: true, text: "객실 이용률 OCC (%)" } },
+            title: { display: true, text: window.livingstayAnalysisTerms.label("OCC") + " (%)" } },
         },
       },
       plugins: [{
@@ -1621,12 +1657,20 @@
       assumed[field] = false;
       if (field === "compareRent") { compareRentSource = null; roneRentStatus = ""; }
       updateSliderLabel(field);
+      syncOperationStepButtons(field);
       scheduleRender();
     });
     host.addEventListener("change", function (event) {
       var range = event.target.closest("[data-operation-slider]");
       if (!range) return;
       scheduleSliderCommit(range.dataset.operationSlider);
+    });
+    host.addEventListener("keydown", function (event) {
+      var range = event.target.closest("[data-operation-slider]");
+      if (!range || !/^Arrow(Left|Right|Up|Down)$/.test(event.key)) return;
+      event.preventDefault();
+      var direction = event.key === "ArrowLeft" || event.key === "ArrowDown" ? -1 : 1;
+      moveOperationSlider(range.dataset.operationSlider, direction);
     });
     host.addEventListener("click", function (event) {
       var button = event.target.closest("[data-operation-value]");

@@ -475,6 +475,86 @@ async function run() {
     expectNear(directValue.netYield, directValue.noi / 3920 * 100,
       "월세 직접 입력 후 수익률");
 
+    const rentStepMinus = page.locator(
+      '[data-rental-step="rentalMonthlyRent"][data-slider-direction="-1"]',
+    );
+    const rentStepPlus = page.locator(
+      '[data-rental-step="rentalMonthlyRent"][data-slider-direction="1"]',
+    );
+    expect(await rentStepMinus.getAttribute("aria-label") === "월세 한 단계 줄이기"
+      && await rentStepPlus.getAttribute("aria-label") === "월세 한 단계 늘리기",
+    "월세 단계 버튼의 접근성 레이블이 지정되지 않았습니다.");
+    await rentStepPlus.click();
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 48);
+    await rentStepMinus.click();
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 47);
+    await page.waitForFunction(() => {
+      const result = window.__rentalAnalysisResult;
+      const chart = Chart.getChart(document.getElementById("rentalPositionChart"));
+      const point = chart?.data.datasets.find((dataset) => dataset.key === "selected")?.data[0];
+      const cell = Number(document.querySelector("#rentalSensitivity tbody td.selected")
+        ?.textContent.trim().replace("%", ""));
+      return result && point && Math.abs(point.actualX - result.netYield) < 0.01
+        && Math.abs(cell - result.netYield) < 0.01;
+    });
+    const adjacentRent = await page.evaluate(() => ({
+      value: Number(document.getElementById("rentalMonthlyRent").value),
+      selected: Number(document.querySelector("#rentalSensitivity tbody td.selected")
+        ?.textContent.trim().replace("%", "")),
+      expected: window.__rentalAnalysisResult.netYield,
+      selectedChartPoint: Chart.getChart(document.getElementById("rentalPositionChart"))
+        ?.data.datasets.find((dataset) => dataset.key === "selected")?.data[0],
+      core: document.getElementById("rentalCoreMetrics").textContent,
+      valueLabel: document.querySelector('[data-rental-value="rentalMonthlyRent"]').textContent,
+    }));
+    expect(adjacentRent.value === 47 && Math.abs(adjacentRent.selected - adjacentRent.expected) < 0.01
+      && Math.abs(adjacentRent.selectedChartPoint?.actualX - adjacentRent.expected) < 0.01
+      && adjacentRent.core.includes(adjacentRent.expected.toFixed(2) + "%")
+      && adjacentRent.valueLabel.includes("47만원"),
+    `직접 입력 47만원의 ± 단계 이동 후 카드·차트·민감도 표가 동기화되지 않았습니다: ${JSON.stringify(adjacentRent)}`);
+    const rentRange = page.locator('[data-rental-slider="rentalMonthlyRent"]');
+    await rentRange.focus();
+    await rentRange.press("ArrowRight");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 48);
+    await rentRange.press("ArrowLeft");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 47);
+    await rentStepPlus.focus();
+    await rentStepPlus.press("Enter");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 48);
+    await rentStepMinus.focus();
+    await rentStepMinus.press("Space");
+    await page.waitForFunction(() => Number(document.getElementById("rentalMonthlyRent").value) === 47);
+
+    await setValueFromLabel(page, "rentalMonthlyRent", 197);
+    const acrossKneeValues = [];
+    for (const expected of [198, 199, 200, 210, 220]) {
+      await rentStepPlus.click();
+      await page.waitForFunction((amount) =>
+        Number(document.getElementById("rentalMonthlyRent").value) === amount, expected);
+      acrossKneeValues.push(Number(await page.locator("#rentalMonthlyRent").inputValue()));
+    }
+    expect(JSON.stringify(acrossKneeValues) === JSON.stringify([198, 199, 200, 210, 220]),
+      `월세 + 5회가 200만원 구간 전환에서 실제 다음 눈금을 따르지 않았습니다: ${JSON.stringify(acrossKneeValues)}`);
+
+    await setValueFromLabel(page, "rentalMonthlyRent", 0);
+    expect(await rentStepMinus.isDisabled(), "월세 최솟값에서 − 버튼이 비활성화되지 않았습니다.");
+    await setValueFromLabel(page, "rentalMonthlyRent", 1000);
+    expect(await rentStepPlus.isDisabled(), "월세 최댓값에서 + 버튼이 비활성화되지 않았습니다.");
+    await setValueFromLabel(page, "rentalMonthlyRent", 47);
+    const pressStart = Number(await page.locator("#rentalMonthlyRent").inputValue());
+    await rentStepPlus.scrollIntoViewIfNeeded();
+    const pressBox = await rentStepPlus.boundingBox();
+    await page.mouse.move(pressBox.x + pressBox.width / 2, pressBox.y + pressBox.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(850);
+    const longPressValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
+    await page.mouse.up();
+    await page.waitForTimeout(250);
+    const releasedValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
+    expect(longPressValue >= pressStart + 3 && releasedValue === longPressValue,
+      `길게 누르기 반복 또는 release 중단이 잘못되었습니다: ${pressStart}→${longPressValue}→${releasedValue}`);
+    await setValueFromLabel(page, "rentalMonthlyRent", 47);
+
     await setValueFromLabel(page, "rentalMonthlyRent", 30);
     await page.waitForFunction(() => window.__rentalAnalysisResult?.annualRent === 360);
     const rentRangeBeforePurchaseChanges = await page.locator(
@@ -674,6 +754,12 @@ async function run() {
       positionMap: document.querySelector("#rentalPositioning .positioning-map").getBoundingClientRect().toJSON(),
       sliderTouchAction: getComputedStyle(document.querySelector('[data-rental-slider="rentalMonthlyRent"]')).touchAction,
       sliderRowHeight: document.querySelector('[data-rental-row="rentalMonthlyRent"]').getBoundingClientRect().height,
+      stepTouchTarget: (() => {
+        const rect = document.querySelector(
+          '[data-rental-step="rentalMonthlyRent"][data-slider-direction="1"]',
+        ).getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      })(),
       endpointStyle: getComputedStyle(document.querySelector('[data-rental-limits="rentalMonthlyRent"]')).fontSize,
     }));
     expect(mobile.scroll <= mobile.viewport && mobile.body <= mobile.viewport,
@@ -686,7 +772,31 @@ async function run() {
       `모바일 임대 포지셔닝 차트가 300px 높이가 아닙니다: ${mobile.positionMap.height}px`);
     expect(mobile.sliderTouchAction === "pan-y" && mobile.sliderRowHeight >= 44,
       `모바일 슬라이더의 터치 영역·세로 스크롤 설정이 부족합니다: ${JSON.stringify(mobile)}`);
+    expect(mobile.stepTouchTarget.width >= 44 && mobile.stepTouchTarget.height >= 44,
+      `모바일 ± 버튼 터치 영역이 44px보다 작습니다: ${JSON.stringify(mobile.stepTouchTarget)}`);
     expect(mobile.endpointStyle === "11px", `모바일 월세 범위 글씨가 11px가 아닙니다: ${mobile.endpointStyle}`);
+    await setValueFromLabel(page, "rentalMonthlyRent", 100);
+    const touchButton = page.locator(
+      '[data-rental-step="rentalMonthlyRent"][data-slider-direction="1"]',
+    );
+    await touchButton.scrollIntoViewIfNeeded();
+    const touchBox = await touchButton.boundingBox();
+    const touchSession = await page.context().newCDPSession(page);
+    await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: touchBox.x + touchBox.width / 2, y: touchBox.y + touchBox.height / 2, id: 1 }],
+    });
+    await page.waitForTimeout(850);
+    const touchHeldValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
+    await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(250);
+    const touchReleasedValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
+    expect(touchHeldValue >= 103 && touchReleasedValue === touchHeldValue,
+      `모바일 실제 터치 길게 누르기가 반복·해제되지 않았습니다: 100→${touchHeldValue}→${touchReleasedValue}`);
+    await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await touchSession.detach();
+    await setValueFromLabel(page, "rentalMonthlyRent", 30);
     await page.locator("#rentalUnitArea").focus();
     expect(await page.evaluate(() => document.activeElement?.id) === "rentalUnitArea",
       "모바일 키패드 종료 확인 전 면적 입력칸이 활성화되지 않았습니다.");

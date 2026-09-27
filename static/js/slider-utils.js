@@ -69,6 +69,99 @@
     };
   }
 
+  function rangeTicks(bounds) {
+    if (!bounds || !Number.isFinite(Number(bounds.min)) || !Number.isFinite(Number(bounds.max))
+      || !Number.isFinite(Number(bounds.step)) || Number(bounds.step) <= 0) return [];
+    var min = Number(bounds.min), max = Number(bounds.max), step = Number(bounds.step);
+    if (max < min) return [];
+    var count = Math.floor((max - min) / step + 1e-10);
+    var ticks = [];
+    for (var index = 0; index <= count; index += 1) ticks.push(min + index * step);
+    if (!ticks.length || ticks[ticks.length - 1] < max - Math.max(1, Math.abs(max)) * 1e-12) {
+      ticks.push(max);
+    } else {
+      ticks[ticks.length - 1] = Math.min(max, ticks[ticks.length - 1]);
+    }
+    return ticks;
+  }
+
+  function mappedTicks(maxIndex, mapper) {
+    var ticks = [];
+    for (var index = 0; index <= maxIndex; index += 1) {
+      var value = Number(mapper(index));
+      if (Number.isFinite(value)) ticks.push(value);
+    }
+    return ticks;
+  }
+
+  // Find the strictly adjacent attainable value. This deliberately does not
+  // snap a directly-entered between-tick value before choosing its direction.
+  function adjacentTick(value, ticks, direction) {
+    if (value === "" || value === null || value === undefined
+      || !ticks || !ticks.length || !Number.isFinite(Number(value))) return null;
+    var current = Number(value), low = 0, high = ticks.length;
+    if (direction > 0) {
+      while (low < high) {
+        var middle = Math.floor((low + high) / 2);
+        if (ticks[middle] <= current) low = middle + 1;
+        else high = middle;
+      }
+      return low < ticks.length ? ticks[low] : null;
+    }
+    while (low < high) {
+      var previousMiddle = Math.floor((low + high) / 2);
+      if (ticks[previousMiddle] < current) low = previousMiddle + 1;
+      else high = previousMiddle;
+    }
+    return low > 0 ? ticks[low - 1] : null;
+  }
+
+  function syncStepButtons(row, value, ticks) {
+    if (!row) return;
+    ["-1", "1"].forEach(function (direction) {
+      var button = row.querySelector('[data-slider-direction="' + direction + '"]');
+      if (button) button.disabled = adjacentTick(value, ticks, Number(direction)) == null;
+    });
+  }
+
+  function bindStepButtons(container, onStep) {
+    if (!container) return;
+    Array.prototype.forEach.call(container.querySelectorAll("[data-slider-step]"), function (button) {
+      var delayTimer = 0, repeatTimer = 0, repeating = false;
+      function stopRepeating() {
+        window.clearTimeout(delayTimer);
+        window.clearInterval(repeatTimer);
+        delayTimer = repeatTimer = 0;
+        repeating = false;
+      }
+      function step() {
+        if (button.disabled || onStep(button) === false) stopRepeating();
+      }
+      button.addEventListener("pointerdown", function (event) {
+        if (event.button != null && event.button !== 0) return;
+        stopRepeating();
+        repeating = true;
+        step();
+        if (!repeating || button.disabled) return;
+        delayTimer = window.setTimeout(function () {
+          if (!repeating || button.disabled) return stopRepeating();
+          repeatTimer = window.setInterval(function () {
+            if (!repeating || button.disabled) return stopRepeating();
+            step();
+          }, 120);
+        }, 400);
+      });
+      ["pointerup", "pointerleave", "pointercancel", "lostpointercapture"].forEach(function (type) {
+        button.addEventListener(type, stopRepeating);
+      });
+      button.addEventListener("click", function (event) {
+        // Pointer activation already stepped on pointerdown. detail === 0 is
+        // the native keyboard activation path (Enter/Space).
+        if (event.detail === 0) step();
+      });
+    });
+  }
+
   window.analysisSliderUtils = Object.freeze({
     HARD_CAPS: HARD_CAPS,
     clampHard: clampHard,
@@ -78,5 +171,10 @@
     rentBounds: rentBounds,
     nearest: nearest,
     includeValue: includeValue,
+    rangeTicks: rangeTicks,
+    mappedTicks: mappedTicks,
+    adjacentTick: adjacentTick,
+    syncStepButtons: syncStepButtons,
+    bindStepButtons: bindStepButtons,
   });
 }(window));

@@ -107,3 +107,4 @@
 - [최근 분석 재진입 정책](recent-analysis-policy.md) — 실제 계산된 건물·마지막 모드만 회원별 30개 기록하며, 재진입은 최신 자료로 재계산하고 계정·건물 간 가정을 격리한다.
 - [분석 보고서 인쇄 그리드 잘림](analysis-print-grid-overflow.md) — A4 고정 그리드에서 100% 높이는 클리핑 해결이 아닐 수 있어 실제 자식·부모 경계를 비교한다.
 - [숙박자산분석 공통 선택](analysis-common-selection.md) — 세 분석의 건물·전용면적은 탭 밖에서 공유하되, 임대 조건 초기화와 실거래 추이의 개별 면적 선택은 독립적으로 유지한다.
+- [Headless 한글 PDF 캡처](headless-korean-pdf-captures.md) — Nix Chromium은 한글 기본 글꼴이 없으므로 캡처 시 웹폰트 로딩을 허용하고 준비 완료 뒤 PDF를 생성한다.

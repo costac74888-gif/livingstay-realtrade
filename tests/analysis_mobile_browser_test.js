@@ -9,9 +9,27 @@ function expect(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function prepareCaptureFont(page) {
+  if (process.env.SAVE_ANALYSIS_SCREENSHOTS !== "1") return;
+  const installed = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("style")).some((style) =>
+      style.textContent.includes("fonts.googleapis.com/css2?family=Noto+Sans+KR")));
+  if (!installed) {
+    await page.addStyleTag({ content: '@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700");' });
+  }
+  await page.evaluate(async () => {
+    await document.fonts.load('12px "Noto Sans KR"', "한글 계산 기준 숙박운영");
+    await document.fonts.ready;
+  });
+}
+
 async function expectSinglePageReport(page, mode, titleText, graphRequired) {
+  await prepareCaptureFont(page);
   await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
   await page.emulateMedia({ media: "print" });
+  if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+    await page.locator("#printReport").screenshot({ path: `screenshots/analysis-report-${mode}.png` });
+  }
   const report = await page.evaluate(() => ({
     display: getComputedStyle(document.getElementById("printReport")).display,
     mode: document.getElementById("printReport").dataset.mode,
@@ -37,6 +55,9 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
     }),
   }));
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+  if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+    fs.writeFileSync(`screenshots/analysis-report-${mode}.pdf`, pdf);
+  }
   if (process.env.SAVE_OPERATION_PRINT && mode === "operation") {
     fs.writeFileSync(process.env.SAVE_OPERATION_PRINT, pdf);
   }
@@ -52,7 +73,7 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
       && report.propertyPoint))
      && (mode !== "operation" || (report.address && !report.address.includes("—")
         && report.result.includes("손익분기 OCC")
-       && report.metricLabels.join("|") === "RevPAR|호실 월 매출|호실 월 순수익|월세 대비|연 수익률"
+        && report.metricLabels.join("|") === "RevPAR(객실당 매출)|호실 월 매출|호실 월 순수익|월세 대비|연 수익률"
       && report.sideMetricCount === 4
       && report.sideMetricValues.every(value => value && !value.startsWith("—"))
       && report.operationQuadrantsFit))
@@ -195,8 +216,10 @@ async function run() {
   let maxRecentAnalysisPostInFlight = 0;
   let analysisBuildingPhotoCalls = 0;
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
-  await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
+  if (process.env.SAVE_ANALYSIS_SCREENSHOTS !== "1") {
+    await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+    await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
+  }
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, currentAuth);
@@ -711,11 +734,11 @@ async function run() {
       "분석 상호가 건물명을 기본값으로 사용하거나 사용자 수정값을 반영하지 않습니다.");
     expect(uploadedOperationResult.adrBaseline.includes("원")
       && uploadedOperationResult.occBaseline.includes("%")
-      && uploadedOperationResult.uploadStatus.includes("OCC 50% 자동계산")
+      && uploadedOperationResult.uploadStatus.includes("OCC(객실 이용률) 50% 자동계산")
       && uploadedOperationResult.uploadStatus.includes("객실매출 502,200,000원")
       && uploadedOperationResult.renderState.selectedName === "선택 테스트 자산"
       && uploadedOperationResult.renderState.roomCount === 200 && operationResult.hiddenFilters,
-      "지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다.");
+      `지역 평균 기준선 또는 운영분석의 불필요한 주소 필터 숨김이 적용되지 않았습니다: ${JSON.stringify({ adrBaseline: uploadedOperationResult.adrBaseline, occBaseline: uploadedOperationResult.occBaseline, uploadStatus: uploadedOperationResult.uploadStatus, renderState: uploadedOperationResult.renderState, hiddenFilters: operationResult.hiddenFilters })}`);
     expect(operationResult.appliedRoomCount === "180"
       && operationResult.renderState.roomCount === 180
       && operationResult.renderState.occ === 55.56
@@ -740,6 +763,10 @@ async function run() {
         + operationResult.operationLayout.quadrantBoxes[0].height
         - operationResult.operationLayout.baselinePixelY) < 0.6,
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
+    if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+      await prepareCaptureFont(page);
+      await page.screenshot({ path: "screenshots/analysis-screen-operation.png", fullPage: true });
+    }
     await expectSinglePageReport(page, "operation", "숙박운영분석", true);
     expect(await page.locator(".analysis-mode-bar").isVisible(),
       "숙박운영분석에서도 공통 분석 버튼이 표시되어야 합니다.");
@@ -760,7 +787,7 @@ async function run() {
     await page.waitForFunction(() => {
       const status = document.getElementById("operationFileStatus").textContent;
       return !document.getElementById("operationOcc").value
-        && status.includes("운영분석 보류") && status.includes("OCC 계산 불가");
+        && status.includes("운영분석 보류") && status.includes("OCC(객실 이용률) 계산 불가");
     });
     await page.waitForTimeout(100);
     expect(recentAnalysisMutations.filter((entry) => entry.mode === "operation").length === operationWritesBeforePartialState,
@@ -924,6 +951,10 @@ async function run() {
       && userVacancy.calculation.vacancySource === "user"
       && Math.abs(userVacancy.calculation.vacancyRate - 25) < 0.01,
       "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
+    if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+      await prepareCaptureFont(page);
+      await page.screenshot({ path: "screenshots/analysis-screen-rental.png", fullPage: true });
+    }
     await expectSinglePageReport(page, "rental", "임대수익분석", false);
     await page.click("#propertyTab");
     await page.waitForFunction(() => Array.from(document.querySelectorAll("#quickBuildings .quick-group"))
@@ -1126,8 +1157,15 @@ async function run() {
     expect(await page.locator("#transactionAreaSelect").inputValue() === "80.0"
       && await page.locator("#rentalUnitArea").inputValue() === "17.6",
       "실거래 추이 카드의 개별 면적 선택이 공통 전용면적을 덮어썼습니다.");
+    if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+      await prepareCaptureFont(page);
+      await page.screenshot({ path: "screenshots/analysis-screen-property.png", fullPage: true });
+    }
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
     await page.emulateMedia({ media: "print" });
+    if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+      await page.locator("#printReport").screenshot({ path: "screenshots/analysis-report-property.png" });
+    }
     const printReport = await page.evaluate(() => {
       const report = document.getElementById("printReport");
       const rect = report.getBoundingClientRect();
@@ -1146,6 +1184,9 @@ async function run() {
       };
     });
     const printPdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
+    if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
+      fs.writeFileSync("screenshots/analysis-report-property.pdf", printPdf);
+    }
     const printPageCount = (printPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
     expect(printReport.display === "block" && printReport.mode === "property"
       && printReport.zones === 5 && printReport.title.includes("부동산투자분석")
