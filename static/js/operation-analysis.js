@@ -966,13 +966,12 @@
     }).join("");
   }
   function renderDetail(selected) {
+    var actions = $("operationReportActions");
     if (!selected) {
-      $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 결과가 표시됩니다.</div></div>'
-        + (building ? '<div class="analysis-report-common-actions operation-empty-actions" id="operationReportActions"></div>' : "");
-      if (building) window.livingstayAnalysisReportActions(
-        $("operationReportActions"), buildingId(), operationName(),
-        building && (building.road_address || building.jibun_address)
-      );
+      $("operationDetail").innerHTML = '<div class="detail-empty"><div><strong>운영자료를 입력해 주세요</strong>ADR과 OCC를 입력하면 운영분석 결과가 표시됩니다.</div></div>';
+      if (building) window.livingstayAnalysisReportActions(actions, buildingId(), operationName(),
+        building && (building.road_address || building.jibun_address));
+      else { actions.replaceChildren(); actions.classList.add("hidden"); }
       return;
     }
     var lodging = selectedLodging();
@@ -991,10 +990,9 @@
       + '<div class="detail-metric"><small>OCC</small><strong>' + format(selected.occ, 1) + '%</strong></div>'
       + '<div class="detail-metric"><small>RevPAR</small><strong>' + format(selected.revpar, 0) + '원</strong></div>'
       + '<div class="detail-metric"><small>자료 처리</small><strong>자동분석</strong></div></div>'
-      + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>'
-      + '<div class="analysis-report-common-actions" id="operationReportActions"></div>';
+       + '<div class="detail-disclaimer">영업신고 객실 수와 사용자가 올린 자기자료를 결합한 참고 분석이며 세무·회계 검증이나 감정평가를 대신하지 않습니다.</div>';
     window.livingstayAnalysisReportActions(
-      $("operationReportActions"), buildingId(), name,
+      actions, buildingId(), name,
       building && (building.road_address || building.jibun_address)
     );
   }
@@ -1146,7 +1144,8 @@
       ? "지역 평균 가정 — 실제 실적을 입력하면 정확한 판정이 나옵니다"
       : grade(state.adr, state.occ);
     var breakEven = state.breakEvenOcc;
-    host.innerHTML = "<strong>" + escapeHtml(verdict) + "</strong><span>"
+    host.innerHTML = '<span class="report-verdict-label">종합평가 · 숙박운영분석</span><strong>'
+      + escapeHtml(verdict) + "</strong><span>"
       + (state.compareRent == null ? "비교 월세를 입력하면 손익 교차 OCC를 계산합니다."
         : breakEven == null ? "ADR·비용 기준이 없어 손익 교차 OCC를 계산할 수 없습니다."
           : breakEven > 100 ? "현재 요금으로는 가동률 100%여도 월세에 못 미칩니다."

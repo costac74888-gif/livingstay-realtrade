@@ -419,16 +419,16 @@ async function run() {
       expect(response && response.ok(), `${width}px 인증 투자분석 화면을 열지 못했습니다.`);
       // The detail photo is lazy-loaded below the fold; at 320px it remains
       // pending unless the test brings the card into the viewport.
-      await page.locator("#detailCard .detail-photo").scrollIntoViewIfNeeded();
+       if (width <= 1080) await page.locator("#detailCard .detail-photo").scrollIntoViewIfNeeded();
       try {
-        await page.waitForFunction(() => {
+         await page.waitForFunction((desktop) => {
           const layout = window.__analysisChartLayout;
           const photo = document.querySelector("#detailCard .detail-photo");
           return layout && layout.ready && layout.baseline && layout.baseline.valueX === 50
             && layout.labels && layout.labels.length === 4
             && layout.points && layout.points.some((point) => point.selected)
-            && photo && photo.dataset.photoState === "loaded";
-        });
+             && (desktop || photo && photo.dataset.photoState === "loaded");
+         }, width === 1280);
       } catch (error) {
         const readiness = await page.evaluate(() => {
           const layout = window.__analysisChartLayout;
@@ -479,7 +479,7 @@ async function run() {
            return { text: node.textContent.trim(), left: rect.left - wrap.left, width: rect.width, labelLeft: label.left - wrap.left };
          }),
          detailButtons: Array.from(document.querySelectorAll("#detailCard .detail-actions .am-btn")).map((node) => node.textContent.trim()),
-         detailSections: Array.from(document.querySelectorAll("#detailCard .detail-analysis, #detailCard .quadrant-guide, #detailCard .detail-disclaimer, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
+          detailSections: Array.from(document.querySelectorAll("#propertyVerdict, #detailCard .detail-analysis, #detailCard .detail-section-title")).map((node) => node.textContent.trim()),
           photo: {
             state: document.querySelector("#detailCard .detail-photo").dataset.photoState,
             src: document.querySelector("#detailCard .detail-photo img").getAttribute("src"),
@@ -512,14 +512,28 @@ async function run() {
       && result.quadrants[3].labelLeft >= result.quadrants[3].left + 8
       && result.quadrants[3].labelLeft < result.quadrants[3].left + result.quadrants[3].width,
       "①·④ 설명문구가 해당 사분면 안에 표시되지 않았습니다.");
-    expect(result.detailSections.some((text) => text.includes("현재 수요·상대가격 위치"))
+     expect(result.detailSections.some((text) => text.includes("종합평가"))
       && result.detailButtons.join("|") === "상세 페이지|관심저장|인쇄|공유",
-      "우측 패널 설명 순서 또는 하단 4개 버튼이 다릅니다.");
-    expect(result.photo.state === "loaded" && result.photo.src.startsWith("data:image/svg+xml"),
-      "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
+       "종합평가 또는 하단 4개 버튼이 다릅니다.");
+     if (width <= 1080) expect(result.photo.state === "loaded" && result.photo.src.startsWith("data:image/svg+xml"),
+       "첫 건물사진이 깨졌을 때 다음 사진으로 대체되지 않았습니다.");
     expect(result.recommendations.length === 5,
       "가격 매력 후보가 최초 5개로 표시되지 않았습니다.");
     if (width === 1280) {
+       const reportLayout = await page.evaluate(() => ({
+         duplicatePhoto: getComputedStyle(document.querySelector("#detailCard .detail-photo")).display,
+         verdictBottom: document.getElementById("propertyVerdict").getBoundingClientRect().bottom,
+         chartTop: document.getElementById("workspace").getBoundingClientRect().top,
+         evidenceInsideDisclosure: document.getElementById("methodology")
+           .contains(document.getElementById("propertyEvidence")),
+         evidenceHasSource: document.getElementById("propertyEvidence").textContent.includes("관광 자료"),
+         sourceInSideCard: Boolean(document.querySelector("#detailCard .detail-source")),
+       }));
+       expect(reportLayout.duplicatePhoto === "none"
+         && reportLayout.verdictBottom < reportLayout.chartTop
+         && reportLayout.evidenceInsideDisclosure && reportLayout.evidenceHasSource
+         && !reportLayout.sourceInSideCard,
+       `PC 보고서의 중복 사진·상단 종합평가·하단 접힌 근거 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
       const recommendationOrder = async () => page.evaluate(() =>
         Array.from(document.querySelectorAll("#recommendationRows tr[data-id]")).map((row) => ({
           id: row.dataset.id,
@@ -631,7 +645,7 @@ async function run() {
         pointIds: layout.points.map((point) => point.id),
         incompletePoints: layout.points.filter((point) => point.color === "#758596" || point.color === "#b8c1ca"),
         baseline: layout.baseline,
-        detail: document.querySelector(".quadrant-guide").textContent,
+        detail: document.querySelector("#propertyVerdict").textContent,
         transactionCount: document.querySelector(".detail-metrics").textContent,
       };
     });
@@ -1174,6 +1188,8 @@ async function run() {
         mode: report.dataset.mode,
         zones: report.querySelectorAll(".print-zone").length,
         title: document.getElementById("printReportTitle").textContent,
+        overviewGuide: report.querySelector(".print-result-line strong")?.textContent.trim(),
+        currentGuide: document.querySelector("#propertyVerdict strong")?.textContent.trim(),
         graphImage: document.querySelector("#printGraph .print-chart-image")?.getAttribute("src") || "",
         reportHeight: rect.height,
         recommendationDisplay: getComputedStyle(document.getElementById("recommendationCard")).display,
@@ -1190,6 +1206,7 @@ async function run() {
     const printPageCount = (printPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
     expect(printReport.display === "block" && printReport.mode === "property"
       && printReport.zones === 5 && printReport.title.includes("부동산투자분석")
+      && printReport.overviewGuide === printReport.currentGuide
       && printReport.graphImage.startsWith("data:image/png")
       && printReport.reportHeight <= 1075
       && printReport.recommendationDisplay === "none"

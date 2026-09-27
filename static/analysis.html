@@ -64,6 +64,7 @@
     <button class="am-btn primary operation-run" id="operationRun" type="button">운영 분석</button>
   </section>
   <div id="propertyAnalysis">
+  <section id="propertyVerdict" class="analysis-card analysis-report-verdict" aria-live="polite"><span class="report-verdict-label">종합평가 · 부동산투자분석</span><strong>건물을 선택하면 종합평가가 표시됩니다.</strong></section>
   <section class="workspace" id="workspace">
     <article class="analysis-card chart-card">
        <div class="card-head"><div><h2 id="chartTitle">관광수요 × 유사자산 가격 포지셔닝</h2><p id="chartSubtitle">관광수요 백분위와 유사자산 대비 가격을 함께 비교합니다.</p></div><div><div class="chart-mode" id="chartMode" role="group" aria-label="차트 표시 방식"><button type="button" class="active" data-mode="current" aria-pressed="true">현재 위치</button></div></div></div>
@@ -100,6 +101,7 @@
       <label><span>연 대출금리</span><div><input id="rentalLoanRate" type="number" enterkeyhint="done" min="0" step="0.01" value="4.5"><b>%</b></div></label>
       <button class="am-btn" id="rentalReset" type="button">조건 초기화</button>
     </div>
+    <section id="rentalVerdict" class="analysis-card rental-verdict analysis-report-verdict" aria-live="polite"><span class="report-verdict-label">종합평가 · 임대수익분석</span><strong>조건을 입력하면 시장 대비 판정이 표시됩니다.</strong><p>수익률과 공실 안정성을 함께 보고, 실거래 기준가를 확인하세요.</p></section>
     <input id="rentalPurchasePrice" type="hidden"><input id="rentalDeposit" type="hidden"><input id="rentalMonthlyRent" type="hidden"><input id="rentalVacancyMonths" type="hidden"><input id="rentalLoanAmount" type="hidden" value="0">
     <div class="rental-workspace">
     <section id="rentalSliders" class="analysis-card rental-sliders-panel" aria-label="매수·임대 조건 슬라이더"></section>
@@ -151,17 +153,17 @@
     <div class="rental-results-column">
     <section id="rentalCoreMetrics" class="rental-core-metrics" aria-label="핵심 지표"><div class="metric-heading"><span class="eyebrow">DECISION METRICS</span><h3>핵심 지표</h3></div><div class="metric-grid"><article class="analysis-card metric-card"><small>순수익률 (대출 전)</small><strong data-metric="netYield">—</strong><span>NOI ÷ 매입·취득부대비용·보증금</span></article><article class="analysis-card metric-card"><small>자기자본 수익률</small><strong data-metric="cashReturn">—</strong><span>대출 원리금 차감 후</span></article><article class="analysis-card metric-card"><small>월 순현금흐름</small><strong data-metric="cashFlow">—</strong><span>이자 차감 기준</span></article><article class="analysis-card metric-card"><small>실투자금</small><strong data-metric="invested">—</strong><span>내가 실제 투입하는 금액</span></article></div></section>
     <section id="rentalSensitivity" class="analysis-card rental-sensitivity"><div class="section-topline"><div><span class="eyebrow">SENSITIVITY</span><h3>월세 × 공실 민감도</h3></div><span class="sensitivity-context">조건 입력 대기</span></div><div class="sensitivity-scroll"><table><thead><tr><th>공실 \ 월세</th><th>25만원</th><th>30만원</th><th>35만원</th><th>40만원</th><th>45만원</th><th>50만원</th><th>55만원</th></tr></thead><tbody><tr><th>0개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>1개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td class="current">—</td><td>—</td><td>—</td></tr><tr><th>2개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>3개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>4개월</th><th>—</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>5개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><th>6개월</th><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div><div class="sensitivity-legend"><span class="good">전국 평균 이상</span><span class="watch">3%~전국 평균</span><span class="bad">3% 미만</span></div></section>
-    <section id="rentalVerdict" class="analysis-card rental-verdict"><span class="eyebrow">READ THE SIGNAL</span><strong>조건을 입력하면 시장 대비 판정이 표시됩니다.</strong><p>수익률과 공실 안정성을 함께 보고, 실거래 기준가를 확인하세요.</p></section>
+     <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>
     </div>
     <details id="rentalDetails" class="rental-details"><summary>상세 지표 <span>표면수익률·기준가 수익률·보유비용·대출 지표</span></summary><section id="rentalExtraMetrics" class="rental-results" aria-live="polite"></section></details>
     </div>
       <section class="rental-results rental-results-legacy" id="rentalResults" aria-live="polite">
       <article class="analysis-card rental-empty"><strong>임대조건을 입력해 주세요</strong><span>매입가·보증금·월세를 입력하면 대출과 비용을 반영한 수익률을 계산합니다.</span></article>
     </section>
-    <div id="rentalReportActions" class="analysis-report-common-actions hidden"></div>
     <details class="methodology analysis-method-details"><summary>임대수익 계산 기준 <span>산식·자료 출처·유의사항</span></summary><div class="formula">순영업소득(NOI) = 연 월세 − 공실손실 − 재산세·관리비·기타비용<br>실투자금 = 매입가 + 취득 부대비용 − 보증금 − 대출금<br>자기자본 수익률 = 대출 원리금 차감 후 현금흐름 ÷ 실투자금<br>DSCR = 순영업소득 ÷ 연간 대출 원리금</div><div>재산세 자동값은 비주거용 자산의 매입가를 이용한 투자 참고 추정치이며 실제 과세표준·토지지분·공부상 용도에 따라 달라집니다. 세무 신고나 대출심사를 대신하지 않습니다.</div></details>
   </section>
   <section id="operationAnalysis" class="hidden operation-analysis" aria-label="숙박운영분석">
+    <section id="operationVerdict" class="analysis-card operation-verdict analysis-report-verdict" aria-live="polite"><span class="report-verdict-label">종합평가 · 숙박운영분석</span><strong>운영자료를 입력하면 종합평가가 표시됩니다.</strong></section>
     <div class="operation-workspace">
       <section id="operationSliders" class="analysis-card operation-sliders" aria-label="숙박 운영 조건"></section>
       <section class="analysis-card chart-card operation-chart-card" id="operationChartCard">
@@ -176,7 +178,7 @@
       <div class="operation-results-column">
       <section id="operationCoreMetrics" class="analysis-card operation-core-metrics" aria-label="숙박 운영 핵심 지표"></section>
       <section id="operationSensitivity" class="analysis-card operation-sensitivity" aria-label="ADR과 OCC 민감도"></section>
-      <section id="operationVerdict" class="analysis-card operation-verdict" aria-live="polite"></section>
+       <div id="operationReportActions" class="analysis-report-common-actions hidden"></div>
       </div>
     </div>
     <details id="operationBasisDetails" class="analysis-card operation-details">
@@ -198,7 +200,7 @@
       <summary>건물 전체 환산 <span>적용 객실 수 × 호실별 숙박 운영 수익</span></summary>
       <div id="operationBuildingTotals" class="operation-building-totals" aria-live="polite"></div>
     </details>
-    <aside class="analysis-card detail-card operation-detail-actions" id="operationDetail" aria-label="숙박 운영 보고서 작업"></aside>
+     <aside class="analysis-card detail-card operation-detail-actions" id="operationDetail" aria-label="숙박 운영 세부 정보"></aside>
   </section>
 </main>
 <footer class="site-footer"><div class="footer-inner"><div><img src="/static/home_stay_footer_logo.png" alt="HOME &amp; STAY" class="footer-logo-img"><p class="footer-desc">관광·숙박부동산 데이터를 확인하는 회원 전용 분석 도구</p></div><div class="footer-meta"><p>실거래 및 관광 자료는 원문·공식 제공처의 갱신 시점에 따라 달라질 수 있습니다.</p><p class="footer-copy">© 2026 홈앤스테이 (HOME &amp; STAY)</p></div></div></footer>

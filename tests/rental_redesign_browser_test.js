@@ -275,6 +275,15 @@ async function run() {
     await waitForRental(page);
     await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000
       && document.querySelector('[data-rental-limits="rentalPurchasePrice"] [data-rental-limit-min]').textContent === "0만");
+    const reportLayout = await page.evaluate(() => ({
+      verdictBottom: document.getElementById("rentalVerdict").getBoundingClientRect().bottom,
+      sliderTop: document.getElementById("rentalSliders").getBoundingClientRect().top,
+      actionsInResults: document.querySelector(".rental-results-column > #rentalReportActions") !== null,
+      actionCount: document.querySelectorAll("#rentalReportActions .am-btn").length,
+    }));
+    expect(reportLayout.verdictBottom < reportLayout.sliderTop
+      && reportLayout.actionsInResults && reportLayout.actionCount === 4,
+    `임대수익 종합평가·결과 아래 4개 버튼 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
 
     const initial = await page.evaluate(() => {
       const result = window.__rentalAnalysisResult;

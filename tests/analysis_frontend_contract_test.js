@@ -17,12 +17,12 @@ expect(
 );
 expect(
   html.includes('id="rentalReportActions"')
-    && operationJs.includes('id="operationReportActions"')
+    && html.includes('id="operationReportActions"')
     && js.includes("livingstayAnalysisReportActions")
     && printJs.includes('mode==="rental"') && printJs.includes("임대조건 요약")
     && printJs.includes("운영 핵심지표")
     && operationJs.includes("quadrantBoxes")
-    && operationJs.includes("operation-empty-actions"),
+    && operationJs.includes('livingstayAnalysisReportActions(actions'),
   "세 분석의 공통 상세·실거래·인쇄·공유 버튼 또는 분석별 한 장 보고서 구성이 없습니다.",
 );
 expect(
@@ -59,8 +59,9 @@ expect(
 expect(
   js.includes("수요 프리미엄") && js.includes("가격 부담")
     && js.includes("저가·수요 확인 필요") && js.includes("수요 대비 저평가 후보")
-    && js.includes("현재 수요·상대가격 위치"),
-  "우측 패널의 사분면별 평가와 설명이 없습니다.",
+    && js.includes('verdict.innerHTML=')
+    && html.includes('id="propertyVerdict"'),
+  "화면 상단의 사분면별 종합평가와 설명이 없습니다.",
 );
 expect(
   css.includes(".q-top-left") && css.includes(".q-top-right")

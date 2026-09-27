@@ -1196,7 +1196,8 @@
       ? "공실은 R-ONE 소규모 상가 전국 대체값을 사용 중입니다. 최근 1년 실제 공실을 입력하면 판정을 표시합니다."
       : "현재 조건 기준 " + (positionMode === "equity" ? "자기자본 수익률 " : "순수익률 ")
         + percent(modeYield) + " · 공실 " + result.vacancyMonths.toFixed(1) + "개월";
-    host.innerHTML = '<strong>' + escapeHtml(title) + '</strong><span>' + escapeHtml(explanation) + '</span>';
+    host.innerHTML = '<span class="report-verdict-label">종합평가 · 임대수익분석</span><strong>'
+      + escapeHtml(title) + '</strong><span>' + escapeHtml(explanation) + '</span>';
   }
   function renderCoreMetrics(result) {
     var host = $("rentalCoreMetrics");

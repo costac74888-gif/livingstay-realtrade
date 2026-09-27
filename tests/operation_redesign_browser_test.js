@@ -336,11 +336,13 @@ async function run() {
     expect(!first.emptyPanel, "자료 입력 전 빈 결과 패널이 남아 있습니다.");
     expect(first.source.includes("호텔") && first.source.includes("생활숙박"),
       "호텔업 통계와 생활숙박 위탁운영 실적 간의 차이를 고지하지 않았습니다.");
-    expect(first.verdictBox.top >= first.sensitivityBox.bottom
-      && first.verdictBox.top - first.sensitivityBox.bottom < 36,
-    `운영 판정 카드가 민감도 표 바로 아래에 배치되지 않았습니다: ${JSON.stringify({
+    expect(first.verdictBox.bottom < first.sensitivityBox.top
+      && first.verdictBox.width > first.resultsColumn.width,
+    `운영 종합평가가 결과 영역 맨 위 전체 폭에 배치되지 않았습니다: ${JSON.stringify({
       sensitivity: first.sensitivityBox, verdict: first.verdictBox,
     })}`);
+    expect(await page.locator(".operation-results-column > #operationReportActions .am-btn").count() === 4,
+      "운영 결과 아래에 공통 보고서 버튼 네 개가 배치되지 않았습니다.");
     expect(near(first.state.monthlyRevenue / 10000, 270.864, 0.08),
       `월 매출 계산이 틀렸습니다: ${first.state.monthlyRevenue}`);
     expect(near(first.state.monthlyProfit / 10000, 197.73, 0.1),

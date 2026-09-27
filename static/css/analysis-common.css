@@ -102,6 +102,73 @@
 .analysis-method-details > :last-child {
   margin-bottom: 16px;
 }
+.analysis-report-verdict {
+  grid-area: auto;
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  border-left: 4px solid #2d8870;
+  background: #f4fbf7;
+}
+.analysis-report-verdict .report-verdict-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #28775d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .02em;
+}
+.analysis-report-verdict strong {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--navy);
+  font-size: 18px;
+  line-height: 1.4;
+}
+.analysis-report-verdict p,
+.analysis-report-verdict > span:not(.report-verdict-label) {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+#propertyAnalysis > .analysis-report-verdict { margin-top: 0; }
+#detailCard {
+  display: flex;
+  flex-direction: column;
+}
+#propertyReportActions {
+  margin-top: auto;
+  padding-top: 16px;
+}
+.rental-results-column > #rentalReportActions,
+.operation-results-column > #operationReportActions {
+  width: 100%;
+  margin-top: 0;
+  padding: 12px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.property-evidence {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff9ef;
+}
+.property-evidence strong { margin-bottom: 6px; }
+.property-evidence .detail-source {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.property-evidence p { margin: 8px 0 0; }
+@media (min-width: 1081px) {
+  #propertyAnalysis #detailCard .detail-photo { display: none; }
+}
+@media (max-width: 650px) {
+  .analysis-report-verdict { padding: 14px 16px; }
+  .analysis-report-verdict strong { font-size: 16px; }
+}
 @media (max-width: 850px) {
   .analysis-common-building {
     grid-template-columns: minmax(0, 1fr);
