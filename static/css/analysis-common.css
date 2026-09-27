@@ -228,22 +228,22 @@
 }
 .property-evidence p { margin: 8px 0 0; }
 .property-purchase-bar {
-  padding: 18px;
+  padding: 14px 18px;
 }
-.property-purchase-intro { min-width: 0; margin-bottom: 12px; }
+.property-purchase-intro { min-width: 0; margin-bottom: 10px; }
 .property-purchase-bar h2 { margin: 3px 0; font-size: 17px; }
 .property-purchase-intro p { margin: 0; color: var(--muted); font-size: 12px; }
-.property-market-box { min-width: 0; padding: 12px; border: 1px solid #e6d8c1; border-radius: 9px; background: #fffaf4; }
-.property-market-box .am-btn { margin-top: 10px; }
+.property-market-box { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid #e6d8c1; border-radius: 9px; background: #fffaf4; }
+.property-market-box .am-btn { margin: 0; white-space: nowrap; }
 .property-price-comparison { min-width: 0; }
 .property-price-comparison small, .property-price-comparison strong, .property-price-comparison span { display: block; overflow-wrap: anywhere; }
 .property-price-comparison strong { margin: 5px 0; font-size: 15px; }
 .property-price-comparison span, .property-price-comparison p { font-size: 12px; color: var(--muted); }
 .property-price-comparison p { margin: 0; }
-.property-scenario-builder { min-width: 0; padding: 16px 18px; }
+.property-scenario-builder { min-width: 0; padding: 12px 18px; }
 .property-scenario-title h3 { margin: 4px 0; font-size: 16px; color: var(--navy); }
 .property-scenario-title p, .property-scenario-summary { margin: 4px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
-.property-scenario-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.property-scenario-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 8px; }
 .property-scenario-row { min-width: 0; border-top: 1px solid var(--line); padding-top: 8px; }
 .property-scenario-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 32px; font-size: 12px; font-weight: 800; }
 .property-scenario-head output { white-space: nowrap; color: #a26331; font-variant-numeric: tabular-nums; }
@@ -259,12 +259,22 @@
 .property-scenario-limits { display: grid; grid-template-columns: 1fr 1fr 1fr; color: var(--muted); font-size: 10px; }
 .property-scenario-limits b { text-align: center; color: #bd4941; }
 .property-scenario-limits span:last-child { text-align: right; }
-.property-purchase-hint { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
-.property-scenario-summary { margin-top: 5px; }
+.property-purchase-hint:not(.is-error), .property-scenario-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.property-purchase-hint.is-error { margin: 8px 0 0; color: #bc3c39; font-size: 11px; }
 .property-point-key { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; color: var(--muted); font-size: 11px; }
 .property-point-key span { display: inline-flex; align-items: center; gap: 5px; }
 .property-point-key i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #eb6834; }
-.property-point-key span:nth-child(2) i { background: #8e44ad; }
+.property-point-key span:nth-child(2) i { width: 13px; height: 13px; background: #8e44ad; border: 2px solid #fff; box-shadow: 0 0 0 1px #8e44ad; }
 @media print {
   #printReport[data-mode="property"] .print-property-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm; font-size: 6pt; line-height: 1.2; }
   #printReport[data-mode="property"] .print-property-comparison > div { border: 1px solid #d7e1e9; padding: 1mm; }
@@ -276,6 +286,8 @@
 }
 @media (max-width: 650px) {
   .property-scenario-rows { grid-template-columns: minmax(0, 1fr); }
+  .property-market-box { grid-template-columns: minmax(0, 1fr); }
+  .property-market-box .am-btn { justify-self: end; }
 }
 @media (min-width: 1081px) {
   #propertyAnalysis #detailCard .detail-photo { display: none; }

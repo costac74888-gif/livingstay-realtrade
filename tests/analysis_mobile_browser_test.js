@@ -554,6 +554,10 @@ async function run() {
           purchaseBottom: document.querySelector(".property-purchase-bar").getBoundingClientRect().bottom,
           builderTop: document.querySelector(".property-scenario-builder").getBoundingClientRect().top,
           builderBottom: document.querySelector(".property-scenario-builder").getBoundingClientRect().bottom,
+          marketRight: document.querySelector("#propertyPriceComparison").getBoundingClientRect().right,
+          resetLeft: document.querySelector("#propertyPurchaseReset").getBoundingClientRect().left,
+          hintWidth: document.querySelector("#propertyPurchaseHint").getBoundingClientRect().width,
+          summaryWidth: document.querySelector("#propertyScenarioSummary").getBoundingClientRect().width,
          verdictTop: document.getElementById("propertyVerdict").getBoundingClientRect().top,
          verdictBottom: document.getElementById("propertyVerdict").getBoundingClientRect().bottom,
          chartTop: document.querySelector("#workspace .chart-card").getBoundingClientRect().top,
@@ -571,6 +575,8 @@ async function run() {
           && Math.abs(reportLayout.verdictTop - reportLayout.purchaseTop) < 2
           && reportLayout.purchaseBottom < reportLayout.builderTop
           && reportLayout.builderBottom <= reportLayout.chartTop
+          && reportLayout.resetLeft > reportLayout.marketRight
+          && reportLayout.hintWidth <= 1 && reportLayout.summaryWidth <= 1
           && reportLayout.verdictBottom < reportLayout.trendTop
           && reportLayout.trendBottom <= reportLayout.detailTop
           && Math.abs(reportLayout.chartTop - reportLayout.detailTop) < 2
@@ -618,6 +624,7 @@ async function run() {
         comparison: document.querySelector("#propertyPriceComparison").textContent,
         scenario: document.querySelector("#propertyScenarioSummary").textContent,
         point: window.__propertyAssumptionPoint,
+        label: window.__analysisChartLayout.assumption,
         market: window.__analysisChartLayout.points.find((point) => point.selected),
         url: location.search,
       }));
@@ -626,8 +633,12 @@ async function run() {
         && offer.scenario.includes("-0.6%")
         && offer.scenario.includes("참고 자기자금")
         && Math.abs(offer.point.gap - (3600 / 18.1 / 200 - 1) * 100) < 0.001
+        && offer.label.visible && offer.label.radius === 13 && offer.label.label === "매수조건"
         && offer.market.color === "#eb6834" && offer.url.includes("p_purchase=3600"),
       `제시 매수가와 시장가격 점을 별도로 비교하지 못했습니다: ${JSON.stringify(offer)}`);
+      if (process.env.CAPTURE_PROPERTY_DESKTOP === "1") {
+        await page.screenshot({ path: "/tmp/analysis-property-offer.png", fullPage: true });
+      }
       await page.locator("#propertyLoanSlider").fill("30");
       const loan = await page.evaluate(() => ({
         loan: document.querySelector("#propertyLoanSliderValue").textContent,
@@ -743,8 +754,8 @@ async function run() {
     expect(selected && selected.color === "#eb6834" && selected.radius === 10
       && result.layout.selectedDrawnOnTop === true
       && result.layout.selectedLabel
-      && result.layout.selectedLabel.text.startsWith("내 자산 · "),
-      "내 자산의 빨간 포인트와 설명이 다른 포인트와 라벨보다 위에 표시되지 않습니다.");
+      && result.layout.selectedLabel.text.startsWith("실거래 · "),
+      "실거래의 주황색 포인트와 설명이 다른 포인트와 라벨보다 위에 표시되지 않습니다.");
     expect(nearby && nearby.color === "#168f91" && nearby.radius === 5.5, "같은 시군구 비교군의 색상 또는 크기가 다릅니다.");
       expect(representatives.length === 4 && representatives.every((point) => point.radius === 8),
       "사분면 대표 표본 네 개의 표시 크기가 다릅니다.");
