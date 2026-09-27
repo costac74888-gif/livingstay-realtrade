@@ -110,3 +110,4 @@
 - [Headless 한글 PDF 캡처](headless-korean-pdf-captures.md) — Nix Chromium은 한글 기본 글꼴이 없으므로 캡처 시 웹폰트 로딩을 허용하고 준비 완료 뒤 PDF를 생성한다.
 - [세 분석 보고서 화면 위계](analysis-report-layout.md) — 세 모드의 종합평가는 각 우측 결과 열 맨 위, 보고서 작업은 하단; 세부 근거는 접힌 영역.
 - [실시간 계산 중 직접입력 보존](live-slider-editor.md) — 슬라이더 계산·기준 갱신이 편집 중인 숫자 입력창을 교체하지 않게 한다.
+- [데스크톱 분석 조건 밀도](desktop-analysis-condition-density.md) — 조건 슬라이더를 여러 열로 압축할 때 내부 최소폭·조작 영역과 결과 열 하단 정렬을 함께 확인한다.

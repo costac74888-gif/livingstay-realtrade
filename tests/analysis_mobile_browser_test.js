@@ -1007,6 +1007,42 @@ async function run() {
       && userVacancy.calculation.vacancySource === "user"
       && Math.abs(userVacancy.calculation.vacancyRate - 25) < 0.01,
       "사용자 공실 개월 입력이 R-ONE 평균보다 우선 적용되지 않았습니다.");
+    const rentalDesktopLayouts = [];
+    for (const width of [1024, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const rentalColumns = await page.evaluate(() => {
+        const conditions = document.getElementById("rentalSliders").getBoundingClientRect();
+        const chart = document.getElementById("rentalPositioning").getBoundingClientRect();
+        const actions = document.getElementById("rentalReportActions").getBoundingClientRect();
+        return {
+          gap: chart.bottom - actions.bottom,
+          conditionsHeight: conditions.height,
+          chartHeight: chart.height,
+          chartBelowConditions: chart.top >= conditions.bottom,
+          overflowingRows: Array.from(document.querySelectorAll("#rentalSliders .rental-slider-row"))
+            .filter(row => row.scrollWidth > row.clientWidth + 2)
+            .map(row => ({
+              field: row.dataset.rentalRow,
+              width: row.clientWidth,
+              overflow: row.scrollWidth - row.clientWidth,
+              limits: row.querySelector(".rental-range-limits")?.scrollWidth
+                - row.querySelector(".rental-range-limits")?.clientWidth,
+            })),
+          groups: Array.from(document.querySelectorAll("#rentalSliders .rental-slider-group")).map(node => ({
+            height: node.getBoundingClientRect().height,
+            rows: Array.from(node.querySelectorAll(".rental-slider-row")).map(row => row.getBoundingClientRect().height),
+          })),
+        };
+      });
+      rentalDesktopLayouts.push({ width, ...rentalColumns });
+      if (process.env.CAPTURE_RENTAL_DESKTOP && width === 1280) {
+        await page.locator("#rentalAnalysis").screenshot({ path: process.env.CAPTURE_RENTAL_DESKTOP });
+      }
+    }
+    await page.setViewportSize({ width: 320, height: 720 });
+    expect(rentalDesktopLayouts.every(layout => layout.chartBelowConditions
+      && layout.overflowingRows.length === 0 && Math.abs(layout.gap) <= 40),
+      `임대수익 조건·그래프와 우측 결과 열의 하단이 맞지 않습니다: ${JSON.stringify(rentalDesktopLayouts)}`);
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
       await prepareCaptureFont(page);
       await page.screenshot({ path: "screenshots/analysis-screen-rental.png", fullPage: true });

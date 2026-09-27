@@ -401,6 +401,37 @@
   outline-offset: 3px;
 }
 
+/* Keep the desktop conditions and positioning card level with the results column. */
+@media (min-width: 901px) {
+  #rentalSliders.rental-sliders-panel { padding: 13px 16px; }
+  #rentalSliders .rental-panel-title { margin-bottom: 8px; }
+  #rentalSliders .rental-panel-title h3 { margin: 2px 0; font-size: 16px; }
+  #rentalSliders .rental-slider-group { margin-bottom: 8px; }
+  #rentalSliders .rental-slider-group h3 { margin-bottom: 3px; }
+  #rentalSliders .rental-slider-list { gap: 4px 14px; }
+  #rentalSliders .rental-slider-group:nth-of-type(2) .rental-slider-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px 9px;
+  }
+  #rentalSliders .rental-slider-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 5px 0;
+  }
+  #rentalSliders .rental-slider-head { margin-bottom: 2px; }
+  #rentalSliders .rental-slider-row input[type="range"],
+  #rentalSliders .rental-slider-row .rental-range { margin: 2px 0 3px; }
+  #rentalSliders .rental-range-limits { margin: -3px 0 3px; }
+  #rentalSliders .rental-range-steps { margin: -2px 0 3px; }
+  #rentalSliders .rental-slider-hint { margin: 7px 0 0; }
+}
+
+@media (min-width: 1200px) {
+  .rental-workspace .rental-positioning .positioning-map {
+    height: 320px;
+    min-height: 320px;
+  }
+}
+
 @media (max-width: 900px) {
   .rental-workspace {
     grid-template-columns: minmax(0, 1fr);
