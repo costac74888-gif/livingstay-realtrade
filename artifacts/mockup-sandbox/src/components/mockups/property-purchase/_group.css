@@ -1,0 +1,112 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap');
+
+/* Extracted analysis page structure and purchase/chart selectors from
+   static/analysis.html, static/css/analysis.css and analysis-common.css.
+   Changes for the proposed arrangement are scoped to .purchase-preview.proposed. */
+.purchase-preview {
+  --navy:#102a43;--ink:#19324a;--muted:#687989;--line:#d7e2ed;
+  --paper:#f3f7fb;--white:#fff;--blue:#2673cf;--brass:#b4863f;
+  font-family:'Noto Sans KR',sans-serif;color:var(--ink);
+  background:var(--paper);min-height:100vh;padding:26px 28px 50px;
+  box-sizing:border-box;font-size:12px;
+}
+.purchase-preview *{box-sizing:border-box}
+.purchase-preview button,.purchase-preview input{font:inherit}
+.purchase-preview button{cursor:pointer}
+.purchase-preview .analysis-card{background:var(--white);border:1px solid var(--line);border-radius:18px;box-shadow:0 9px 28px rgba(16,42,67,.055)}
+.purchase-preview .eyebrow{color:var(--blue);font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+.purchase-preview .selected-building{font-size:14px;font-weight:800;color:var(--navy);margin:0 0 12px}
+.purchase-preview .selected-building small{color:#28775d;font-size:11px;font-weight:700}
+.purchase-preview .analysis-mode-bar{display:block;margin:4px 0 13px}
+.purchase-preview .analysis-mode-bar .analysis-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%}
+.purchase-preview .analysis-tabs button{min-width:0;width:100%;height:46px;border:1px solid #d1dfe9;border-radius:9px;color:#234b62;background:#e5f2f7;font-weight:800}
+.purchase-preview .analysis-tabs button:first-child{border-color:#e8aaa2;background:#f3dbd7;color:#86443d}
+.purchase-preview .analysis-tabs button:nth-child(2){background:#e1f2ed}
+.purchase-preview .property-purchase-bar{display:flex;align-items:center;flex-wrap:wrap;gap:12px 20px;margin-bottom:16px;padding:17px 18px}
+.purchase-preview .property-purchase-bar > .purchase-copy{flex:1 1 310px;min-width:0}
+.purchase-preview .property-purchase-bar h2{margin:3px 0;font-size:17px;color:var(--navy)}
+.purchase-preview .property-purchase-bar .purchase-copy p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.purchase-preview .property-purchase-bar label{display:grid;gap:5px;font-weight:700;font-size:12px}
+.purchase-preview .property-purchase-bar input{width:160px;max-width:100%;padding:9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.purchase-preview .am-btn{padding:9px 12px;border:1px solid #c7d8e4;border-radius:8px;background:#fff;color:var(--navy);font-weight:800;font-size:11px}
+.purchase-preview .property-purchase-hint{flex:1 1 100%;margin:0;color:var(--muted);font-size:11px}
+.purchase-preview .property-price-comparison{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:100%}
+.purchase-preview .property-price-comparison > div{min-width:0;padding:12px;border:1px solid var(--line);border-radius:9px;background:#f7fafc}
+.purchase-preview .property-price-comparison > div:nth-child(2){background:#f0f6ff}
+.purchase-preview .property-price-comparison small,.purchase-preview .property-price-comparison strong,.purchase-preview .property-price-comparison span{display:block;overflow-wrap:anywhere}
+.purchase-preview .property-price-comparison strong{margin:5px 0;font-size:15px;color:var(--navy)}
+.purchase-preview .property-price-comparison span,.purchase-preview .property-price-comparison p{font-size:11px;color:var(--muted)}
+.purchase-preview .property-price-comparison p{grid-column:1/-1;margin:0}
+.purchase-preview .workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(320px,.85fr);grid-template-areas:"position detail";gap:16px;align-items:start}
+.purchase-preview .chart-card{grid-area:position;min-width:0;padding:16px}
+.purchase-preview .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.purchase-preview .card-head h2{margin:0 0 4px;color:var(--navy);font-size:16px}
+.purchase-preview .card-head p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.purchase-preview .chart-mode button{background:var(--navy);color:#fff;border:0;border-radius:5px;padding:7px 10px;font-size:10px}
+.purchase-preview .chart-frame{display:grid;grid-template-columns:38px minmax(0,1fr);gap:8px}
+.purchase-preview .y-axis-guide{display:flex;flex-direction:column;align-items:center;justify-content:space-between;color:#597082;font-size:9px;text-align:center;padding:10px 0 54px}
+.purchase-preview .y-axis-guide strong{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px}
+.purchase-preview .chart-main{min-width:0}
+.purchase-preview .chart-wrap{height:390px;position:relative;overflow:hidden;border:1px solid #d3e1e7;border-radius:8px}
+.purchase-preview .quad{position:absolute;width:50%;height:50%;padding:13px 12px;font-size:10px;line-height:1.5;pointer-events:none}
+.purchase-preview .quad b,.purchase-preview .quad strong,.purchase-preview .quad span{display:block}
+.purchase-preview .quad strong{font-weight:600;font-size:9px}
+.purchase-preview .quad span{margin-top:8px;color:#66788b;font-size:9px}
+.purchase-preview .q-top-left{top:0;left:0;background:#fae7e1;color:#ae5c50}
+.purchase-preview .q-top-right{top:0;right:0;background:#e1effa;color:#326f9b}
+.purchase-preview .q-bottom-left{bottom:0;left:0;background:#eef1f4;color:#66788b}
+.purchase-preview .q-bottom-right{bottom:0;right:0;background:#e8f5ed;color:#247960}
+.purchase-preview .plot{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.purchase-preview .x-axis-guide{display:flex;gap:5px;justify-content:space-between;align-items:center;padding:9px 0;color:#5c7383;font-size:10px}
+.purchase-preview .x-axis-guide strong{font-weight:800}
+.purchase-preview .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:9px;color:var(--muted)}
+.purchase-preview .legend span{display:inline-flex;align-items:center;gap:5px}
+.purchase-preview .legend i{width:7px;height:7px;border-radius:50%;background:#8ba3b0}
+.purchase-preview .legend-selected{background:#eb6834!important}
+.purchase-preview .baseline-strip{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.purchase-preview .baseline{flex:1 1 120px;border-radius:6px;border:1px solid var(--line);padding:7px;color:var(--muted);font-size:10px}
+.purchase-preview .baseline b{display:block;color:var(--navy);margin-top:3px}
+.purchase-preview .property-point-key{display:flex;gap:12px;margin-top:9px;font-size:10px;color:var(--muted)}
+.purchase-preview .property-point-key span{display:flex;align-items:center;gap:5px}
+.purchase-preview .property-point-key i{display:inline-block;width:9px;height:9px;border-radius:50%;background:#eb6834}
+.purchase-preview .property-point-key span:nth-child(2) i{background:#165ab6}
+.purchase-preview .property-results-column{grid-area:detail;display:flex;min-width:0;flex-direction:column;gap:14px}
+.purchase-preview .analysis-report-verdict{padding:16px 20px;border-left:4px solid #2d8870;background:#f4fbf7}
+.purchase-preview .report-verdict-label{display:block;color:#28775d;font-size:11px;font-weight:900;margin-bottom:5px}
+.purchase-preview .analysis-report-verdict strong{display:block;color:var(--navy);font-size:17px;margin-bottom:4px}
+.purchase-preview .analysis-report-verdict p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}
+.purchase-preview .transaction-trend-card{padding:16px;min-width:0}
+.purchase-preview .transaction-trend-wrap{height:176px;border-bottom:1px solid #ccd9df;position:relative}
+.purchase-preview .transaction-trend-wrap svg{width:100%;height:100%}
+.purchase-preview .transaction-trend-legend{display:flex;gap:12px;margin-top:9px;color:var(--muted);font-size:10px}
+.purchase-preview .transaction-trend-legend i{display:inline-block;width:9px;height:9px;background:#b4863f;margin-right:3px}
+.purchase-preview .transaction-trend-legend .price{background:#2673cf}
+.purchase-preview .detail-card{padding:16px}
+.purchase-preview .detail-card h3{margin:0 0 8px;color:var(--navy);font-size:15px}
+.purchase-preview .detail-card p{margin:0 0 12px;color:var(--muted);font-size:11px}
+.purchase-preview .detail-values{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.purchase-preview .detail-values div{padding:10px;background:#f4f8fb;border-radius:8px}
+.purchase-preview .detail-values small{display:block;color:var(--muted);font-size:10px}
+.purchase-preview .detail-values b{font-size:13px;color:var(--navy)}
+
+/* Requested two-tier full-width bar and the same 1.15/.85 column balance
+   used by the existing rental analysis workspace. */
+.purchase-preview.proposed .property-purchase-bar{display:block;padding:17px 18px 15px}
+.purchase-preview.proposed .property-purchase-bar > .purchase-copy{margin-bottom:13px}
+.purchase-preview.proposed .property-price-comparison{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.purchase-preview.proposed .property-price-comparison > div{min-height:122px;padding:14px 15px;display:flex;flex-direction:column;align-items:flex-start}
+.purchase-preview.proposed .property-price-comparison > div:first-child{background:#fffaf3;border-color:#e6d6ba}
+.purchase-preview.proposed .property-price-comparison > div:nth-child(2){background:#f8f4fd;border-color:#d5bde8}
+.purchase-preview.proposed .property-price-comparison strong{font-size:18px}
+.purchase-preview.proposed .property-price-comparison .am-btn,
+.purchase-preview.proposed .property-price-comparison label{margin-top:auto}
+.purchase-preview.proposed .property-price-comparison label{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;color:#5e3883}
+.purchase-preview.proposed .property-price-comparison input{width:145px;border-color:#bb94da;font-size:15px;font-weight:800}
+.purchase-preview.proposed .workspace{grid-template-columns:minmax(0,1.15fr) minmax(320px,.85fr)}
+.purchase-preview.proposed .property-point-key span:nth-child(2) i{background:#8e44ad}
+@media(max-width:850px){
+  .purchase-preview{padding:16px}
+  .purchase-preview .workspace,.purchase-preview.proposed .workspace{grid-template-columns:minmax(0,1fr);grid-template-areas:"position" "detail"}
+  .purchase-preview .property-price-comparison{grid-template-columns:minmax(0,1fr)}
+  .purchase-preview .chart-wrap{height:310px}
+}
