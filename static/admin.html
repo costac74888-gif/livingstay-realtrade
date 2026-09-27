@@ -90,8 +90,10 @@
    .presale-field .member-edit-input{margin:0}
    @media(max-width:700px){#presaleForm,#promotionForm{grid-template-columns:1fr!important}.presale-field[style]{grid-column:auto!important}}
     /* === 이용자 현황 compact analytics === */
-    .user-stats-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+    .user-stats-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
     .user-stat-box{background:#fff;border:1px solid #DDE1E6;border-radius:8px;padding:10px 11px;min-width:0}
+    .user-stat-box.is-traffic{background:#F8F6FD;border-color:#DCD3F4}
+    .user-stat-box.is-pageviews{background:#FFFAF2;border-color:#EAD8B6}
     .user-stat-label{font-size:11px;color:var(--ink-soft);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .user-stat-value{display:flex;align-items:baseline;gap:4px;margin-top:3px}
     .user-stat-value b{font-size:22px;letter-spacing:-.04em;color:var(--ink)}
@@ -1592,7 +1594,8 @@
 
     function renderUserStats(data, selectedRange = "30d") {
       const cards = [
-        ["MAU", "mau", "mau_prev", "명", null],
+        ["MAU (30일)", "mau", "mau_prev", "명", null],
+        ["페이지뷰 (30일)", "pv_30d", null, "회", null],
         ["WAU", "wau", "wau_prev", "명", null],
         ["DAU", "dau", "dau_prev", "명", null],
         ["신규가입(주간)", "new_this_week", null, "명", "total_users"],
@@ -1602,7 +1605,7 @@
       const cardHtml = cards.map(([label, key, previousKey, unit, totalKey]) => {
         const value = Number(data[key] || 0);
         const change = previousKey ? userStatChange(value, data[previousKey]) : null;
-        return `<div class="user-stat-box">
+        return `<div class="user-stat-box ${key === "mau" ? "is-traffic" : key === "pv_30d" ? "is-pageviews" : ""}">
           <div class="user-stat-label">${label}</div>
           <div class="user-stat-value"><b>${num(value)}</b><span>${unit}</span></div>
           ${change
@@ -1648,11 +1651,12 @@
         <div class="user-stats-summary">
           ${cardHtml}
         </div>
+        <p class="user-chart-note">최근 30일(오늘 포함) · MAU는 IP 해시로 중복 제거한 방문자 추정치(명), 페이지뷰는 페이지를 연 횟수(회)입니다. GA4와 집계 방식이 다릅니다.</p>
         <section class="stats-card stats-card-wide" style="margin-top:10px;">
           <div class="user-trend-head">
             <div>
-              <h3 class="stats-card-title" style="margin:0;">이용자 추이</h3>
-              <p class="user-chart-note">GA4와 비슷하게 날짜별 DAU와 최근 30일 MAU 추이를 비교합니다.</p>
+              <h3 class="stats-card-title" style="margin:0;">활성 이용자 추이 (DAU · MAU)</h3>
+              <p class="user-chart-note">각 날짜의 고유 방문자와 그날까지 최근 30일간의 고유 방문자입니다.</p>
             </div>
             <div class="user-range-controls" role="group" aria-label="이용자 추이 기간">
               ${[["30d","30일"],["90d","90일"],["1y","1년"],["all","전체"]].map(([value, label]) =>
@@ -1668,6 +1672,13 @@
             <div class="user-chart-wrap" id="userTrendChartWrap"><canvas id="userTrendChart" role="img" aria-label="기간별 DAU와 MAU 추이"></canvas></div>
           </div>
           <p class="user-chart-note" style="margin-top:7px;">활성 이용자는 원본 IP를 저장하지 않고 해시한 방문 식별값으로 추정하므로 GA4 수치와 완전히 같지는 않습니다.</p>
+        </section>
+        <section class="stats-card stats-card-wide" style="margin-top:10px;">
+          <h3 class="stats-card-title">페이지뷰 추이 (일별)</h3>
+          <p class="user-chart-note">선택 기간의 날짜별 페이지 열람 횟수입니다. 한 사람이 여러 페이지를 열면 각각 셉니다. 알려진 봇은 제외합니다.</p>
+          <div class="user-chart-scroll" tabindex="0" aria-label="일별 페이지뷰 그래프. 좌우로 스크롤할 수 있습니다.">
+            <div class="user-chart-wrap" id="pageviewChartWrap"><canvas id="pageviewChart" role="img" aria-label="일별 페이지뷰 추이"></canvas></div>
+          </div>
         </section>
         <div class="user-detail-grid" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;">
           <section class="stats-card">
@@ -1696,6 +1707,8 @@
       if (chartWrap) {
         chartWrap.style.width = `${Math.max(1120, Math.min(12000, labels.length * pixelsPerDay))}px`;
       }
+      const pageviewWrap = document.getElementById("pageviewChartWrap");
+      if (pageviewWrap) pageviewWrap.style.width = chartWrap.style.width;
       if (chartScroll) {
         chartScroll.scrollLeft = 0;
         requestAnimationFrame(() => { chartScroll.scrollLeft = 0; });
@@ -1713,6 +1726,26 @@
             new: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { precision: 0, color: "#B4863F", font: { size: 10 } } } } },
       });
       statsCharts.push(chart);
+      const pageviewChart = new Chart(document.getElementById("pageviewChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: "페이지뷰", data: (data.daily_pageviews || []).map((row) => Number(row.count || 0)),
+            borderColor: "#B4863F", backgroundColor: "rgba(180,134,63,.16)",
+            borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 3, tension: .25, fill: true,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ` 페이지뷰: ${Number(ctx.parsed.y || 0).toLocaleString("ko-KR")}회` } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 10, color: "#7A8490", font: { size: 10 } } },
+            y: { beginAtZero: true, ticks: { precision: 0, color: "#7A8490", font: { size: 10 } } },
+          },
+        },
+      });
+      statsCharts.push(pageviewChart);
       mount.querySelectorAll("[data-user-range]").forEach((button) => {
         button.addEventListener("click", () => loadUserStatsRange(button.dataset.userRange));
       });
@@ -2351,9 +2384,10 @@
           <section class="stats-card stats-card-wide">
             <div class="stats-views-head">
               <div>
-                <h3 class="stats-card-title" id="viewsTrendTitle">일별 방문자 추이</h3>
+                <h3 class="stats-card-title" id="viewsTrendTitle">일별 페이지뷰 추이</h3>
                 <span class="stats-card-hint" id="viewsTrendHint">페이지뷰 기준 · 당월 1일~오늘 · 데이터 수집 시작: ${dgEscape(collectStart)} (이전 기록은 없습니다)</span>
               </div>
+              <button class="user-range-btn" type="button" id="goUserStats">MAU · 페이지뷰 함께 보기 →</button>
               <label class="stats-views-select">표시 단위
                 <select id="viewsTrendPeriod" aria-label="방문자 추이 표시 단위">
                   <option value="daily">일별</option>
@@ -2563,7 +2597,7 @@
         const rows = ((d.views || {})[period] || []);
         const labels = { daily: "일별", monthly: "월별", yearly: "연도별" };
         const field = { daily: "day", monthly: "month", yearly: "year" }[period];
-        document.getElementById("viewsTrendTitle").textContent = `${labels[period]} 방문자 추이`;
+         document.getElementById("viewsTrendTitle").textContent = `${labels[period]} 페이지뷰 추이`;
         document.getElementById("viewsTrendHint").textContent =
           `페이지뷰 기준 · ${period === "daily" ? "당월 1일~오늘" : "수집 시작~현재"} · 데이터 수집 시작: ${collectStart} (이전 기록은 없습니다)`;
         if (viewsChart) {
@@ -2599,6 +2633,7 @@
         statsCharts.push(viewsChart);
       }
       document.getElementById("viewsTrendPeriod").addEventListener("change", (event) => renderViewsChart(event.target.value));
+       document.getElementById("goUserStats").addEventListener("click", () => document.querySelector('[data-menu="user-stats"]').click());
       renderViewsChart("daily");
 
       // 오늘 경로별 조회수 상위 5

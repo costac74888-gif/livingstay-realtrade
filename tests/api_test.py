@@ -332,20 +332,20 @@ def check_user_stats_admin_api(client):
         return f"이용자 현황 API가 정상 응답하지 않음 (HTTP {response.status_code})"
     data = response.get_json() or {}
     required = {
-        "mau", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
+        "mau", "pv_30d", "wau", "dau", "new_this_week", "fav_this_week", "listing_this_week",
         "total_users", "total_favorites", "total_listings",
         "mau_prev", "wau_prev", "dau_prev", "daily_active", "daily_mau", "daily_new",
-        "daily_listing", "daily_total_users", "trend_range", "trend_start", "trend_end",
+        "daily_pageviews", "daily_listing", "daily_total_users", "trend_range", "trend_start", "trend_end",
         "segment_counts", "page_views",
     }
     if not required <= set(data):
         return f"이용자 현황 API 필수 필드 누락: {sorted(required - set(data))}"
-    for key in ("mau", "wau", "dau", "new_this_week", "fav_this_week",
+    for key in ("mau", "pv_30d", "wau", "dau", "new_this_week", "fav_this_week",
                 "listing_this_week", "total_users", "total_favorites", "total_listings",
                 "mau_prev", "wau_prev", "dau_prev"):
         if not isinstance(data[key], int) or data[key] < 0:
             return f"{key}가 0 이상 정수가 아님"
-    for key in ("daily_active", "daily_mau", "daily_new", "daily_listing", "daily_total_users"):
+    for key in ("daily_active", "daily_mau", "daily_pageviews", "daily_new", "daily_listing", "daily_total_users"):
         rows = data[key]
         if not isinstance(rows, list) or len(rows) != 30:
             return f"{key}가 30일 배열이 아님"
@@ -354,16 +354,22 @@ def check_user_stats_admin_api(client):
     total_values = [row["count"] for row in data["daily_total_users"]]
     if total_values != sorted(total_values):
         return "누적 이용자 추이가 감소함"
+    if sum(row["count"] for row in data["daily_pageviews"]) != data["pv_30d"]:
+        return "30일 페이지뷰 카드와 일별 페이지뷰의 합계가 다름"
     for range_key, expected_days in (("90d", 90), ("1y", 365)):
         ranged = client.get(f"/api/admin/user-stats?range={range_key}")
         ranged_data = ranged.get_json() or {}
-        if ranged.status_code != 200 or len(ranged_data.get("daily_total_users") or []) != expected_days:
+        if (ranged.status_code != 200
+                or len(ranged_data.get("daily_total_users") or []) != expected_days
+                or len(ranged_data.get("daily_pageviews") or []) != expected_days
+                or ranged_data.get("pv_30d") != data["pv_30d"]):
             return f"이용자 현황 {range_key} 조회 기간이 잘못됨"
     all_range = client.get("/api/admin/user-stats?range=all")
     all_data = all_range.get_json() or {}
     if all_range.status_code != 200 or not all_data.get("daily_total_users"):
         return "이용자 현황 전체 기간 조회가 비어 있음"
-    if all_data["daily_total_users"][0]["date"] != all_data.get("trend_start"):
+    if (all_data["daily_total_users"][0]["date"] != all_data.get("trend_start")
+            or all_data["daily_pageviews"][0]["date"] != all_data.get("trend_start")):
         return "전체 기간이 최초 가입일부터 시작하지 않음"
     if client.get("/api/admin/user-stats?range=invalid").status_code != 400:
         return "이용자 현황의 잘못된 기간값이 거부되지 않음"
@@ -562,6 +568,16 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
                 INSERT INTO page_views (path, ip_hash, user_agent, viewed_at)
                 VALUES ('/', %s, %s, {viewed_sql})
             """, (f"{tag}-{label}", f"StatsTestBrowser/1.0 {tag}"))
+        # 같은 방문자의 두 번째 페이지는 MAU를 늘리지 않고 페이지뷰만 늘린다.
+        cur.execute("""
+            INSERT INTO page_views (path, ip_hash, user_agent, viewed_at)
+            VALUES ('/analysis', %s, %s, CURRENT_DATE + INTERVAL '2 hours')
+        """, (f"{tag}-today", f"StatsTestBrowser/1.0 {tag}"))
+        # 과거에 직접 저장된 봇 기록도 MAU와 페이지뷰 어느 쪽에도 포함되면 안 된다.
+        cur.execute("""
+            INSERT INTO page_views (path, ip_hash, user_agent, viewed_at)
+            VALUES ('/', %s, %s, CURRENT_DATE + INTERVAL '2 hours')
+        """, (f"{tag}-bot", f"Googlebot/2.1 {tag}"))
         cur.execute("""
             INSERT INTO user_favorites (user_id, building_name, address, master_building_id, created_at)
             VALUES (%s, %s, %s, %s, CURRENT_DATE + INTERVAL '1 hour')
@@ -589,7 +605,7 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
             return "테스트 행 추가 뒤 이용자 현황 API가 응답하지 않음"
         after = after_response.get_json() or {}
         expected_deltas = {
-            "mau": 2, "wau": 1, "dau": 1, "new_this_week": 1,
+            "mau": 2, "pv_30d": 3, "wau": 1, "dau": 1, "new_this_week": 1,
             "fav_this_week": 1, "listing_this_week": 1,
             "total_users": 4, "total_favorites": 1, "total_listings": 2,
             "mau_prev": 1, "wau_prev": 1, "dau_prev": 0,
@@ -602,6 +618,8 @@ def check_user_stats_aggregate_windows_and_view_writers(client):
         for series_key, day, delta in (
             ("daily_active", today, 1),
             ("daily_active", today - timedelta(days=8), 1),
+            ("daily_pageviews", today, 2),
+            ("daily_pageviews", today - timedelta(days=8), 1),
             ("daily_new", today, 1),
             ("daily_listing", today, 1),
         ):

@@ -32455,7 +32455,7 @@ def admin_user_stats():
                 SELECT ip_hash, viewed_at
                 FROM page_views
                 WHERE ip_hash IS NOT NULL
-                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                  AND COALESCE(user_agent, '') NOT ILIKE ALL(
                       ARRAY['%bot%', '%crawl%', '%spider%', '%slurp%', '%facebookexternalhit%']
                   )
                   AND viewed_at >= CURRENT_DATE - INTERVAL '60 days'
@@ -32465,6 +32465,9 @@ def admin_user_stats():
                 COUNT(DISTINCT ip_hash) FILTER (
                     WHERE viewed_at >= CURRENT_DATE - INTERVAL '29 days'
                 ) AS mau,
+                COUNT(*) FILTER (
+                    WHERE viewed_at >= CURRENT_DATE - INTERVAL '29 days'
+                ) AS pv_30d,
                 COUNT(DISTINCT ip_hash) FILTER (
                     WHERE viewed_at >= CURRENT_DATE - INTERVAL '6 days'
                 ) AS wau,
@@ -32559,9 +32562,20 @@ def admin_user_stats():
                 WHERE ip_hash IS NOT NULL
                   AND viewed_at >= %s::date - INTERVAL '29 days'
                   AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
-                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                  AND COALESCE(user_agent, '') NOT ILIKE ALL(
                       ARRAY['%%bot%%', '%%crawl%%', '%%spider%%', '%%slurp%%', '%%facebookexternalhit%%']
                   )
+            ),
+            pageview_counts AS (
+                SELECT viewed_at::date AS day, COUNT(*) AS count
+                FROM page_views
+                WHERE ip_hash IS NOT NULL
+                  AND viewed_at >= %s::date
+                  AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
+                  AND COALESCE(user_agent, '') NOT ILIKE ALL(
+                      ARRAY['%%bot%%', '%%crawl%%', '%%spider%%', '%%slurp%%', '%%facebookexternalhit%%']
+                  )
+                GROUP BY viewed_at::date
             ),
             active AS (
                 SELECT day, COUNT(*) AS count
@@ -32595,6 +32609,7 @@ def admin_user_stats():
                 to_char(days.day, 'YYYY-MM-DD') AS day,
                 COALESCE(active.count, 0) AS active,
                 COALESCE(rolling_mau.count, 0) AS mau,
+                COALESCE(pageview_counts.count, 0) AS pageviews,
                 COALESCE(new_users.count, 0) AS new_users,
                 COALESCE(listings.count, 0) AS listings,
                 baseline.count + SUM(COALESCE(new_users.count, 0)) OVER (
@@ -32605,16 +32620,18 @@ def admin_user_stats():
             CROSS JOIN baseline
             LEFT JOIN active ON active.day = days.day
             LEFT JOIN rolling_mau ON rolling_mau.day = days.day
+            LEFT JOIN pageview_counts ON pageview_counts.day = days.day
             LEFT JOIN new_users ON new_users.day = days.day
             LEFT JOIN listings ON listings.day = days.day
             ORDER BY days.day
         """, (
-            trend_start, trend_start, trend_start,
+            trend_start, trend_start, trend_start, trend_start,
             trend_start, trend_start, trend_start,
         ))
         daily_rows = [dict(row) for row in cur.fetchall()]
         daily_active = [{"date": row["day"], "count": int(row["active"])} for row in daily_rows]
         daily_mau = [{"date": row["day"], "count": int(row["mau"])} for row in daily_rows]
+        daily_pageviews = [{"date": row["day"], "count": int(row["pageviews"])} for row in daily_rows]
         daily_new = [{"date": row["day"], "count": int(row["new_users"])} for row in daily_rows]
         daily_listing = [{"date": row["day"], "count": int(row["listings"])} for row in daily_rows]
         daily_total_users = [{"date": row["day"], "count": int(row["total_users"])} for row in daily_rows]
@@ -32652,7 +32669,7 @@ def admin_user_stats():
                 FROM page_views
                 WHERE viewed_at >= CURRENT_DATE - INTERVAL '6 days'
                   AND viewed_at < CURRENT_DATE + INTERVAL '1 day'
-                  AND COALESCE(user_agent, '') NOT ILIKE ANY(
+                   AND COALESCE(user_agent, '') NOT ILIKE ALL(
                       ARRAY['%bot%', '%crawl%', '%spider%', '%slurp%', '%facebookexternalhit%']
                   )
             ),
@@ -32674,6 +32691,7 @@ def admin_user_stats():
 
         return jsonify({
             "mau": int(summary["mau"] or 0),
+            "pv_30d": int(summary["pv_30d"] or 0),
             "wau": int(summary["wau"] or 0),
             "dau": int(summary["dau"] or 0),
             "new_this_week": int(summary["new_this_week"] or 0),
@@ -32687,6 +32705,7 @@ def admin_user_stats():
             "dau_prev": int(summary["dau_prev"] or 0),
             "daily_active": daily_active,
             "daily_mau": daily_mau,
+            "daily_pageviews": daily_pageviews,
             "daily_new": daily_new,
             "daily_listing": daily_listing,
             "daily_total_users": daily_total_users,
