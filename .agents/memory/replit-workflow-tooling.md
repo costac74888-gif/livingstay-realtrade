@@ -1,6 +1,6 @@
 ---
 name: Replit workflow tooling quirks
-description: Non-obvious behaviors of configureWorkflow/removeWorkflow when stopping or disabling auto-start.
+description: Non-obvious workflow lifecycle and isolated mockup-preview routing behaviors.
 ---
 
 - `configureWorkflow({autoStart:false})` on an already-running workflow does NOT stop the
@@ -17,6 +17,10 @@ description: Non-obvious behaviors of configureWorkflow/removeWorkflow when stop
   **Why:** matters for any long-running backfill/sync framed as "runs overnight". In the
   workspace it only runs while the repl is awake, and multiple auto-start workflows will contend
   for the same external API on wake.
+
+- Adding a workspace secret can restart all configured workflows, not just the one
+  consuming it. **How to apply:** inspect the affected workflow states after a
+  secret addition before assuming unrelated services stayed untouched.
 
 - Do not change an existing Autoscale web artifact to the Scheduled deployment target just to add
   cron work. Run the scheduled job as a separate artifact/deployment; a legacy single-artifact
@@ -37,3 +41,14 @@ description: Non-obvious behaviors of configureWorkflow/removeWorkflow when stop
   the sync workers FIRST (they're idempotent/resumable), test, then `restart_workflow` them.
   Prefer Flask `test_client` in a SEPARATE process (needs `PYTHONPATH=/home/runner/workspace`)
   to sidestep the single busy gunicorn worker entirely.
+
+- For the separate mockup-sandbox artifact, a screenshot request to localhost:5000
+  with its `/__mockup/preview/...` path may return Flask's 404 even while the
+  artifact workflow is healthy. The external workspace domain routes that path
+  to the artifact; for local visual verification, use the artifact workflow's
+  own open port with the same path.
+  **Why:** port 5000 belongs to the main Flask app and does not replicate the
+  external artifact path router in local screenshot calls.
+  **How to apply:** read the artifact workflow's actual open port; use it in
+  `Screenshot`'s `appPreview.port`, and keep the standard external-domain path
+  for the canvas iframe.

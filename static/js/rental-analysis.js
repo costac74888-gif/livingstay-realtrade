@@ -266,9 +266,11 @@
     var market = utils.clampHard("purchase", n("rentalMarketPrice"));
     var current = utils.clampHard("purchase", n("rentalPurchasePrice"));
     sliderBasePrice = market > 0 ? market : current > 0 ? current : null;
-    var safeBase = sliderBasePrice;
-    if (safeBase == null) return null;
-    var bounds = utils.purchaseBounds(safeBase);
+    // 시세와 입력값이 모두 없어도 0~50억 고정 눈금은 조작 가능해야 한다.
+    // 비어 있는 매수가는 슬라이더를 실제로 움직이기 전까지 임의로 채우지 않는다.
+    var bounds = sliderBasePrice == null
+      ? { min: 0, max: utils.HARD_CAPS.purchase[1], step: 1000 }
+      : utils.purchaseBounds(sliderBasePrice);
     bounds.min = 0;
     bounds.max = utils.HARD_CAPS.purchase[1];
     bounds.step = 1000;

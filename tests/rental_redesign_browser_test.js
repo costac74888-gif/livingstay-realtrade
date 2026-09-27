@@ -229,6 +229,33 @@ async function run() {
   const apiCalls = await installApiMocks(page);
 
   try {
+    const emptyUrl = new URL("/analysis?mode=rental", BASE_URL);
+    await page.goto(emptyUrl.toString(), { waitUntil: "domcontentloaded" });
+    const emptyPurchase = page.locator('[data-rental-slider="rentalPurchasePrice"]');
+    await emptyPurchase.waitFor();
+    expect(await emptyPurchase.isEnabled()
+      && await page.locator("#rentalPurchasePrice").inputValue() === ""
+      && await page.locator("#rentalMarketPrice").inputValue() === "",
+    "시세가 없을 때 매수가는 빈 상태를 유지하면서 가로바는 움직일 수 있어야 합니다.");
+    const purchasePlus = page.locator('[data-rental-step="rentalPurchasePrice"][data-slider-direction="1"]');
+    const purchaseMinus = page.locator('[data-rental-step="rentalPurchasePrice"][data-slider-direction="-1"]');
+    expect(await purchasePlus.isEnabled() && !await purchaseMinus.isEnabled(),
+      "매수가를 아직 입력하지 않아도 오른쪽 버튼으로 첫 금액을 선택할 수 있어야 합니다.");
+    await purchasePlus.click();
+    expect(await page.locator("#rentalPurchasePrice").inputValue() === "1000",
+      "시세가 없어도 매수가 오른쪽 이동은 첫 1천만원 눈금이어야 합니다.");
+    await emptyPurchase.focus();
+    await emptyPurchase.press("ArrowRight");
+    expect(await page.locator("#rentalPurchasePrice").inputValue() === "2000",
+      "시세가 없을 때 오른쪽 화살표로 매수가를 이동할 수 있어야 합니다.");
+    await emptyPurchase.press("ArrowLeft");
+    expect(await page.locator("#rentalPurchasePrice").inputValue() === "1000",
+      "시세가 없을 때 왼쪽 화살표로 매수가를 되돌릴 수 있어야 합니다.");
+    await purchaseMinus.click();
+    expect(await page.locator("#rentalPurchasePrice").inputValue() === "0"
+      && await page.locator("#rentalMarketPrice").inputValue() === "",
+    "매수가 0으로 되돌려도 시세를 임의로 채우면 안 됩니다.");
+
     const firstUrl = new URL("/analysis", BASE_URL);
     firstUrl.searchParams.set("building_id", BUILDING_ID);
     firstUrl.searchParams.set("mode", "rental");

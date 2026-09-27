@@ -1,7 +1,7 @@
 - [전역 rate limit & 봇 관측](global-rate-limit.md) — default 200/min(정적·health 제외, 개별 limit과 별개 카운터); access log 없어 봇 조사는 page_views 테이블(운영 DB)로만 가능.
 - [flask-limiter on Replit](flask-limiter-testing.md) — key rate limits on LEFTMOST X-Forwarded-For (edge strips spoofed XFF); ProxyFix(x_for=1) is wrong (→127.0.0.1, shared counter); memory:// is per-process; --reuse-port can leave orphan master; fixed-window bursts ~2x.
 - [livingstay data/schema quirks](livingstay-data-quirks.md) — master_buildings has sgg_text/umd_nm (NO si_do/sgg_nm); transactions.si_do dirty (서울 vs 서울특별시); umd_nm spacing differs; lodging_type 복합=LIKE '%·%' else exact.
-- [Replit workflow tooling](replit-workflow-tooling.md) — configureWorkflow(autoStart:false) does NOT stop a running workflow (use removeWorkflow); workspace repls sleep so bg workflows don't run overnight; adding a secret auto-restarts ALL workflows.
+- [Replit workflow tooling](replit-workflow-tooling.md) — autoStart:false는 실행 중단 아님; 작업공간 절전·비밀값 추가 시 재시작; 목업 캡처는 아티팩트 포트.
 - [Kakao Maps JS SDK](kakao-maps-js-sdk.md) — blank map + "SDK not loaded" = Referer/domain not registered in Kakao console (sdk.js 401 domain mismatched), NOT a bad key; user must add dev+prod domains. Verify via curl -H Referer.
 - [Kakao Roadview minimap](kakao-roadview-minimap.md) — Roadview has no built-in map-control API; embed a second Map and sync it to the panorama position.
 - [RTMS backfill 429 & retry](rtms-backfill-retry.md) — data.go.kr RTMS 429s once daily quota is burnt; retry backs off BETWEEN rounds (not per-item) via sync_failures queue; run detached `--retry-failures`.
