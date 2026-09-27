@@ -329,18 +329,18 @@
 
 .operation-sensitivity table {
   width: 100%;
-  min-width: 460px;
+  min-width: 490px;
   border-collapse: separate;
   border-spacing: 2px;
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
 }
 
 .operation-sensitivity th {
   padding: 6px 4px;
   background: #eef3f7;
-  color: #526575;
-  font-size: 9px;
+  color: #324e60;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -348,8 +348,9 @@
   min-width: 38px;
   padding: 7px 3px;
   border: 1px solid #e0e7ed;
-  color: #536273;
-  font-size: 9px;
+  color: #344c5d;
+  font-size: 11px;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -374,7 +375,15 @@
 }
 
 .operation-sensitivity td.selected {
-  border: 2px solid #2a78d6;
+  border: 2px solid #175db2;
+  background: #d7eaff;
+  color: #123a68;
+  font-weight: 900;
+  font-size: 13px;
+}
+.operation-sensitivity th.current-axis {
+  background: #d7eaff;
+  color: #123a68;
   font-weight: 900;
 }
 

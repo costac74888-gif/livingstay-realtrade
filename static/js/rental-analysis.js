@@ -391,7 +391,7 @@
     });
     Object.keys(bounds).forEach(function (field) {
       var button = document.querySelector('[data-rental-value="' + field + '"]');
-      if (button) button.textContent = formatInputValue(field, $(field).value);
+      if (button && !button.querySelector("input")) button.textContent = formatInputValue(field, $(field).value);
       syncRentalStepButtons(field);
     });
     updateRentalLimitLabels(bounds);
@@ -514,7 +514,7 @@
       if (field === "rentalVacancyMonths") vacancyAssumed = false;
       $(field).value = String(safeValue);
       var valueButton = document.querySelector('[data-rental-value="' + field + '"]');
-      if (valueButton) valueButton.textContent = formatInputValue(field, safeValue);
+      if (valueButton && !valueButton.querySelector("input")) valueButton.textContent = formatInputValue(field, safeValue);
       if (field === "rentalPurchasePrice") {
         updateAcquisitionCosts();
         updateEstimatedTax();
@@ -579,11 +579,13 @@
             updateAcquisitionCosts();
             updateEstimatedTax();
           }
+          button.textContent = formatInputValue(field, parsed);
           syncSliderBounds(field);
           scheduleCalculate();
           queueRentalSliderChange(field, true);
           return;
         }
+        button.textContent = formatInputValue(field, $(field).value);
         syncSliderBounds();
         scheduleCalculate();
       };
@@ -1648,15 +1650,12 @@
       await loadRentalBenchmark(id, seq);
       if (seq !== buildingSequence) return;
       var items = areas && Array.isArray(areas.items) ? areas.items : [];
-      $("rentalUnitAreaOptions").innerHTML = items.map(function (item) {
-        var sqm = Number(item.sqm);
-        return '<option value="' + sqm.toLocaleString("ko-KR") + '㎡"></option>';
-      }).join("");
+       if (window.livingstayApplyAnalysisAreaTypes) {
+         window.livingstayApplyAnalysisAreaTypes(id, items);
+       }
       if (items.length) {
-        $("rentalUnitAreaHint").textContent = "확인된 면적 " + items.length + "개 중 선택하거나 직접 입력할 수 있습니다.";
         await loadMarketPrice(id, seq);
       } else {
-        $("rentalUnitAreaHint").textContent = "확인된 호실 면적이 없어 직접 입력해 주세요.";
         setMarketStatus("호실 전용면적을 직접 입력하면 최근 실거래를 조회합니다.", "unavailable");
         sliderBasePrice = null;
         syncSliderBounds();
@@ -1726,7 +1725,7 @@
         updateEstimatedTax();
       }
       var valueButton = document.querySelector('[data-rental-value="' + id + '"]');
-      if (valueButton) valueButton.textContent = formatInputValue(id, $(id).value);
+      if (valueButton && !valueButton.querySelector("input")) valueButton.textContent = formatInputValue(id, $(id).value);
       calculate();
     });
     $(id).addEventListener("change", function () {

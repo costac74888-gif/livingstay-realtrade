@@ -124,11 +124,29 @@
   function photoHtml(i){var url=i.photo_url||i.image_url||i.thumbnail_url||i.photo;return url?'<img src="'+esc(url)+'" alt="'+esc(i.name||"건물")+' 사진" loading="lazy">':photoPlaceholderHtml(i)}
   function showPhotoCandidates(holder,i,urls){var candidates=urls.filter(Boolean).filter(function(url,idx,all){return all.indexOf(url)===idx}),index=0,generation=String((Number(holder.dataset.photoGeneration)||0)+1);holder.dataset.photoGeneration=generation;function next(){if(holder.dataset.photoGeneration!==generation)return;if(index>=candidates.length){holder.innerHTML=photoPlaceholderHtml(i);holder.dataset.photoState="unavailable";return}var img=document.createElement("img"),url=candidates[index++];img.alt=(i.name||"건물")+" 사진";img.loading="lazy";img.onload=function(){if(holder.dataset.photoGeneration===generation)holder.dataset.photoState="loaded"};img.onerror=next;img.src=url;holder.replaceChildren(img);holder.dataset.photoState="loading"}next()}
   window.livingstayRenderAnalysisBuildingIdentity=function(holder,b){if(!holder)return;if(!b){holder.innerHTML="";holder.classList.add("hidden");return}var id=b.id||b.building_id,i={name:b.display_building_name||b.building_name||"선택 건물",lodging_type:b.building_status||b.lodging_type||"선택 완료"},address=b.road_address||b.jibun_address||"주소 미확인",photos=Array.isArray(b.photos)?b.photos:[],urls=[b.photo_url,b.image_url,b.thumbnail_url,b.photo].concat(photos.map(function(p){return typeof p==="string"?p:p&&(p.url||p.photo_url)}));holder.dataset.buildingId=String(id||"");holder.innerHTML='<div class="analysis-building-photo"></div><div class="analysis-building-copy"><span class="eyebrow">SELECTED BUILDING</span><div class="analysis-building-title"><h3>'+esc(i.name)+'</h3><span>'+esc(i.lodging_type)+'</span></div><p>'+esc(address)+'</p><small>선택한 건물 정보를 확인하고 아래에 실제 운영·임대 조건을 추가해 보세요.</small></div>';holder.classList.remove("hidden");showPhotoCandidates(holder.querySelector(".analysis-building-photo"),i,urls);if(!id)return;fetch("/api/building/"+encodeURIComponent(id)+"/photos",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(d){if(!d||holder.dataset.buildingId!==String(id))return;var extra=(Array.isArray(d.photos)?d.photos:[]).map(function(p){return typeof p==="string"?p:p&&(p.url||p.photo_url)}).filter(Boolean);if(d.streetview_available===true&&Number.isFinite(Number(d.lat))&&Number.isFinite(Number(d.lng)))extra.push("/api/building-photo/"+encodeURIComponent(id)+"/streetview?view=building-v9");showPhotoCandidates(holder.querySelector(".analysis-building-photo"),i,urls.concat(extra))}).catch(function(){})};
+  function updateAnalysisSelectionTitle(){
+    var name=document.querySelector("#analysisBuildingIdentity h3"),area=Number(String($("rentalUnitArea").value||"").replace(/[㎡,]/g,"").trim());
+    $("analysisSelectionTitle").textContent=name?"· "+name.textContent+" · "+(Number.isFinite(area)&&area>0?"전용면적 "+area.toLocaleString("ko-KR")+"㎡":"전용면적 입력 필요"):"· 자산분석 그래프";
+  }
+  window.livingstayApplyAnalysisAreaTypes=function(id,items){
+    if(String(state.targetBuildingId)!==String(id))return;
+    var areas=(Array.isArray(items)?items:[]).map(function(item){return Number(item.sqm)}).filter(function(area){return Number.isFinite(area)&&area>0}).sort(function(a,b){return a-b}).filter(function(area,index,all){return index===0||area!==all[index-1]});
+    $("rentalUnitAreaOptions").innerHTML=areas.map(function(area){return '<option value="'+area.toLocaleString("ko-KR")+'㎡"></option>'}).join("");
+    var field=$("rentalUnitArea"),current=Number(String(field.value||"").replace(/[㎡,]/g,"").trim());
+    if(areas.length&&(!Number.isFinite(current)||current<=0)){
+      field.value=String(areas[0]);
+      field.dispatchEvent(new Event("input",{bubbles:true}));
+      field.dispatchEvent(new Event("change",{bubbles:true}));
+    }
+    $("rentalUnitAreaHint").textContent=areas.length?"가장 작은 "+areas[0].toLocaleString("ko-KR")+"㎡를 적용했습니다. 목록에서 다른 면적을 선택하거나 직접 입력하세요.":"확인된 호실 면적이 없어 직접 입력해 주세요.";
+    updateAnalysisSelectionTitle();
+  };
   window.livingstaySetAnalysisBuildingIdentity=function(building){
     var holder=$("analysisBuildingIdentity"),id=building&&String(building.building_id||building.id||"");
     if(!id||id!==String(state.targetBuildingId)||holder.dataset.buildingId===id)return;
     window.livingstayRenderAnalysisBuildingIdentity(holder,building);
     $("analysisCommonBuilding").classList.remove("hidden");
+    updateAnalysisSelectionTitle();
   };
   function clearCommonBuilding(){
     commonBuildingSequence++;commonBuildingId="";commonBuildingRequestId="";
@@ -138,6 +156,7 @@
     $("rentalUnitArea").value="";
     $("rentalUnitAreaOptions").innerHTML="";
     $("rentalUnitAreaHint").textContent="건물을 선택하면 확인된 호실 면적을 불러옵니다.";
+    updateAnalysisSelectionTitle();
   }
   function loadCommonBuilding(id){
     id=String(id||"");
@@ -152,9 +171,7 @@
     }).catch(function(){/* The analysis mode may still supply the building record. */}).finally(function(){if(seq===commonBuildingSequence)commonBuildingRequestId=""});
     fetch("/api/building/"+encodeURIComponent(id)+"/area-types",{credentials:"same-origin"}).then(function(res){return res.ok?res.json():null}).then(function(data){
       if(seq!==commonBuildingSequence||state.targetBuildingId!==id||!data)return;
-      var items=Array.isArray(data.items)?data.items:[],areas=items.map(function(item){return Number(item.sqm)}).filter(function(area){return Number.isFinite(area)&&area>0});
-      $("rentalUnitAreaOptions").innerHTML=areas.map(function(area){return '<option value="'+area.toLocaleString("ko-KR")+'㎡"></option>'}).join("");
-      $("rentalUnitAreaHint").textContent=areas.length?"확인된 면적 "+areas.length+"개 중 선택하거나 직접 입력할 수 있습니다.":"확인된 호실 면적이 없어 직접 입력해 주세요.";
+       window.livingstayApplyAnalysisAreaTypes(id,data.items);
     }).catch(function(){if(seq===commonBuildingSequence)$("rentalUnitAreaHint").textContent="면적 목록을 불러오지 못했습니다. 직접 입력할 수 있습니다."});
   }
   function quadrantGuide(i){var copy={"수요 프리미엄":"관광수요가 높고 유사자산보다 가격도 높은 구간입니다. 강한 수요가 가격에 반영됐는지 개별 자산 상태와 함께 확인하세요.","가격 부담":"관광수요는 낮지만 유사자산보다 가격이 높은 구간입니다. 가격을 뒷받침할 개별 경쟁력을 추가로 확인해야 합니다.","저가·수요 확인 필요":"유사자산보다 가격은 낮지만 관광수요도 낮은 구간입니다. 낮은 가격만으로 판단하지 말고 실제 수요를 확인하세요.","수요 대비 저평가 후보":"관광수요는 높고 유사자산보다 가격은 낮은 구간입니다. 거래 표본과 건물 상태를 확인할 가격 매력 후보입니다."},name=i.quadrant||"비교자료 부족";return{name:name,text:(copy[name]||"관광수요 또는 유사자산 비교 건물이 부족해 사분면을 확정할 수 없습니다.")}}
@@ -167,7 +184,7 @@
   function trackRecentBuilding(id,name,address,mode){var normalizedId=Number(id),selectedMode=mode||state.analysisMode;if(shareToken||!analysisAccountAllowed||!completedAnalysisFor(normalizedId,selectedMode)||String(state.targetBuildingId)!==String(normalizedId)||state.analysisMode!==selectedMode||!Number.isInteger(normalizedId)||normalizedId<=0||["property","rental","operation"].indexOf(selectedMode)<0)return;var context={id:String(normalizedId),mode:selectedMode,epoch:recentSessionEpoch},key=context.id+":"+context.mode+":"+context.epoch;if(recentSavedModes[context.id]===context.mode||recentPostContext===key||recentPostQueue&&recentPostQueue.id===context.id&&recentPostQueue.mode===context.mode&&recentPostQueue.epoch===context.epoch)return;recentPostQueue=context;flushRecentBuildingQueue()}
   function scheduleCompletedAnalysisTrack(){var mode=state.analysisMode,id=state.targetBuildingId;if(["rental","operation"].indexOf(mode)<0)return;setTimeout(function(){if(String(state.targetBuildingId)!==String(id)||state.analysisMode!==mode||!completedAnalysisFor(id,mode))return;var building=mode==="rental"?window.__rentalAnalysisBuilding:window.__operationAnalysisBuilding;trackRecentBuilding(id,building&&(building.display_building_name||building.building_name)||"",building&&(building.road_address||building.jibun_address)||"",mode)},0)}
   if(window.MutationObserver){["rentalResults","operationCoreMetrics","operationVerdict"].forEach(function(id){var node=$(id);if(node)new MutationObserver(scheduleCompletedAnalysisTrack).observe(node,{childList:true,subtree:true,characterData:true})})}
-  function openRecentBuilding(item){var id=Number(item&&item.building_id),mode=item&&item.last_mode;if(!Number.isInteger(id)||id<=0)return;if(["property","rental","operation"].indexOf(mode)<0)mode="property";var previous=String(state.targetBuildingId||"");if(previous!==String(id))window.dispatchEvent(new CustomEvent("livingstay:analysis-reset"));state.targetBuildingId=String(id);state.selected=null;state.pendingBuilding=null;loadCommonBuilding(id);$("buildingSearch").value=item.building_name||"건물명 미확인";$("searchResults").innerHTML="";setBuildingSelectionStatus(item.building_name||"건물명 미확인",true);updateAnalysisUrl(mode,id,false,mode==="rental");setAnalysisMode(mode,true)}
+   function openRecentBuilding(item){var id=Number(item&&item.building_id),mode=state.analysisMode;if(!Number.isInteger(id)||id<=0)return;var previous=String(state.targetBuildingId||"");if(previous!==String(id))window.dispatchEvent(new CustomEvent("livingstay:analysis-reset"));state.targetBuildingId=String(id);state.selected=null;state.pendingBuilding=null;loadCommonBuilding(id);$("buildingSearch").value=item.building_name||"건물명 미확인";$("searchResults").innerHTML="";setBuildingSelectionStatus(item.building_name||"건물명 미확인",true);updateAnalysisUrl(mode,id,false,mode==="rental");setAnalysisMode(mode,true)}
   function favoriteFor(id){return favoriteItems.find(function(item){return String(item&&item.building_id)===String(id)})||null}
   function updateFavoriteButtons(){document.querySelectorAll('[data-report-action="favorite"]').forEach(function(button){var saved=!!favoriteFor(button.dataset.buildingId);button.classList.toggle("active",saved);button.setAttribute("aria-pressed",saved?"true":"false");button.textContent=saved?"관심해제":"관심저장"})}
   async function toggleFavorite(button,id,name,address){if(button.disabled)return;button.disabled=true;var saved=favoriteFor(id),method=saved?"DELETE":"POST",payload=saved?{building_name:saved.building_name,address:saved.address}:{building_id:Number(id)||id,building_name:name||"건물명 미확인",address:address||""};try{if(!payload.address){var buildingRes=await fetch("/api/building/"+encodeURIComponent(id),{credentials:"same-origin"}),building=buildingRes.ok?await buildingRes.json():null;payload.address=building&&(building.road_address||building.jibun_address)||"";payload.building_name=building&&(building.display_building_name||building.building_name)||payload.building_name}if(!payload.address)throw Error("건물 주소를 확인하지 못했습니다.");var res=await fetch("/api/favorites/mine",{method:method,credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),data=await res.json().catch(function(){return{}});if(res.status===401){if(typeof window.livingstayOpenLogin==="function")window.livingstayOpenLogin("로그인 후 관심단지에 저장할 수 있습니다.");return}if(!res.ok||data.ok===false)throw Error(data.message||"관심단지를 변경하지 못했습니다.");await renderQuickBuildings()}catch(e){alert(e&&e.message||"관심단지를 변경하지 못했습니다.")}finally{button.disabled=false;updateFavoriteButtons()}}
@@ -236,7 +253,8 @@
   $("recommendationSort").onchange=function(){state.recommendationSort=this.value;state.recommendationDir=this.value==="candidate_gap"?1:-1;$("recommendationSortAsc").classList.toggle("active",state.recommendationDir===1);$("recommendationSortAsc").setAttribute("aria-pressed",state.recommendationDir===1?"true":"false");$("recommendationSortDesc").classList.toggle("active",state.recommendationDir===-1);$("recommendationSortDesc").setAttribute("aria-pressed",state.recommendationDir===-1?"true":"false");renderRecommendations()};
   [["recommendationSortAsc",1],["recommendationSortDesc",-1]].forEach(function(pair){$(pair[0]).onclick=function(){state.recommendationDir=pair[1];$("recommendationSortAsc").classList.toggle("active",state.recommendationDir===1);$("recommendationSortAsc").setAttribute("aria-pressed",state.recommendationDir===1?"true":"false");$("recommendationSortDesc").classList.toggle("active",state.recommendationDir===-1);$("recommendationSortDesc").setAttribute("aria-pressed",state.recommendationDir===-1?"true":"false");renderRecommendations()}});
   $("operationRentalGuide").onclick=function(){setAnalysisMode("rental",false,true)};
-  $("rentalUnitArea").addEventListener("input",function(){var select=$("transactionAreaSelect"),area=Number(String(this.value||"").replace(/,/g,"").replace(/㎡/g,"")),key=area>0?area.toFixed(1):"";if(!select)return;if(key&&Array.from(select.options).some(function(option){return option.value===key})){select.dataset.commonArea=key;select.value=key;select.dispatchEvent(new Event("change"))}});
+  $("rentalUnitArea").addEventListener("input",function(){updateAnalysisSelectionTitle();var select=$("transactionAreaSelect"),area=Number(String(this.value||"").replace(/,/g,"").replace(/㎡/g,"")),key=area>0?area.toFixed(1):"";if(!select)return;if(key&&Array.from(select.options).some(function(option){return option.value===key})){select.dataset.commonArea=key;select.value=key;select.dispatchEvent(new Event("change"))}});
+  $("analysisAreaPicker").onclick=function(event){event.preventDefault();var field=$("rentalUnitArea");field.focus();if(field.showPicker){try{field.showPicker()}catch(ignore){}}};
   window.addEventListener("livingstay:auth",handleAnalysisAuthChange);
   window.addEventListener("pageshow",function(){if(analysisAccountAllowed||shareToken)renderQuickBuildings();else $("quickBuildings").innerHTML=""});
   window.livingstayTrackAnalyzedBuilding=trackRecentBuilding;

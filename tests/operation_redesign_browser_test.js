@@ -336,11 +336,16 @@ async function run() {
     expect(!first.emptyPanel, "자료 입력 전 빈 결과 패널이 남아 있습니다.");
     expect(first.source.includes("호텔") && first.source.includes("생활숙박"),
       "호텔업 통계와 생활숙박 위탁운영 실적 간의 차이를 고지하지 않았습니다.");
-    expect(first.verdictBox.bottom < first.sensitivityBox.top
-      && first.verdictBox.width > first.resultsColumn.width,
-    `운영 종합평가가 결과 영역 맨 위 전체 폭에 배치되지 않았습니다: ${JSON.stringify({
+    expect(first.verdictBox.top >= first.resultsColumn.top - 2
+      && first.verdictBox.top < first.sensitivityBox.top
+      && Math.abs(first.verdictBox.width - first.resultsColumn.width) < 2
+      && await page.locator(".operation-results-column > #operationVerdict").count() === 1,
+    `운영 종합평가가 우측 결과 영역 맨 위에 배치되지 않았습니다: ${JSON.stringify({
       sensitivity: first.sensitivityBox, verdict: first.verdictBox,
     })}`);
+    expect(await page.locator("#operationSensitivity td.selected strong").count() === 1
+      && await page.locator("#operationSensitivity th.current-axis").count() === 2,
+    "해당 건물 ADR·OCC 및 월 순수익이 강조되지 않았습니다.");
     expect(await page.locator(".operation-results-column > #operationReportActions .am-btn").count() === 4,
       "운영 결과 아래에 공통 보고서 버튼 네 개가 배치되지 않았습니다.");
     expect(near(first.state.monthlyRevenue / 10000, 270.864, 0.08),

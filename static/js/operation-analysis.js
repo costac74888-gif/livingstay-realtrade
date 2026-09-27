@@ -1119,16 +1119,17 @@
     host.innerHTML = '<h3>ADR × OCC 민감도 — 호실 월 순수익 (만원, 운영경비율 '
       + state.opexRatio + '% · 위탁수수료율 ' + state.mgmtFeeRatio + '% 반영)</h3>'
       + '<div class="operation-sensitivity-scroll"><table><thead><tr><th>OCC \\ ADR</th>'
-      + columns.map(function (adr) { return "<th>" + format(adr / 1000, 0) + "천</th>"; }).join("")
+       + columns.map(function (adr) { return '<th scope="col"' + (Math.abs(adr - state.adr) < 0.01 ? ' class="current-axis"' : "") + ">" + format(adr / 1000, 0) + "천</th>"; }).join("")
       + "</tr></thead><tbody>" + rows.map(function (occ) {
-        return "<tr><th>" + format(occ, 1) + "%</th>" + columns.map(function (adr) {
+         return '<tr><th scope="row"' + (Math.abs(occ - state.occ) < 0.01 ? ' class="current-axis"' : "") + ">" + format(occ, 1) + "%</th>" + columns.map(function (adr) {
           var net = cellNet(adr, occ), rent = state.compareRent;
           var cls = rent == null ? "unavailable" : net / 10000 >= rent ? "above"
             : net / 10000 >= rent * 0.8 ? "middle" : "below";
           var selected = Math.abs(adr - state.adr) < 0.01 && Math.abs(occ - state.occ) < 0.01;
           if (selected) cls += " selected";
-          return '<td class="' + cls + '"' + (selected ? ' aria-current="true"' : "")
-            + '>' + (net == null ? "—" : moneyMan(net).replace(/만원$/, "")) + "</td>";
+           var amount=net == null ? "—" : moneyMan(net).replace(/만원$/, "");
+           return '<td class="' + cls + '"' + (selected ? ' aria-current="true" aria-label="해당 건물 호실 월 순수익 '+amount+'만원"' : "")
+             + '>' + (selected ? "<strong>"+amount+"</strong>" : amount) + "</td>";
         }).join("") + "</tr>";
       }).join("") + "</tbody></table></div>"
       + '<div class="operation-sensitivity-legend"><span>월세 이상 · 월세보다 유리</span>'

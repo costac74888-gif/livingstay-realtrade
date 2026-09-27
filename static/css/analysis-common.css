@@ -18,8 +18,9 @@
   min-width: 0;
   padding: 16px;
   border-radius: 12px;
-  background: #eef6f2;
+  background: #e7f5f0;
   color: #173d48;
+  border: 2px solid #70b7a3;
 }
 .common-area-field > span {
   font-size: 12px;
@@ -32,10 +33,23 @@
   height: 40px;
   margin-top: 8px;
   padding: 0 10px;
-  border: 1px solid #bfd9d0;
+  border: 2px solid #27846c;
   border-radius: 8px;
   background: #fff;
 }
+.common-area-field:focus-within { border-color: #185a7b; box-shadow: 0 0 0 3px rgba(38, 115, 207, .16); }
+.common-area-field > div:focus-within { border-color: #185a7b; }
+.common-area-field #analysisAreaPicker {
+  flex: none;
+  border: 0;
+  border-left: 1px solid #b3d2c7;
+  background: transparent;
+  color: #176c5b;
+  font-size: 22px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.analysis-mode-bar h2 small { color: #28775d; font-size: .75em; font-weight: 700; }
 .common-area-field input {
   flex: 1;
   min-width: 0;
@@ -132,7 +146,21 @@
   font-size: 12px;
   line-height: 1.6;
 }
-#propertyAnalysis > .analysis-report-verdict { margin-top: 0; }
+.workspace > .property-results-column {
+  grid-area: detail;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+.property-results-column > .analysis-report-verdict,
+.rental-results-column > .analysis-report-verdict,
+.operation-results-column > .analysis-report-verdict {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+}
+.property-results-column > #detailCard { position: static; flex: 1; min-width: 0; }
 #detailCard {
   display: flex;
   flex-direction: column;

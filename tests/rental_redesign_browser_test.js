@@ -276,12 +276,16 @@ async function run() {
     await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000
       && document.querySelector('[data-rental-limits="rentalPurchasePrice"] [data-rental-limit-min]').textContent === "0만");
     const reportLayout = await page.evaluate(() => ({
+      verdictTop: document.getElementById("rentalVerdict").getBoundingClientRect().top,
       verdictBottom: document.getElementById("rentalVerdict").getBoundingClientRect().bottom,
       sliderTop: document.getElementById("rentalSliders").getBoundingClientRect().top,
+      metricsTop: document.getElementById("rentalCoreMetrics").getBoundingClientRect().top,
+      verdictInResults: Boolean(document.querySelector(".rental-results-column > #rentalVerdict")),
       actionsInResults: document.querySelector(".rental-results-column > #rentalReportActions") !== null,
       actionCount: document.querySelectorAll("#rentalReportActions .am-btn").length,
     }));
-    expect(reportLayout.verdictBottom < reportLayout.sliderTop
+    expect(reportLayout.verdictInResults && Math.abs(reportLayout.verdictTop - reportLayout.sliderTop) < 2
+      && reportLayout.verdictBottom < reportLayout.metricsTop
       && reportLayout.actionsInResults && reportLayout.actionCount === 4,
     `임대수익 종합평가·결과 아래 4개 버튼 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
 

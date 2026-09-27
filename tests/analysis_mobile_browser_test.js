@@ -520,17 +520,26 @@ async function run() {
     expect(result.recommendations.length === 5,
       "가격 매력 후보가 최초 5개로 표시되지 않았습니다.");
     if (width === 1280) {
+       if (process.env.CAPTURE_PROPERTY_DESKTOP === "1") {
+         await prepareCaptureFont(page);
+         await page.screenshot({ path: "/tmp/analysis-property-desktop.png", fullPage: true });
+       }
        const reportLayout = await page.evaluate(() => ({
          duplicatePhoto: getComputedStyle(document.querySelector("#detailCard .detail-photo")).display,
+         verdictTop: document.getElementById("propertyVerdict").getBoundingClientRect().top,
          verdictBottom: document.getElementById("propertyVerdict").getBoundingClientRect().bottom,
-         chartTop: document.getElementById("workspace").getBoundingClientRect().top,
+         chartTop: document.querySelector("#workspace .chart-card").getBoundingClientRect().top,
+         detailTop: document.getElementById("detailCard").getBoundingClientRect().top,
+         verdictInRightColumn: Boolean(document.querySelector(".property-results-column > #propertyVerdict")),
          evidenceInsideDisclosure: document.getElementById("methodology")
            .contains(document.getElementById("propertyEvidence")),
          evidenceHasSource: document.getElementById("propertyEvidence").textContent.includes("관광 자료"),
          sourceInSideCard: Boolean(document.querySelector("#detailCard .detail-source")),
        }));
        expect(reportLayout.duplicatePhoto === "none"
-         && reportLayout.verdictBottom < reportLayout.chartTop
+         && reportLayout.verdictInRightColumn
+         && Math.abs(reportLayout.verdictTop - reportLayout.chartTop) < 2
+         && reportLayout.verdictBottom < reportLayout.detailTop
          && reportLayout.evidenceInsideDisclosure && reportLayout.evidenceHasSource
          && !reportLayout.sourceInSideCard,
        `PC 보고서의 중복 사진·상단 종합평가·하단 접힌 근거 배치가 다릅니다: ${JSON.stringify(reportLayout)}`);
@@ -791,7 +800,12 @@ async function run() {
     await page.click("#operationTab");
     await page.waitForFunction(() => document.getElementById("operationTab").getAttribute("aria-selected") === "true"
       && !document.getElementById("operationInputs").classList.contains("hidden"));
+    for (let attempt = 0; attempt < 30
+      && !recentAnalysisMutations.some((entry) => entry.mode === "operation"); attempt++) {
+      await page.waitForTimeout(100);
+    }
     const operationWritesBeforePartialState = recentAnalysisMutations.filter((entry) => entry.mode === "operation").length;
+    expect(operationWritesBeforePartialState > 0, "완성된 운영분석이 최근 분석에 저장되지 않았습니다.");
     uploadHasOccupancyBasis = false;
     await page.setInputFiles("#operationFiles", {
       name: "missing-period.csv",
@@ -815,8 +829,9 @@ async function run() {
     const areaOptions = await page.locator("#rentalUnitAreaOptions option").evaluateAll((options) =>
       options.map((option) => option.value));
     expect(areaOptions.join("|") === "18.1㎡|18.2㎡|18.3㎡|21.2㎡|32.5㎡"
-      && await page.locator("#rentalUnitArea").inputValue() === "",
-      "임대수익분석 전용면적 목록이 중복 없이 ㎡ 단위로 모두 표시되어야 합니다.");
+      && await page.locator("#rentalUnitArea").inputValue() === "18.1"
+      && (await page.locator("#analysisSelectionTitle").textContent()).includes("전용면적 18.1㎡"),
+      "확인된 전용면적 목록을 정렬하고 가장 작은 면적을 자동 선택해 제목에 표시해야 합니다.");
     const rentalPreInput = await page.evaluate(() => {
       const chart = Chart.getChart(document.getElementById("rentalPositionChart"));
       return {
@@ -880,7 +895,9 @@ async function run() {
       await page.locator(`[data-rental-value="${field}"]`).click();
       const input = page.locator(`[data-rental-value="${field}"] input`);
       await input.fill(String(value));
-      await input.press("Enter");
+      // The calculation redraws slider inputs synchronously; avoid pressing
+      // on the now-detached input node after fill.
+      await page.keyboard.press("Enter");
       await page.waitForTimeout(60);
     };
     await setRentalValue("rentalPurchasePrice", 10000);
@@ -1081,7 +1098,8 @@ async function run() {
     await page.waitForFunction(() => {
       const query = new URLSearchParams(location.search);
       return query.get("building_id") === "101" && !query.has("mode")
-        && document.querySelector("#detailCard .detail-name")?.textContent === "선택 테스트 자산";
+        && document.querySelector("#detailCard .detail-name")?.textContent === "선택 테스트 자산"
+        && document.getElementById("propertyTab").getAttribute("aria-selected") === "true";
     });
     expect(await page.locator("#buildingSelectionApply").isDisabled(),
       "최근 분석을 눌렀을 때 검색 선택 단계를 다시 요구합니다.");
