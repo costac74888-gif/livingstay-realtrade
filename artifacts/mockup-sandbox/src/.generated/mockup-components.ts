@@ -4,9 +4,9 @@ export const modules: ModuleMap = {
   "./components/mockups/analysis-photo/CurrentReport.tsx": () => import("../components/mockups/analysis-photo/CurrentReport.tsx"),
   "./components/mockups/analysis-photo/DesktopWithPhoto.tsx": () => import("../components/mockups/analysis-photo/DesktopWithPhoto.tsx"),
   "./components/mockups/analysis-photo/PrintWithPhoto.tsx": () => import("../components/mockups/analysis-photo/PrintWithPhoto.tsx"),
+  "./components/mockups/weekly-email/Current.tsx": () => import("../components/mockups/weekly-email/Current.tsx"),
+  "./components/mockups/weekly-email/Proposal.tsx": () => import("../components/mockups/weekly-email/Proposal.tsx"),
   "./components/mockups/property-purchase/Current.tsx": () => import("../components/mockups/property-purchase/Current.tsx"),
   "./components/mockups/property-purchase/InvestmentSection.tsx": () => import("../components/mockups/property-purchase/InvestmentSection.tsx"),
-  "./components/mockups/property-purchase/Proposed.tsx": () => import("../components/mockups/property-purchase/Proposed.tsx"),
-  "./components/mockups/weekly-email/Current.tsx": () => import("../components/mockups/weekly-email/Current.tsx"),
-  "./components/mockups/weekly-email/Proposal.tsx": () => import("../components/mockups/weekly-email/Proposal.tsx")
+  "./components/mockups/property-purchase/Proposed.tsx": () => import("../components/mockups/property-purchase/Proposed.tsx")
 };

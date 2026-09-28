@@ -29757,6 +29757,58 @@ _MEMBER_SELECTS = {
 }
 
 
+@app.route("/api/admin/stats/overview")
+@require_admin
+def admin_stats_overview():
+    """대시보드 상단의 회원 현황·처리 대상 수. 회원관리와 같은 원장을 사용한다."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        # 회원관리의 UNION을 공유해 휴면/비활성 및 신청 행의 포함 기준을 맞춘다.
+        union_sql = " UNION ALL ".join(_MEMBER_SELECTS.values())
+        cur.execute(f"""
+            SELECT m.member_type, m.applicant_type, COUNT(*) AS count
+            FROM ({union_sql}) m
+            GROUP BY m.member_type, m.applicant_type
+        """)
+        members = {key: 0 for key in _MEMBER_GROUPS}
+        pending_types = {key: 0 for key in
+                         ("agent", "operator", "lodging_operator", "loan_consultant", "presale")}
+        for row in cur.fetchall():
+            count = int(row["count"])
+            member_type = row["member_type"]
+            members[member_type] += count
+            if member_type == "pending" and row["applicant_type"] in pending_types:
+                pending_types[row["applicant_type"]] += count
+        members["all"] = sum(value for key, value in members.items() if key != "all")
+
+        # 액션센터의 접수/대기 기준과 동일하되, 목록의 표시 제한 없이 전체 건수를 센다.
+        cur.execute("""
+            SELECT
+              (SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '7 days'
+                 AND COALESCE(status, 'active') <> 'withdrawn') AS new_signup,
+              (SELECT COUNT(*) FROM listing_requests
+                 WHERE status = 'submitted' AND deal_mode = 'direct') AS direct_listing,
+              (SELECT COUNT(*) FROM listing_requests
+                 WHERE status = 'submitted' AND COALESCE(deal_mode, 'broker') <> 'direct') AS broker_listing,
+              (SELECT COUNT(*) FROM buy_requests
+                 WHERE status IN ('pending', 'submitted')) AS buy_request,
+              (SELECT COUNT(*) FROM booking_url_requests WHERE status = 'pending') AS ota_request,
+              (SELECT COUNT(*) FROM building_requests WHERE status IN ('pending', 'name_review')) AS building_request,
+              (SELECT COUNT(*) FROM presale_applications WHERE status IN ('submitted', 'reviewing')) AS presale_application,
+              (SELECT COUNT(*) FROM bug_reports WHERE status <> 'resolved') AS bug_report,
+              (SELECT COUNT(*) FROM sync_log
+                 WHERE LOWER(COALESCE(status, '')) IN ('failed', 'error')) AS sync_failure
+        """)
+        actions = {key: int(value) for key, value in cur.fetchone().items()}
+        actions.update({f"partner_{key}": pending_types[key] for key in
+                        ("agent", "operator", "lodging_operator", "loan_consultant")})
+        return jsonify({"members": members, "pending_types": pending_types, "actions": actions})
+    finally:
+        cur.close()
+        conn.close()
+
+
 @app.route("/api/admin/members")
 @require_admin
 def admin_members_list():

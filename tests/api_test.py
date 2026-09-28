@@ -172,6 +172,44 @@ def check_admin_action_center_api(client):
     return None
 
 
+def check_admin_stats_overview_api(client):
+    """상단 카드가 회원관리와 동일한 인원수를 보이고 접수 건수를 빠뜨리지 않는지 확인."""
+    with client.session_transaction() as sess:
+        sess.clear()
+    if client.get("/api/admin/stats/overview").status_code != 401:
+        return "상단 현황 API가 비관리자 요청을 차단하지 않음"
+    with client.session_transaction() as sess:
+        sess["admin"] = True
+    response = client.get("/api/admin/stats/overview")
+    if response.status_code != 200:
+        return f"상단 현황 API가 정상 응답하지 않음 (HTTP {response.status_code})"
+    overview = response.get_json() or {}
+    member_keys = {"all", "general", "agent", "operator", "lodging_operator", "loan_consultant", "pending"}
+    action_keys = {
+        "new_signup", "direct_listing", "broker_listing", "buy_request",
+        "partner_agent", "partner_operator", "partner_lodging_operator",
+        "partner_loan_consultant", "ota_request", "building_request",
+        "presale_application", "bug_report", "sync_failure",
+    }
+    members, actions = overview.get("members") or {}, overview.get("actions") or {}
+    if set(members) != member_keys or set(actions) != action_keys:
+        return "회원 또는 액션 유형 카드가 누락됨"
+    if any(not isinstance(value, int) or value < 0 for value in [*members.values(), *actions.values()]):
+        return "상단 현황에 음수 또는 정수가 아닌 건수가 있음"
+    member_list = client.get("/api/admin/members?group=all&page=1&size=1")
+    if member_list.status_code != 200:
+        return "회원관리 기준 인원수를 확인하지 못함"
+    reference = member_list.get_json() or {}
+    if members != reference.get("counts"):
+        return "상단 회원 현황과 회원관리 목록의 전체/유형별 인원수가 다름"
+    if overview.get("pending_types") != reference.get("pending_type_counts"):
+        return "승인대기 신청 유형별 건수가 회원관리와 다름"
+    for key in ("agent", "operator", "lodging_operator", "loan_consultant"):
+        if actions["partner_" + key] != overview["pending_types"][key]:
+            return f"{key} 신청 액션 수와 승인대기 회원 수가 다름"
+    return None
+
+
 def _check_admin_delivery_outbox():
     """Outbox is idempotent, reclaims stale leases, and uses mocked mail only."""
     tag = f"api-test-outbox-{time.time_ns()}"
@@ -1095,6 +1133,11 @@ def run():
         failures.append(action_center_error)
     else:
         print("OK  /api/admin/action-center (인증·카테고리·PII 비노출)")
+    overview_error = check_admin_stats_overview_api(client)
+    if overview_error:
+        failures.append(overview_error)
+    else:
+        print("OK  /api/admin/stats/overview (회원관리 일치·액션별 건수)")
     failures += _check_admin_delivery_outbox()
 
     notification_error = check_admin_notification_api(client)

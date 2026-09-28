@@ -108,6 +108,18 @@
     .user-chart-wrap{height:235px;position:relative;min-width:100%}
     .user-chart-wrap canvas{width:100%!important;height:100%!important}
     .user-chart-note{font-size:10.5px;color:var(--ink-soft);margin:5px 0 0}
+    .dashboard-overview{margin-bottom:18px}
+    .dashboard-overview-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:14px 0 8px}
+    .dashboard-overview-head h3{margin:0;font-size:15px;color:var(--ink)}
+    .dashboard-overview-head p{margin:0;font-size:11px;color:var(--ink-soft)}
+    .dashboard-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px}
+    .dashboard-overview-card{display:flex;flex-direction:column;gap:4px;min-width:0;min-height:78px;padding:10px 12px;background:#fff;border:1px solid #DDE1E6;border-radius:9px;text-decoration:none;color:var(--ink)}
+    .dashboard-overview-card:hover,.dashboard-overview-card:focus-visible{border-color:#B4863F;background:#FFFCF7;outline:none}
+    .dashboard-overview-card.is-pending{background:#FFF9ED;border-color:#EAD8B6}
+    .dashboard-overview-label{font-size:11px;font-weight:700;color:var(--ink-soft)}
+    .dashboard-overview-value{font-size:23px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+    .dashboard-overview-hint{font-size:10px;line-height:1.35;color:var(--ink-soft)}
+    @media(max-width:520px){.dashboard-overview-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @media(max-width:900px){.user-stats-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
     @media(max-width:520px){.user-stats-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.user-chart-wrap{height:210px}.user-range-btn{padding:5px 7px}}
     @media(max-width:700px){.user-detail-grid{grid-template-columns:1fr!important}}
@@ -1264,26 +1276,28 @@
     async function showStats(menuKey) {
       destroyStatsCharts();
       mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
-      let data, mapBld, actionCenter;
+      let data, mapBld, actionCenter, overview;
       try {
         // /api/building-count : 지도 필터 기준 용도별 건수 (mixed_use_excluded 제외)
         // /api/admin/stats    : 대시보드 집계 (mixed_use_excluded 포함)
         // 두 숫자 차이(복합 불일치)를 화면에 명시하기 위해 병렬 로드
-        const [res, bldRes, actionRes] = await Promise.all([
+        const [res, bldRes, actionRes, overviewRes] = await Promise.all([
           fetch("/api/admin/stats"),
           fetch("/api/building-count"),
           fetch("/api/admin/action-center").catch(() => null),
+          fetch("/api/admin/stats/overview").catch(() => null),
         ]);
-        if (res.status === 401) { window.location.href = "/admin/login"; return; }
+        if (res.status === 401 || overviewRes?.status === 401) { window.location.href = "/admin/login"; return; }
         if (!res.ok) throw new Error("stats fetch failed");
         data = await res.json();
         mapBld = bldRes.ok ? await bldRes.json() : {};
         actionCenter = actionRes && actionRes.ok ? await actionRes.json() : { ok: false };
+        overview = overviewRes && overviewRes.ok ? await overviewRes.json() : null;
       } catch (e) {
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
-      renderStats(data, mapBld, actionCenter);
+      renderStats(data, mapBld, actionCenter, overview);
       loadPartnerBuildingCounts();
     }
 
@@ -1333,6 +1347,62 @@
         </div><input class="action-center-search" type="search" data-action-search placeholder="제목·ID 검색" aria-label="액션 센터 검색"></div>
         <div class="action-center-list" data-action-list>${rowHtml || `<div class="action-center-empty">현재 처리할 운영 신호가 없습니다.</div>`}</div>
       </section>`;
+    }
+
+    function renderDashboardOverview(overview) {
+      if (!overview || !overview.members || !overview.actions) {
+        return `<section class="dashboard-overview" aria-label="회원 및 접수 현황"><div class="action-center-error">상단 현황을 불러오지 못했습니다. 새로고침 후 다시 확인해주세요.</div></section>`;
+      }
+      const memberItems = [
+        ["all", "전체", "회원·승인대기 포함"],
+        ["general", "일반회원", "회원관리 기준"],
+        ["agent", "중개사", "회원관리 기준"],
+        ["operator", "운영지원업체", "회원관리 기준"],
+        ["lodging_operator", "숙박시설 운영자", "회원관리 기준"],
+        ["loan_consultant", "대출상담사", "회원관리 기준"],
+        ["pending", "승인대기", "파트너·분양 신청"],
+      ];
+      const actionItems = [
+        ["new_signup", "신규 회원", "최근 7일 · 탈퇴 제외", "members"],
+        ["direct_listing", "직거래 매물", "접수 상태", "listings"],
+        ["broker_listing", "중개 매물 의뢰", "접수 상태", "listings"],
+        ["buy_request", "매수 의뢰", "접수·대기 상태", "requests"],
+        ["partner_agent", "중개사 신청", "승인대기", "members"],
+        ["partner_operator", "운영업체 신청", "승인대기", "members"],
+        ["partner_lodging_operator", "숙박 운영자 신청", "승인대기", "members"],
+        ["partner_loan_consultant", "대출상담사 신청", "승인대기", "members"],
+        ["ota_request", "OTA 링크 신청", "승인대기", "ota-requests"],
+        ["building_request", "건물 등록·명칭 검토", "접수·검토 상태", "requests"],
+        ["presale_application", "분양 신청", "접수·검토 상태", "presale"],
+        ["bug_report", "오류 신고", "미해결", "bug-reports"],
+        ["sync_failure", "동기화 실패", "실패 이력", "datasync"],
+      ];
+      const card = (key, label, hint, href, group, pending, targetGroup = group) =>
+        `<a class="dashboard-overview-card ${pending ? "is-pending" : ""}" href="#${href}" ${targetGroup ? `data-overview-member="${targetGroup}"` : ""}>
+          <span class="dashboard-overview-label">${label}</span>
+          <strong class="dashboard-overview-value">${num(Number((group ? overview.members : overview.actions)[key] || 0))}</strong>
+          <span class="dashboard-overview-hint">${hint}</span>
+        </a>`;
+      return `<div class="dashboard-overview" aria-label="회원 및 접수 현황">
+        <div class="dashboard-overview-head"><h3>회원 현황</h3><p>회원관리 상단과 동일한 전체 건수 · 카드를 누르면 해당 회원 유형으로 이동</p></div>
+        <div class="dashboard-overview-grid">${memberItems.map(([key, label, hint]) =>
+          card(key, label, key === "pending"
+            ? `중개 ${num(overview.pending_types?.agent || 0)} · 운영 ${num(overview.pending_types?.operator || 0)} · 숙박 ${num(overview.pending_types?.lodging_operator || 0)} · 대출 ${num(overview.pending_types?.loan_consultant || 0)} · 분양 ${num(overview.pending_types?.presale || 0)}`
+            : hint, "members", key, key === "pending")).join("")}</div>
+        <div class="dashboard-overview-head"><h3>신규 접수·처리 현황</h3><p>현재 접수·대기 중인 건수(신규 회원만 최근 7일) · 카드를 누르면 관리 화면으로 이동</p></div>
+        <div class="dashboard-overview-grid">${actionItems.map(([key, label, hint, href]) =>
+          card(key, label, hint, href, null, false, key.startsWith("partner_") ? "pending" : key === "new_signup" ? "general" : null)).join("")}</div>
+      </div>`;
+    }
+
+    function bindDashboardOverview() {
+      document.querySelectorAll("[data-overview-member]").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          activateMenu("members");
+          document.querySelector(`.member-group-btn[data-group="${link.dataset.overviewMember}"]`)?.click();
+        });
+      });
     }
 
     function bindActionCenter() {
@@ -2272,7 +2342,7 @@
       load();
     }
 
-    function renderStats(d, mapBld, actionCenter) {
+    function renderStats(d, mapBld, actionCenter, overview) {
       mapBld = mapBld || {};
       const m = d.members || {};
       const ag = m.agent || { pending: 0, approved: 0, rejected: 0 };
@@ -2295,6 +2365,7 @@
           <h2 class="stats-title">통계 대시보드</h2>
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
+        ${renderDashboardOverview(overview)}
         ${renderActionCenter(actionCenter)}
         <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
 
@@ -2646,6 +2717,7 @@
         topEl.innerHTML = `<div class="stats-toppaths-title">오늘 인기 경로 TOP 5</div><div class="stats-toppath-empty">아직 오늘 방문 기록이 없습니다.</div>`;
       }
       bindActionCenter();
+      bindDashboardOverview();
     }
 
     function showGrid(menuKey) {
