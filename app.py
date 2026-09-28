@@ -2721,8 +2721,30 @@ def get_building(building_id):
             _photos_by_lr.setdefault(_lrid, []).append(
                 f"/api/listing-photos/img/{_pr['image_key']}"
             )
+        _provider_photo = next(
+            (photo for photo in building["photos"]
+             if photo["source"] in ("tourapi", "gocamping")), None
+        )
+        if _provider_photo is None and building.get("lat") is not None and building.get("lng") is not None:
+            cur.execute("""
+                SELECT 1 FROM building_photo_fetches
+                 WHERE building_id=%s AND source='tourapi'
+                   AND status IN ('no_match', 'catalog_no_photo')
+                   AND last_attempt_at > NOW() - INTERVAL '30 days'
+                 LIMIT 1
+            """, [building_id])
+            if cur.fetchone():
+                _provider_photo = next(iter(_streetview_fallback_photos({
+                    "id": building_id, "lat": building["lat"], "lng": building["lng"],
+                })), None)
         for _d in _direct_listings:
             _d["photos"] = _photos_by_lr.get(_d["id"], [])
+            if _d["photos"]:
+                _d["photo_url"] = _d["photos"][0]
+            elif _provider_photo:
+                _d["photos"] = [_provider_photo["url"]]
+                _d["photo_url"] = _provider_photo["url"]
+                _d["photo_source"] = _provider_photo["source"]
             _d["liked"] = False
         _viewer = session.get("user") or {}
         if _viewer.get("id"):
@@ -13942,7 +13964,7 @@ def _apply_limited_whole_listing_privacy(listing, approx_location=None):
         part for part in (listing.get("sgg_text"), listing.get("umd_nm")) if part
     ).strip() or "지역 비공개"
     for key in (
-        "building_id", "lat", "lng", "photo_url", "photos",
+        "building_id", "lat", "lng", "photo_url", "photos", "photo_source",
         "building_info_overrides", "verified_phone", "phone_tail",
     ):
         listing.pop(key, None)
@@ -15216,7 +15238,11 @@ def public_listings():
                    TO_CHAR(COALESCE(lr.updated_at, lr.created_at), 'YYYY-MM-DD') AS listing_date,
                     COALESCE(ll.like_count, 0) AS like_count,
                     COALESCE(pv.viewer_count, 0) AS viewer_count,
-                    lp.photo_url, lp.photos,
+                    COALESCE(lp.photo_url, fallback_photo.photo_url) AS photo_url,
+                    CASE WHEN lp.photo_url IS NOT NULL THEN lp.photos
+                         WHEN fallback_photo.photo_url IS NOT NULL THEN ARRAY[fallback_photo.photo_url]
+                         ELSE NULL END AS photos,
+                    CASE WHEN lp.photo_url IS NULL THEN fallback_photo.source END AS photo_source,
                     mb.id AS building_id, mb.building_name, mb.sgg_text, mb.umd_nm,
                     mb.lodging_type, mb.lodging_subtype,
                     mb.plat_area / 3.305785 AS land_area_pyeong,
@@ -15278,6 +15304,40 @@ def public_listings():
                       LIMIT 10
                  ) photo_rows
              ) lp ON true
+             LEFT JOIN LATERAL (
+                 SELECT p.photo_url, p.source
+                 FROM building_photos p
+                 WHERE p.building_id = mb.id
+                   AND p.source IN ('tourapi', 'gocamping')
+                 ORDER BY CASE WHEN p.source = 'tourapi' THEN 0 ELSE 1 END,
+                          p.is_primary DESC, p.display_order, p.id
+                 LIMIT 1
+             ) provider_photo ON true
+             LEFT JOIN LATERAL (
+                 SELECT COALESCE(
+                     provider_photo.photo_url,
+                     CASE WHEN {'TRUE' if os.environ.get('GOOGLE_MAPS_API_KEY') else 'FALSE'}
+                         AND mb.lat IS NOT NULL AND mb.lng IS NOT NULL
+                         AND EXISTS (
+                             SELECT 1 FROM building_photo_fetches f
+                             WHERE f.building_id = mb.id AND f.source = 'tourapi'
+                               AND f.status IN ('no_match', 'catalog_no_photo')
+                               AND f.last_attempt_at > NOW() - INTERVAL '30 days'
+                         )
+                     THEN '/api/building-photo/' || mb.id || '/streetview'
+                     END
+                 ) AS photo_url,
+                 CASE WHEN provider_photo.photo_url IS NOT NULL THEN provider_photo.source
+                      WHEN {'TRUE' if os.environ.get('GOOGLE_MAPS_API_KEY') else 'FALSE'}
+                           AND mb.lat IS NOT NULL AND mb.lng IS NOT NULL
+                           AND EXISTS (
+                               SELECT 1 FROM building_photo_fetches f
+                               WHERE f.building_id = mb.id AND f.source = 'tourapi'
+                                 AND f.status IN ('no_match', 'catalog_no_photo')
+                                 AND f.last_attempt_at > NOW() - INTERVAL '30 days'
+                           )
+                      THEN 'streetview' END AS source
+             ) fallback_photo ON true
             WHERE lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               {where_extra}

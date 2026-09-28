@@ -1330,6 +1330,7 @@
       return typeof photo === "string" ? photo : (photo && photo.url);
     }).filter(Boolean);
     if (!photos.length && listing.photo_url) photos = [listing.photo_url];
+    var isBuildingPhoto = !!listing.photo_source;
 
     var isWhole = listing.is_whole_listing || listing.transaction_target === "whole";
     var formatNumber = function (value) {
@@ -1447,7 +1448,8 @@
     overlay.style.cssText = "position:fixed;inset:0;z-index:4500;background:rgba(22,32,46,.5);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;";
     var gallery = photos[0]
       ? '<div style="position:relative;background:#f6f4f0;">' +
-        '<img id="lsListingDetailImage" src="' + esc(photos[0]) + '" alt="매물 사진 1" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display=\'none\';">' +
+        '<img id="lsListingDetailImage" src="' + esc(photos[0]) + '" alt="' + (isBuildingPhoto ? '건물 참고사진' : '매물 사진 1') + '" style="width:100%;height:220px;object-fit:cover;display:block;" onerror="this.style.display=\'none\';">' +
+        (isBuildingPhoto ? '<span style="position:absolute;left:10px;bottom:10px;padding:4px 8px;border-radius:5px;background:rgba(0,0,0,.65);color:#fff;font-size:11px;">건물 참고사진 · 매물 촬영 사진 아님</span>' : '') +
         (photos.length > 1
           ? '<button type="button" data-listing-photo-prev aria-label="이전 사진" style="position:absolute;left:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;cursor:pointer;">‹</button>' +
             '<button type="button" data-listing-photo-next aria-label="다음 사진" style="position:absolute;right:10px;top:calc(50% - 17px);width:34px;height:34px;border:0;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:21px;cursor:pointer;">›</button>' +

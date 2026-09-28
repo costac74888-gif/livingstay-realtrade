@@ -5740,6 +5740,29 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   const isCurrentPhotoRequest = () =>
     _activePhotoBuildingId === buildingId && _isActiveBuilding(buildingId, requestToken);
   const initial = Array.isArray(initialPhotos) ? initialPhotos : [];
+  const renderPhotos = photos => {
+    renderPhotoSlider(photos);
+    if (!isCurrentPhotoRequest()) return;
+    const provider = (photos || []).find(photo => photo?.source === "tourapi")
+      || (photos || []).find(photo => photo?.source === "gocamping")
+      || (photos || []).find(photo => photo?.source === "streetview");
+    if (!provider?.url) return;
+    (building?.direct_listings || []).forEach(lr => {
+      if (lr.photos?.length && !lr.photo_source) return; // 직접 올린 매물 사진은 보존
+      lr.photos = [provider.url];
+      lr.photo_url = provider.url;
+      lr.photo_source = provider.source;
+      const btn = document.querySelector(`#bListingsBody .listing-photo-btn[data-lrid="${lr.id}"]`);
+      if (btn) {
+        btn.innerHTML = `<img src="${escapeHtml(provider.url)}" alt="건물 참고사진 (매물 촬영 사진 아님)" loading="lazy" onerror="this.parentElement.innerHTML=window.Icons.home(40)">${window.LivingstayListingIcons.photoCount(1)}`;
+      }
+    });
+  };
+  const showStreetView = cached => {
+    const shown = tryShowStreetView(cached, buildingId);
+    if (shown) renderPhotos(streetViewFallbackPhoto(buildingId, cached?.lat, cached?.lng));
+    return shown;
+  };
 
   try {
     const response = await fetch(`/api/building/${encodeURIComponent(buildingId)}/photos`);
@@ -5747,7 +5770,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     if (!isCurrentPhotoRequest()) return;
     const photos = response.ok && data.ok && Array.isArray(data.photos) ? data.photos : [];
     if (photos.length > 0) {
-      renderPhotoSlider(photos);
+      renderPhotos(photos);
       if (data.status === "cached") return;
     }
     const mergePhotos = (...groups) => {
@@ -5764,7 +5787,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
       return;
     }
     const gocampingInitial = initial.filter(photo => photo?.source === "gocamping");
-    if (gocampingInitial.length > 0) renderPhotoSlider(gocampingInitial);
+    if (gocampingInitial.length > 0) renderPhotos(gocampingInitial);
 
     const buildingName = data.building_name || building?.building_name || "";
     const roadAddress = data.road_address || building?.road_address || "";
@@ -5781,13 +5804,13 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     // 최근 TourAPI no_match로 서버가 허용한 건물에만 Street View를 표시한다.
     // 좌표만 보고 먼저 표시하면 프록시의 404 JSON이 깨진 이미지로 노출된다.
     const svShown = gocampingInitial.length === 0 && data.streetview_available === true
-      && tryShowStreetView(cached, buildingId);
+      && showStreetView(cached);
 
     const local = gocampingInitial.length
       ? null
       : readLocalBuildingPhotos(buildingId, buildingName, roadAddress);
     if (local && local.photos.length > 0) {
-      renderPhotoSlider(mergePhotos(photos, local.photos));
+      renderPhotos(mergePhotos(photos, local.photos));
       return;
     }
     if (local && !prewarmed?.content_id) {
@@ -5798,12 +5821,12 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
           const saved = await savePhotosToServer(buildingId, []);
           if (!isCurrentPhotoRequest()) return;
           if (saved.streetview_available === true) {
-            tryShowStreetView(cached, buildingId);
+            showStreetView(cached);
           } else {
-            renderPhotoSlider([]);
+            renderPhotos([]);
           }
         } catch (error) {
-          if (isCurrentPhotoRequest()) renderPhotoSlider([]);
+          if (isCurrentPhotoRequest()) renderPhotos([]);
         }
       }
       return;
@@ -5811,7 +5834,7 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
 
     // TourAPI는 Street View를 막지 않도록 백그라운드에서 실행한다.
     if (!buildingName) {
-      if (!svShown) renderPhotoSlider([]);
+      if (!svShown) renderPhotos([]);
       return;
     }
 
@@ -5829,20 +5852,20 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
         if (!isCurrentPhotoRequest()) return;
         if (!clientPhotos.length) {
           if (mergedPhotos.length) {
-            renderPhotoSlider(mergedPhotos);
+            renderPhotos(mergedPhotos);
             return;
           }
           // 고캠핑 대표사진은 Google Street View보다 우선한다. TourAPI의 비동기
           // no_match 저장 응답이 늦게 와도 이미 표시한 캠핑 사진을 덮어쓰지 않는다.
           if (saved?.streetview_available === true && !gocampingInitial.length) {
-            tryShowStreetView(cached, buildingId);
+            showStreetView(cached);
           } else if (!svShown && !gocampingInitial.length) {
-            renderPhotoSlider([]);
+            renderPhotos([]);
           }
           return;
         }
         // TourAPI 매칭 성공 시에만 Street View를 교체한다.
-        renderPhotoSlider(mergedPhotos);
+        renderPhotos(mergedPhotos);
       })
       .catch(() => {
         // TourAPI 실패 시 이미 표시한 고캠핑 대표 이미지나 Street View를 유지한다.
@@ -5850,8 +5873,8 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
   } catch(e) {
     if (!isCurrentPhotoRequest()) return;
     // 서버가 fallback 가능 여부를 확인하지 못했으면 Street View를 추측해 표시하지 않는다.
-    if (initial.length > 0) renderPhotoSlider(initial);
-    else renderPhotoSlider([]);
+    if (initial.length > 0) renderPhotos(initial);
+    else renderPhotos([]);
   }
 }
 
@@ -7282,7 +7305,7 @@ async function loadBuildingHeader(id){
         const photos = Array.isArray(lr.photos) ? lr.photos.filter(Boolean) : [];
         const photoSrc = photos[0] ? escapeHtml(photos[0]) : null;
         const photoHtml = photoSrc
-          ? `<img src="${photoSrc}" alt="매물 사진" onerror="this.parentElement.innerHTML=window.Icons.home(40)">`
+          ? `<img src="${photoSrc}" alt="${lr.photo_source ? "건물 참고사진 (매물 촬영 사진 아님)" : "매물 사진"}" loading="lazy" onerror="this.parentElement.innerHTML=window.Icons.home(40)">`
           : Icons.home(40);
         if (isWholeListing) {
           return _wholeListingCard(lr, lrId, photoHtml, photos.length, dt);

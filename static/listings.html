@@ -893,15 +893,16 @@
   }
 
   // ── 썸네일 HTML ─────────────────────────────────────────────────────
-  function thumbHtml(photoUrl, isCard, photoCount){
+  function thumbHtml(photoUrl, isCard, photoCount, photoSource){
     const countBadge = window.LivingstayListingIcons.photoCount(photoCount);
+    const alt = photoSource ? "건물 참고사진 (매물 촬영 사진 아님)" : "매물 사진";
     if (isCard){
       return `<span class="ls-photo-frame">${photoUrl
-        ? `<img src="${esc(photoUrl)}" alt="매물 사진" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML=window.Icons.home(44)">`
+        ? `<img src="${esc(photoUrl)}" alt="${alt}" loading="lazy" style="width:100%;height:100%;object-fit:cover;" onerror="this.parentElement.innerHTML=window.Icons.home(44)">`
         : `${Icons.home(44)}`}${countBadge}</span>`;
     }
     return `<span class="ls-photo-frame">${photoUrl
-      ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="매물 사진" onerror="this.outerHTML='<span class=td-thumb-placeholder>'+window.Icons.home(24)+'</span>'">`
+      ? `<img class="td-thumb" src="${esc(photoUrl)}" alt="${alt}" loading="lazy" onerror="this.outerHTML='<span class=td-thumb-placeholder>'+window.Icons.home(24)+'</span>'">`
       : `<span class="td-thumb-placeholder">${Icons.home(24)}</span>`}${countBadge}</span>`;
   }
 
@@ -944,7 +945,7 @@
 
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     tr.innerHTML = `
-      <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount)}</td>
+      <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount, item.photo_source)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}</td>
       <td class="td-bldg" title="${bName}">
           ${buildingLabel}${urgentBadgeHtml(item)}${permitBadgeHtml(item)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}
@@ -1071,7 +1072,7 @@
     const chatTitle = myChattingIds.has(item.id) ? "채팅 이어하기" : "문의하기";
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
     const photoClass = isLimitedListing ? "ls-card-photo-top" : "ls-card-photo-right";
-    const cardPhotoHtml = `<div class="${photoClass}" title="${isLimitedListing ? "제한공개 매물 사진" : "매물 상세 보기"}">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
+    const cardPhotoHtml = `<div class="${photoClass}" title="${isLimitedListing ? "제한공개 매물 사진" : "매물 상세 보기"}">${thumbHtml(item.photo_url, true, photoCount, item.photo_source)}</div>`;
     const limitedNotice = isLimitedListing
       ? '<div class="whole-limited-notice">상세한 매물 내용은 채팅 상담으로 직접 문의해 주시기 바랍니다.</div>'
       : "";
@@ -1239,7 +1240,7 @@
           </span>
         </div>
       </div>
-      <div class="ls-card-photo-right" title="매물 상세 보기">${thumbHtml(item.photo_url, true, photoCount)}</div>`;
+      <div class="ls-card-photo-right" title="매물 상세 보기">${thumbHtml(item.photo_url, true, photoCount, item.photo_source)}</div>`;
 
     // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {

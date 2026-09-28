@@ -7058,6 +7058,53 @@ def _check_whole_building_listing(client):
                 failures.append(f"whole listing: {whole_deal_type} 권리금·승계융자 저장 실패")
 
         public_items_after = (client.get("/api/listings?disclosure_scope=public").get_json() or {}).get("items") or []
+        # 사진 없는 매물은 상세의 공인 공급자 사진을 사용하고, 업로드가 생기면
+        # 그 사진만 표시한다. 삭제하면 다시 자동 사진으로 돌아간다.
+        official_url = "https://tong.visitkorea.or.kr/test-listing-fallback.jpg"
+        cur.execute("""
+            INSERT INTO building_photos (building_id, photo_url, source, photo_type)
+            VALUES (%s, %s, 'tourapi', 'exterior') RETURNING id
+        """, [building["id"], official_url])
+        official_id = cur.fetchone()["id"]
+        conn.commit()
+        def photo_item(path):
+            response = client.get(path)
+            if response.status_code != 200:
+                failures.append(f"whole listing: 사진 응답 오류 ({path}: {response.status_code})")
+            data = response.get_json() or {}
+            return next((item for item in (data.get("items") or data.get("direct_listings") or [])
+                         if item.get("id") == listing_id), {})
+        for path in ("/api/listings?disclosure_scope=public", f"/api/building/{building['id']}"):
+            item = photo_item(path)
+            if item.get("photo_url") != official_url or item.get("photos") != [official_url] or item.get("photo_source") != "tourapi":
+                failures.append("whole listing: 사진 없는 매물의 TourAPI 대체 사진 누락")
+        upload_key = f"listing_photos/{listing_id}/{'c' * 32}.jpg"
+        cur.execute("""
+            INSERT INTO listing_photos (listing_request_id, image_key, sort_order, is_public)
+            VALUES (%s, %s, 1, TRUE) RETURNING id
+        """, [listing_id, upload_key])
+        uploaded_photo_id = cur.fetchone()["id"]
+        conn.commit()
+        uploaded_url = f"/api/listing-photos/img/{upload_key}"
+        for path in ("/api/listings?disclosure_scope=public", f"/api/building/{building['id']}"):
+            item = photo_item(path)
+            if item.get("photo_url") != uploaded_url or item.get("photos") != [uploaded_url] or item.get("photo_source"):
+                failures.append("whole listing: 업로드 사진이 건물 참고사진보다 우선하지 않음")
+        cur.execute("DELETE FROM listing_photos WHERE id=%s", [uploaded_photo_id])
+        cur.execute("DELETE FROM building_photos WHERE id=%s", [official_id])
+        cur.execute("""
+            INSERT INTO building_photo_fetches (building_id, source, status, last_attempt_at)
+            VALUES (%s, 'tourapi', 'no_match', NOW())
+            ON CONFLICT (building_id, source) DO UPDATE
+            SET status='no_match', last_attempt_at=NOW()
+        """, [building["id"]])
+        conn.commit()
+        streetview_url = f"/api/building-photo/{building['id']}/streetview"
+        with patch.dict(os.environ, {"GOOGLE_MAPS_API_KEY": "test-only"}):
+            for path in ("/api/listings?disclosure_scope=public", f"/api/building/{building['id']}"):
+                item = photo_item(path)
+                if item.get("photo_url") != streetview_url or item.get("photos") != [streetview_url] or item.get("photo_source") != "streetview":
+                    failures.append("whole listing: TourAPI 사진 없을 때 허용된 Google 참고사진 누락")
         public_item_after = next((item for item in public_items_after if item.get("id") == listing_id), {})
         if (public_item_after.get("viewer_count") != 1
                 or float(public_item_after.get("short_stay_ratio") or -1) != 40
