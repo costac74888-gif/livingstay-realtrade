@@ -162,6 +162,16 @@
     .action-center-tools{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:10px 13px;background:#f5faf8;border-bottom:1px solid var(--ac-line)}.action-center-tabs{display:flex;gap:3px;overflow:auto}.action-center-tab{border:0;background:transparent;color:var(--ac-muted);padding:6px 9px;border-radius:5px;font:700 11px inherit;cursor:pointer;white-space:nowrap}.action-center-tab:hover,.action-center-tab.is-active{background:#dcefeb;color:var(--ac-teal)}.action-center-search{margin-left:auto;width:190px;height:29px;border:1px solid #cbd9d6;border-radius:5px;padding:0 8px;color:var(--ac-ink);font:12px inherit;background:#fff}.action-center-search:focus{outline:2px solid #d5ede8;border-color:var(--ac-teal)}
      .action-center-list{padding:0 13px}.action-center-row{display:grid;grid-template-columns:86px minmax(0,1fr) 96px 60px;align-items:center;gap:10px;min-height:35px;padding:5px 3px;border-bottom:1px solid #e8eeec;animation:ac-in .22s ease both}.action-center-row:last-child{border-bottom:0}.action-center-row:hover{background:#f7fbf9}.action-center-kind{font-size:10px;font-weight:800;color:var(--ac-teal);white-space:nowrap}.action-center-row-main{display:flex;align-items:center;gap:9px;min-width:0;white-space:nowrap;overflow:hidden}.action-center-row-title{display:block;flex:0 0 auto;color:var(--ac-ink);font-size:11.5px;font-weight:750;white-space:nowrap}.action-center-row-summary{display:block;min-width:0;color:var(--ac-muted);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.action-center-time{color:var(--ac-muted);font-size:10px;text-align:right}.action-center-link{justify-self:end;border:1px solid #c3d7d3;border-radius:5px;background:#fff;color:var(--ac-teal);padding:5px 8px;text-decoration:none;font-size:10.5px;font-weight:800}.action-center-link:hover{background:#eaf6f3}.action-center-priority{display:inline-block;margin-left:4px;border-radius:9px;padding:2px 5px;background:#fce7e2;color:#a84439;font-size:9px;vertical-align:1px}.action-center-empty,.action-center-loading,.action-center-error{padding:24px 10px;text-align:center;color:var(--ac-muted);font-size:12px}.action-center-error{color:#a84439;background:#fff8f5}.action-center-error button{margin-left:6px;border:0;background:none;color:var(--ac-teal);font-weight:800;cursor:pointer}@keyframes ac-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
      @media(max-width:700px){.action-center-counts{grid-template-columns:repeat(3,1fr)}.action-center-count:nth-child(4),.action-center-count:nth-child(5){display:none}.action-center-search{width:100%;margin-left:0}.action-center-row{grid-template-columns:72px minmax(0,1fr) auto;gap:6px}.action-center-time{display:none}.action-center-link{grid-column:3}.action-center-head{padding:12px}}
+  .dg-toolbar.dg-tx-toolbar{display:block;padding:14px 16px;background:#fff;border:1px solid #DDE1E6;border-radius:10px;margin-bottom:12px}
+  .dg-tx-search-grid{display:grid;grid-template-columns:repeat(3,minmax(90px,1fr)) minmax(165px,1.5fr) repeat(3,minmax(95px,1fr)) auto;gap:9px;align-items:end}
+  .dg-tx-search-grid label{display:flex;flex-direction:column;gap:6px;min-width:0;color:#5B6572;font-size:11px;font-weight:700}
+  .dg-tx-search-grid .admin-input{width:100%;min-width:0;box-sizing:border-box;height:36px}
+  .dg-tx-search-grid .dg-search-btn{height:36px;white-space:nowrap;padding:0 16px}
+  .dg-tx-toolbar .dg-count{display:block;text-align:right;margin-top:9px}
+  .dg-tx-filter-error{display:block;color:#B3261E;font-size:12px;margin-top:7px}
+  .dg-tx-filter-error:empty{display:none}
+  @media(max-width:1100px){.dg-tx-search-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.dg-tx-search-grid .dg-search-btn{grid-column:4}}
+  @media(max-width:620px){.dg-tx-search-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dg-tx-search-grid label:nth-child(4){grid-column:1/-1}.dg-tx-search-grid .dg-search-btn{grid-column:1/-1}}
   </style>
 </head>
 <body>
@@ -1151,6 +1161,7 @@
         endpoint: "/api/admin/transactions",
         exportUrl: "/api/admin/transactions/export.xlsx",
         title: "실거래관리",
+        transactionSearch: true,
         entityLabel: "실거래",
         allowAdd: false,
         allowDelete: false,

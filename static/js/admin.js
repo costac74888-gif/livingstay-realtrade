@@ -142,13 +142,34 @@ class DataGrid {
           ${c.allowAdd ? `<button class="admin-btn admin-btn-primary dg-add">+ 추가</button>` : ""}
         </div>
       </div>
-      <div class="dg-toolbar">
-        <input class="admin-input dg-search" type="search" placeholder="${dgEscape(c.searchPlaceholder)}" />
-        <button class="admin-btn dg-search-btn">검색</button>
-        ${(c.filters || []).map((f) => `
-          <select class="admin-input dg-filter" data-filter="${dgEscape(f.key)}">
-            ${(f.options || []).map((o) => `<option value="${dgEscape(o.value)}" ${String(this.state.filters[f.key]) === String(o.value) ? "selected" : ""}>${dgEscape(o.label)}</option>`).join("")}
-          </select>`).join("")}
+      <div class="dg-toolbar${c.transactionSearch ? " dg-tx-toolbar" : ""}">
+        ${c.transactionSearch ? `
+          <div class="dg-tx-search-grid">
+            <label>시/도<select class="admin-input" data-tx-filter="si_do"><option value="">전체</option></select></label>
+            <label>시/군/구<select class="admin-input" data-tx-filter="sgg_nm" disabled><option value="">전체</option></select></label>
+            <label>읍/면/동<select class="admin-input" data-tx-filter="umd_nm" disabled><option value="">전체</option></select></label>
+            <label>건물명 / 주소 검색<input class="admin-input dg-search" type="search" placeholder="${dgEscape(c.searchPlaceholder)}" /></label>
+            <label>용도<select class="admin-input" data-tx-filter="lodging_type">
+              <option value="">전체</option><option value="생활">생활</option><option value="관광">관광</option>
+              <option value="일반">일반</option><option value="에어비앤비">외국인관광 도시민박업</option>
+              <option value="농어촌민박">농어촌민박</option><option value="캠핑">캠핑·야영</option>
+              <option value="자동차야영">자동차야영</option><option value="한옥">한옥</option>
+              <option value="복합">복합</option><option value="준공전">준공전</option>
+              <option value="미분류">미분류</option>
+            </select></label>
+            <label>검색기간<select class="admin-input" data-tx-filter="year"><option value="">전체 기간</option></select></label>
+            <label>거래대상<select class="admin-input" data-tx-filter="transaction_scope">
+              <option value="">전체</option><option value="unit">개별 호실</option>
+              <option value="whole_building">건물 전체</option><option value="land_or_site">토지·부지</option>
+            </select></label>
+            <button class="admin-btn admin-btn-primary dg-search-btn" type="button">검색</button>
+          </div><span class="dg-tx-filter-error" role="status"></span>` : `
+          <input class="admin-input dg-search" type="search" placeholder="${dgEscape(c.searchPlaceholder)}" />
+          <button class="admin-btn dg-search-btn">검색</button>
+          ${(c.filters || []).map((f) => `
+            <select class="admin-input dg-filter" data-filter="${dgEscape(f.key)}">
+              ${(f.options || []).map((o) => `<option value="${dgEscape(o.value)}" ${String(this.state.filters[f.key]) === String(o.value) ? "selected" : ""}>${dgEscape(o.label)}</option>`).join("")}
+            </select>`).join("")}`}
         <span class="dg-count"></span>
       </div>
       <div class="dg-table-wrap">
@@ -170,18 +191,21 @@ class DataGrid {
     this.$pager = el.querySelector(".dg-pager");
     this.$count = el.querySelector(".dg-count");
 
-    el.querySelector(".dg-search-btn").addEventListener("click", () => {
+    const doSearch = () => {
       this.state.q = this.$search.value.trim();
+      if (c.transactionSearch) {
+        el.querySelectorAll("[data-tx-filter]").forEach(sel => {
+          this.state.filters[sel.dataset.txFilter] = sel.value;
+        });
+      }
       this.state.page = 1;
       this.reload();
-    });
+    };
+    el.querySelector(".dg-search-btn").addEventListener("click", doSearch);
     this.$search.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        this.state.q = this.$search.value.trim();
-        this.state.page = 1;
-        this.reload();
-      }
+      if (e.key === "Enter") doSearch();
     });
+    if (c.transactionSearch) this._initTransactionSearch();
     el.querySelectorAll(".dg-filter").forEach((sel) => {
       sel.addEventListener("change", () => {
         this.state.filters[sel.getAttribute("data-filter")] = sel.value;
@@ -200,6 +224,42 @@ class DataGrid {
     }
     this._renderHead();
     this._updateBulkDeleteButton();
+  }
+
+  async _initTransactionSearch() {
+    const el = this.cfg.mount;
+    const field = key => el.querySelector(`[data-tx-filter="${key}"]`);
+    const sido = field("si_do"), sgg = field("sgg_nm"), umd = field("umd_nm");
+    const year = field("year"), error = el.querySelector(".dg-tx-filter-error");
+    const fill = (sel, values, label = "전체") => {
+      sel.replaceChildren(new Option(label, ""));
+      values.forEach(value => sel.add(new Option(value.label, value.value)));
+      sel.disabled = !values.length && (sel === sgg || sel === umd);
+    };
+    try {
+      const [regionsResponse, yearsResponse] = await Promise.all([
+        fetch("/api/regions"), fetch("/api/years"),
+      ]);
+      if (!regionsResponse.ok || !yearsResponse.ok) throw new Error("필터 목록을 불러오지 못했습니다. 다시 진입해 주세요.");
+      const [tree, yearsData] = await Promise.all([regionsResponse.json(), yearsResponse.json()]);
+      if (!el.contains(sido)) return; // 메뉴 이동 중 응답이 도착한 경우
+      if (!tree || typeof tree !== "object" || !Array.isArray(yearsData.years))
+        throw new Error("필터 목록 형식이 올바르지 않습니다.");
+      fill(sido, Object.keys(tree).sort().map(value => ({value, label: value})));
+      fill(year, yearsData.years.map(value => ({value: String(value), label: `${value}년`})), "전체 기간");
+      const fillUmd = () => {
+        const names = tree[sido.value]?.sgg?.[sgg.value]?.umd || {};
+        fill(umd, Object.keys(names).sort().map(value => ({value, label: value})));
+      };
+      sido.addEventListener("change", () => {
+        const names = tree[sido.value]?.sgg || {};
+        fill(sgg, Object.keys(names).sort().map(value => ({value, label: value})));
+        fill(umd, []);
+      });
+      sgg.addEventListener("change", fillUmd);
+    } catch (e) {
+      if (el.contains(sido)) error.textContent = e.message || "지역·기간 필터를 불러오지 못했습니다.";
+    }
   }
 
   _renderHead() {

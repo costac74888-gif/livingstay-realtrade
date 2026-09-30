@@ -28599,7 +28599,7 @@ ADMIN_TX_EDITABLE = {
 
 
 def _admin_tx_filters():
-    """실거래 목록/엑셀 공용: sort_expr, order, WHERE절, 파라미터. 검색은 건물명·주소."""
+    """실거래 목록/엑셀 공용: 웹 실거래 검색과 같은 지역·용도·연도·거래대상 필터."""
     q = (request.args.get("q") or "").strip()
     # 기본 정렬: 계약일 최신순(deal_date DESC). sort/order 파라미터로 기존처럼 변경 가능.
     sort_key = (request.args.get("sort") or "deal_date").strip()
@@ -28611,10 +28611,59 @@ def _admin_tx_filters():
     if q:
         clauses.append("(building_name ILIKE %s OR address ILIKE %s)")
         params += [f"%{q}%", f"%{q}%"]
+    si_do = (request.args.get("si_do") or "").strip()
+    if si_do:
+        clauses.append(sido_match_clause("si_do"))
+        params.append(sido_core(si_do))
+    sgg_nm = (request.args.get("sgg_nm") or "").strip()
+    if sgg_nm:
+        # 드롭다운은 전체 시군구명, 거래 원장은 시군구만 저장할 수 있다.
+        clauses.append("%s LIKE '%%' || sgg_nm")
+        params.append(sgg_nm)
+    umd_nm = (request.args.get("umd_nm") or "").strip()
+    if umd_nm:
+        clauses.append("REPLACE(umd_nm, ' ', '') = REPLACE(%s, ' ', '')")
+        params.append(umd_nm)
+    year = (request.args.get("year") or "").strip()
+    if year and year != "all":
+        if re.fullmatch(r"\d{4}", year):
+            clauses.append("deal_date LIKE %s")
+            params.append(f"{year}-%")
+        else:
+            clauses.append("FALSE")
+    lodging_type = (request.args.get("lodging_type") or "").strip()
+    if lodging_type == "자동차야영":
+        clauses.append("""
+            lodging_type = '캠핑' AND EXISTS (
+                SELECT 1 FROM master_buildings mb_subtype
+                WHERE mb_subtype.sgg_cd = transactions.sgg_cd
+                  AND mb_subtype.umd_nm = transactions.umd_nm
+                  AND mb_subtype.jibun = transactions.jibun
+                  AND mb_subtype.lodging_subtype = '자동차야영'
+            )
+        """)
+    elif lodging_type == "복합":
+        clauses.append("(lodging_type = '복합' OR lodging_type LIKE '%%·%%')")
+    elif lodging_type == "준공전":
+        clauses.append("""
+            EXISTS (SELECT 1 FROM master_buildings mb_status
+                     WHERE mb_status.id = transactions.master_building_id
+                       AND mb_status.building_status IN ('허가','착공')
+                       AND (mb_status.use_apr_day IS NULL OR mb_status.use_apr_day = ''))
+        """)
+    elif lodging_type == "미분류":
+        clauses.append("(lodging_type IS NULL OR lodging_type = '')")
+    elif lodging_type in {"생활", "관광", "일반", "에어비앤비", "농어촌민박", "캠핑", "한옥"}:
+        clauses.append("lodging_type = %s")
+        params.append(lodging_type)
+    elif lodging_type:
+        clauses.append("FALSE")
     scope = (request.args.get("transaction_scope") or "").strip()
     if scope in {"unit", "whole_building", "land_or_site"}:
         clauses.append("transaction_scope = %s")
         params.append(scope)
+    elif scope and scope != "all":
+        clauses.append("FALSE")
     if clauses:
         where = " AND ".join(clauses)
     return sort_expr, order, where, params
