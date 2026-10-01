@@ -640,3 +640,17 @@ mtime_ms = 1790471338810
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/f858d0f1-1ad1-4a52-8be0-b873d7b7e49a/4ec631c5-b457-49d5-911f-af6c7ed69898"
 storage_version_token = "1790471798161444"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "V6hiJsrgPJ-X2DneSqIUE"
+uri = "file://exports/homenstay-building-registry-comparison.zip"
+type = "unspecified"
+title = "홈앤스테이 건축물대장 호출·배포 설정 ZIP"
+description = "API 호출 코드, 타임아웃·재시도 구현, 관리자 실행 코드 발췌, 배포 설정과 비교 설명. API 키·비밀번호·회원 데이터 제외."
+logical_id = "966e573a-4e7b-47e0-a646-095d21a950d2"
+content_hash = "sha256:90695388cc4d79f8fcad123961568fd920fe4e16c2ad8a01be2db5e9bc945d6d"
+size = 37083
+mtime_ms = 1790842045454
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/966e573a-4e7b-47e0-a646-095d21a950d2/c1e2094f-6b34-4a74-bd3b-7a859e0890d9"
+storage_version_token = "1790842054246022"
+content_type = "application/octet-stream"
