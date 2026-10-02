@@ -147,6 +147,7 @@
   }
   function clampRentalValue(field, value) {
     var kind = rentalHardKind(field);
+    if ((kind === "purchase" || kind === "loan") && Number(value) > 100000) return null;
     return kind ? window.analysisSliderUtils.clampHard(kind, value) : Number(value);
   }
   function setRentalInputError(field, message) {
@@ -157,9 +158,9 @@
   }
   function rentalInputErrorMessage(field) {
     if (field === "rentalMonthlyRent") return "월세는 0~1,000만원 범위로 입력하세요";
-    if (field === "rentalLoanAmount") return "대출금은 0~50억 범위로 입력하세요.";
+    if (field === "rentalLoanAmount") return "대출금은 0~10억 범위로 입력하세요.";
     if (field === "rentalDeposit") return "보증금은 0~5억 범위로 입력하세요.";
-    if (field === "rentalPurchasePrice") return "매수가는 0~50억 범위로 입력하세요.";
+    if (field === "rentalPurchasePrice") return "매수가는 0~10억 범위로 입력하세요.";
     return "입력값이 허용 범위를 벗어났습니다.";
   }
   function rentalLimitText(field, value) {
@@ -172,12 +173,11 @@
   // Only the physical range uses ticks. Stored, calculated and shared values
   // remain exact amounts in 만원; each half has its own selection increment.
   var SPLIT_TICKS = 1000;
-  var SPLIT_MIDDLE = 500;
   var rentalSplitScales = {
-    rentalPurchasePrice: { knee: 50000, max: 500000, lowStep: 1000, highStep: 10000,
-      lowLabel: "5억까지 1천만원 간격", highLabel: "이후 1억원 간격" },
-    rentalLoanAmount: { knee: 50000, max: 500000, lowStep: 1000, highStep: 10000,
-      lowLabel: "5억까지 1천만원 간격", highLabel: "이후 1억원 간격" },
+    rentalPurchasePrice: { knee: 20000, max: 100000, ticks: 2000, lowStep: 100, highStep: 100,
+      lowLabel: "2억까지 100만원 간격", highLabel: "이후 100만원 간격" },
+    rentalLoanAmount: { knee: 20000, max: 100000, ticks: 2000, lowStep: 100, highStep: 100,
+      lowLabel: "2억까지 100만원 간격", highLabel: "이후 100만원 간격" },
     rentalDeposit: { knee: 5000, max: 50000, lowStep: 100, highStep: 1000,
       kneeLabel: "5천만원",
       lowLabel: "5천만원까지 100만원 간격", highLabel: "이후 1천만원 간격" },
@@ -187,19 +187,20 @@
   };
   function splitSliderPosition(field, amount, bounds) {
     var scale = rentalSplitScales[field];
+    var ticks = scale.ticks || SPLIT_TICKS, middle = ticks / 2;
     var safe = Math.max(bounds.min, Math.min(scale.max, Number(amount)));
     return safe <= scale.knee
-      ? Math.round((safe - bounds.min) / (scale.knee - bounds.min) * SPLIT_MIDDLE)
-      : SPLIT_MIDDLE + Math.round((safe - scale.knee) / (scale.max - scale.knee)
-        * (SPLIT_TICKS - SPLIT_MIDDLE));
+      ? Math.round((safe - bounds.min) / (scale.knee - bounds.min) * middle)
+      : middle + Math.round((safe - scale.knee) / (scale.max - scale.knee) * middle);
   }
   function splitSliderAmount(field, position, bounds) {
     var scale = rentalSplitScales[field];
-    var tick = Math.max(0, Math.min(SPLIT_TICKS, Number(position)));
-    var low = tick <= SPLIT_MIDDLE;
+    var ticks = scale.ticks || SPLIT_TICKS, middle = ticks / 2;
+    var tick = Math.max(0, Math.min(ticks, Number(position)));
+    var low = tick <= middle;
     var amount = low
-      ? bounds.min + tick / SPLIT_MIDDLE * (scale.knee - bounds.min)
-      : scale.knee + (tick - SPLIT_MIDDLE) / (SPLIT_TICKS - SPLIT_MIDDLE)
+      ? bounds.min + tick / middle * (scale.knee - bounds.min)
+      : scale.knee + (tick - middle) / middle
         * (scale.max - scale.knee);
     var step = low ? scale.lowStep : scale.highStep;
     return Math.max(bounds.min, Math.min(scale.max,
@@ -209,7 +210,7 @@
     var bounds = sliderBounds[field];
     if (!bounds) return [];
     return rentalSplitScales[field]
-      ? window.analysisSliderUtils.mappedTicks(SPLIT_TICKS, function (position) {
+      ? window.analysisSliderUtils.mappedTicks(rentalSplitScales[field].ticks || SPLIT_TICKS, function (position) {
         return splitSliderAmount(field, position, bounds);
       })
       : window.analysisSliderUtils.rangeTicks(bounds);
@@ -266,14 +267,14 @@
     var market = utils.clampHard("purchase", n("rentalMarketPrice"));
     var current = utils.clampHard("purchase", n("rentalPurchasePrice"));
     sliderBasePrice = market > 0 ? market : current > 0 ? current : null;
-    // 시세와 입력값이 모두 없어도 0~50억 고정 눈금은 조작 가능해야 한다.
+    // 시세와 입력값이 모두 없어도 0~10억 고정 눈금은 조작 가능해야 한다.
     // 비어 있는 매수가는 슬라이더를 실제로 움직이기 전까지 임의로 채우지 않는다.
     var bounds = sliderBasePrice == null
-      ? { min: 0, max: utils.HARD_CAPS.purchase[1], step: 1000 }
+      ? { min: 0, max: 100000, step: 100 }
       : utils.purchaseBounds(sliderBasePrice);
     bounds.min = 0;
-    bounds.max = utils.HARD_CAPS.purchase[1];
-    bounds.step = 1000;
+    bounds.max = 100000;
+    bounds.step = 100;
     return bounds;
   }
   function rentCenter() {
@@ -294,7 +295,7 @@
     var utils = window.analysisSliderUtils;
     var seeded = false;
     if (invalidRentalUrlFields.rentalPurchasePrice && n("rentalPurchasePrice") <= 0) {
-      var market = utils.clampHard("purchase", n("rentalMarketPrice"));
+      var market = clampRentalValue("rentalPurchasePrice", n("rentalMarketPrice"));
       if (market != null) {
         $("rentalPurchasePrice").value = String(market);
         lastValidRentalInputs.rentalPurchasePrice = market;
@@ -330,18 +331,15 @@
     if (!utils) throw new Error("공통 슬라이더 설정을 불러오지 못했습니다.");
     var purchase = purchaseBounds();
     var depositMax = utils.HARD_CAPS.deposit[1];
-    var rent = rentCenterBase == null ? null : utils.rentBounds(rentCenterBase);
-    if (rent) {
-      rent.min = 0;
-      rent.max = utils.HARD_CAPS.rent[1];
-      rent.step = 1;
-    }
+    // 고정 월세 눈금은 시세·기준 월세가 없어도 항상 조작 가능하다.
+    // 비어 있는 실제 월세 입력을 임의의 가정값으로 채우지는 않는다.
+    var rent = { min: 0, max: utils.HARD_CAPS.rent[1], step: 1 };
     return {
       rentalPurchasePrice: purchase,
       rentalLoanAmount: {
         min: 0,
-        max: SPLIT_TICKS,
-        step: 1,
+        max: rentalSplitScales.rentalLoanAmount.max,
+        step: 100,
       },
       rentalDeposit: { min: 0, max: depositMax, step: 100 },
       rentalMonthlyRent: rent,
@@ -378,7 +376,7 @@
         return;
       }
       range.min = String(rentalSplitScales[field] ? 0 : rangeBounds.min);
-      range.max = String(rentalSplitScales[field] ? SPLIT_TICKS : rangeBounds.max);
+      range.max = String(rentalSplitScales[field] ? rentalSplitScales[field].ticks || SPLIT_TICKS : rangeBounds.max);
       range.step = String(rentalSplitScales[field] ? 1 : rangeBounds.step);
       var amount = n(field);
       range.value = String(rentalSplitScales[field]
@@ -473,7 +471,7 @@
     host.innerHTML = '<div class="rental-panel-title"><div><span class="eyebrow">SCENARIO BUILDER</span><h3>조건을 조정해 수익을 확인하세요</h3></div></div>'
       + '<section class="rental-slider-group"><h3 class="rental-buy-heading">매수 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalPurchasePrice", "매수가", 1)
-      + makeSliderRow("rentalLoanAmount", "대출금", 1000)
+      + makeSliderRow("rentalLoanAmount", "대출금", 100)
       + '</div></section><section class="rental-slider-group"><h3>임대 조건</h3><div class="rental-slider-list">'
       + makeSliderRow("rentalDeposit", "보증금", 100)
       + makeSliderRow("rentalMonthlyRent", "월세", 1)
@@ -542,7 +540,8 @@
       var field = button.dataset.rentalValue;
       if (button.querySelector("input")) return;
       var hardKind = rentalHardKind(field);
-      var hardBounds = hardKind && window.analysisSliderUtils.HARD_CAPS[hardKind];
+      var hardBounds = hardKind === "purchase" || hardKind === "loan"
+        ? [0, 100000] : hardKind && window.analysisSliderUtils.HARD_CAPS[hardKind];
       var input = document.createElement("input");
       input.type = "number";
       input.enterKeyHint = "done";
@@ -1545,7 +1544,7 @@
         return;
       }
       var kind = rentalHardKind(field);
-      var normalized = kind ? window.analysisSliderUtils.clampHard(kind, value)
+      var normalized = kind ? clampRentalValue(field, value)
         : Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null;
       if (normalized == null) {
         invalidKeys.push(key);
@@ -1562,8 +1561,7 @@
         var key = entry[0];
         if (!params.has(key)) return;
         var value = params.get(key);
-        var valid = window.analysisSliderUtils.clampHard(
-          entry[1] === "rentalPurchasePrice" ? "purchase" : "rent", value);
+        var valid = clampRentalValue(entry[1], value);
         if (valid == null) {
           invalidKeys.push(key);
           invalidRentalUrlFields[entry[1]] = true;
