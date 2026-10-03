@@ -47,7 +47,7 @@ _RETRY_MAX = 2        # ConnectTimeout 재시도 횟수 (총 최대 3회 시도)
 _RETRY_SLEEP = 2.5    # 재시도 사이 대기(초)
 
 
-def _get_with_retry(url, params, timeout):
+def _get_with_retry(url, params, timeout, before_request=None):
     """ConnectTimeout에 한해 최대 _RETRY_MAX 회 재시도.
 
     4xx/5xx 같은 진짜 API 오류는 재시도해도 의미 없으므로 즉시 올린다.
@@ -56,6 +56,8 @@ def _get_with_retry(url, params, timeout):
     """
     last_exc = None
     for attempt in range(1 + _RETRY_MAX):
+        if before_request:
+            before_request()
         try:
             return requests.get(url, params=params, timeout=timeout)
         except ConnectTimeout as e:
@@ -74,7 +76,7 @@ def build_pnu(sgg_cd, bjdong_cd, plat_gb, bun, ji):
     return f"{sgg_cd}{bjdong_cd}{land_gb}{str(bun).zfill(4)}{str(ji).zfill(4)}"
 
 
-def _fetch_stores(url, key):
+def _fetch_stores(url, key, before_request=None):
     """공통 XML 페이징 조회. 실패 시 예외를 올려 호출자(_bg_fetch)가 로그를 남기게 한다.
 
     API 응답 형식: XML (type 생략 시 기본 JSON → ET 파싱 실패. type=xml 명시 필수)
@@ -102,9 +104,15 @@ def _fetch_stores(url, key):
             "type": "xml",   # 생략하면 기본 JSON 응답 → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
-            resp = _get_with_retry(url, params=params, timeout=15)
+            if before_request:
+                resp = _get_with_retry(url, params=params, timeout=15, before_request=before_request)
+            else:
+                resp = _get_with_retry(url, params=params, timeout=15)
             resp.raise_for_status()
         except Exception as e:
+            from quota_policy import QuotaExhausted
+            if isinstance(e, QuotaExhausted):
+                raise
             raise RuntimeError(f"상가업소 API HTTP 오류: {e}") from e
 
         try:
@@ -153,13 +161,13 @@ def _fetch_stores(url, key):
     return stores
 
 
-def get_stores_by_pnu(pnu):
+def get_stores_by_pnu(pnu, before_request=None):
     """PNU(19자리)로 그 지번 건물의 상가업소 목록 조회.
 
     반환: [{"name": 상호명, "category": 상권업종대분류명, "floor": 층(문자, 없으면 "")}]
     실패 시(키 없음 포함) 빈 리스트.
     """
-    return _fetch_stores(STORE_IN_PNU_URL, pnu)
+    return _fetch_stores(STORE_IN_PNU_URL, pnu, before_request=before_request)
 
 
 def get_stores_in_building(bld_mng_no):

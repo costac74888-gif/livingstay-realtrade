@@ -18,7 +18,7 @@
 - [Admin auth model](admin-auth.md) — /admin uses admin_users email/pw (session["admin"]+admin_user_id); seed ADMIN/ADMIN only when table fully empty (atomic WHERE NOT EXISTS); login rate-limited so avoid rapid re-login in tests (resets on app restart).
 - [prod map 0 buildings / prod data lag](prod-geo-empty.md) — phone hits prod URL with a SEPARATE prod DB: empty map (NULL lat/lng) and 표제부 "-" are prod-wide data-lag issues, not mobile CSS; dev backfills never reach prod.
 - [소상공인 상가업소 API](sbiz-store-api.md) — storeListInBuilding 키는 25자리 bldMngNo(≠표제부 mgmBldrgstPk); 건물 조회는 storeListInPnu(PNU 19자리); type=json은 403 → XML만.; 중개사표준데이터 필드/한도/키반영지연도 같은 파일
-- [상가정보 API 한도 분리](store-api-quota-split.md) — 배치 6,000 / 실시간 4,000 분리; PG jsonb_set+ON CONFLICT RETURNING 원자적 카운터; DB 오류 시 통과 허용; 배치 stderr=DEVNULL이라 오류 완전 차단 주의.
+- [상가정보 API 수집 우선순위](store-api-quota-split.md) — 같은 키의 단지부동산 7,500회·일반 상가 500회 배정, 실시간·수동 여유 2,000회 보호; 재시도도 공유 요청 예산에 포함한다.
 - [Kakao map view tuning](kakao-map-view-tuning.md) — headless screenshot browser blocks dapi.kakao.com SDK; tune center/level via canvas sim with 1px≈2^(L-3)m; CONFIRMED mobile default lat:35.4 lng:127.9 lv13 (속초 이북 끝, 제주 완전 노출, 부산·울산 줌컨트롤 안가림 — 2026-08-07 사용자 승인).
 - [카카오 지도 인쇄 준비](kakao-map-print-readiness.md) — 인쇄 보고서는 tilesloaded 뒤 출력하고 beforeprint가 준비된 지도를 다시 초기화하지 않게 한다.
 - [Map marker layer transitions](map-marker-layer-transitions.md) — any map layer that must fade between zoom modes must be a DOM-backed CustomOverlay; native Kakao Markers cannot animate opacity.

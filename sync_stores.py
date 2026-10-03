@@ -25,7 +25,7 @@ from datetime import date, datetime
 import psycopg2
 
 from db import get_conn
-from quota_policy import korea_today, regular_cap
+from quota_policy import korea_today, regular_cap, claim_store_batch_request, QuotaExhausted
 from address_utils import BjdongMap, parse_jibun
 from store_info_util import get_stores_by_pnu, build_pnu
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
@@ -223,8 +223,14 @@ def run(args, status_key=None, run_id=None):
             last_err = None
             for attempt in range(_MAX_RETRY):
                 try:
-                    stores = get_stores_by_pnu(pnu)
+                    def reserve_request():
+                        nonlocal calls_today
+                        calls_today = claim_store_batch_request("stores", daily_cap)
+                    stores = get_stores_by_pnu(pnu, before_request=reserve_request)
                     api_ok = True
+                    break
+                except QuotaExhausted:
+                    stop_reason = "daily_cap"
                     break
                 except Exception as e:
                     last_err = e
@@ -232,7 +238,8 @@ def run(args, status_key=None, run_id=None):
                     print(f"[retry {attempt+1}/{_MAX_RETRY}] bld_id={bld_id} err={e} → {wait}초 대기")
                     time.sleep(wait)
 
-            calls_today += 1
+            if stop_reason == "daily_cap":
+                break
 
             if not api_ok:
                 print(f"[fail] bld_id={bld_id} pnu={pnu} → {last_err}")

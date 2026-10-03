@@ -5,7 +5,7 @@ master_buildings 각 건물의 입주 부동산 중개업소를 조회하여
 realty_store_name 컬럼에 저장하는 배치 스크립트.
 
 건당 평균 3초 소요 → 관리자 버튼으로 백그라운드 실행 필수.
-일일 캡(--daily-cap, 기본 300건)에 도달하면 체크포인트 저장 후 중단,
+일일 캡(--daily-cap, 기본 7,500회)에 도달하면 체크포인트 저장 후 중단,
 다음 실행 때 realty_checked_at 오래된 순으로 이어서 처리.
 
 사용:
@@ -24,7 +24,8 @@ import time
 from datetime import date, datetime
 
 from db import get_conn
-from quota_policy import korea_today, regular_cap
+from quota_policy import korea_today, regular_cap, claim_store_batch_request, QuotaExhausted
+from secret_redaction import redact_env_secrets
 from address_utils import BjdongMap, parse_jibun
 from store_info_util import build_pnu, get_stores_by_pnu, STORE_INFO_SERVICE_KEY
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
@@ -67,7 +68,7 @@ def _save_progress(conn, cur, prog):
 
 
 # ── 건물 1건 처리 ────────────────────────────────────────────
-def _process_building(row, dry_run=False):
+def _process_building(row, dry_run=False, before_request=None):
     """(realty_store_name, skipped) 반환. skipped=True면 PNU 산출 불가."""
     sgg_cd = row.get("sgg_cd") or ""
     umd_nm = row.get("umd_nm") or ""
@@ -84,7 +85,7 @@ def _process_building(row, dry_run=False):
     if not pnu:
         return None, True
 
-    stores = get_stores_by_pnu(pnu)
+    stores = get_stores_by_pnu(pnu, before_request=before_request)
     names  = [s["name"] for s in stores if s.get("category") == "부동산"]
     result = ", ".join(names) if names else ""
     return result, False
@@ -177,6 +178,11 @@ def run(args, status_key=None, run_id=None):
     processed = 0
     updated   = 0
     skipped   = 0
+    failures = 0
+    stopped = False
+    def reserve_request():
+        prog["calls_today"] = claim_store_batch_request("realty", args.daily_cap)
+        prog["calls_date"] = korea_today()
 
     # heartbeat 스레드 (관리자 버튼 상태 연동)
     stop_beat = threading.Event()
@@ -208,14 +214,32 @@ def run(args, status_key=None, run_id=None):
                 except Exception:
                     pass
 
-            name, was_skipped = _process_building(row)
+            try:
+                name, was_skipped = _process_building(row, before_request=reserve_request)
+                failures = 0
+            except QuotaExhausted:
+                print("[realty] 공유 API 일일 배정 소진 — 미완료 건물은 다음 실행에 재시도.")
+                stopped = True
+                break
+            except Exception as exc:
+                failures += 1
+                print(f"[realty] id={row['id']} 조회 실패 (확인 완료로 저장하지 않음): "
+                      f"{redact_env_secrets(str(exc), ['STORE_INFO_SERVICE_KEY'])[:300]}", flush=True)
+                save_conn = get_conn(); save_cur = save_conn.cursor()
+                try:
+                    _save_progress(save_conn, save_cur, prog)
+                finally:
+                    save_cur.close(); save_conn.close()
+                if failures >= 3:
+                    raise RuntimeError("상가정보 API 연속 3건 실패 — 호출 낭비를 막기 위해 중단")
+                time.sleep(args.sleep)
+                continue
             processed += 1
             if processed == 1 or processed % 25 == 0 or processed == total_bldgs:
                 print(
                     f"[수집진행] 대상 {processed}/{total_bldgs}",
                     flush=True,
                 )
-            prog["calls_today"] += 1
 
             bname = row.get("building_name") or f"id={row['id']}"
             if was_skipped:
@@ -269,7 +293,7 @@ def run(args, status_key=None, run_id=None):
     finally:
         stop_beat.set()
 
-    completed = processed >= total_bldgs and not args.limit
+    completed = processed >= total_bldgs and not args.limit and not stopped
     print(f"\n[완료] 처리 {processed}건 (UPDATE {updated}건, skip {skipped}건)"
           f"{' — 전체 완료' if completed else ''}")
     return completed, processed, updated, prog["calls_today"]
@@ -324,13 +348,13 @@ def main():
             })
             _write_status(args.status_key, status, run_id)
     except Exception as e:
-        import traceback; traceback.print_exc()
+        print(redact_env_secrets(str(e), ["STORE_INFO_SERVICE_KEY"]), file=sys.stderr)
         if args.status_key and run_id:
             status = _read_status(args.status_key) or {}
             status.update({
                 "state": "failed",
                 "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "error": str(e)[:300],
+                "error": redact_env_secrets(str(e), ["STORE_INFO_SERVICE_KEY"])[:300],
             })
             _write_status(args.status_key, status, run_id)
         sys.exit(1)

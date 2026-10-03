@@ -195,8 +195,8 @@ class ScheduledSyncPlanTests(unittest.TestCase):
         manual = scheduled_sync.stage_command(
             scheduled_sync.STAGE_MAP["realty"], "manual", {"realty_stores_progress": 300}
         )
-        self.assertEqual(regular[regular.index("--daily-cap") + 1], "800")
-        self.assertEqual(manual[manual.index("--daily-cap") + 1], "500")
+        self.assertEqual(regular[regular.index("--daily-cap") + 1], "7500")
+        self.assertEqual(manual[manual.index("--daily-cap") + 1], "7500")
 
     def test_known_api_quotas_assign_exactly_eighty_percent_to_sync(self):
         for provider, policy in quota_policy.PROVIDER_QUOTAS.items():

@@ -3772,7 +3772,7 @@ _stores_cache_lock = threading.Lock()
 STORE_DAILY_CALLS_REALTIME_KEY = "store_daily_calls_realtime"  # app_meta 키
 STORE_DAILY_CALLS_BATCH_KEY    = "store_daily_calls_batch"     # app_meta 키
 _STORE_REALTIME_DAILY_CAP      = quota_for_stage("stores")["realtime"]
-_STORE_BATCH_DAILY_CAP         = quota_for_stage("stores")["regular"]
+_STORE_BATCH_DAILY_CAP         = quota_for_stage("stores")["provider_regular"]
 
 
 def _stores_result_from_rows(db_rows):
@@ -27501,6 +27501,8 @@ def admin_realty_sync_status():
         meta = cur.fetchone()
         cur.execute("SELECT value FROM app_meta WHERE key = %s", (PROGRESS_KEY_REALTY,))
         prog_row = cur.fetchone()
+        cur.execute("SELECT value FROM app_meta WHERE key = 'store_api_batch_requests'")
+        requests_row = cur.fetchone()
     finally:
         cur.close()
         conn.close()
@@ -27523,11 +27525,18 @@ def admin_realty_sync_status():
             running, stale = False, True
 
     calls_today = 0
-    if progress and progress.get("calls_date") == datetime.now().strftime("%Y-%m-%d"):
+    from quota_policy import korea_today, regular_cap
+    if progress and progress.get("calls_date") == korea_today():
         try:
             calls_today = int(progress.get("calls_today") or 0)
         except (TypeError, ValueError):
             pass
+    try:
+        requests_usage = json.loads(requests_row["value"]) if requests_row else {}
+        if requests_usage.get("date") == korea_today():
+            calls_today = max(calls_today, int(requests_usage.get("realty") or 0))
+    except (TypeError, ValueError):
+        pass
 
     pct = round(checked / total * 100, 1) if total else 0
     return jsonify({
@@ -27543,6 +27552,7 @@ def admin_realty_sync_status():
                   or ("이전 실행이 비정상 종료된 것으로 보입니다. 다시 실행할 수 있습니다." if stale else None)),
         "checked": checked, "total": total, "percent": pct,
         "calls_today": calls_today,
+        "daily_cap": regular_cap("realty_store"),
     })
 
 

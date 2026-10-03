@@ -6,6 +6,7 @@ module intentionally does not introduce a second, disconnected usage counter.
 
 from __future__ import annotations
 from datetime import datetime
+import json
 from zoneinfo import ZoneInfo
 
 KOREA_TZ = ZoneInfo("Asia/Seoul")
@@ -120,11 +121,13 @@ PROVIDER_QUOTAS = {
     },
     "store_info": {
         "label": "소상공인 상가정보 API", "total": 10000, "regular": 8000,
-        "realtime": 1500, "manual": 500, "basis": "기준 한도의 80%",
+        "realtime": 1500, "manual": 500, "allocation": 500,
+        "basis": "상가정보 공유 8,000회 중 일반 상가 500회",
     },
     "realty_store": {
-        "label": "중개업소 상가정보 API", "total": 1000, "regular": 800,
-        "realtime": 0, "manual": 200, "basis": "기준 한도의 80%",
+        "label": "중개업소 상가정보 API", "total": 10000, "regular": 8000,
+        "realtime": 1500, "manual": 500, "allocation": 7500,
+        "basis": "상가정보 공유 8,000회 중 단지부동산 7,500회",
     },
     "lodging": {
         "label": "행안부 숙박업 API", "total": 10000, "regular": 8000,
@@ -191,7 +194,8 @@ STAGE_QUOTAS = {
 
 
 def regular_cap(provider: str) -> int:
-    value = PROVIDER_QUOTAS[provider]["regular"]
+    policy = PROVIDER_QUOTAS[provider]
+    value = policy.get("allocation", policy["regular"])
     if value is None:
         raise ValueError(f"{provider} API의 기준 한도가 확인되지 않았습니다.")
     return int(value)
@@ -209,6 +213,8 @@ def quotas_for_stage(stage: str) -> list[dict]:
     result = []
     for provider, counter_key, cli_option in specs:
         policy = dict(PROVIDER_QUOTAS[provider])
+        policy["provider_regular"] = policy["regular"]
+        policy["regular"] = regular_cap(provider)
         policy.update(provider=provider, counter_key=counter_key, cli_option=cli_option)
         result.append(policy)
     return result
@@ -219,6 +225,8 @@ def cap_for_source(policy: dict, source: str) -> int:
     if policy.get("total") is None or policy.get("regular") is None:
         raise ValueError(f"{policy['provider']} API의 기준 한도가 확인되지 않았습니다.")
     if source == "manual":
+        if policy["provider"] in ("realty_store", "store_info"):
+            return int(policy["regular"])
         return int(policy["total"])
     return int(policy["regular"])
 
@@ -226,7 +234,60 @@ def cap_for_source(policy: dict, source: str) -> int:
 def quota_bucket_for_stage(stage: str) -> str:
     """Return the API/service-key bucket that must not run concurrently."""
     policies = quotas_for_stage(stage)
-    return policies[0]["provider"] if policies else stage
+    provider = policies[0]["provider"] if policies else stage
+    return "store_info" if provider == "realty_store" else provider
+
+
+STORE_BATCH_REQUEST_KEY = "store_api_batch_requests"
+
+
+def claim_store_batch_request(collector: str, cap: int) -> int:
+    """Reserve every HTTP attempt, including pages/retries, in one shared budget.
+
+    Seed from legacy usage on first activation; resetting a collector's
+    checkpoint must never reset the provider's daily request allowance.
+    """
+    from db import get_conn
+    if collector not in ("realty", "stores"):
+        raise ValueError("Unknown store collector")
+    allocation = regular_cap("realty_store" if collector == "realty" else "store_info")
+    limit = min(int(cap), allocation)
+    today = korea_today()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT pg_advisory_xact_lock(735108024)")
+        cur.execute("SELECT key, value FROM app_meta WHERE key = ANY(%s)", (
+            [STORE_BATCH_REQUEST_KEY, "realty_stores_progress", "stores_progress",
+             "store_daily_calls_batch"],))
+        rows = {r["key"]: json.loads(r["value"] or "{}") for r in cur.fetchall()}
+        usage = rows.get(STORE_BATCH_REQUEST_KEY, {})
+        if usage.get("date") != today:
+            def legacy(key):
+                row = rows.get(key, {})
+                if row.get("calls_date", row.get("date")) != today:
+                    return 0
+                return max(0, int(row.get("calls_today", row.get("count", 0))))
+            realty = legacy("realty_stores_progress")
+            stores = max(legacy("stores_progress"), legacy("store_daily_calls_batch"))
+            usage = {"date": today, "realty": realty, "stores": stores,
+                     "count": realty + stores}
+        if usage.get(collector, 0) >= limit or usage.get("count", 0) >= 8000:
+            raise QuotaExhausted("상가정보 일일 배정 또는 공유 배치 8,000회 한도 도달")
+        usage[collector] = int(usage.get(collector, 0)) + 1
+        usage["count"] = int(usage.get("count", 0)) + 1
+        cur.execute("""
+            INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+        """, (STORE_BATCH_REQUEST_KEY, json.dumps(usage)))
+        conn.commit()
+        return usage[collector]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 def execution_bucket_for_stage(stage: str) -> str:

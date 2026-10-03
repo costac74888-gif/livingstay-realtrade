@@ -820,7 +820,7 @@ def stage_command(stage: Stage, source: str = "scheduled", used_by_counter: dict
         # reserved increment beyond the usage observed after the global lock,
         # never the whole provider total/realtime reserve.
         cap = cap_for_source(policy, source)
-        if source == "manual":
+        if source == "manual" and policy["provider"] not in ("realty_store", "store_info"):
             cap = min(int(policy["total"]), int((used_by_counter or {}).get(
                 policy["counter_key"], 0)) + int(policy["manual"]))
         try:

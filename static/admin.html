@@ -4710,7 +4710,7 @@
         <div style="height:6px;background:var(--brass);border-radius:4px;width:${Math.min(pct,100)}%"></div></div>`;
       const rows = [];
       rows.push(`<div class="geo-stat-row"><b>확보 현황:</b> ${num(d.checked)}건 / 전체 ${num(d.total)}건 (${pct}%)${bar}</div>`);
-      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}건</div>`);
+      rows.push(`<div class="geo-stat-row"><b>오늘 API 호출:</b> ${num(d.calls_today)}회 / 일일 ${num(d.daily_cap || 7500)}회</div>`);
       if (d.running) {
         rows.push(`<div class="geo-stat-row"><b>상태:</b> 실행 중… <span class="tx-sync-spin">⏳</span> (시작 ${dgEscape(d.started_at || "-")})</div>`);
       } else if (d.state === "done") {
@@ -5703,7 +5703,9 @@
           <p class="legal-admin-hint">
             소상공인시장진흥공단 <b>상가정보 API(storeListInPnu)</b>로 각 건물의 입주
             부동산 중개업소를 조회해 건물마스터에 저장합니다. 건당 평균 3초 소요 — 하루
-            300건씩 며칠에 나눠 백그라운드로 진행합니다. 완료 후 건물목록 "단지부동산" 컬럼에
+            최대 7,500회 API 호출을 단지부동산에 우선 배정해 백그라운드로 진행합니다.
+            일반 상가 수집은 500회, 실시간 조회·수동 복구 여유는 2,000회로 유지합니다.
+            미확인 건물부터 처리하며, 재시도·추가 페이지도 호출량에 포함됩니다. 완료 후 건물목록 "단지부동산" 컬럼에
             표시됩니다. (실행 제한: 시간당 2회)
           </p>
           <div id="realtySyncStatus" class="geo-status">현황 불러오는 중…</div>
