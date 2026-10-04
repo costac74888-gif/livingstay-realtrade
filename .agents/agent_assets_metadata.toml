@@ -654,3 +654,59 @@ mtime_ms = 1790842045454
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/966e573a-4e7b-47e0-a646-095d21a950d2/c1e2094f-6b34-4a74-bd3b-7a859e0890d9"
 storage_version_token = "1790842054246022"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "5aCUo66943z53yC7BOKTy"
+uri = "file://screenshots/onbid-list-desktop.jpg"
+type = "image"
+title = "공매목록 · 데스크톱"
+description = "1280px 실제 실행 화면"
+logical_id = "d47baea4-bc00-4b25-87a5-91aa2e1f79c5"
+content_hash = "sha256:ad3fc6b57245a25a431d1ab0510e944f3f1d5d4fb391f38e950aa3b47ba6f8e4"
+size = 83603
+mtime_ms = 1791087794243
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/d47baea4-bc00-4b25-87a5-91aa2e1f79c5/09c128d7-9d95-453f-b46c-0c10a5f29545"
+storage_version_token = "1791088733701618"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "raKc8PLZxtvjUoCyGob8c"
+uri = "file://screenshots/onbid-list-mobile.jpg"
+type = "image"
+title = "공매목록 · 모바일"
+description = "360px 실제 실행 화면"
+logical_id = "4efe1f15-ae3f-4705-9f05-8a3aaca61284"
+content_hash = "sha256:6e102ab6d44b533a9bfb13517db08b6f27b37b643c7c18df8b12926252a70474"
+size = 52223
+mtime_ms = 1791087791991
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/4efe1f15-ae3f-4705-9f05-8a3aaca61284/6b934f49-727c-4114-820d-5d4faffbbf9f"
+storage_version_token = "1791088735112849"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "i3nu9kq874n6fVZ6BYrn_"
+uri = "file://screenshots/onbid-detail-desktop.jpg"
+type = "image"
+title = "공매 상세 · 데스크톱"
+description = "1280px 화면의 중앙 640px 상세 열"
+logical_id = "5c34239a-0738-465b-8f0e-a4170acffef7"
+content_hash = "sha256:c46a8689a7b7d346e429f241a242224ec3c299f55390c21245bc74cbba079a84"
+size = 77051
+mtime_ms = 1791088433515
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/5c34239a-0738-465b-8f0e-a4170acffef7/0c4fb645-ccc2-421a-9414-f227e81ad3b1"
+storage_version_token = "1791088736402260"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "SP8YWNWRWZKuOyE-38wQr"
+uri = "file://screenshots/onbid-detail-mobile.jpg"
+type = "image"
+title = "공매 상세 · 모바일"
+description = "360px 실제 사진·일반정보·회차 화면"
+logical_id = "ab3378ec-3212-4c92-b22a-862886fe90fd"
+content_hash = "sha256:e8b6456f265c92d1718960561f90308e036b64b1bfd0488bad764bcb60c8a50f"
+size = 51586
+mtime_ms = 1791087887803
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/ab3378ec-3212-4c92-b22a-862886fe90fd/b72ac1f9-f64d-400f-b144-b8ba96d65c89"
+storage_version_token = "1791088737763258"
+content_type = "image/jpeg"
