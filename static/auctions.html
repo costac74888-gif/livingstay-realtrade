@@ -40,17 +40,27 @@
         <button type="button" class="auction-chip" data-category="생활숙박">생활숙박</button><button type="button" class="auction-chip" data-category="호텔">호텔</button><button type="button" class="auction-chip" data-category="콘도">콘도</button><button type="button" class="auction-chip" data-category="모텔">모텔</button><button type="button" class="auction-chip" data-category="펜션">펜션</button><button type="button" class="auction-chip" data-category="오피스텔">오피스텔</button>
       </div></div>
       <div class="auction-ranges">
-        <div class="auction-range-control"><div class="range-head"><span>최저가율</span><b><span id="ratioMinLabel">30</span>–<span id="ratioMaxLabel">100</span>%</b></div>
-          <div class="range-dual"><input id="ratioMin" type="range" min="30" max="100" value="30" aria-label="최저가율 최솟값"><input id="ratioMax" type="range" min="30" max="100" value="100" aria-label="최저가율 최댓값"></div><div class="range-scale"><span>30%</span><span>100%</span></div></div>
-        <div class="auction-range-control"><div class="range-head"><span>유찰 횟수</span><b><span id="failedMinLabel">0</span>회 이상</b></div>
-          <input class="auction-single-range" id="failedMin" type="range" min="0" max="5" value="0" aria-label="최소 유찰 횟수"><div class="range-scale"><span>0회</span><span>5회+</span></div></div>
+        <div class="auction-range-control">
+          <span class="auction-sort-title">최저가율</span>
+          <div class="auction-sort-options" role="group" aria-label="최저가율 정렬">
+            <button type="button" class="auction-sort-option" data-sort="ratio_asc" aria-pressed="false">낮은순</button>
+            <button type="button" class="auction-sort-option" data-sort="ratio_desc" aria-pressed="false">높은순</button>
+          </div>
+        </div>
+        <div class="auction-range-control">
+          <span class="auction-sort-title">유찰 횟수</span>
+          <div class="auction-sort-options" role="group" aria-label="유찰 횟수 정렬">
+            <button type="button" class="auction-sort-option" data-sort="failed_asc" aria-pressed="false">적은순</button>
+            <button type="button" class="auction-sort-option" data-sort="failed_desc" aria-pressed="false">많은순</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="auction-filter-bottom"><span id="auctionFilterSummary">검색 조건을 선택하세요</span><button type="button" id="auctionSearch" class="auction-search-button">조건 적용 <span aria-hidden="true">→</span></button></div>
   </section>
 
   <div class="auction-results-head"><div><span class="auction-overline">PUBLIC AUCTIONS</span><h2>공매 물건 <span id="auctionTotal">—</span></h2></div>
-    <label class="auction-sort-label">정렬 <select id="auctionSort"><option value="deadline">마감 임박순</option><option value="discount">할인율순</option><option value="new">신규순</option></select></label>
+    <label class="auction-sort-label">정렬 <select id="auctionSort"><option value="deadline">마감 임박순</option><option value="discount">할인율순</option><option value="new">신규순</option><option value="ratio_asc">최저가율 낮은순</option><option value="ratio_desc">최저가율 높은순</option><option value="failed_asc">유찰 횟수 적은순</option><option value="failed_desc">유찰 횟수 많은순</option></select></label>
   </div>
   <div id="auctionResults" class="auction-results" aria-live="polite"><div class="auction-loading"><i></i><i></i><i></i></div></div>
   <nav id="auctionPagination" class="auction-pagination" aria-label="공매 목록 페이지"></nav>

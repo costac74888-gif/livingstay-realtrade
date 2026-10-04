@@ -188,6 +188,10 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
             order = {
                 "deadline": "a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "discount": "a.min_bid_ratio ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "ratio_asc": "a.min_bid_ratio ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "ratio_desc": "a.min_bid_ratio DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "failed_asc": "a.failed_count ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "failed_desc": "a.failed_count DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "new": "a.first_seen_at DESC,a.id DESC",
             }.get(request.args.get("sort", "deadline"))
             if not order:

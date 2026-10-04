@@ -103,7 +103,7 @@
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
 - [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 메뉴는 항상 노출하고 분석 이용은 로그인한 일반회원·파트너에게 허용하며 서명 공유 링크는 유지한다.
 - [통합 계정과 복수 사업장](unified-account-business-roles.md) — 이메일별 로그인은 하나만 유지하고 일반회원·복수 사업자 역할과 사업장을 연결해 전환한다.
-- [건축HUB 배포 연결과 실패 격리](building-hub-deployment-egress.md) — 워크스페이스와 배포 환경의 data.go.kr 연결성이 다르며, 지속 실패 지번은 완료 처리 없이 대기열로 격리한다.
+- [공공데이터 배포 연결과 실패 격리](building-hub-deployment-egress.md) — 건축HUB·온비드는 환경별 조회 차이를 확인하고, 운영 원장 복구와 배포 자동수집 복구를 구분한다.
 - [최근 분석 재진입 정책](recent-analysis-policy.md) — 마지막 모드를 기록하되 최근 건물을 선택할 때 현재 탭 유지; 최신 자료로 재계산하고 계정·건물 간 가정을 격리한다.
 - [분석 보고서 인쇄 그리드 잘림](analysis-print-grid-overflow.md) — A4 고정 그리드에서 100% 높이는 클리핑 해결이 아닐 수 있어 실제 자식·부모 경계를 비교한다.
 - [숙박자산분석 공통 선택](analysis-common-selection.md) — 건물·면적은 탭 밖에서 공유, 목록의 최소 면적 자동 선택·유효한 직접/공유 면적 보존; 임대 초기화와 추이 면적은 독립.

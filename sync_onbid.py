@@ -156,7 +156,9 @@ class Runner:
                     self.stopped.wait(300)
                     self.failures = 0
                 if attempt == 3:
-                    raise RuntimeError(service + " 재시도 후 조회 실패") from None
+                    raise RuntimeError(
+                        service + " 재시도 후 조회 실패: " + str(self.state["last_error"] or "원인 확인 필요")
+                    ) from None
                 self.stopped.wait((15, 30, 60)[attempt])
                 if self.stopped.is_set():
                     raise LostOwnership()

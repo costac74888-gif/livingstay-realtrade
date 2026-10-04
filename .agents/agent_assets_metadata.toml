@@ -724,3 +724,17 @@ mtime_ms = 1791091902359
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/99361db2-d14a-46d4-b1d4-4571505f0954/323e2167-3f73-43f6-8c3d-5b14bf3de4fe"
 storage_version_token = "1791091940601246"
 content_type = "text/html"
+
+[[outputs]]
+id = "j2A2FUgTitp-dW3p51om4"
+uri = "file://attached_assets/auction-phase2/list-restored-mobile.png"
+type = "image"
+title = "복구된 공매목록 · 휴대폰"
+description = "운영 사이트에서 390px·신규순 정렬로 실제 공매 카드가 표시되는 것을 확인했습니다."
+logical_id = "0aad5158-4cf7-487b-a249-b0511fdc7649"
+content_hash = "sha256:c32dcbd83a953a33327a3618eea2e9b48e353074697c3ec096e7f139ff58df18"
+size = 87185
+mtime_ms = 1791101872226
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0aad5158-4cf7-487b-a249-b0511fdc7649/a23971f6-d4c3-4233-bae0-ebb2e3747693"
+storage_version_token = "1791101952839012"
+content_type = "image/png"

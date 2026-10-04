@@ -35,6 +35,28 @@ class AuctionApiTest(unittest.TestCase):
                      "/api/auctions/map?bbox=NaN,33,132,39", "/api/auctions/map?bbox=132,39,124,33"):
             self.assertEqual(self.client.get(path).status_code, 400)
 
+    def test_numeric_sort_directions_and_missing_values_last(self):
+        for sort, field, descending in (
+            ("ratio_asc", "min_bid_ratio", False),
+            ("ratio_desc", "min_bid_ratio", True),
+            ("failed_asc", "failed_count", False),
+            ("failed_desc", "failed_count", True),
+        ):
+            with self.subTest(sort=sort):
+                response = self.client.get("/api/auctions?sort=" + sort)
+                self.assertEqual(response.status_code, 200)
+                items = response.get_json()["items"]
+                self.assertTrue(items)
+                values = [item[field] for item in items if item[field] is not None]
+                self.assertEqual(values, sorted(values, reverse=descending))
+                missing_seen = False
+                for item in items:
+                    if item[field] is None:
+                        missing_seen = True
+                    else:
+                        self.assertFalse(missing_seen)
+                self.assertEqual(len({item["source_item_id"] for item in items}), len(items))
+
     def test_detail_photos_rounds_building_and_unknown_id(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
