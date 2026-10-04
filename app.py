@@ -10702,10 +10702,11 @@ def notifications_mine():
     try:
         cur.execute("""
             SELECT n.id, n.title, n.body, n.building_name, n.address,
-                   n.is_read, n.created_at,
+                   n.is_read, n.created_at, auction_link.value AS deep_link,
                     COALESCE(n.master_building_id, listing.master_building_id, bid.id) AS building_id
             FROM notifications n
             LEFT JOIN listing_requests listing ON listing.id = n.listing_request_id
+            LEFT JOIN app_meta auction_link ON auction_link.key='auction_notification_link:' || n.id::text
             LEFT JOIN LATERAL (
                 SELECT mb.id
                 FROM transactions t2
@@ -10722,6 +10723,10 @@ def notifications_mine():
             LIMIT 30
         """, (u["id"],))
         rows = [dict(r) for r in cur.fetchall()]
+        # 예전 알림도 기존 건물 주소 대신 공매정보 탭으로 진입한다.
+        for row in rows:
+            if row["title"] == "관심단지에 새 공매가 등록되었습니다" and not row.get("deep_link") and row.get("building_id"):
+                row["deep_link"] = "/?building=" + str(row["building_id"]) + "&tab=auction"
     finally:
         cur.close()
         conn.close()

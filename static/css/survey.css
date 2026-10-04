@@ -77,3 +77,28 @@
 .survey-legal h2{margin-top:23px}
 .survey-legal p,.survey-legal li{font-size:13px}
 @media(max-width:540px){.survey-page{padding:18px 12px 45px}.survey-source-facts{grid-template-columns:1fr 1fr}.survey-analysis-links{grid-template-columns:1fr}.survey-type-options{grid-template-columns:1fr}.survey-form-grid{grid-template-columns:1fr}.survey-field.is-wide{grid-column:auto}.survey-head,.survey-body{padding-left:13px;padding-right:13px}.survey-fact{padding:9px}.survey-fact strong{font-size:11px}}
+.survey-report-items{display:grid;gap:0;border-top:1px solid #e4e9e3}
+.survey-report-item{display:grid;grid-template-columns:minmax(100px,1fr) minmax(150px,1.2fr);align-items:center;gap:14px;padding:11px 12px;border:0;border-bottom:1px solid #e4e9e3;font-size:11px;line-height:1.55}
+.survey-report-item:before{display:none}
+.survey-report-item strong{font-size:11px;font-weight:750}
+.survey-report-item span{justify-self:end;text-align:right;color:#68766d;font-size:10px;line-height:1.5;white-space:pre-line}
+.survey-drawer[hidden]{display:none}
+.survey-drawer{position:fixed;z-index:100001;inset:0;display:flex;justify-content:flex-end;font-family:"Noto Sans KR",sans-serif;color:#26342f}
+.survey-drawer-backdrop{position:absolute;inset:0;background:#18231d80;animation:surveyFade .2s ease both}
+.survey-drawer-panel{position:relative;display:flex;flex-direction:column;width:min(640px,calc(100vw - 48px));height:100%;background:#f3f6f2;box-shadow:-16px 0 48px #15251b24;animation:surveySlide .24s cubic-bezier(.2,.75,.25,1) both}
+.survey-drawer-header{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;min-height:76px;padding:13px 23px;background:#fbfcf8;border-bottom:1px solid #dce5df}
+.survey-drawer-header h2{margin:3px 0 0;font-size:18px;letter-spacing:-.045em}
+.survey-drawer-close{width:36px;height:36px;border:1px solid #dce5df;background:#f5f8f4;color:#405247;font-size:24px;line-height:1;cursor:pointer}
+.survey-drawer-content{flex:1;overflow-y:auto;padding:19px 23px 34px;overscroll-behavior:contain}
+.survey-drawer-content .survey-back,.survey-drawer-content>.survey-page-title,.survey-drawer-content>.survey-page-intro{display:none}
+.survey-drawer-content .survey-card{margin:0 0 12px}
+.survey-drawer-content #surveyRequestForm{margin:0}
+.survey-drawer-content .survey-provider-note{white-space:pre-line}
+.survey-drawer-content .survey-report-item{grid-template-columns:minmax(130px,1fr) minmax(180px,1.4fr)}
+.survey-drawer-content .survey-receipt{margin-top:3px}
+.survey-drawer-open{overflow:hidden}
+@keyframes surveyFade{from{opacity:0}to{opacity:1}}
+@keyframes surveySlide{from{transform:translateX(28px);opacity:.7}to{transform:translateX(0);opacity:1}}
+@media(max-width:600px){.survey-report-item{grid-template-columns:1fr minmax(130px,1.2fr);gap:7px}.survey-report-item span{font-size:10px}.survey-drawer{align-items:flex-end}.survey-drawer-backdrop{background:#18231d85}.survey-drawer-panel{width:100%;height:100dvh;max-height:100dvh;box-shadow:0 -12px 40px #15251b24;animation:surveySheet .25s cubic-bezier(.2,.75,.25,1) both}.survey-drawer-header{min-height:66px;padding:10px 15px}.survey-drawer-content{padding:13px 13px calc(24px + env(safe-area-inset-bottom))}.survey-drawer-content .survey-card h2{padding:12px 13px}.survey-drawer-content .survey-card-content{padding:12px 13px}.survey-drawer-content .survey-report-item{grid-template-columns:minmax(105px,1fr) minmax(132px,1.2fr);gap:7px;padding:10px 8px}.survey-drawer-content .survey-report-item strong{font-size:10px}.survey-drawer-content .survey-report-item span{font-size:9px}}
+@keyframes surveySheet{from{transform:translateY(20px);opacity:.75}to{transform:translateY(0);opacity:1}}
+@media(prefers-reduced-motion:reduce){.survey-drawer-backdrop,.survey-drawer-panel{animation:none}}

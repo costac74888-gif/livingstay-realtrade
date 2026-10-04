@@ -7,11 +7,29 @@ import time
 from datetime import datetime
 from functools import wraps
 
-from flask import jsonify, request
+from flask import jsonify, request, redirect, abort
 from auction_domain import CURRENT_SQL, VISIBLE_SQL, EFFECTIVE_STATUS_SQL, KST, safe_url
 from db import get_conn
 
 STATUS_KEY = "onbid_sync_status"
+SUCCESS_KEY = "onbid_last_success_at"
+
+
+def auction_deep_link(item_id, building_id=None):
+    """기존 외부 링크와 새 목록·알림의 공통 지도 진입 주소."""
+    from urllib.parse import urlencode
+    params = {"building": building_id, "tab": "auction", "auction": item_id} if building_id else {"auction": item_id}
+    return "/?" + urlencode(params)
+
+
+def redirect_auction_to_map(item_id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT master_building_id FROM auction_items WHERE id=%s", [item_id])
+            item = cur.fetchone()
+    if not item:
+        abort(404)
+    return redirect(auction_deep_link(item_id, item["master_building_id"]), code=301)
 PUBLIC_COLUMNS = f"""a.id,a.source,a.source_item_id,a.pbct_cdtn_no,a.sale_kind,a.usage_name,
 a.lodging_category,a.title,a.unit_label,a.address_road,a.address_jibun,a.area_m2,
 a.appraisal_price,a.min_bid_price,a.min_bid_ratio,a.round_no,a.failed_count,
@@ -174,7 +192,7 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
 
     @app.get("/auctions/<int:item_id>")
     def auction_detail_page(item_id):
-        return serve_html("auction_detail.html")
+        return redirect_auction_to_map(item_id)
 
     @app.get("/api/auctions")
     @limiter.limit("60 per minute")
@@ -202,6 +220,11 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 "failed_desc": "a.failed_count DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "new": "a.first_seen_at DESC NULLS LAST,a.id DESC",
                 "new_asc": "a.first_seen_at ASC NULLS LAST,a.id DESC",
+                **{f"{key}_{direction}": f"{column} {direction.upper()} NULLS LAST,a.id DESC"
+                   for key, column in (("status", "a.status"), ("category", "a.lodging_category"),
+                                       ("address", "COALESCE(NULLIF(a.address_road,''),a.address_jibun)"),
+                                       ("area", "a.area_m2"))
+                   for direction in ("asc", "desc")},
             }.get(request.args.get("sort", "deadline"))
             if not order:
                 raise ValueError("정렬을 확인해 주세요.")
@@ -213,8 +236,26 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 total = int(cur.fetchone()["n"])
                 cur.execute(CURRENT_SQL + CARD_SELECT + " FROM current_auctions a WHERE " + where
                             + " ORDER BY " + order + " LIMIT %s OFFSET %s", params + [page_size, (page - 1) * page_size])
-                items = enrich_cards(cur, [serial(r) for r in cur.fetchall()], photo_reader)
-        return {"ok": True, "items": items, "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size}
+                items = [serial(r) for r in cur.fetchall()]
+                cur.execute("SELECT value FROM app_meta WHERE key=%s", [SUCCESS_KEY])
+                success = cur.fetchone()
+                last_success_at = success["value"] if success else None
+                if not last_success_at:
+                    # 이전 버전도 전체 목록 완료 여부를 기록했다. 실패·미완료
+                    # 실행은 사용하지 않으며, 상세 보강 실패는 목록 성공과 구분한다.
+                    cur.execute("SELECT value FROM app_meta WHERE key=%s", [STATUS_KEY])
+                    legacy = cur.fetchone()
+                    try:
+                        state = json.loads(legacy["value"]) if legacy else {}
+                        if state.get("list_complete") is True and state.get("state") in ("done", "partial", "waiting_quota"):
+                            timestamp = state.get("finished_at")
+                            if timestamp:
+                                datetime.fromisoformat(timestamp)
+                                last_success_at = timestamp
+                    except (ValueError, TypeError, AttributeError):
+                        pass
+        return {"ok": True, "items": items, "total": total, "page": page, "page_size": page_size,
+                "pages": (total + page_size - 1) // page_size, "last_success_at": last_success_at}
 
     @app.get("/api/auctions/map")
     @limiter.limit("60 per minute")
@@ -231,8 +272,10 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
             return jsonify({"ok": False, "message": "유효한 지도 영역이 필요합니다."}), 400
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(CURRENT_SQL + CARD_SELECT + """
-                  FROM current_auctions a WHERE a.lng BETWEEN %s AND %s AND a.lat BETWEEN %s AND %s
+                cur.execute(CURRENT_SQL + CARD_SELECT + """,
+                  b.lodging_type AS building_lodging_type,b.building_status,b.building_name
+                  FROM current_auctions a LEFT JOIN master_buildings b ON b.id=a.master_building_id
+                  WHERE a.lng BETWEEN %s AND %s AND a.lat BETWEEN %s AND %s
                   ORDER BY a.bid_end_at ASC NULLS LAST,a.id DESC LIMIT 501
                 """, [west, east, south, north])
                 rows = cur.fetchall()

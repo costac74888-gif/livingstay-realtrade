@@ -18,13 +18,6 @@
     }
     return data;
   }
-  const idFromPath = () => {
-    const path = location.pathname;
-    const match = path.match(/^\/auctions\/([^/]+)(?:\/survey)?\/?$/);
-    if (match) return decodeURIComponent(match[1]);
-    const surveyMatch = path.match(/^\/auctions\/([^/]+)\/survey\/?$/);
-    return surveyMatch ? decodeURIComponent(surveyMatch[1]) : "";
-  };
   const rowFact = (label, value) => `<div class="survey-fact"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;
   const statusLabel = value => {
     const raw = String(value || "");
@@ -83,8 +76,9 @@
       ${matched && comparison && comparison.text ? `<div class="survey-comparison">${esc(comparison.text)}</div>` : ""}
       <h3 class="survey-checklist-heading">생활형숙박시설 체크리스트</h3>
       <div class="survey-checklist">${checkItems}</div>
-      ${canApply ? `<a class="survey-apply" href="/auctions/${encodeURIComponent(id)}/survey">현황조사 신청</a>` : `<button class="survey-apply" type="button" disabled>현황조사 신청</button>${availabilityText ? `<p class="survey-copy">${esc(availabilityText)}</p>` : ""}`}
+      ${canApply ? `<button class="survey-apply" type="button" data-open-auction-survey="${esc(id)}">현황조사 신청</button>` : `<button class="survey-apply" type="button" disabled>현황조사 신청</button>${availabilityText ? `<p class="survey-copy">${esc(availabilityText)}</p>` : ""}`}
       </div></section>`;
+    slot.querySelector("[data-open-auction-survey]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
     if (matched) loadMarketReference(item).then(reference => {
       if (!reference || !slot.isConnected) return;
       const body = slot.querySelector(".survey-body");
@@ -124,53 +118,71 @@
     return jsonRequest(`/api/auctions/${encodeURIComponent(id)}/survey-info`);
   }
 
-  function initDetail() {
-    const root = document.getElementById("auctionDetailRoot");
-    if (!root || !/^\/auctions\/[^/]+\/?$/.test(location.pathname)) return;
-    const id = idFromPath();
-    if (!id) return;
-    let loaded = false;
-    const tryMount = async () => {
-      const slot = document.getElementById("auctionAnalysisSlot");
-      if (!slot || loaded) return;
-      loaded = true;
-      slot.innerHTML = `<section class="survey-block"><div class="survey-loading">분석 링크와 현황조사 정보를 확인 중입니다.</div></section>`;
-      try {
-        const data = await loadAuctionInfo(id);
-        if (!data.item) throw new Error("공매 정보를 찾을 수 없습니다.");
-        const item = data.item;
-        if (item.id == null) item.id = id;
-        renderDetail(slot, id, item, data.analysis_links, data.comparison, data.checklist, data.availability, data.analysis_notice);
-      } catch (error) {
-        slot.innerHTML = `<section class="survey-block"><div class="survey-error" role="alert">${esc(error.message)} <button type="button" data-survey-retry>다시 불러오기</button></div></section>`;
-        slot.querySelector("[data-survey-retry]")?.addEventListener("click", () => { loaded = false; tryMount(); });
-      }
-    };
-    const observer = new MutationObserver(() => {
-      if (document.getElementById("auctionAnalysisSlot")) tryMount();
-    });
-    observer.observe(root, {childList:true,subtree:true});
-    tryMount();
-  }
-
-  async function initApplication() {
-    const app = document.getElementById("surveyApp");
-    if (!app) return;
-    const id = idFromPath();
-    if (!id) { app.innerHTML = `<div class="survey-error">공매 번호를 확인할 수 없습니다.</div>`; return; }
+  const detailMounts = new WeakMap();
+  window.mountAuctionSurveyDetail = async function(slot,id) {
+    if(!slot||!id)return;
+    const sequence=(detailMounts.get(slot)||0)+1;detailMounts.set(slot,sequence);
+    slot.innerHTML=`<section class="survey-block"><div class="survey-loading" role="status">투자분석과 현황조사 정보를 확인 중입니다.</div></section>`;
     try {
-      const [auction, configData] = await Promise.all([
-        loadAuctionInfo(id),
-        jsonRequest("/api/survey/config")
-      ]);
-      const item = auction.item || {};
-      const config = configData.config || auction.config || {};
-      if (!auction.availability || auction.availability.can_apply !== true) throw new Error(auction.availability?.reason || "현재 현황조사 신청이 불가능합니다.");
-      renderApplication(app, id, item, config, auction.checklist);
-    } catch (error) {
-      app.innerHTML = `<a class="survey-back" href="/auctions/${encodeURIComponent(id)}">← 공매 상세로</a><div class="survey-error" role="alert"><strong>${esc(error.message)}</strong><p>잠시 후 다시 시도해 주세요.</p><button type="button" data-reload>다시 불러오기</button></div>`;
-      app.querySelector("[data-reload]")?.addEventListener("click", () => location.reload());
+      const data=await loadAuctionInfo(id);
+      if(detailMounts.get(slot)!==sequence||!slot.isConnected)return;
+      if(!data.item)throw new Error("공매 정보를 찾을 수 없습니다.");
+      const item=data.item;if(item.id==null)item.id=id;
+      renderDetail(slot,id,item,data.analysis_links,data.comparison,data.checklist,data.availability,data.analysis_notice);
+    } catch(error) {
+      if(detailMounts.get(slot)!==sequence||!slot.isConnected)return;
+      slot.innerHTML=`<section class="survey-block"><div class="survey-error" role="alert">${esc(error.message||"현황조사 정보를 불러오지 못했습니다.")}<button type="button" data-survey-retry>다시 불러오기</button></div></section>`;
+      slot.querySelector("[data-survey-retry]")?.addEventListener("click",()=>window.mountAuctionSurveyDetail(slot,id));
     }
+  };
+
+  let surveyDrawerSequence=0;
+  window.openAuctionSurvey = async function(id) {
+    if(!id)return;
+    const sequence=++surveyDrawerSequence;
+    let drawer=document.getElementById("auctionSurveyDrawer");
+    if(!drawer){
+      drawer=document.createElement("div");
+      drawer.id="auctionSurveyDrawer";
+      drawer.className="survey-drawer";
+      drawer.hidden=true;
+      drawer.innerHTML=`<div class="survey-drawer-backdrop" data-survey-close></div><section class="survey-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="auctionSurveyDrawerTitle"><header class="survey-drawer-header"><div><span class="survey-kicker">PROPERTY DUE DILIGENCE</span><h2 id="auctionSurveyDrawerTitle">현황조사 신청</h2></div><button type="button" class="survey-drawer-close" data-survey-close aria-label="신청창 닫기">×</button></header><div class="survey-drawer-content" id="auctionSurveyDrawerContent"></div></section>`;
+      document.body.append(drawer);
+      drawer.addEventListener("click",event=>{if(event.target.closest("[data-survey-close]"))closeSurveyDrawer();});
+      drawer.addEventListener("keydown",event=>{
+        if(event.key==="Escape"){event.preventDefault();closeSurveyDrawer();return;}
+        if(event.key!=="Tab")return;
+        const focusable=[...drawer.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(node=>node.offsetParent!==null);
+        if(!focusable.length){event.preventDefault();return;}
+        const first=focusable[0],last=focusable[focusable.length-1];
+        if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+        else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+      });
+    }
+    drawer._returnFocus=document.activeElement;
+    drawer.hidden=false;document.body.classList.add("survey-drawer-open");
+    const panel=drawer.querySelector(".survey-drawer-panel");
+    panel.querySelector(".survey-drawer-close").focus();
+    const content=drawer.querySelector("#auctionSurveyDrawerContent");
+    content.innerHTML='<div class="survey-loading" role="status">조사 범위와 신청 조건을 확인 중입니다.</div>';
+    try {
+      const [auction,configData]=await Promise.all([loadAuctionInfo(id),jsonRequest("/api/survey/config")]);
+      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
+      const item=auction.item||{},config=configData.config||auction.config||{};
+      if(!auction.availability||auction.availability.can_apply!==true)throw new Error(auction.availability?.reason||"현재 현황조사 신청이 불가능합니다.");
+      renderApplication(content,id,item,config,auction.checklist);
+      panel.querySelector(".survey-drawer-header h2").focus?.();
+    } catch(error) {
+      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
+      content.innerHTML=`<div class="survey-error" role="alert"><strong>${esc(error.message||"신청 정보를 불러오지 못했습니다.")}</strong><p>잠시 후 다시 시도해 주세요.</p><button type="button" data-drawer-retry>다시 불러오기</button></div>`;
+      content.querySelector("[data-drawer-retry]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
+    }
+  };
+  function closeSurveyDrawer() {
+    const drawer=document.getElementById("auctionSurveyDrawer");
+    if(!drawer||drawer.hidden)return;
+    drawer.hidden=true;document.body.classList.remove("survey-drawer-open");
+    drawer._returnFocus?.focus?.();
   }
 
   function renderApplication(app, id, item, config, checklist) {
@@ -180,8 +192,8 @@
       ["영업신고 현황","business_report"],
       ["위탁운영 승계 여부","operation_succession"],
       ["관리비 체납 여부","fee_arrears"]
-    ].map(([title,key]) => `<div class="survey-report-item">${esc(title)}${checklistByKey[key] ? `<br>${esc(checklistByKey[key])}` : ""}</div>`).join("");
-    app.innerHTML = `<a class="survey-back" href="/auctions/${encodeURIComponent(id)}">← 공매 상세로 돌아가기</a>
+    ].map(([title,key]) => `<div class="survey-report-item"><strong>${esc(title)}</strong><span>${esc(checklistByKey[key]||"조사 신청 시 확인")}</span></div>`).join("");
+    app.innerHTML = `<button class="survey-back" type="button" data-survey-close>← 공매정보로 돌아가기</button>
       <h1 class="survey-page-title">현황조사 신청</h1><p class="survey-page-intro">제공기관과 조사 범위를 확인한 뒤 신청 정보를 작성해 주세요.</p>
       <section class="survey-card"><h2>조사 대상 공매</h2><div class="survey-card-content">${infoBlock}</div></section>
       <section class="survey-card"><h2>조사 범위</h2><div class="survey-card-content"><div class="survey-report-items">${items}</div>
@@ -292,7 +304,7 @@
   }
   function renderReceipt(app, receipt) {
     const account = [receipt.bank_name,receipt.bank_account,receipt.bank_holder].filter(Boolean).join(" ");
-    app.innerHTML = `<a class="survey-back" href="/auctions">← 공매 목록</a><section class="survey-receipt" aria-live="polite">
+    app.innerHTML = `<button class="survey-back" type="button" data-survey-close>← 공매정보로 돌아가기</button><section class="survey-receipt" aria-live="polite">
       <div class="survey-kicker">REQUEST RECEIVED</div><h2>조사 신청이 접수되었습니다.</h2>
       <p>입금 확인 후 조사 절차가 진행됩니다. 신청 번호와 결제 기한을 확인해 주세요.</p>
       <div class="survey-receipt-no">${esc(receipt.request_no || "접수번호 확인 필요")}</div>
@@ -316,7 +328,5 @@
       if (data.updated_at) document.getElementById("surveyTermsUpdated").textContent = `최종 개정일 ${data.updated_at}`;
     }).catch(() => { body.textContent = "약관을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."; });
   }
-  initDetail();
-  initApplication();
   initTerms();
 })();

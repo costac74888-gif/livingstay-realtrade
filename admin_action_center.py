@@ -328,6 +328,8 @@ def action_payload(cur):
     )
     counts = {name: len(rows) for name, rows in groups.items()}
     counts["total"] = len(items)
+    cur.execute("SELECT COUNT(*) AS n FROM survey_requests WHERE status='received'")
+    counts["survey_requests"] = int(cur.fetchone()["n"])
     return {
         "ok": True,
         "generated_at": datetime.now(KST).isoformat(),

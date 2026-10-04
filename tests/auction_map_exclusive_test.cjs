@@ -12,6 +12,7 @@ function section(start, end) {
 class Element {
   constructor() { this.dataset = {}; this.style = {}; this.innerHTML = ""; this.value = ""; }
   addEventListener() {}
+  setAttribute() {}
   querySelector() { return new Element(); }
 }
 class Overlay {
@@ -95,6 +96,16 @@ async function main() {
   assert.equal(calls.length, 1);
   assert.ok(calls[0].startsWith("/api/auctions/map?"));
   assert.equal(c._auctionMapOverlays.length, 2);
+  c.fetch=async()=>({ok:true,json:async()=>({ok:true,items:[
+    {id:1,lat:37,lng:127,master_building_id:9,status:"bidding"},
+    {id:2,lat:37,lng:127,master_building_id:10,status:"scheduled"},
+  ]})});
+  c.markerColor=()=>"#123456";
+  await c.loadAuctionMapOverlays();
+  assert.equal(c._auctionMapOverlays.length,2,"One grouped box plus independently clickable building point");
+  assert.ok(c._auctionMapOverlays[0].content.innerHTML.includes("공매 2건"));
+  assert.ok(!c._auctionMapOverlays[0].content.innerHTML.includes("/auctions/"));
+  assert.ok(c._auctionMapOverlays[0].content.innerHTML.includes("진행"));
   c.setAuctionMapLayer(true, { refresh: false });
   assert.equal(c.state.lodging_type, "");
   assert.equal(selector.value, "");

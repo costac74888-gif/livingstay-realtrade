@@ -19,7 +19,7 @@ from auction_domain import (
     ENDPOINTS, PROPERTY_CODES, USAGES, KST, normalize, response_items,
     number, source_date, safe_url, VISIBLE_SQL,
 )
-from auction_service import STATUS_KEY
+from auction_service import STATUS_KEY, SUCCESS_KEY, auction_deep_link
 from db import get_conn
 from geocode_buildings import geocode_address
 from secret_redaction import redact_env_secrets, redact_exception
@@ -410,6 +410,12 @@ class Runner:
         try:
             rows = self.collect_lists()
             staged, changed = self.stage_rows(rows)
+            # 목록 원장이 정상적으로 전부 커밋된 시각. 상세 예산 소진과 구분한다.
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""INSERT INTO app_meta(key,value,updated_at) VALUES(%s,%s,NOW())
+                      ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()""",
+                                [SUCCESS_KEY, datetime.now(KST).isoformat()])
             with get_conn() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""UPDATE auction_items SET status='closed',updated_at=NOW()
@@ -489,9 +495,8 @@ class Runner:
                                 [self.args.status_key])
                     owner = cur.fetchone()
                     if owner and owner["owner"] == self.run_id:
-                        cur.execute("""UPDATE auction_items SET status='closed',updated_at=NOW()
-                          WHERE (status='sold' AND status_changed_at<NOW()-INTERVAL '30 days')
-                             OR (status='canceled' AND status_changed_at<NOW()-INTERVAL '7 days')""")
+                        # 실패·quota 종료에서는 원장을 삭제하거나 종료 상태로 바꾸지 않는다.
+                        record_sync_outcome(cur, self.state, self.args.status_key)
             if self.lock_conn:
                 with self.lock_conn.cursor() as cur:
                     cur.execute("SELECT pg_advisory_unlock(72941681)")
@@ -502,6 +507,27 @@ class Runner:
                 self.save_state()
             self.session.close()
         print(json.dumps(self.state, ensure_ascii=False), flush=True)
+
+
+def record_sync_outcome(cur, state, status_key=STATUS_KEY):
+    """공유 app_meta에 실행 간 실패 연속성을 보존; 두 번째 실패에 한 번 알림."""
+    failed = state.get("state") == "failed" or bool(state.get("errors"))
+    if not failed and not state.get("list_complete"):
+        return  # 한도 소진·소유권 상실은 공급자 장애로 추정하지 않는다.
+    key = status_key + ":failure_streak"
+    cur.execute("""INSERT INTO app_meta(key,value,updated_at) VALUES(%s,'0',NOW())
+      ON CONFLICT(key) DO NOTHING""", [key])
+    cur.execute("""UPDATE app_meta SET value=CASE WHEN %s THEN (value::integer+1)::text ELSE '0' END,
+      updated_at=NOW() WHERE key=%s RETURNING value""", [failed, key])
+    streak = int(cur.fetchone()["value"])
+    if streak == 2:
+        cur.execute("""INSERT INTO admin_notifications
+          (admin_user_id,event_type,source_table,source_id,title,body,deep_link)
+          SELECT id,'sync_failure','app_meta',(EXTRACT(EPOCH FROM clock_timestamp())*1000000)::bigint,
+            '온비드 공매 수집 2회 연속 실패',
+            '기존 공매 원장은 보존했습니다. 데이터 동기화에서 수집 상태와 공급자 연결을 확인하세요.',
+            '/admin#datasync' FROM admin_users
+          ON CONFLICT DO NOTHING""")
 
 
 def notify_auction_watchers(cur, item_id, values):
@@ -526,11 +552,16 @@ def notify_auction_watchers(cur, item_id, values):
             continue
         price = f"{values['min_bid_price']:,}원" if values["min_bid_price"] else "확인 필요"
         cur.execute("""INSERT INTO notifications(user_id,title,body,building_name,address,master_building_id)
-          VALUES(%s,%s,%s,%s,%s,%s)""",
+          VALUES(%s,%s,%s,%s,%s,%s) RETURNING id""",
                     [watcher["user_id"], "관심단지에 새 공매가 등록되었습니다",
                      f"{values['sale_kind']} 공매 · 최저입찰가 {price}. 건물 상세의 공매 탭에서 원문을 확인하세요.",
                      watcher["building_name"], watcher["road_address"] or watcher["jibun_address"],
                      values.get("master_building_id") or None])
+        notification = cur.fetchone()
+        cur.execute("""INSERT INTO app_meta(key,value,updated_at) VALUES(%s,%s,NOW())
+          ON CONFLICT(key) DO NOTHING""",
+                    ["auction_notification_link:" + str(notification["id"]),
+                     auction_deep_link(item_id, values.get("master_building_id"))])
 
 
 def main():

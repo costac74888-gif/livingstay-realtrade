@@ -5,59 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script>window.LIVINGSTAY_PUBLIC_BASE_URL = "{{PUBLIC_BASE_URL}}"; window.PAGE_TITLE = "숙박시설 공매목록";</script>
 <title>숙박시설 공매목록 · 홈앤스테이</title>
-<meta name="description" content="온비드 숙박시설 공매 물건을 지역과 조건별로 찾아보세요.">
+<meta name="description" content="온비드 공매 정보와 숙박 자산 정보를 함께 확인합니다.">
 <link rel="icon" href="/static/img/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css">
 <link rel="stylesheet" href="/static/css/auctions.css">
+<link rel="stylesheet" href="/static/css/survey.css">
 </head>
 <body class="auction-body">
 <header id="siteHeader"></header>
 <main class="auction-list-page">
-  <div class="auction-page-intro">
-    <div><div class="auction-eyebrow"><span class="auction-mark" aria-hidden="true">공매</span> ONBID · LODGING ASSETS</div>
-      <h1>숙박시설 <em>공매목록</em></h1>
-      <p>공적 입찰 정보와 숙박 자산 정보를 한곳에서 확인합니다.</p>
-    </div>
-    <a class="auction-source-link" href="https://www.onbid.co.kr/" target="_blank" rel="noopener noreferrer">온비드 원문 ↗</a>
-  </div>
-
   <section class="auction-filter" aria-label="공매 검색 조건">
-    <div class="auction-filter-top">
-      <div class="auction-filter-heading"><span>조건 설정</span><small>원하는 물건을 좁혀보세요</small></div>
-      <button type="button" id="auctionReset" class="auction-reset">초기화</button>
-    </div>
-    <div class="auction-filter-grid">
-      <label class="auction-field"><span>시·도</span><select id="auctionSido"><option value="">전체</option></select></label>
-      <label class="auction-field"><span>시·군·구</span><select id="auctionSgg"><option value="">전체</option></select></label>
-      <label class="auction-field"><span>공매 종류</span><select id="auctionKind"><option value="">전체</option><option>압류</option><option>국유</option><option>이용기관</option><option>신탁</option><option>기타</option></select></label>
-      <label class="auction-field"><span>진행 상태</span><select id="auctionStatus"><option value="">전체</option><option value="bidding">입찰중</option><option value="scheduled">입찰예정</option><option value="failed">유찰</option><option value="sold">낙찰</option><option value="canceled">취소</option><option value="closed">종료</option></select></label>
-    </div>
-    <div class="auction-filter-row">
-      <div class="auction-field auction-category-field"><span>숙박 용도</span><div class="auction-chips" id="auctionCategories">
-        <button type="button" class="auction-chip is-active" data-category="">전체</button>
-        <button type="button" class="auction-chip" data-category="생활숙박">생활숙박</button><button type="button" class="auction-chip" data-category="호텔">호텔</button><button type="button" class="auction-chip" data-category="콘도">콘도</button><button type="button" class="auction-chip" data-category="모텔">모텔</button><button type="button" class="auction-chip" data-category="펜션">펜션</button><button type="button" class="auction-chip" data-category="오피스텔">오피스텔</button>
-      </div></div>
-    </div>
+    <label class="auction-field"><span>시·도</span><select id="auctionSido"><option value="">전체 시·도</option></select></label>
+    <label class="auction-field"><span>시·군·구</span><select id="auctionSgg"><option value="">전체 시·군·구</option></select></label>
+    <label class="auction-field"><span>용도</span><select id="auctionCategory"><option value="">전체 용도</option><option>생활숙박</option><option>호텔</option><option>콘도</option><option>모텔</option><option>펜션</option><option>오피스텔</option></select></label>
+    <label class="auction-field"><span>상태</span><select id="auctionStatus"><option value="">전체 상태</option><option value="bidding">진행</option><option value="scheduled">예정</option><option value="failed">유찰</option><option value="sold">낙찰</option><option value="canceled">취소</option><option value="closed">종료</option></select></label>
+    <button type="button" id="auctionReset" class="auction-reset">초기화</button>
   </section>
-
-  <div class="auction-results-head"><div class="auction-results-title"><span class="auction-overline">PUBLIC AUCTIONS</span><h2>공매 물건 <span id="auctionTotal">—</span></h2></div>
-    <div class="auction-order-toolbar" aria-label="공매 물건 정렬">
-      <button type="button" class="auction-order-button is-active" data-sort-key="deadline" aria-pressed="true">입찰마감일 <span class="auction-order-arrow" aria-hidden="true">↓</span></button>
-      <button type="button" class="auction-order-button" data-sort-key="appraisal" aria-pressed="false">감정평가금액 <span class="auction-order-arrow" aria-hidden="true">↓</span></button>
-      <button type="button" class="auction-order-button" data-sort-key="price" aria-pressed="false">최저입찰가격 <span class="auction-order-arrow" aria-hidden="true">↓</span></button>
-      <button type="button" class="auction-order-button" data-sort-key="failed" aria-pressed="false">유찰횟수 <span class="auction-order-arrow" aria-hidden="true">↓</span></button>
-      <button type="button" class="auction-order-button" data-sort-key="new" aria-pressed="false">최신순 <span class="auction-order-arrow" aria-hidden="true">↓</span></button>
-      <select id="auctionPageSize" aria-label="페이지당 공매 물건 수">
-        <option value="10" selected>10건</option><option value="20">20건</option><option value="50">50건</option><option value="100">100건</option>
-      </select>
-    </div>
+  <div class="auction-table-wrap">
+    <table class="auction-table">
+      <thead><tr>
+        <th><button class="auction-order-button" data-sort-key="status" data-sort-label="상태" type="button">상태<span class="auction-order-arrow"></span></button></th>
+        <th class="auction-mobile-combined">용도 · 소재지</th>
+        <th><button class="auction-order-button" data-sort-key="category" data-sort-label="용도" type="button">용도<span class="auction-order-arrow"></span></button></th>
+        <th><button class="auction-order-button" data-sort-key="address" data-sort-label="소재지" type="button">소재지<span class="auction-order-arrow"></span></button></th>
+        <th class="col-area"><button class="auction-order-button" data-sort-key="area" data-sort-label="면적" type="button">면적<span class="auction-order-arrow"></span></button></th>
+        <th class="col-appraisal"><button class="auction-order-button" data-sort-key="appraisal" data-sort-label="감정가" type="button">감정가<span class="auction-order-arrow"></span></button></th>
+        <th><button class="auction-order-button" data-sort-key="price" data-sort-label="최저입찰가" type="button">최저입찰가<span class="auction-order-arrow"></span></button></th>
+        <th class="col-failed"><button class="auction-order-button" data-sort-key="failed" data-sort-label="유찰" type="button">유찰<span class="auction-order-arrow"></span></button></th>
+        <th><button class="auction-order-button is-active" data-sort-key="deadline" data-sort-label="입찰마감" type="button" aria-pressed="true">입찰마감<span class="auction-order-arrow">↑</span></button></th>
+      </tr></thead>
+      <tbody id="auctionResults"><tr><td colspan="9"><div class="auction-loading" role="status">목록을 불러오는 중</div></td></tr></tbody>
+    </table>
   </div>
-  <div id="auctionResults" class="auction-results" aria-live="polite"><div class="auction-loading"><i></i><i></i><i></i></div></div>
+  <div class="auction-list-controls"><span>총 <strong id="auctionTotal">—</strong>건</span>
+    <label>페이지당 <select id="auctionPageSize" aria-label="페이지당 공매 물건 수"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>건</label>
+  </div>
   <nav id="auctionPagination" class="auction-pagination" aria-label="공매 목록 페이지"></nav>
-  <footer class="auction-list-note">정보 출처: 한국자산관리공사 온비드 · 입찰 전 원문 공고와 권리관계를 확인해 주세요.</footer>
+  <footer class="auction-list-note">온비드 기준 <time id="auctionLastUpdated">갱신 시각 확인 중</time> 갱신 · 입찰 전 원문 공고와 권리관계를 확인해 주세요.</footer>
 </main>
-<script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/auctions.js"></script>
+<script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script>
+<script src="/static/js/auction-survey.js"></script><script src="/static/js/auction-panel.js"></script><script src="/static/js/auctions.js"></script>
 </body>
 </html>

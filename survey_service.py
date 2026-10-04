@@ -273,7 +273,8 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
 
     @app.get("/auctions/<int:item_id>/survey")
     def survey_page(item_id):
-        return serve_html("auction_survey.html")
+        from auction_service import redirect_auction_to_map
+        return redirect_auction_to_map(item_id)
 
     @app.get("/terms/survey")
     def survey_terms_page():

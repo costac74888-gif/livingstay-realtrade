@@ -30,6 +30,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/main.css" />
 <link rel="stylesheet" href="/static/css/auctions.css" />
+<link rel="stylesheet" href="/static/css/survey.css" />
 <script src="https://unpkg.com/lucide@latest"></script>
 <script src="/static/js/icons.js"></script>
 <script src="/static/js/facility_icons.js"></script>
@@ -529,7 +530,9 @@
     // 하루 1회 노출 (또는 강제 오픈)
     var seen = false;
     try { seen = (localStorage.getItem(LS_KEY) === todayStr); } catch(e){}
-    if (!seen || forceOpen){
+    var hasAuctionDeepLink = new URLSearchParams(location.search).has("auction") ||
+      new URLSearchParams(location.search).has("building");
+    if ((!seen && !hasAuctionDeepLink) || forceOpen){
       // 첫 방문 or 강제: 오버레이 표시, 검색바는 닫힌 채 유지 (닫을 때 openSearchbar 호출됨)
       overlay.style.display = "flex";
     } else {
@@ -554,6 +557,8 @@
 <script src="/static/js/chat_common.js" defer></script>
 <script src="/static/js/listing_icons.js" defer></script>
 <script src="/static/js/listing_checklist.js" defer></script>
+<script src="/static/js/auction-survey.js" defer></script>
+<script src="/static/js/auction-panel.js" defer></script>
 <script src="/static/js/main.js" defer></script>
 <script src="/static/js/listing_modal.js" defer></script>
 <script src="/static/js/auth.js" defer></script>

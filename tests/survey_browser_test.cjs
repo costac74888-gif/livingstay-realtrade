@@ -20,7 +20,8 @@ finally: c.close()`));
   fs.mkdirSync("attached_assets/auction-phase2", {recursive:true});
   let temporaryAdmin = null;
   try {
-    for (const [label,width] of [["desktop",1280],["mobile",390]]) {
+    const viewports=process.argv.includes("--admin-only")?[]:[["desktop",1440],["mobile",390]];
+    for (const [label,width] of viewports) {
       const context = await browser.newContext({viewport:{width,height:900},ignoreHTTPSErrors:true,locale:"ko-KR",userAgent});
       const page = await context.newPage();
       const errors = [];
@@ -29,22 +30,36 @@ finally: c.close()`));
       await page.locator(".survey-check-state").first().waitFor();
       assert.equal(await page.locator(".survey-check-state").count(), 3);
       assert.equal(await page.locator('.survey-analysis-link').count(), 3);
-      assert.equal(await page.locator('.auction-detail-title-block h1').count(), 1);
-      assert.ok((await page.locator("#auctionDetailRoot").textContent()).includes("온비드"));
-      assert.ok((await page.locator("#auctionDetailRoot").textContent()).includes("회차"));
+      assert.equal(await page.locator('.auction-panel-general h4').count(), 1);
+      assert.ok((await page.locator("#bAuctionPanel").textContent()).includes("온비드"));
+      assert.ok((await page.locator("#bAuctionPanel").textContent()).includes("회차"));
       await page.evaluate(()=>document.fonts.ready);
-      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+      const overflow=await page.evaluate(()=>({
+        width:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+        elements:[...document.querySelectorAll("body *")].map(node=>({node,rect:node.getBoundingClientRect()}))
+          .filter(({node,rect})=>rect.width>0&&rect.right>innerWidth+1&&getComputedStyle(node).position!=="absolute")
+          .slice(0,12).map(({node,rect})=>({id:node.id,tag:node.tagName,className:node.className,right:rect.right,width:rect.width}))
+      }));
+      if(overflow.scrollWidth>width+1)await page.screenshot({path:`attached_assets/auction-phase2/overflow-${label}.png`});
+      assert.ok(overflow.scrollWidth<=width+1,JSON.stringify(overflow));
       await page.screenshot({path:`attached_assets/auction-phase2/detail-${label}.png`,fullPage:true});
       await page.click(".survey-apply");
       await page.locator("#surveyRequestForm").waitFor();
+      const sizes=await page.locator(".survey-report-item span").evaluateAll(nodes=>nodes.map(node=>({
+        size:getComputedStyle(node).fontSize,align:getComputedStyle(node).textAlign
+      })));
+      assert.equal(new Set(sizes.map(node=>node.size)).size,1);
+      assert.ok(sizes.every(node=>node.align==="right"));
       assert.equal((await page.locator("#surveyTotalPrice").textContent()).replace(/,/g,""),"79000원");
       await page.check('[name="survey_type"][value="visit"]');
       assert.equal((await page.locator("#surveyTotalPrice").textContent()).replace(/,/g,""),"178000원");
-      assert.ok((await page.locator("#surveyApp").textContent()).includes("24시간"));
-      assert.ok((await page.locator("#surveyApp").textContent()).includes("3일"));
+      assert.ok((await page.locator("#auctionSurveyDrawerContent").textContent()).includes("24시간"));
+      assert.ok((await page.locator("#auctionSurveyDrawerContent").textContent()).includes("3일"));
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.evaluate(()=>document.fonts.ready);
+      await page.locator(".survey-drawer-content").evaluate(node=>{node.scrollTop=0;});
       await page.screenshot({path:`attached_assets/auction-phase2/form-${label}.png`,fullPage:true});
+      await page.locator(".survey-report-items").screenshot({path:`attached_assets/auction-phase2/scope-${label}.png`});
       let posted = null;
       await page.route(`**/api/auctions/${id}/survey-requests`, async route=>{
         posted=route.request().postDataJSON();
@@ -90,7 +105,17 @@ finally:c.close()`));
     await page.fill("#adminPassword",temporaryAdmin.password);
     await page.click('button[type="submit"]');
     await page.waitForURL(/\/admin$/);
+    await page.locator(".action-center-counts").waitFor();
+    assert.ok(await page.getByText(/신규 현황조사 신청 [\d,]+건/).count());
+    await page.screenshot({path:"attached_assets/auction-phase2/admin-summary-desktop.png",fullPage:true});
+    const requestListResponse=page.waitForResponse(response=>response.url().includes("/api/admin/survey/requests?"));
     await page.click('[data-menu="admin-survey"]');
+    const requestList=await (await requestListResponse).json();
+    assert.equal(requestList.ok,true);
+    await page.waitForFunction(()=>!document.getElementById("asRequestResults")?.textContent.includes("불러오는 중"));
+    if(requestList.items.length)await page.locator("#asContent .as-table").waitFor();
+    else assert.ok((await page.locator("#asRequestResults").textContent()).includes("신청이 없습니다"));
+    await page.screenshot({path:"attached_assets/auction-phase2/admin-requests-desktop.png",fullPage:true});
     await page.locator('[data-as-tab="settings"]').waitFor();
     await page.click('[data-as-tab="settings"]');
     await page.locator("#as-base_fee").waitFor();
@@ -162,4 +187,4 @@ try:
  c.commit()
 finally:c.close()`);
   }
-})().catch(error=>{console.error(error.message);process.exit(1)});
+})().catch(error=>{console.error(error.stack);process.exit(1)});

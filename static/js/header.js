@@ -341,7 +341,7 @@
       } else {
         notifItems.forEach(function(it) {
           var cls = "notif-item" + (it.is_read ? "" : " unread");
-          html += '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '">' +
+          html += '<div class="' + cls + '" data-id="' + it.id + '" data-bid="' + (it.building_id != null ? it.building_id : "") + '" data-deep-link="' + esc(it.deep_link || "") + '">' +
                     '<div class="notif-title">' + esc(it.title) + '</div>' +
                     (it.body ? '<div class="notif-body">' + esc(it.body) + '</div>' : '') +
                     '<div class="notif-time">' + notifTimeAgo(it.created_at) + '</div>' +
@@ -510,6 +510,8 @@
       // 실거래 알림 클릭
       var id = item.getAttribute("data-id");
       var bid = item.getAttribute("data-bid");
+      var deepLink = item.getAttribute("data-deep-link");
+      var target = /^\/\?/.test(deepLink || "") ? deepLink : bid ? "/building/" + bid : "";
       fetch("/api/notifications/mine/read", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -517,8 +519,8 @@
       }).then(function () {
         item.classList.remove("unread");
         refreshUnreadCount();
-        if (bid) location.href = "/building/" + bid;
-      }).catch(function () { if (bid) location.href = "/building/" + bid; });
+        if (target) location.href = target;
+      }).catch(function () { if (target) location.href = target; });
     });
     if (notifReadAll) {
       notifReadAll.addEventListener("click", function (e) {

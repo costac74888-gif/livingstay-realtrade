@@ -2640,21 +2640,37 @@ async function loadAuctionMapOverlays(){
       const escText=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
       const badge=document.createElement("div");
       badge.className="auction-map-marker";
+      badge.dataset.auctionGroup=`${Number(items[0].lat).toFixed(5)},${Number(items[0].lng).toFixed(5)}`;
       if(items.length===1){
         const item=items[0], sqm=Number(item.area_m2), price=Number(item.min_bid_price);
         const area=Number.isFinite(sqm)&&sqm>0?`${Math.round(sqm/3.3058)}평`:"면적 확인";
         const amount=!Number.isFinite(price)||price<=0?"가격 확인":price>=100000000?`${(price/100000000).toFixed(1).replace(/\.0$/,"")}억`:`${Math.round(price/10000).toLocaleString("ko-KR")}만`;
-        const status=item.status==="bidding"?`입찰중 ${item.bid_end_at?`D-${Math.max(0,Math.ceil((new Date(item.bid_end_at).setHours(0,0,0,0)-new Date().setHours(0,0,0,0))/86400000))}`:""}`:item.status==="failed"?`유찰 ${Number(item.failed_count||0)}회`:item.status==="sold"?"낙찰":item.status==="canceled"?"취소":item.bid_start_at?`예정 ${escText(new Date(item.bid_start_at).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric"}))}`:"예정";
-        badge.innerHTML=`<div class="auction-map-marker-top">${escText(item.lodging_category||"숙박시설")} ${escText(item.sale_kind==="신탁"?"신탁공매":"공매")}</div><div class="auction-map-marker-bottom">${area} ${amount}</div><div class="auction-map-marker-status status-${escText(item.status||"scheduled")}">${status}</div>`;
+        const status=item.status==="scheduled"?"예정":"진행";
+        badge.innerHTML=`<div class="auction-map-marker-top">${escText(item.lodging_category||"숙박시설")} ${escText(item.sale_kind==="신탁"?"신탁공매":"공매")}</div><div class="auction-map-marker-bottom">${area} ${amount}<span class="auction-map-marker-status">${status}</span></div>`;
         badge.title=`${item.lodging_category||"숙박시설"} · ${item.area_m2==null?"면적 확인":`${item.area_m2}㎡`} · 최저입찰가 ${Number.isFinite(price)&&price>0?price.toLocaleString("ko-KR")+"원":"확인 필요"}`;
       }else{
-        badge.innerHTML=`<button type="button" class="auction-map-cluster-trigger">공매 ${items.length}건</button><div class="auction-map-popover">${items.map(item=>`<a href="/auctions/${encodeURIComponent(item.id)}">${escText(item.lodging_category||"숙박시설")} · ${escText(item.sale_kind||"공매")}<br><b>${Number(item.min_bid_price)>0?`${Math.round(Number(item.min_bid_price)/10000).toLocaleString("ko-KR")}만원`:"가격 확인"}</b></a>`).join("")}</div>`;
-        badge.querySelector(".auction-map-cluster-trigger").addEventListener("click",event=>{event.stopPropagation();badge.classList.toggle("is-open");});
+        badge.innerHTML=`<div class="auction-map-marker-top">공매 ${items.length}건</div><div class="auction-map-marker-bottom">물건 선택<span class="auction-map-marker-status">${items.every(item=>item.status==="scheduled")?"예정":"진행"}</span></div>`;
       }
-      if(items.length===1)badge.addEventListener("click",()=>{location.href=`/auctions/${encodeURIComponent(items[0].id)}`;});
+      badge.setAttribute("role","button");badge.tabIndex=0;
+      const open=()=>window.openAuctionDetail(items[0].id,{items});
+      badge.addEventListener("click",event=>{event.stopPropagation();open();});
+      badge.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();open();}});
       badge.style.cssText="position:relative;z-index:80;cursor:pointer";
       const overlay=new kakao.maps.CustomOverlay({position:pos,content:badge,xAnchor:.5,yAnchor:1,zIndex:80,clickable:true});
       overlay.setMap(kakaoMap);_auctionMapOverlays.push(overlay);
+      // 배타적 공매 레이어에서도 해당 건물의 용도 포인트는 별도 클릭 대상이다.
+      const building=items.find(item=>item.master_building_id);
+      if(building){
+        const point=document.createElement("button");
+        point.type="button";point.className="auction-building-point";
+        point.dataset.auctionGroup=badge.dataset.auctionGroup;
+        point.style.background=markerColor(building.building_lodging_type || "미분류",building.building_status);
+        point.title=`${building.building_name||building.lodging_category||"건물"} 부동산정보`;
+        point.setAttribute("aria-label",point.title);
+        point.addEventListener("click",event=>{event.stopPropagation();window.openBuildingDetail(building.master_building_id);});
+        const pointOverlay=new kakao.maps.CustomOverlay({position:pos,content:point,xAnchor:.5,yAnchor:.5,zIndex:79,clickable:true});
+        pointOverlay.setMap(kakaoMap);_auctionMapOverlays.push(pointOverlay);
+      }
     });
   }catch(error){
     if(gen!==_auctionMapRequest||!_auctionLayerEnabled)return;
@@ -2974,6 +2990,7 @@ async function initMap(){
 
   // 최초 로드 — 줌 레벨 기반으로 클러스터 또는 개별 마커 결정
   await updateMapForZoom({}, { fit: false });
+  if(_auctionMapTarget)focusAuctionMap(_auctionMapTarget);
 }
 
 // 줌 컨트롤을 지도 툴바 바로 아래에 붙이고 우측 하단 범례박스와의 겹침을 막는다.
@@ -5996,7 +6013,7 @@ async function loadBuildingAuctionPanel(buildingId, building){
   const requestToken=_buildingDetailRequestToken;
   const isCurrent=()=>Number(window.__openBuildingId)===Number(buildingId)&&requestToken===_buildingDetailRequestToken;
   const panel=document.getElementById("bAuctionPanel");
-  const tab=isTabbedBuildingType(building?.lodging_type)?document.getElementById("bTabAuctions"):null;
+  const tab=document.getElementById("bTabAuctions");
   if(!panel)return;
   const makeNoHistory=()=>{
     const note=document.createElement("div");
@@ -6041,12 +6058,13 @@ async function loadBuildingAuctionPanel(buildingId, building){
     if(tab){
       tab.hidden=false;
       document.getElementById("bInlineTypeTabs").style.display="";
+      if(!isTabbedBuildingType(building?.lodging_type))_setupBuildingPanels(building?.lodging_type,true);
       if(active.length){
         const next=active[0],dday=next.bid_end_at?Math.max(0,Math.ceil((new Date(next.bid_end_at).setHours(0,0,0,0)-new Date().setHours(0,0,0,0))/86400000)):null;
         const ratio=next.min_bid_ratio==null?"":` · 감정가 ${Number(next.min_bid_ratio).toLocaleString("ko-KR",{maximumFractionDigits:1})}%`;
         const badge=document.createElement("a");
         badge.className="b-auction-active-badge";
-        badge.href=`/auctions/${encodeURIComponent(next.id)}`;
+        badge.href=auctionMapLink(next);
         badge.textContent=active.length>1?`공매 ${active.length}건`:`공매 진행 중${dday==null?"":` · D-${dday}`}${ratio}`;
         badge.addEventListener("click",event=>{event.preventDefault();tab.click();});
         document.getElementById("bBuildingTitleRow")?.appendChild(badge);
@@ -6056,13 +6074,25 @@ async function loadBuildingAuctionPanel(buildingId, building){
       document.getElementById("bHeaderCard")?.appendChild(panel);
       const row=document.getElementById("bBuildingTitleRow");
       if(row&&active.length){
-        const badge=document.createElement("a");badge.className="b-auction-active-badge";badge.href=`/auctions/${encodeURIComponent(active[0].id)}`;
+        const badge=document.createElement("a");badge.className="b-auction-active-badge";badge.href=auctionMapLink(active[0]);
         const ratio=active[0].min_bid_ratio==null?"":` · 감정가 ${Number(active[0].min_bid_ratio).toLocaleString("ko-KR",{maximumFractionDigits:1})}%`;
         badge.textContent=active.length>1?`공매 ${active.length}건`:`공매 진행 중${ratio}`;
+        badge.addEventListener("click",event=>{event.preventDefault();window.openAuctionDetail(active[0].id);});
         row.appendChild(badge);
       }
     }
-    panel.innerHTML=`<div class="b-auction-list">${items.map(item=>`<a class="b-auction-item" href="/auctions/${encodeURIComponent(item.id)}"><span class="b-auction-kind">${escapeHtml(item.sale_kind||"공매")}</span><strong>${escapeHtml([item.title||item.usage_name||"숙박시설",item.unit_label].filter(Boolean).join(" · "))}</strong><span>${escapeHtml(item.status==="bidding"?"입찰중":item.status==="scheduled"?"입찰예정":item.status==="failed"?"유찰":item.status||"상태 확인")} · 최저가 ${item.min_bid_price==null?"확인 필요":Number(item.min_bid_price).toLocaleString("ko-KR")+"원"}</span></a>`).join("")}</div>`;
+    const context=window.__auctionPanelContext;
+    const combined=new Map(items.map(item=>[String(item.id),item]));
+    (context?.items||[]).forEach(item=>combined.set(String(item.id),item));
+    if(context?.auctionId||context?.tab==="auction"){tab?.click();document.getElementById("bHeaderCard")?.classList.add("is-auction-view");}
+    await window.renderAuctionPanel(panel,[...combined.values()],{
+      selectedId:context?.auctionId,isCurrent,
+      onSelect:async item=>{
+        if(!isCurrent())return;
+        if(Number(item.master_building_id)!==Number(buildingId)){await window.openAuctionDetail(item.id,{items:[...combined.values()]});return;}
+        history.replaceState({buildingId,auctionId:item.id},"",auctionMapLink(item));
+      }
+    });
   }catch(_error){
     if(!isCurrent())return;
     const note=document.createElement("div");note.className="b-auction-empty";note.textContent="공매 이력을 불러오지 못했습니다. 잠시 후 건물 정보를 다시 열어 확인해 주세요.";
@@ -6428,7 +6458,7 @@ function _reservationBar(b, includeConnection = true){
   </div>`;
 }
 
-function _setupBuildingPanels(type){
+function _setupBuildingPanels(type, force=false){
   const isB = isTabbedBuildingType(type);
   const ids = {
     operations: [
@@ -6444,7 +6474,7 @@ function _setupBuildingPanels(type){
   };
   const opPanel = document.getElementById("bOperationsPanel");
   const propPanel = document.getElementById("bPropertyPanel");
-  if (!isB || !opPanel || !propPanel) return;
+  if ((!isB && !force) || !opPanel || !propPanel) return;
   ids.operations.forEach(id => { const el = document.getElementById(id); if (el) opPanel.appendChild(el); });
   ids.property.forEach(id => { const el = document.getElementById(id); if (el) propPanel.appendChild(el); });
   ["bOperatorSupportCard", "bFinanceCard"].forEach(id => {
@@ -6462,6 +6492,7 @@ function _setupBuildingPanels(type){
     });
     const showOps = tab.dataset.panel === "operations";
     const showAuction = tab.dataset.panel === "auctions";
+    document.getElementById("bHeaderCard")?.classList.toggle("is-auction-view",showAuction);
     opPanel.hidden = !showOps; propPanel.hidden = showOps || showAuction;
     if (auctionPanel) auctionPanel.hidden = !showAuction;
     const title = document.getElementById("bBuildingTitle");
@@ -6514,7 +6545,7 @@ function buildingPanelSkeleton(buildingId){
     <div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보" style="display:none;">
       <button type="button" id="bTabProperty" class="b-detail-tab active" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="true" tabindex="0">부동산정보</button>
       <button type="button" id="bTabOperations" class="b-detail-tab" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button>
-      <button type="button" id="bTabAuctions" class="b-detail-tab" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="false" tabindex="-1" hidden>공매</button>
+      <button type="button" id="bTabAuctions" class="b-detail-tab" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="false" tabindex="-1" hidden>공매정보</button>
     </div>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
     <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
@@ -8528,9 +8559,11 @@ function renderBuildingLodgingOperators(items, lodgingType, buildingId){
 }
 
 // 좌측 패널을 건물 상세로 교체하고 데이터를 채운다.
-function renderBuildingPanel(id){
+function renderBuildingPanel(id, options={}){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  ++_auctionNavigationToken;
+  window.__auctionPanelContext=options.auctionId||options.tab==="auction"?{auctionId:options.auctionId,items:options.items||[],tab:options.tab}:null;
   closeMapSearchbar();
   window.__openBuildingId = Number(id);
   _buildingDetailRequestToken += 1;
@@ -8558,9 +8591,11 @@ function renderBuildingPanel(id){
     if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/" });
     restoreDefaultPanel();
   };
-  panel.addEventListener("click", event => {
+  if(panel._buildingBackHandler)panel.removeEventListener("click",panel._buildingBackHandler);
+  panel._buildingBackHandler = event => {
     if (event.target.closest("#btnBackToList")) closeDetail();
-  });
+  };
+  panel.addEventListener("click",panel._buildingBackHandler);
   document.getElementById("btnListingRequest").addEventListener("click", () => {
     if (!window.__livingstayLoggedIn){
       if (typeof window.livingstayOpenLogin === "function") window.livingstayOpenLogin();
@@ -8663,7 +8698,9 @@ function scrollHomeListsToStart(){
 function restoreDefaultPanel(returnDataLabKey = ""){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
+  ++_auctionNavigationToken;
   window.__openBuildingId = null;
+  window.__auctionPanelContext = null;
   _buildingDetailRequestToken += 1;
   clearMapLocationTarget();
   closeFavOverflowPopover();
@@ -8687,6 +8724,80 @@ function restoreDefaultPanel(returnDataLabKey = ""){
   }
 }
 
+let _auctionNavigationToken=0;
+let _auctionMapTarget=null;
+function auctionMapLink(item){
+  const params=new URLSearchParams();
+  if(item.master_building_id){params.set("building",String(item.master_building_id));params.set("tab","auction");}
+  params.set("auction",String(item.id));
+  return "/?"+params;
+}
+function focusAuctionMap(item){
+  _auctionMapTarget=item;
+  if(!kakaoMap||item.lat==null||item.lng==null)return;
+  const lat=Number(item.lat),lng=Number(item.lng);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return;
+  kakaoMap.setLevel(4);
+  kakaoMap.setCenter(new kakao.maps.LatLng(lat,lng));
+  void updateMapForZoom(_lastMapFilters,{noAutoFit:true});
+}
+window.openAuctionDetail=async function(id,options={}){
+  const navigationToken=++_auctionNavigationToken;
+  try{
+    const response=await fetch(`/api/auctions/${encodeURIComponent(id)}`,{credentials:"same-origin"});
+    const data=await response.json();
+    if(navigationToken!==_auctionNavigationToken)return;
+    if(!response.ok||!data.ok||!data.item)throw new Error(data.message||"공매 정보를 불러오지 못했습니다.");
+    const item=data.item;
+    focusAuctionMap({...item,lat:item.lat??data.building?.lat,lng:item.lng??data.building?.lng});
+    if(item.master_building_id&&data.building){
+      const opts={auctionId:item.id,items:options.items||[item]};
+      if(options.replace){
+        history.replaceState({buildingId:item.master_building_id,auctionId:item.id},"",auctionMapLink(item));
+        renderBuildingPanel(item.master_building_id,opts);
+      }else window.openBuildingDetail(item.master_building_id,opts);
+      return;
+    }
+    const panel=document.querySelector(".side-panel");
+    if(!panel)return;
+    _cancelDetailPoll();
+    if(sideTrendChart){sideTrendChart.destroy();sideTrendChart=null;}
+    if(buildingDetailChart){buildingDetailChart.destroy();buildingDetailChart=null;}
+    window.__openBuildingId=null;
+    window.__auctionPanelContext={auctionId:item.id,items:options.items||[item]};
+    const requestToken=++_buildingDetailRequestToken;
+    const historyMethod=options.replace?"replaceState":"pushState";
+    history[historyMethod]({auctionId:item.id},"",auctionMapLink(item));
+    panel.innerHTML=`<section class="side-card"><button type="button" id="auctionBackToMap" class="side-more">← 지도로</button><h2>${escapeHtml(item.title||"공매정보")}</h2><p>${escapeHtml(item.address_road||item.address_jibun||"주소 확인 필요")}</p></section><div class="b-inline-tabs" role="tablist"><button class="b-detail-tab active" id="bTabAuctions" role="tab" aria-selected="true" aria-controls="bAuctionPanel">공매정보</button></div><section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions"></section>`;
+    panel.classList.remove("panel-collapsed");panel.classList.add("open");panel.scrollTop=0;
+    window.livingstaySetPanelToggle?.(true);
+    document.getElementById("auctionBackToMap").onclick=()=>{history.pushState({},"","/");restoreDefaultPanel();};
+    await window.renderAuctionPanel(document.getElementById("bAuctionPanel"),options.items||[item],{
+      selectedId:item.id,isCurrent:()=>requestToken===_buildingDetailRequestToken,
+      onSelect:async selected=>{
+        if(selected.master_building_id)await window.openAuctionDetail(selected.id,{items:options.items||[item]});
+        else history.replaceState({auctionId:selected.id},"",auctionMapLink(selected));
+      }
+    });
+  }catch(error){if(navigationToken===_auctionNavigationToken)showFallbackToast(error.message||"공매 조회 실패");}
+};
+async function openAuctionDeepLink(){
+  const params=new URLSearchParams(location.search);
+  if(/^\d+$/.test(params.get("auction")||""))return window.openAuctionDetail(Number(params.get("auction")),{replace:true});
+  const id=params.get("building");
+  if(/^\d+$/.test(id||"")){
+    renderBuildingPanel(Number(id),{tab:params.get("tab")});
+    try{
+      const response=await fetch(`/api/building/${id}`);
+      const data=await response.json();
+      if(Number(window.__openBuildingId)===Number(id)){
+        const building=data.building||data;
+        focusAuctionMap(building);
+      }
+    }catch(_){}
+  }
+}
+
 // InfoWindow "상세보기 →" 클릭 → 페이지 이동 없이 패널 전환 + URL만 교체
 window.openBuildingDetail = function(id, options = {}){
   closeFavOverflowPopover();
@@ -8698,15 +8809,16 @@ window.openBuildingDetail = function(id, options = {}){
       location.href,
     );
   }
-  history.pushState({ buildingId: id }, "", "/building/" + id);
+  history.pushState({ buildingId: id, auctionId:options.auctionId }, "", options.auctionId?auctionMapLink({id:options.auctionId,master_building_id:id}):"/building/" + id);
   if (typeof gtag === "function") gtag("event", "page_view", { page_path: "/building/" + id });
   if (currentInfoWindow){ currentInfoWindow.close(); currentInfoWindow = null; }
-  renderBuildingPanel(id);
+  renderBuildingPanel(id, options);
   return false;
 };
 
 // 브라우저 뒤로/앞으로 가기 대응
 window.addEventListener("popstate", event => {
+  if(new URLSearchParams(location.search).has("auction")||new URLSearchParams(location.search).has("building")){void openAuctionDeepLink();return;}
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) {
     renderBuildingPanel(Number(m[1]));
@@ -8883,6 +8995,9 @@ initDefaultSidePanel();
 loadBuildingCountLabel();
 initMapLegendSlider();
 (function(){
+  if(new URLSearchParams(location.search).has("auction")||new URLSearchParams(location.search).has("building")){
+    void openAuctionDeepLink();return;
+  }
   const m = location.pathname.match(/^\/building\/(\d+)/);
   if (m) renderBuildingPanel(Number(m[1]));
 })();

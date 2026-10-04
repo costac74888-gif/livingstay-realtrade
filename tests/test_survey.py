@@ -235,6 +235,22 @@ class SurveyAPI(unittest.TestCase):
             cur.execute("UPDATE survey_requests SET status='paid',payment_deadline=NOW()-INTERVAL '1 second' WHERE id=%s", [self.row()["id"]])
             self.assertEqual(service.cancel_expired(cur), 0)
 
+    def test_received_application_is_in_admin_list_and_first_screen_summary(self):
+        from admin_action_center import action_payload
+        receipt = self.create().json["receipt"]
+        row = self.row()
+        self.admin()
+        listing = self.client.get("/api/admin/survey/requests?q=" + receipt["request_no"]).json
+        self.assertTrue(any(item["id"] == row["id"] for item in listing["items"]))
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS n FROM survey_requests WHERE status='received'")
+            count = cur.fetchone()["n"]
+            payload = action_payload(cur)
+        self.assertEqual(payload["counts"]["survey_requests"], count)
+        self.assertTrue(any(item["kind"] == "survey_request" and item["id"] == row["id"]
+                            and item["deep_link"] == "/admin#admin-survey"
+                            for item in payload["items"]))
+
     def test_admin_status_flow_history_and_search(self):
         self.create()
         row = self.row(); self.admin()

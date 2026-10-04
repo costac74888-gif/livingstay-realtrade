@@ -18,10 +18,10 @@ async function main() {
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(origin + "/auctions");
-      await page.locator(".auction-card").first().waitFor();
-      assert.equal(await page.locator(".auction-card").count(), 10);
+      await page.locator(".auction-row").first().waitFor();
+      assert.equal(await page.locator(".auction-row").count(), 10);
       assert.equal(await page.locator("#auctionSearch, #auctionFilterSummary, #auctionSort, .auction-ranges").count(), 0);
-      assert.equal(await page.locator(".auction-order-button").count(), 5);
+      assert.equal(await page.locator(".auction-order-button").count(), 8);
       const request = async (action, check) => {
         const pending = page.waitForResponse(response => {
           const url = new URL(response.url());
@@ -40,7 +40,7 @@ async function main() {
           ["appraisal", "appraisal_price", ["appraisal_asc", "appraisal_desc"]],
           ["price", "min_bid_price", ["price_asc", "price_desc"]],
           ["failed", "failed_count", ["failed_asc", "failed_desc"]],
-          ["new", "first_seen_at", ["new", "new_asc"]],
+          ["area", "area_m2", ["area_asc", "area_desc"]],
         ]) {
           for (const sort of values) {
             const data = await request(() => page.locator(`[data-sort-key="${key}"]`).click(), params => params.get("sort") === sort && params.get("page") === "1");
@@ -55,7 +55,7 @@ async function main() {
         for (const size of [20, 50, 100, 10]) {
           const data = await request(() => page.selectOption("#auctionPageSize", String(size)), params => params.get("page_size") === String(size) && params.get("page") === "1");
           assert.equal(data.page_size, size);
-          assert.equal(await page.locator(".auction-card").count(), Math.min(size, data.total));
+          assert.equal(await page.locator(".auction-row").count(), Math.min(size, data.total));
           assert.equal(data.pages, Math.ceil(data.total / size));
         }
         await request(() => page.locator('[data-page="2"]').click(), params => params.get("page") === "2");
@@ -65,9 +65,8 @@ async function main() {
         assert.ok(await page.locator("#auctionSgg option").count() > 1);
         const district = await page.locator("#auctionSgg option").nth(1).getAttribute("value");
         await request(() => page.selectOption("#auctionSgg", district), params => params.get("region") === district);
-        await request(() => page.selectOption("#auctionKind", "압류"), params => params.get("kind") === "압류");
         await request(() => page.selectOption("#auctionStatus", "scheduled"), params => params.get("status") === "scheduled");
-        await request(() => page.locator('[data-category="호텔"]').click(), params => params.get("category") === "호텔");
+        await request(() => page.selectOption("#auctionCategory", "호텔"), params => params.get("category") === "호텔");
       }
       await request(() => page.locator("#auctionReset").click(), params => params.get("sort") === "deadline" && params.get("page_size") === "10" && !params.has("region") && !params.has("category"));
       assert.equal(await page.locator("#auctionPageSize").inputValue(), "10");

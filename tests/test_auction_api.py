@@ -78,6 +78,51 @@ class AuctionApiTest(unittest.TestCase):
         for size in ("0", "-1", "11", "101", "100000", "nan"):
             self.assertEqual(self.client.get("/api/auctions?page_size=" + size).status_code, 400)
 
+    def test_legacy_pages_redirect_and_success_timestamp(self):
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id,master_building_id FROM auction_items ORDER BY id LIMIT 1")
+                item = cur.fetchone()
+        for suffix in ("", "/survey"):
+            response = self.client.get(f"/auctions/{item['id']}" + suffix)
+            self.assertEqual(response.status_code, 301)
+            self.assertEqual(response.headers["Location"],
+                             auction_service.auction_deep_link(item["id"], item["master_building_id"]))
+        self.assertIn("last_success_at", self.client.get("/api/auctions").get_json())
+        for key in ("status", "category", "address", "area"):
+            for direction in ("asc", "desc"):
+                self.assertEqual(self.client.get(f"/api/auctions?sort={key}_{direction}").status_code, 200)
+
+    def test_failure_streak_and_preserved_ledger(self):
+        from sync_onbid import record_sync_outcome
+        conn = get_conn()
+        key = "test:onbid-outcome:" + uuid.uuid4().hex
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) AS n FROM auction_items")
+                before = cur.fetchone()["n"]
+                cur.execute("SELECT COUNT(*) AS n FROM admin_notifications WHERE title='온비드 공매 수집 2회 연속 실패'")
+                alerts = cur.fetchone()["n"]
+                record_sync_outcome(cur, {"state":"failed"}, key)
+                cur.execute("SELECT COUNT(*) AS n FROM admin_notifications WHERE title='온비드 공매 수집 2회 연속 실패'")
+                self.assertEqual(cur.fetchone()["n"], alerts)
+                record_sync_outcome(cur, {"state":"failed"}, key)
+                cur.execute("SELECT COUNT(*) AS n FROM admin_users")
+                admins = cur.fetchone()["n"]
+                cur.execute("SELECT COUNT(*) AS n FROM admin_notifications WHERE title='온비드 공매 수집 2회 연속 실패'")
+                self.assertEqual(cur.fetchone()["n"], alerts + admins)
+                record_sync_outcome(cur, {"state":"waiting_quota","list_complete":False}, key)
+                cur.execute("SELECT value FROM app_meta WHERE key=%s", [key + ":failure_streak"])
+                self.assertEqual(cur.fetchone()["value"], "2")
+                record_sync_outcome(cur, {"state":"done","list_complete":True}, key)
+                cur.execute("SELECT value FROM app_meta WHERE key=%s", [key + ":failure_streak"])
+                self.assertEqual(cur.fetchone()["value"], "0")
+                cur.execute("SELECT COUNT(*) AS n FROM auction_items")
+                self.assertEqual(cur.fetchone()["n"], before)
+        finally:
+            conn.rollback()
+            conn.close()
+
     def test_detail_photos_rounds_building_and_unknown_id(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -148,6 +193,10 @@ class AuctionApiTest(unittest.TestCase):
                 notify_auction_watchers(cur, item["id"], item)
                 cur.execute("SELECT COUNT(*) AS n FROM notifications WHERE user_id=%s", [user["id"]])
                 self.assertEqual(cur.fetchone()["n"], before + 1)
+                cur.execute("""SELECT m.value FROM app_meta m JOIN notifications n
+                  ON m.key='auction_notification_link:' || n.id::text
+                  WHERE n.user_id=%s ORDER BY n.id DESC LIMIT 1""", [user["id"]])
+                self.assertEqual(cur.fetchone()["value"], auction_service.auction_deep_link(item["id"], item["master_building_id"]))
                 cur.execute("UPDATE auction_watches SET enabled=FALSE WHERE user_id=%s AND master_building_id=%s",
                             [user["id"], item["master_building_id"]])
                 notify_auction_watchers(cur, item["id"], {**item, "source_item_id": "test-" + uuid.uuid4().hex})
