@@ -5455,6 +5455,12 @@
           <div id="dsBanner" role="alert"
                style="display:none;margin-top:10px;padding:10px 14px;border-radius:8px;font-size:14px;line-height:1.6"></div>
         </div>
+        <div class="legal-admin" id="dsSecOnbid" style="margin-top:16px">
+          <div class="legal-admin-head"><h2 class="legal-admin-title">온비드 공매 동기화</h2></div>
+          <p class="legal-admin-hint">한국자산관리공사 온비드의 숙박시설 공매 데이터를 확인하고, 신규·변경 물건을 수집합니다.</p>
+          <div id="onbidSyncStatus" class="geo-status" role="status">현황 불러오는 중…</div>
+          <div class="legal-admin-actions"><span id="onbidSyncMessage" class="legal-msg" role="alert"></span><button id="onbidSyncRun" class="admin-btn admin-btn-primary" type="button">온비드 공매 수집 실행</button></div>
+        </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecWeeklyDigest">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">주간 이메일 전체 발송</h2>
@@ -9902,6 +9908,55 @@
       ? "<b>현재 운영 관리자입니다.</b> 저장·승인·삭제·수집 버튼은 실제 서비스 운영 DB를 즉시 변경합니다. 원본 검증·승인·dry-run은 개발 관리자에서 먼저 완료하세요."
       : "<b>현재 개발 관리자입니다.</b> 이 화면의 변경은 개발 DB에만 적용되며 운영으로 자동 복사되지 않습니다. 정부 원본 검증·승인·dry-run만 여기서 하고, 실제 서비스 수집은 운영 관리자에서 실행하세요.";
   }
+})();
+</script>
+<script>
+(function(){
+  const card=document.getElementById("dsSecOnbid"),box=document.getElementById("onbidSyncStatus"),button=document.getElementById("onbidSyncRun"),message=document.getElementById("onbidSyncMessage");
+  if(!card||!box||!button)return;
+  let timer=null,lastPoll=0;
+  const visible=()=>document.visibilityState==="visible"&&card.getClientRects().length>0;
+  const escValue=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  async function loadStatus(){
+    if(!visible())return;
+    lastPoll=Date.now();
+    try{
+      const response=await fetch("/api/admin/onbid-status",{credentials:"same-origin"});
+      if(response.status===401){location.href="/admin/login";return;}
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok||data.ok!==true)throw new Error(data.message||"공매 동기화 현황을 불러오지 못했습니다.");
+      const status=data.status||{};
+      const stateMap={running:"수집 중",done:"완료",partial:"부분 수집",waiting_quota:"API 할당량 대기",failed:"오류",not_started:"시작 전"};
+      const last=status.finished_at||status.started_at;
+      const calls=status.calls_today;
+      const callsToday=calls&&typeof calls==="object"&&!Array.isArray(calls)
+        ?Object.values(calls).reduce((sum,value)=>sum+(Number.isFinite(Number(value))?Number(value):0),0)
+        :Number(calls||0);
+      const callBreakdown=calls&&typeof calls==="object"&&!Array.isArray(calls)
+        ?["list","detail","bid","notice"].map(key=>`${({list:"목록",detail:"상세",bid:"입찰",notice:"공고"})[key]} ${Number(calls[key]||0).toLocaleString("ko-KR")}`).join(" · ")
+        :"분류 정보 없음";
+      const detailPending=Number(status.detail_pending||0);
+      const isRunning=status.state==="running";
+      box.innerHTML=`<div><b>상태:</b> ${escValue(stateMap[status.state]||status.state||"기록 없음")}${last?` · 마지막 실행 ${escValue(last)}`:""}</div><div style="margin-top:5px">고유 부동산 ${Number(data.total_items||0).toLocaleString("ko-KR")}건 · 현재 노출 공매 ${Number(data.active_items||0).toLocaleString("ko-KR")}건 · 신규 ${Number(status.new||0).toLocaleString("ko-KR")}건 · 갱신 ${Number(status.updated||0).toLocaleString("ko-KR")}건 · 건물 매칭 ${Number(status.matched||0).toLocaleString("ko-KR")}건 · 좌표 실패 ${Number(status.geocode_failed||0).toLocaleString("ko-KR")}건</div><div style="margin-top:5px">상세·회차 잔여 ${detailPending.toLocaleString("ko-KR")}건 · 오늘 API ${callsToday.toLocaleString("ko-KR")}회 (${callBreakdown})</div>${status.errors?`<div style="margin-top:5px">오류 ${Number(status.errors).toLocaleString("ko-KR")}건</div>`:""}${status.last_error?`<div style="margin-top:5px;color:#a4473b">최근 오류: ${escValue(status.last_error)}</div>`:""}`;
+      button.disabled=isRunning;button.textContent=isRunning?"온비드 수집 진행 중…":"온비드 공매 수집 실행";
+      if(isRunning&&!timer)timer=setInterval(loadStatus,5000);
+      if(!isRunning&&timer){clearInterval(timer);timer=null;}
+    }catch(error){box.textContent=error.message||"공매 동기화 현황을 불러오지 못했습니다.";box.style.color="#a4473b";}
+  }
+  button.addEventListener("click",async()=>{
+    button.disabled=true;message.textContent="실행 요청 중…";message.style.color="";
+    try{
+      const response=await fetch("/api/admin/sync-onbid",{method:"POST",credentials:"same-origin"});
+      if(response.status===401){location.href="/admin/login";return;}
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok){throw new Error(data.message||(response.status===409?"이미 공매 수집 작업이 실행 중입니다.":"실행 요청을 처리하지 못했습니다."));}
+      message.textContent=data.message||"온비드 공매 수집을 시작했습니다.";message.style.color="#476454";
+      await loadStatus();
+      if(!timer)timer=setInterval(loadStatus,5000);
+    }catch(error){message.textContent=error.message||"네트워크 오류가 발생했습니다.";message.style.color="#a4473b";button.disabled=false;}
+  });
+  setInterval(()=>{if(visible()&&Date.now()-lastPoll>5000)loadStatus();},2500);
+  document.addEventListener("visibilitychange",()=>{if(visible())loadStatus();});
 })();
 </script>
 </body>

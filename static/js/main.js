@@ -855,6 +855,25 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     updateMapForZoom(mapFiltersFromState(), { force: true });
   });
 });
+let _auctionLayerEnabled = true;
+try { _auctionLayerEnabled = localStorage.getItem("hns_auction_layer") !== "off"; } catch (_) {}
+function setAuctionMapLayer(enabled){
+  _auctionLayerEnabled=!!enabled;
+  try { localStorage.setItem("hns_auction_layer",enabled?"on":"off"); } catch (_) {}
+  document.querySelectorAll(".map-legend [data-auction-layer]").forEach(el=>{
+    el.classList.toggle("active",enabled);
+    el.setAttribute("aria-pressed",enabled?"true":"false");
+  });
+  if(kakaoMap)void updateMapForZoom(_lastMapFilters||{},{force:true});
+  else loadAuctionMapOverlays();
+}
+document.querySelectorAll(".map-legend [data-auction-layer]").forEach(el=>{
+  el.classList.toggle("active",_auctionLayerEnabled);
+  el.setAttribute("aria-pressed",_auctionLayerEnabled?"true":"false");
+  const toggle=()=>setAuctionMapLayer(!_auctionLayerEnabled);
+  el.addEventListener("click",toggle);
+  el.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();toggle();}});
+});
 document.getElementById("mapLegendTitle").addEventListener("click", () => {
   state.lodging_type = "";
   state.page = 1;
@@ -1395,6 +1414,8 @@ const SIDO_POSITION_OVERRIDE = {
 const SIDO_ANCHOR_LEFT = new Set(["경상남도"]);
 
 let _clusterOverlays = [];            // 클러스터 배지 CustomOverlay 목록
+let _auctionMapOverlays = [];
+let _auctionMapRequest = 0;
 let _currentMapMode  = null;          // 'sido'|'sgg'|'umd'|'markers' — 불필요한 재로드 방지
 let _lastMapFilters  = {};            // 마지막으로 적용된 지도 필터 (zoom 전환 시 재사용)
 const MAP_OVERLAY_FADE_MS = 180;
@@ -2555,9 +2576,54 @@ async function loadMapMarkers(filters = {}, opts = {}){
     }
     // 완료 콜백 — updateMapForZoom의 0건 폴백 판단에 사용
     if (opts.onComplete) opts.onComplete(placed);
+    loadAuctionMapOverlays();
   }
 
   addChunk();
+}
+
+async function loadAuctionMapOverlays(){
+  if (!kakaoMap) return;
+  const gen = ++_auctionMapRequest;
+  _auctionMapOverlays.forEach(overlay => overlay.setMap(null));
+  _auctionMapOverlays = [];
+  if (!_auctionLayerEnabled || _currentMapMode !== "markers") return;
+  const bounds = kakaoMap.getBounds();
+  if (!bounds) return;
+  const sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
+  const params = new URLSearchParams({bbox:[sw.getLng(),sw.getLat(),ne.getLng(),ne.getLat()].join(","),zoom:String(kakaoMap.getLevel())});
+  try {
+    const response=await fetch(`/api/auctions/map?${params}`);
+    const data=await response.json();
+    if(gen!==_auctionMapRequest||!data.ok)return;
+    const grouped=new Map();
+    (data.items||[]).filter(item=>item&&item.lat!=null&&item.lng!=null).forEach(item=>{
+      const key=`${Number(item.lat).toFixed(5)},${Number(item.lng).toFixed(5)}`;
+      if(!grouped.has(key))grouped.set(key,[]);
+      grouped.get(key).push(item);
+    });
+    grouped.forEach(items=>{
+      const pos=new kakao.maps.LatLng(items[0].lat,items[0].lng);
+      const escText=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+      const badge=document.createElement("div");
+      badge.className="auction-map-marker";
+      if(items.length===1){
+        const item=items[0], sqm=Number(item.area_m2), price=Number(item.min_bid_price);
+        const area=Number.isFinite(sqm)&&sqm>0?`${Math.round(sqm/3.3058)}평`:"면적 확인";
+        const amount=!Number.isFinite(price)||price<=0?"가격 확인":price>=100000000?`${(price/100000000).toFixed(1).replace(/\.0$/,"")}억`:`${Math.round(price/10000).toLocaleString("ko-KR")}만`;
+        const status=item.status==="bidding"?`입찰중 ${item.bid_end_at?`D-${Math.max(0,Math.ceil((new Date(item.bid_end_at).setHours(0,0,0,0)-new Date().setHours(0,0,0,0))/86400000))}`:""}`:item.status==="failed"?`유찰 ${Number(item.failed_count||0)}회`:item.status==="sold"?"낙찰":item.status==="canceled"?"취소":item.bid_start_at?`예정 ${escText(new Date(item.bid_start_at).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric"}))}`:"예정";
+        badge.innerHTML=`<div class="auction-map-marker-top">${escText(item.lodging_category||"숙박시설")} ${escText(item.sale_kind==="신탁"?"신탁공매":"공매")}</div><div class="auction-map-marker-bottom">${area} ${amount}</div><div class="auction-map-marker-status status-${escText(item.status||"scheduled")}">${status}</div>`;
+        badge.title=`${item.lodging_category||"숙박시설"} · ${item.area_m2==null?"면적 확인":`${item.area_m2}㎡`} · 최저입찰가 ${Number.isFinite(price)&&price>0?price.toLocaleString("ko-KR")+"원":"확인 필요"}`;
+      }else{
+        badge.innerHTML=`<button type="button" class="auction-map-cluster-trigger">공매 ${items.length}건</button><div class="auction-map-popover">${items.map(item=>`<a href="/auctions/${encodeURIComponent(item.id)}">${escText(item.lodging_category||"숙박시설")} · ${escText(item.sale_kind||"공매")}<br><b>${Number(item.min_bid_price)>0?`${Math.round(Number(item.min_bid_price)/10000).toLocaleString("ko-KR")}만원`:"가격 확인"}</b></a>`).join("")}</div>`;
+        badge.querySelector(".auction-map-cluster-trigger").addEventListener("click",event=>{event.stopPropagation();badge.classList.toggle("is-open");});
+      }
+      if(items.length===1)badge.addEventListener("click",()=>{location.href=`/auctions/${encodeURIComponent(items[0].id)}`;});
+      badge.style.cssText="position:relative;z-index:80;cursor:pointer";
+      const overlay=new kakao.maps.CustomOverlay({position:pos,content:badge,xAnchor:.5,yAnchor:1,zIndex:80,clickable:true});
+      overlay.setMap(kakaoMap);_auctionMapOverlays.push(overlay);
+    });
+  }catch(error){console.warn("[AUCTION MAP] 공매 레이어 로드 실패",error);}
 }
 
 // 현재 지도 줌 레벨로 클러스터 모드를 결정
@@ -2673,6 +2739,8 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
                `height:100%;width:${pctStr}%;background:${c.color};overflow:hidden;">${numHtml}</span>`;
       })
       .join("");
+    const auctionCount=_auctionLayerEnabled?Math.max(0,Number(item.auction_count)||0):0;
+    const auctionSegment=auctionCount>0?`<span style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px;width:22px;height:100%;margin-left:2px;background:#111;color:#fff;font-size:9px;font-weight:700;line-height:1;overflow:hidden;">${auctionCount}</span>`:"";
 
     const el = document.createElement("div");
     el.className = "map-cluster-badge";
@@ -2689,7 +2757,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
        visitorHtml +
       `<div style="display:flex;height:${BAR_H}px;border-radius:3px;overflow:hidden;` +
       `margin-top:3px;background:${LODGING_COLORS["미분류"]};">` +
-      barSpans +
+      barSpans + auctionSegment +
       `</div>`;
 
     // 클릭: 해당 좌표로 이동 + 한 단계 드릴다운 레벨로 축소
@@ -2730,6 +2798,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
   });
 
   _finishMapLayerSwap(previousCustomOverlays);
+    loadAuctionMapOverlays();
   console.log(`[CLUSTER] ${clusterLevel} 배지 ${_clusterOverlays.length}개 표시 (필터: ${params})`);
 }
 
@@ -5341,8 +5410,11 @@ function buildingPhotoSliderHtml(){
 function renderPhotoSlider(photos){
   const wrap = document.getElementById("bldPhotoWrap");
   if (!wrap) return;
+  const sourceOrder={listing:0,auction:1,google_streetview:2,streetview:2,tourapi:3,gocamping:4,operator:5};
+  const sourceLabel={listing:"매물사진",auction:"공매·온비드",tourapi:"호텔·TourAPI",gocamping:"캠핑·고캠핑",google_streetview:"거리뷰·구글",streetview:"거리뷰·구글",operator:"운영자 등록"};
   const usablePhotos = (Array.isArray(photos) ? photos : [])
-    .filter(photo => photo && typeof photo.url === "string" && photo.url.trim());
+    .filter(photo => photo && typeof photo.url === "string" && photo.url.trim())
+    .map((photo,index)=>({photo,index})).sort((a,b)=>(sourceOrder[a.photo.source]??6)-(sourceOrder[b.photo.source]??6)||a.index-b.index).map(entry=>entry.photo);
   if (!usablePhotos.length){
     wrap.innerHTML = "";
     wrap.style.display = "";
@@ -5355,7 +5427,7 @@ function renderPhotoSlider(photos){
   wrap.parentElement?.classList.remove("is-empty");
   wrap.classList.toggle(
     "has-streetview",
-    usablePhotos.some(photo => photo.source === "streetview")
+    usablePhotos.some(photo => photo.source === "streetview" || photo.source === "google_streetview")
   );
   window.__livingstayBuildingPhotos = usablePhotos;
   const slides = usablePhotos.map((photo, index) => `
@@ -5363,6 +5435,7 @@ function renderPhotoSlider(photos){
       <img class="${photo.source === "streetview" ? "bld-photo-streetview" : ""}"
            src="${escapeHtml(photo.url.trim())}" alt="건물사진 ${index + 1}" loading="lazy"
            onerror="handleBuildingPhotoError(this)">
+      ${sourceLabel[photo.source] ? `<span class="building-photo-source-label">${sourceLabel[photo.source]}</span>` : ""}
       ${photo.can_delete && photo.id ? `
         <button type="button" class="bld-photo-delete"
                 data-building-photo-delete="${escapeHtml(String(photo.id))}"
@@ -5741,7 +5814,9 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     _activePhotoBuildingId === buildingId && _isActiveBuilding(buildingId, requestToken);
   const initial = Array.isArray(initialPhotos) ? initialPhotos : [];
   const renderPhotos = photos => {
-    renderPhotoSlider(photos);
+    const combined=[...(window.__auctionBuildingPhotoExtras||[]),...(Array.isArray(photos)?photos:[])];
+    const seen=new Set();
+    renderPhotoSlider(combined.filter(photo=>{const url=String(photo?.url||"");if(!url||seen.has(url))return false;seen.add(url);return true;}));
     if (!isCurrentPhotoRequest()) return;
     const provider = (photos || []).find(photo => photo?.source === "tourapi")
       || (photos || []).find(photo => photo?.source === "gocamping")
@@ -5875,6 +5950,85 @@ async function loadOnDemandBuildingPhotos(buildingId, initialPhotos, building){
     // 서버가 fallback 가능 여부를 확인하지 못했으면 Street View를 추측해 표시하지 않는다.
     if (initial.length > 0) renderPhotos(initial);
     else renderPhotos([]);
+  }
+}
+
+async function loadBuildingAuctionPanel(buildingId, building){
+  const requestToken=_buildingDetailRequestToken;
+  const isCurrent=()=>Number(window.__openBuildingId)===Number(buildingId)&&requestToken===_buildingDetailRequestToken;
+  const panel=document.getElementById("bAuctionPanel");
+  const tab=isTabbedBuildingType(building?.lodging_type)?document.getElementById("bTabAuctions"):null;
+  if(!panel)return;
+  const makeNoHistory=()=>{
+    const note=document.createElement("div");
+    note.className="b-auction-empty";
+    note.innerHTML=`공매 이력 없음 · <a href="https://www.courtauction.go.kr/" target="_blank" rel="noopener noreferrer">법원경매 검색 ↗</a> · <button type="button" title="관심단지에 등록하고 새 공매를 사이트 알림함에서 받습니다">공매 나오면 알림 받기</button><small>법원경매 정보는 자동 조회하지 않습니다. 공매 알림은 사이트 알림함으로 전달됩니다.</small>`;
+    note.querySelector("button").addEventListener("click",async event=>{
+      if(!window.__livingstayLoggedIn){window.livingstayOpenLogin?.();return;}
+      const button=event.currentTarget;button.disabled=true;
+      try{
+        const saved=await fetch("/api/favorites/mine",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({building_name:building.building_name,address:building.road_address||building.jibun_address,building_id:buildingId})});
+        const favorite=await saved.json();
+        if(!saved.ok||!favorite.ok)throw new Error(favorite.message||"관심단지 저장 실패");
+        const response=await fetch(`/api/building/${encodeURIComponent(buildingId)}/auction-watch`,{method:"POST",credentials:"same-origin"});
+        const watched=await response.json();
+        if(!response.ok||!watched.ok)throw new Error(watched.message||"공매 알림 설정 실패");
+        button.textContent="공매 알림 설정 완료";
+      }catch(error){alert(error.message);button.disabled=false;}
+    });
+    panel.replaceChildren();
+    if(isTabbedBuildingType(building?.lodging_type)){document.getElementById("bPropertyPanel")?.appendChild(note);}
+    else{const header=document.getElementById("bHeaderCard");if(header){header.appendChild(note);}}
+  };
+  try{
+    const response=await fetch(`/api/building/${encodeURIComponent(buildingId)}/auctions`,{credentials:"same-origin"});
+    const data=await response.json().catch(()=>({}));
+    if(!isCurrent())return;
+    if(!response.ok||!data.ok)throw new Error("building auctions unavailable");
+    const items=Array.isArray(data.items)?data.items:[];
+    const seenActive=new Set();
+    const active=items.filter(item=>item.is_visible).sort((a,b)=>
+      (a.status!=="bidding")-(b.status!=="bidding")||new Date(a.bid_start_at||"2999-01-01")-new Date(b.bid_start_at||"2999-01-01")
+    ).filter(item=>{const key=`${item.source}:${item.source_item_id}`;if(seenActive.has(key))return false;seenActive.add(key);return true;});
+    // 서버가 공개를 확인한 새 출처만 추가한다. 기존 사진의 삭제 권한 등
+    // 소유자 메타데이터는 원래 건물 사진 응답에서 그대로 유지한다.
+    const extras=(Array.isArray(data.photos)?data.photos:[])
+      .filter(photo=>photo&&["listing","auction"].includes(photo.source)&&typeof photo.url==="string"&&photo.url);
+    window.__auctionBuildingPhotoExtras=extras;
+    const currentPhotos=window.__livingstayBuildingPhotos||building?.photos||[];
+    const seen=new Set();
+    renderPhotoSlider([...extras,...currentPhotos].filter(photo=>{const url=String(photo?.url||"");if(!url||seen.has(url))return false;seen.add(url);return true;}));
+    if(!items.length){makeNoHistory();return;}
+    if(tab){
+      tab.hidden=false;
+      document.getElementById("bInlineTypeTabs").style.display="";
+      if(active.length){
+        const next=active[0],dday=next.bid_end_at?Math.max(0,Math.ceil((new Date(next.bid_end_at).setHours(0,0,0,0)-new Date().setHours(0,0,0,0))/86400000)):null;
+        const ratio=next.min_bid_ratio==null?"":` · 감정가 ${Number(next.min_bid_ratio).toLocaleString("ko-KR",{maximumFractionDigits:1})}%`;
+        const badge=document.createElement("a");
+        badge.className="b-auction-active-badge";
+        badge.href=`/auctions/${encodeURIComponent(next.id)}`;
+        badge.textContent=active.length>1?`공매 ${active.length}건`:`공매 진행 중${dday==null?"":` · D-${dday}`}${ratio}`;
+        badge.addEventListener("click",event=>{event.preventDefault();tab.click();});
+        document.getElementById("bBuildingTitleRow")?.appendChild(badge);
+      }
+    }else{
+      panel.hidden=false;panel.classList.add("side-card");
+      document.getElementById("bHeaderCard")?.appendChild(panel);
+      const row=document.getElementById("bBuildingTitleRow");
+      if(row&&active.length){
+        const badge=document.createElement("a");badge.className="b-auction-active-badge";badge.href=`/auctions/${encodeURIComponent(active[0].id)}`;
+        const ratio=active[0].min_bid_ratio==null?"":` · 감정가 ${Number(active[0].min_bid_ratio).toLocaleString("ko-KR",{maximumFractionDigits:1})}%`;
+        badge.textContent=active.length>1?`공매 ${active.length}건`:`공매 진행 중${ratio}`;
+        row.appendChild(badge);
+      }
+    }
+    panel.innerHTML=`<div class="b-auction-list">${items.map(item=>`<a class="b-auction-item" href="/auctions/${encodeURIComponent(item.id)}"><span class="b-auction-kind">${escapeHtml(item.sale_kind||"공매")}</span><strong>${escapeHtml([item.title||item.usage_name||"숙박시설",item.unit_label].filter(Boolean).join(" · "))}</strong><span>${escapeHtml(item.status==="bidding"?"입찰중":item.status==="scheduled"?"입찰예정":item.status==="failed"?"유찰":item.status||"상태 확인")} · 최저가 ${item.min_bid_price==null?"확인 필요":Number(item.min_bid_price).toLocaleString("ko-KR")+"원"}</span></a>`).join("")}</div>`;
+  }catch(_error){
+    if(!isCurrent())return;
+    const note=document.createElement("div");note.className="b-auction-empty";note.textContent="공매 이력을 불러오지 못했습니다. 잠시 후 건물 정보를 다시 열어 확인해 주세요.";
+    if(isTabbedBuildingType(building?.lodging_type))document.getElementById("bPropertyPanel")?.appendChild(note);
+    else document.getElementById("bHeaderCard")?.appendChild(note);
   }
 }
 
@@ -6259,6 +6413,7 @@ function _setupBuildingPanels(type){
   });
   const tabBar = document.getElementById("bInlineTypeTabs");
   const tabs = tabBar ? tabBar.querySelectorAll(".b-detail-tab") : [];
+  const auctionPanel = document.getElementById("bAuctionPanel");
   const activateTab = tab => {
     tabs.forEach(t => {
       const active = t === tab;
@@ -6267,26 +6422,30 @@ function _setupBuildingPanels(type){
       t.tabIndex = active ? 0 : -1;
     });
     const showOps = tab.dataset.panel === "operations";
-    opPanel.hidden = !showOps; propPanel.hidden = showOps;
+    const showAuction = tab.dataset.panel === "auctions";
+    opPanel.hidden = !showOps; propPanel.hidden = showOps || showAuction;
+    if (auctionPanel) auctionPanel.hidden = !showAuction;
     const title = document.getElementById("bBuildingTitle");
     if (title) title.textContent = showOps
       ? (title.dataset.operatingName || title.dataset.propertyName || "(건물명 미확인)")
       : (title.dataset.propertyName || "(건물명 미확인)");
     const operatingBadges = document.getElementById("bOperatingBadges");
     const propertyBadges = document.getElementById("bPropertyBadges");
-    if (operatingBadges) operatingBadges.hidden = !showOps;
-    if (propertyBadges) propertyBadges.hidden = showOps;
+    if (operatingBadges) operatingBadges.hidden = !showOps && !showAuction;
+    if (propertyBadges) propertyBadges.hidden = showOps || showAuction;
   };
-  tabs.forEach((tab, index) => {
+  tabs.forEach(tab => {
     tab.addEventListener("click", () => activateTab(tab));
     tab.addEventListener("keydown", event => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
+      const visibleTabs=Array.from(tabs).filter(candidate=>!candidate.hidden);
+      const index=visibleTabs.indexOf(tab);
       const nextIndex = event.key === "Home" ? 0
-        : event.key === "End" ? tabs.length - 1
-        : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
-      tabs[nextIndex].focus();
-      activateTab(tabs[nextIndex]);
+        : event.key === "End" ? visibleTabs.length - 1
+        : (index + (event.key === "ArrowRight" ? 1 : -1) + visibleTabs.length) % visibleTabs.length;
+      visibleTabs[nextIndex]?.focus();
+      if(visibleTabs[nextIndex])activateTab(visibleTabs[nextIndex]);
     });
   });
   const first = tabBar?.querySelector('.b-detail-tab[data-panel="property"]');
@@ -6316,9 +6475,11 @@ function buildingPanelSkeleton(buildingId){
     <div id="bInlineTypeTabs" class="b-inline-tabs" role="tablist" aria-label="건물 상세 정보" style="display:none;">
       <button type="button" id="bTabProperty" class="b-detail-tab active" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="true" tabindex="0">부동산정보</button>
       <button type="button" id="bTabOperations" class="b-detail-tab" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button>
+      <button type="button" id="bTabAuctions" class="b-detail-tab" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="false" tabindex="-1" hidden>공매</button>
     </div>
     <section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden></section>
     <section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden></section>
+    <section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions" hidden></section>
 
     <section class="side-card" id="bAreaFilterCard" style="padding:10px 14px;">
       <div style="display:flex; align-items:center; gap:8px;">
@@ -6832,6 +6993,7 @@ async function loadBuildingHeader(id){
   const flrTxt = (b.grnd_flr_cnt != null || b.ugrnd_flr_cnt != null)
     ? `${b.grnd_flr_cnt != null ? b.grnd_flr_cnt : "-"} / ${b.ugrnd_flr_cnt != null ? b.ugrnd_flr_cnt : "-"}` : "-";
   const buildingPhotos = Array.isArray(b.photos) ? b.photos : [];
+  window.__auctionBuildingPhotoExtras=[];
 
   headerCard.innerHTML = `
     ${buildingPhotoSliderHtml()}
@@ -6901,6 +7063,7 @@ async function loadBuildingHeader(id){
     }
   }
   loadOnDemandBuildingPhotos(id, buildingPhotos, b);
+  loadBuildingAuctionPanel(id,b);
 
   // 직거래 공개 매물 카드 — 카드형 리스트, 정렬/NEW뱃지/찜/설명/사진
   const listingsCard = document.getElementById("bListingsCard");

@@ -18,6 +18,8 @@ def post_fork(server, worker):
         start_master_stats_worker()
         start_badge_waitlist_worker()
         start_admin_notification_email_worker()
+        from app import start_onbid_scheduler, _start_detached_sync
+        start_onbid_scheduler(_start_detached_sync, server.log)
         server.log.info("worker %s started on-demand master stats service", worker.pid)
     except Exception:
         # Starting the best-effort worker must not prevent the web worker from

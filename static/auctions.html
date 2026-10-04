@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>window.LIVINGSTAY_PUBLIC_BASE_URL = "{{PUBLIC_BASE_URL}}"; window.PAGE_TITLE = "숙박시설 공매목록";</script>
+<title>숙박시설 공매목록 · 홈앤스테이</title>
+<meta name="description" content="온비드 숙박시설 공매 물건을 지역과 조건별로 찾아보세요.">
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/main.css">
+<link rel="stylesheet" href="/static/css/auctions.css">
+</head>
+<body class="auction-body">
+<header id="siteHeader"></header>
+<main class="auction-list-page">
+  <div class="auction-page-intro">
+    <div><div class="auction-eyebrow"><span class="auction-mark" aria-hidden="true">공매</span> ONBID · LODGING ASSETS</div>
+      <h1>숙박시설 <em>공매목록</em></h1>
+      <p>공적 입찰 정보와 숙박 자산 정보를 한곳에서 확인합니다.</p>
+    </div>
+    <a class="auction-source-link" href="https://www.onbid.co.kr/" target="_blank" rel="noopener noreferrer">온비드 원문 ↗</a>
+  </div>
+
+  <section class="auction-filter" aria-label="공매 검색 조건">
+    <div class="auction-filter-top">
+      <div class="auction-filter-heading"><span>조건 설정</span><small>원하는 물건을 좁혀보세요</small></div>
+      <button type="button" id="auctionReset" class="auction-reset">초기화</button>
+    </div>
+    <div class="auction-filter-grid">
+      <label class="auction-field"><span>시·도</span><select id="auctionSido"><option value="">전체</option></select></label>
+      <label class="auction-field"><span>시·군·구</span><select id="auctionSgg"><option value="">전체</option></select></label>
+      <label class="auction-field"><span>공매 종류</span><select id="auctionKind"><option value="">전체</option><option>압류</option><option>국유</option><option>이용기관</option><option>신탁</option><option>기타</option></select></label>
+      <label class="auction-field"><span>진행 상태</span><select id="auctionStatus"><option value="">전체</option><option value="bidding">입찰중</option><option value="scheduled">입찰예정</option><option value="failed">유찰</option><option value="sold">낙찰</option><option value="canceled">취소</option><option value="closed">종료</option></select></label>
+    </div>
+    <div class="auction-filter-row">
+      <div class="auction-field auction-category-field"><span>숙박 용도</span><div class="auction-chips" id="auctionCategories">
+        <button type="button" class="auction-chip is-active" data-category="">전체</button>
+        <button type="button" class="auction-chip" data-category="생활숙박">생활숙박</button><button type="button" class="auction-chip" data-category="호텔">호텔</button><button type="button" class="auction-chip" data-category="콘도">콘도</button><button type="button" class="auction-chip" data-category="모텔">모텔</button><button type="button" class="auction-chip" data-category="펜션">펜션</button><button type="button" class="auction-chip" data-category="오피스텔">오피스텔</button>
+      </div></div>
+      <div class="auction-ranges">
+        <div class="auction-range-control"><div class="range-head"><span>최저가율</span><b><span id="ratioMinLabel">30</span>–<span id="ratioMaxLabel">100</span>%</b></div>
+          <div class="range-dual"><input id="ratioMin" type="range" min="30" max="100" value="30" aria-label="최저가율 최솟값"><input id="ratioMax" type="range" min="30" max="100" value="100" aria-label="최저가율 최댓값"></div><div class="range-scale"><span>30%</span><span>100%</span></div></div>
+        <div class="auction-range-control"><div class="range-head"><span>유찰 횟수</span><b><span id="failedMinLabel">0</span>회 이상</b></div>
+          <input class="auction-single-range" id="failedMin" type="range" min="0" max="5" value="0" aria-label="최소 유찰 횟수"><div class="range-scale"><span>0회</span><span>5회+</span></div></div>
+      </div>
+    </div>
+    <div class="auction-filter-bottom"><span id="auctionFilterSummary">검색 조건을 선택하세요</span><button type="button" id="auctionSearch" class="auction-search-button">조건 적용 <span aria-hidden="true">→</span></button></div>
+  </section>
+
+  <div class="auction-results-head"><div><span class="auction-overline">PUBLIC AUCTIONS</span><h2>공매 물건 <span id="auctionTotal">—</span></h2></div>
+    <label class="auction-sort-label">정렬 <select id="auctionSort"><option value="deadline">마감 임박순</option><option value="discount">할인율순</option><option value="new">신규순</option></select></label>
+  </div>
+  <div id="auctionResults" class="auction-results" aria-live="polite"><div class="auction-loading"><i></i><i></i><i></i></div></div>
+  <nav id="auctionPagination" class="auction-pagination" aria-label="공매 목록 페이지"></nav>
+  <footer class="auction-list-note">정보 출처: 한국자산관리공사 온비드 · 입찰 전 원문 공고와 권리관계를 확인해 주세요.</footer>
+</main>
+<script src="/static/js/header.js"></script><script src="/static/js/auth.js"></script><script src="/static/js/auctions.js"></script>
+</body>
+</html>

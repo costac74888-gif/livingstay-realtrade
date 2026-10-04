@@ -4641,6 +4641,11 @@ def get_buildings_cluster():
             item["visitor_count"] = None
         items.append(item)
 
+    from auction_service import cluster_counts, cluster_key
+    auction_by_region = cluster_counts(level)
+    for item in items:
+        auction_key = cluster_key(item["name"], level)
+        item["auction_count"] = auction_by_region.get(auction_key, 0)
     payload = json.dumps({"level": level, "items": items}, ensure_ascii=False)
     _cluster_cache[_cache_key] = (time.time(), payload.encode("utf-8"))
     return Response(payload.encode("utf-8"), mimetype="application/json")
@@ -38060,6 +38065,13 @@ def admin_presale_banner_delete(key):
         return jsonify({"ok": True})
     finally:
         cur.close(); conn.close()
+
+
+from auction_service import register_auction_routes, start_onbid_scheduler
+register_auction_routes(
+    app, limiter, _serve_static_html, require_admin, _start_detached_sync,
+    _public_building_photo_rows, _streetview_fallback_photos, current_user,
+)
 
 
 if __name__ == "__main__":
