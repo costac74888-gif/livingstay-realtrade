@@ -282,7 +282,7 @@
           app.querySelector("#surveyRequestForm").before(notice);
           return;
         }
-        if (response.status !== 201 || data.ok !== true || !data.receipt) throw new Error(data.message || "신청 접수에 실패했습니다.");
+        if (![200, 201].includes(response.status) || data.ok !== true || !data.receipt) throw new Error(data.message || "신청 접수에 실패했습니다.");
         renderReceipt(app,data.receipt);
       } catch (error) {
         message.textContent = error.message || "네트워크 오류가 발생했습니다. 같은 신청을 다시 확인해 주세요.";

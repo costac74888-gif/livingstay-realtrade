@@ -48,7 +48,7 @@ finally: c.close()`));
       let posted = null;
       await page.route(`**/api/auctions/${id}/survey-requests`, async route=>{
         posted=route.request().postDataJSON();
-        await route.fulfill({status:201,contentType:"application/json",body:JSON.stringify({ok:true,receipt:{
+        await route.fulfill({status:label==="mobile"?200:201,contentType:"application/json",body:JSON.stringify({ok:true,receipt:{
           request_no:"SV-BROWSER-TEST",base_fee:79000,visit_fee:99000,total_fee:178000,
           payment_deadline:new Date(Date.now()+86400000).toISOString(),
           bank_name:"농협",bank_account:"테스트 계좌",bank_holder:"자동검증"}})});
@@ -66,7 +66,7 @@ finally: c.close()`));
       assert.ok(!("total_fee" in posted));
       assert.equal(await page.locator(".survey-receipt-no").textContent(),"SV-BROWSER-TEST");
       assert.deepEqual(errors,[]);
-      console.log(`PASS ${width}px real detail/form, no overflow/JS errors, consent gates and receipt (intercepted submission)`);
+      console.log(`PASS ${width}px real detail/form, no overflow/JS errors, consent gates and ${label==="mobile"?"retry 200":"created 201"} receipt (intercepted submission)`);
       await context.close();
     }
     // Authenticate a temporary staff account via the real login UI, then remove it.
