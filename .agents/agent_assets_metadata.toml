@@ -738,3 +738,17 @@ mtime_ms = 1791101872226
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0aad5158-4cf7-487b-a249-b0511fdc7649/a23971f6-d4c3-4233-bae0-ebb2e3747693"
 storage_version_token = "1791101952839012"
 content_type = "image/png"
+
+[[outputs]]
+id = "35wRbHHQQEzleAzr-znXD"
+uri = "file://attached_assets/auction-integrated/verification-report.html"
+type = "html"
+title = "공매 통합 검증 보고서 · PC·모바일 스크린샷"
+description = "실제 지도 클릭, 좌측 공매 패널, 미매칭 물건, 우측 조사 신청창과 모바일 한줄 목록의 검증 결과 및 화면 9개입니다."
+logical_id = "04a3cea5-971b-424b-a646-75db9ef55fcb"
+content_hash = "sha256:a6cbbe54ca571161c06e3578a728890c1c938ae2c84f96091333f18a4d35d629"
+size = 2833780
+mtime_ms = 1791124680920
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/04a3cea5-971b-424b-a646-75db9ef55fcb/05656f31-00f8-4f8f-a7aa-b24e60ee0405"
+storage_version_token = "1791124734266420"
+content_type = "text/html"
