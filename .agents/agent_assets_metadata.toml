@@ -710,3 +710,17 @@ mtime_ms = 1791087887803
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/ab3378ec-3212-4c92-b22a-862886fe90fd/b72ac1f9-f64d-400f-b144-b8ba96d65c89"
 storage_version_token = "1791088737763258"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "z0xfXm5FohBnmPGAgSv61"
+uri = "file://attached_assets/auction-phase2/verification-gallery.html"
+type = "html"
+title = "공매 2차 PC·390px 화면 캡처"
+description = "공매 상세·조사 신청·관리자 설정 6개 캡처와 검증 결과입니다. 이미지를 눌러 확대할 수 있습니다."
+logical_id = "99361db2-d14a-46d4-b1d4-4571505f0954"
+content_hash = "sha256:85623d8f277cb4ae492848ded658de4da6774ff1c8636b1335fd8dcb572ff9c3"
+size = 2055604
+mtime_ms = 1791091902359
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/99361db2-d14a-46d4-b1d4-4571505f0954/323e2167-3f73-43f6-8c3d-5b14bf3de4fe"
+storage_version_token = "1791091940601246"
+content_type = "text/html"
