@@ -834,7 +834,9 @@ document.getElementById("selSggNm").addEventListener("change", e=>{
 document.getElementById("selUmdNm").addEventListener("change", e=>{ state.umd_nm = e.target.value; });
 document.getElementById("selYear").addEventListener("change", e=>{ state.year = e.target.value; });
 document.getElementById("selLodgingType").addEventListener("change", e=>{
+  setAuctionMapLayer(false, {refresh:false});
   state.lodging_type = e.target.value; state.page = 1; loadBoard();
+  _setLegendActive(state.lodging_type);
   updateMapForZoom(mapFiltersFromState(), { force: true });
 });
 function _setLegendActive(type) {
@@ -847,6 +849,7 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     const type = el.dataset.lodgingType;
     // 이미 선택된 항목을 다시 클릭하면 필터 해제
     const toggle = state.lodging_type === type ? "" : type;
+    setAuctionMapLayer(false, {refresh:false});
     state.lodging_type = toggle;
     state.page = 1;
     document.getElementById("selLodgingType").value = toggle;
@@ -855,16 +858,33 @@ document.querySelectorAll(".map-legend .lg[data-lodging-type]").forEach(el => {
     updateMapForZoom(mapFiltersFromState(), { force: true });
   });
 });
-let _auctionLayerEnabled = true;
-try { _auctionLayerEnabled = localStorage.getItem("hns_auction_layer") !== "off"; } catch (_) {}
-function setAuctionMapLayer(enabled){
+let _auctionLayerEnabled = false;
+try { _auctionLayerEnabled = localStorage.getItem("hns_auction_layer") === "on"; } catch (_) {}
+function setAuctionMapLayer(enabled, {refresh=true} = {}){
   _auctionLayerEnabled=!!enabled;
   try { localStorage.setItem("hns_auction_layer",enabled?"on":"off"); } catch (_) {}
   document.querySelectorAll(".map-legend [data-auction-layer]").forEach(el=>{
     el.classList.toggle("active",enabled);
     el.setAttribute("aria-pressed",enabled?"true":"false");
   });
-  if(kakaoMap)void updateMapForZoom(_lastMapFilters||{},{force:true});
+  // Legend selections are exclusive; invalidate both in-flight render paths.
+  ++_mapRenderGen;
+  if (_mapFetchController) _mapFetchController.abort();
+  ++_auctionMapRequest;
+  _auctionMapOverlays.forEach(overlay=>overlay.setMap(null));
+  _auctionMapOverlays=[];
+  if(enabled){
+    state.lodging_type="";
+    document.getElementById("selLodgingType").value="";
+    _setLegendActive("");
+    clearDataLabLodgingRankMap({restoreNormal:false});
+    clearDataLabTourismMap();
+    const previous=_beginMapLayerSwap();
+    previous.forEach(overlay=>overlay.setMap(null));
+    _pendingFadeOutOverlays=[];
+  }
+  if(!refresh)return;
+  if(kakaoMap)void updateMapForZoom({..._lastMapFilters,lodging_type:state.lodging_type},{force:true});
   else loadAuctionMapOverlays();
 }
 document.querySelectorAll(".map-legend [data-auction-layer]").forEach(el=>{
@@ -875,6 +895,7 @@ document.querySelectorAll(".map-legend [data-auction-layer]").forEach(el=>{
   el.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();toggle();}});
 });
 document.getElementById("mapLegendTitle").addEventListener("click", () => {
+  setAuctionMapLayer(false, {refresh:false});
   state.lodging_type = "";
   state.page = 1;
   document.getElementById("selLodgingType").value = "";
@@ -2382,6 +2403,14 @@ function buildingInfoInnerHtml(b){
 // opts.fit: true면 결과가 다 보이도록 bounds에 맞춰 확대/이동
 async function loadMapMarkers(filters = {}, opts = {}){
   if (!kakaoMap) return;
+  if (_auctionLayerEnabled) {
+    ++_mapRenderGen;
+    if (_mapFetchController) _mapFetchController.abort();
+    const previous = _beginMapLayerSwap();
+    previous.forEach(overlay => overlay.setMap(null));
+    _pendingFadeOutOverlays = [];
+    return loadAuctionMapOverlays();
+  }
   const myGen = ++_mapRenderGen;   // 이전 마커·클러스터 응답 및 addChunk 루프를 모두 폐기한다.
   if (_mapFetchController) _mapFetchController.abort();
   const emptyEl = document.getElementById("mapEmpty");
@@ -2595,13 +2624,17 @@ async function loadAuctionMapOverlays(){
   try {
     const response=await fetch(`/api/auctions/map?${params}`);
     const data=await response.json();
-    if(gen!==_auctionMapRequest||!data.ok)return;
+    if(gen!==_auctionMapRequest||!_auctionLayerEnabled||_currentMapMode!=="markers")return;
+    if(!response.ok||!data.ok)throw new Error("공매 조회 실패");
     const grouped=new Map();
     (data.items||[]).filter(item=>item&&item.lat!=null&&item.lng!=null).forEach(item=>{
       const key=`${Number(item.lat).toFixed(5)},${Number(item.lng).toFixed(5)}`;
       if(!grouped.has(key))grouped.set(key,[]);
       grouped.get(key).push(item);
     });
+    const emptyEl=document.getElementById("mapEmpty");
+    if(grouped.size===0)showMapEmptyBanner("이 지역에 지도에 표시할 공매 물건이 없습니다.");
+    else if(emptyEl)emptyEl.style.display="none";
     grouped.forEach(items=>{
       const pos=new kakao.maps.LatLng(items[0].lat,items[0].lng);
       const escText=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -2623,7 +2656,11 @@ async function loadAuctionMapOverlays(){
       const overlay=new kakao.maps.CustomOverlay({position:pos,content:badge,xAnchor:.5,yAnchor:1,zIndex:80,clickable:true});
       overlay.setMap(kakaoMap);_auctionMapOverlays.push(overlay);
     });
-  }catch(error){console.warn("[AUCTION MAP] 공매 레이어 로드 실패",error);}
+  }catch(error){
+    if(gen!==_auctionMapRequest||!_auctionLayerEnabled)return;
+    console.warn("[AUCTION MAP] 공매 레이어 로드 실패",error);
+    showMapEmptyBanner("공매 정보를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요.");
+  }
 }
 
 // 현재 지도 줌 레벨로 클러스터 모드를 결정
@@ -2639,11 +2676,12 @@ function _clusterModeForLevel(lv){
 async function loadClusterOverlays(clusterLevel, filters = {}){
   if (!kakaoMap) return;
   const myGen = ++_mapRenderGen;  // 마커·다른 클러스터 요청을 포함해 이전 응답을 폐기한다.
+  const auctionOnly = _auctionLayerEnabled;
   if (_mapFetchController) _mapFetchController.abort();
 
   const params = new URLSearchParams({ level: clusterLevel });
   ["q", "si_do", "sgg_nm", "umd_nm", "lodging_type"].forEach(k => {
-    if (filters[k]) params.set(k, filters[k]);
+    if (filters[k] && !(auctionOnly && k === "lodging_type")) params.set(k, filters[k]);
   });
 
   // sgg/umd 레벨은 현재 화면 범위로 집계 제한 — 화면 밖 배지 미표시
@@ -2676,10 +2714,11 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
   if (_mapRenderGen !== myGen) return;
 
   // 클러스터 모드에서도 0건이면 mapEmpty 표시, 있으면 숨김
+  if (auctionOnly) items = items.filter(item => Number(item.auction_count) > 0);
   const _mapEmptyEl = document.getElementById("mapEmpty");
   if (_mapEmptyEl) {
     if (items.length === 0) {
-      showMapEmptyBanner();
+      showMapEmptyBanner(auctionOnly ? "이 지역에 지도에 표시할 공매 물건이 없습니다." : undefined);
     } else {
       _mapEmptyEl.style.display = "none";
     }
@@ -2717,14 +2756,14 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
     // 광역/시군구 집계에서만 관광 방문객 규모를 보조 정보로 보여준다.
     // 읍면동과 개별 마커의 기존 정보 밀도·클릭 동작은 변경하지 않는다.
     const visitorCount = Number(item.visitor_count);
-    const visitorHtml = (clusterLevel === "sido" || clusterLevel === "sgg")
+    const visitorHtml = !auctionOnly && (clusterLevel === "sido" || clusterLevel === "sgg")
       && Number.isFinite(visitorCount) && visitorCount > 0
       ? `<div class="cluster-visitor-count">👣 ${Math.round(visitorCount / 10000).toLocaleString("ko-KR")}만명</div>`
       : "";
 
     // 스택바 width% 계산 — 14px 미만 구간(pct < 12%)은 숫자 생략(겹침 방지)
     const BAR_H = 15;
-    const barSpans = BAR_COLORS
+    const barSpans = auctionOnly ? "" : BAR_COLORS
       .map(c => {
         const cnt = bt[c.key] || 0;
         if (!cnt || !total) return "";
@@ -2740,7 +2779,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       })
       .join("");
     const auctionCount=_auctionLayerEnabled?Math.max(0,Number(item.auction_count)||0):0;
-    const auctionSegment=auctionCount>0?`<span style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px;width:22px;height:100%;margin-left:2px;background:#111;color:#fff;font-size:9px;font-weight:700;line-height:1;overflow:hidden;">${auctionCount}</span>`:"";
+    const auctionSegment=auctionCount>0?`<span style="display:inline-flex;align-items:center;justify-content:center;flex:1;width:100%;height:100%;background:#111;color:#fff;font-size:10px;font-weight:700;line-height:1;overflow:hidden;">공매 ${auctionCount}</span>`:"";
 
     const el = document.createElement("div");
     el.className = "map-cluster-badge";

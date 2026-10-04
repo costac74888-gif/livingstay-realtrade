@@ -57,6 +57,7 @@ const { execFileSync } = require("node:child_process");
   await page.setViewportSize({ width: 1280, height: 900 });
   const legend = page.locator("[data-auction-layer]").first();
   assert.ok(await legend.count());
+  await page.evaluate(() => setAuctionMapLayer(true));
   await legend.click();
   assert.equal(await page.evaluate(() => localStorage.getItem("hns_auction_layer")), "off");
   await legend.click();
@@ -72,11 +73,11 @@ const { execFileSync } = require("node:child_process");
     console.log("PASS live Kakao map: auction marker layer at individual-marker zoom");
     for (const level of [6, 9, 12]) {
       await page.evaluate(level => kakaoMap.setLevel(level), level);
-      await page.waitForSelector('.map-cluster-badge span[style*="flex:0 0 22px"]', { timeout: 20000 });
-      const segment=page.locator('.map-cluster-badge span[style*="flex:0 0 22px"]').first();
-      assert.ok(Math.abs((await segment.boundingBox()).width-22)<1);
+      await page.waitForSelector('.map-cluster-badge', { timeout: 20000 });
+      assert.ok((await page.locator('.map-cluster-badge').first().textContent()).includes("공매 "));
+      assert.equal(await page.locator('.cluster-visitor-count').count(), 0);
     }
-    console.log("PASS live Kakao clusters: separate 22px auction segments at district/city/province zoom");
+    console.log("PASS live Kakao clusters: auction-only counts at district/city/province zoom");
   } else console.log("NOT VERIFIED live Kakao map: SDK did not initialize in headless browser");
   await page.evaluate(id => window.openBuildingDetail(id), sample.master_building_id);
   await page.waitForSelector(".b-auction-active-badge", { timeout: 30000 });

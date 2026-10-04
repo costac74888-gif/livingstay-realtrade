@@ -1,0 +1,118 @@
+/* Runs production render functions with SDK/HTTP doubles; no network or DB writes. */
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+const source = fs.readFileSync("static/js/main.js", "utf8");
+function section(start, end) {
+  const first = source.indexOf(start);
+  const last = source.indexOf(end, first + start.length);
+  assert.ok(first >= 0 && last > first, `Missing full signature: ${start}`);
+  return source.slice(first, last);
+}
+class Element {
+  constructor() { this.dataset = {}; this.style = {}; this.innerHTML = ""; this.value = ""; }
+  addEventListener() {}
+  querySelector() { return new Element(); }
+}
+class Overlay {
+  constructor(options) { Object.assign(this, options); }
+  setMap(map) { this.map = map; }
+}
+function fixture() {
+  const empty = new Element();
+  const selector = new Element();
+  const calls = [];
+  const context = {
+    console, URLSearchParams, AbortController,
+    document: {
+      createElement: () => new Element(),
+      getElementById: id => id === "mapEmpty" ? empty : selector,
+      querySelectorAll: () => [],
+    },
+    localStorage: { setItem() {} },
+    kakao: { maps: { LatLng: class { constructor(lat, lng) { this.lat = lat; this.lng = lng; } }, CustomOverlay: Overlay } },
+    kakaoMap: {
+      getLevel: () => 5, setCenter() {}, setLevel() {},
+      getBounds: () => ({
+        getSouthWest: () => ({ getLat: () => 33, getLng: () => 124 }),
+        getNorthEast: () => ({ getLat: () => 39, getLng: () => 132 }),
+      }),
+    },
+    _auctionLayerEnabled: true, _currentMapMode: "sido",
+    _mapRenderGen: 0, _auctionMapRequest: 0, _mapFetchController: null,
+    _auctionMapOverlays: [], _clusterOverlays: [], _pendingFadeOutOverlays: [],
+    _lastMapFilters: {}, state: { lodging_type: "호텔" },
+    LODGING_COLORS: { "일반": "#red", "미분류": "#gray" },
+    SIDO_POSITION_OVERRIDE: {}, SIDO_ANCHOR_LEFT: new Set(), escapeHtml: String,
+    isMobileMapViewport: () => false,
+    _setLegendActive() {}, clearDataLabLodgingRankMap() {}, clearDataLabTourismMap() {},
+    updateMapForZoom() {},
+    _beginMapLayerSwap() {
+      const old = context._clusterOverlays;
+      context._clusterOverlays = [];
+      return old;
+    },
+    _finishMapLayerSwap(old) { old.forEach(overlay => overlay.setMap(null)); },
+    showMapEmptyBanner(message) { empty.innerHTML = message || "empty"; empty.style.display = "flex"; },
+    fetch: async url => {
+      calls.push(url);
+      return { ok: true, json: async () => ({
+        ok: true, items: [
+          { name: "공매지역", lat: 37, lng: 127, auction_count: 3, total: 95, by_type: { "일반": 95 }, visitor_count: 100000 },
+          { name: "숙박만지역", lat: 36, lng: 128, auction_count: 0, total: 77, by_type: { "일반": 77 }, visitor_count: 200000 },
+        ],
+      }) };
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext([
+    section("function setAuctionMapLayer(enabled, {refresh=true} = {}){", '\ndocument.querySelectorAll(".map-legend [data-auction-layer]").forEach'),
+    section("async function loadMapMarkers(filters = {}, opts = {}){", "\nasync function loadAuctionMapOverlays(){"),
+    section("async function loadAuctionMapOverlays(){", "\n// 현재 지도 줌 레벨로 클러스터 모드를 결정"),
+    section("async function loadClusterOverlays(clusterLevel, filters = {}){", "\n// 현재 줌 레벨에 따라 클러스터 배지"),
+  ].join("\n"), context);
+  return { context, calls, empty, selector };
+}
+async function main() {
+  for (const level of ["sido", "sgg", "umd"]) {
+    const { context: c, calls } = fixture();
+    c._currentMapMode = level;
+    await c.loadClusterOverlays(level, { lodging_type: "호텔" });
+    assert.equal(c._clusterOverlays.length, 1);
+    const html = c._clusterOverlays[0].content.innerHTML;
+    assert.ok(html.includes("공매 3"));
+    assert.ok(!html.includes("숙박만지역") && !html.includes("#red") && !html.includes("cluster-visitor-count"));
+    assert.ok(!calls[0].includes("lodging_type"));
+    c._auctionLayerEnabled = false;
+    await c.loadClusterOverlays(level, { lodging_type: "호텔" });
+    assert.equal(c._clusterOverlays.length, 2);
+    assert.ok(c._clusterOverlays[0].content.innerHTML.includes("#red"));
+    assert.ok(!c._clusterOverlays[0].content.innerHTML.includes("공매 3"));
+  }
+  const { context: c, calls, empty, selector } = fixture();
+  c._currentMapMode = "markers";
+  await c.loadMapMarkers();
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].startsWith("/api/auctions/map?"));
+  assert.equal(c._auctionMapOverlays.length, 2);
+  c.setAuctionMapLayer(true, { refresh: false });
+  assert.equal(c.state.lodging_type, "");
+  assert.equal(selector.value, "");
+  assert.equal(c._auctionMapOverlays.length, 0);
+  let resolve;
+  c.fetch = () => new Promise(done => { resolve = done; });
+  const late = c.loadAuctionMapOverlays();
+  c.setAuctionMapLayer(false, { refresh: false });
+  resolve({ ok: true, json: async () => ({ ok: true, items: [{ lat: 37, lng: 127 }] }) });
+  await late;
+  assert.equal(c._auctionMapOverlays.length, 0, "Disabled layer must reject a late response");
+  c._auctionLayerEnabled = true;
+  c.fetch = async () => ({ ok: true, json: async () => ({ ok: true, items: [] }) });
+  await c.loadAuctionMapOverlays();
+  assert.ok(empty.innerHTML.includes("공매 물건이 없습니다"));
+  c.fetch = async () => ({ ok: false, json: async () => ({ ok: false }) });
+  await c.loadAuctionMapOverlays();
+  assert.ok(empty.innerHTML.includes("불러오지 못했습니다"));
+  console.log("PASS auction-only province/city/district, marker route, restore, late-response fencing, empty/error states");
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });
