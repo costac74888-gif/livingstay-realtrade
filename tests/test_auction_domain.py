@@ -4,11 +4,30 @@ from datetime import datetime
 from unittest.mock import patch
 
 from auction_domain import (
-    KST, normalize, number, source_date, status, sale_kind, safe_url, response_items,
+    KST, normalize, number, source_date, status, sale_kind, safe_url, response_items, USAGES, is_collectible,
 )
 
 
 class AuctionDomainTest(unittest.TestCase):
+    def test_officetel_is_not_a_collection_usage_or_mixed_response_target(self):
+        self.assertNotIn("오피스텔", USAGES)
+        self.assertFalse(is_collectible({"cltrUsgSclsCtgrNm": "오피스텔", "onbidCltrNm": "생활숙박시설"}))
+        self.assertFalse(is_collectible({"onbidCltrNm": "서울 오피스텔 301호"}))
+        self.assertTrue(is_collectible({"cltrUsgSclsCtgrNm": "숙박시설", "onbidCltrNm": "생활숙박시설 301호"}))
+
+    def test_collector_rejects_officetel_before_staging_or_detail_requests(self):
+        from sync_onbid import Runner
+        runner = Runner.__new__(Runner)
+        runner.state = {}
+        runner.save_state = lambda: None
+        officetel = dict(self.row, cltrMngNo="office-test", cltrUsgSclsCtgrNm="오피스텔")
+        runner.call = lambda *args, **kwargs: ([officetel, self.row], 2)
+        rows = runner.collect_lists()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(next(iter(rows.values())), self.row)
+        with patch("sync_onbid.get_conn", side_effect=AssertionError("Excluded items must not write DB")):
+            self.assertEqual(runner.stage_rows({("office-test", "123"): officetel}), ([], []))
+
     def setUp(self):
         self.now = datetime(2026, 10, 4, 12, tzinfo=KST)
         self.row = {

@@ -17,7 +17,7 @@ from psycopg2.extras import Json, execute_values
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix, get_building_jibun_key
 from auction_domain import (
     ENDPOINTS, PROPERTY_CODES, USAGES, KST, normalize, response_items,
-    number, source_date, safe_url, VISIBLE_SQL,
+    number, source_date, safe_url, VISIBLE_SQL, ELIGIBLE_SQL, is_collectible,
 )
 from auction_service import STATUS_KEY, SUCCESS_KEY, auction_deep_link
 from db import get_conn
@@ -224,7 +224,7 @@ class Runner:
                     items, total = self.call("list", prptDivCd=PROPERTY_CODES, pvctTrgtYn=possible,
                                              cltrUsgSclsCtgrNm=usage, pageNo=page)
                     for row in items:
-                        if row.get("cltrMngNo") and row.get("pbctCdtnNo") is not None:
+                        if is_collectible(row) and row.get("cltrMngNo") and row.get("pbctCdtnNo") is not None:
                             rows[(str(row["cltrMngNo"]), str(row["pbctCdtnNo"]))] = row
                     if not items or page * 1000 >= total:
                         break
@@ -241,6 +241,8 @@ class Runner:
         values = []
         columns = list(normalize(next(iter(rows.values())))) if rows else []
         for key, row in rows.items():
+            if not is_collectible(row):
+                continue
             val = normalize(row)
             raw = {"list": row}
             if val["status"] in ("sold", "canceled", "failed"):
@@ -457,8 +459,8 @@ class Runner:
             if not self.args.limit:
                 with get_conn() as conn:
                     with conn.cursor() as cur:
-                        cur.execute("""SELECT id,source_item_id,pbct_cdtn_no,raw->'list' AS source_row
-                          FROM auction_items WHERE source='onbid'
+                        cur.execute(f"""SELECT a.id,a.source_item_id,a.pbct_cdtn_no,a.raw->'list' AS source_row
+                          FROM auction_items a WHERE a.source='onbid' AND {ELIGIBLE_SQL}
                             AND bid_end_at<NOW() AND last_seen_at<NOW()-INTERVAL '5 minutes'
                             AND status IN ('scheduled','bidding','failed','closed')
                             AND COALESCE(raw->>'_confirmed_result','') NOT IN ('sold','canceled')

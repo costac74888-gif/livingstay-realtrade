@@ -13,7 +13,12 @@ ENDPOINTS = {
     "notice": "OnbidPbancDtlnfSrvc2/getPbancDtlInf2",
 }
 PROPERTY_CODES = "0007,0010,0005,0002,0003,0006,0008,0011,0013"
-USAGES = ("숙박시설", "호텔", "오피스텔", "콘도", "콘도미니엄", "모텔", "여관", "펜션", "생활숙박시설")
+USAGES = ("숙박시설", "호텔", "콘도", "콘도미니엄", "모텔", "여관", "펜션", "생활숙박시설")
+ELIGIBLE_SQL = """(
+ POSITION('오피스텔' IN COALESCE(a.usage_name,''))=0
+ AND POSITION('오피스텔' IN COALESCE(a.lodging_category,''))=0
+ AND POSITION('오피스텔' IN COALESCE(a.raw->'list'->>'cltrUsgSclsCtgrNm',''))=0
+)"""
 STATUS_CODES = {"0001": "scheduled", "0002": "bidding", "0010": "sold", "0011": "failed", "0012": "canceled"}
 EFFECTIVE_STATUS_SQL = """CASE
  WHEN a.status IN ('scheduled','bidding') AND a.bid_end_at<NOW() THEN 'closed'
@@ -34,7 +39,7 @@ VISIBLE_SQL = """(
 # 여러 미래 회차 중 입찰 중인 회차, 그 다음으로 가장 가까운 예정 회차를 노출.
 CURRENT_SQL = f"""WITH current_auctions AS (
  SELECT DISTINCT ON (a.source,a.source_item_id) a.*
- FROM auction_items a WHERE {VISIBLE_SQL}
+ FROM auction_items a WHERE {ELIGIBLE_SQL} AND {VISIBLE_SQL}
  ORDER BY a.source,a.source_item_id,
  CASE ({EFFECTIVE_STATUS_SQL}) WHEN 'bidding' THEN 0 WHEN 'scheduled' THEN 1
  WHEN 'failed' THEN 2 WHEN 'sold' THEN 3 ELSE 4 END,
@@ -117,6 +122,14 @@ def category(row):
         if any(term in text for term in terms):
             return result
     return "기타"
+
+
+def is_collectible(row):
+    """숙박시설 조회 응답에 섞인 오피스텔도 저장·상세 수집에서 제외한다."""
+    return (
+        "오피스텔" not in str(row.get("cltrUsgSclsCtgrNm") or "")
+        and category(row) != "오피스텔"
+    )
 
 
 def sale_kind(row, notices):

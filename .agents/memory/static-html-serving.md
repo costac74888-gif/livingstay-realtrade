@@ -13,3 +13,9 @@ The user-facing HTML pages are NOT served as raw `/static/*.html`. They go throu
 **Why serve-time injection (not editing each HTML):** avoids touching ~9 HTML files and prevents drift when new pages are added — but new page routes MUST route through one of the serving helpers, or their assets won't get versioned. Raw `/static/index.html` direct access bypasses all injection (not the official entry path).
 
 **How to apply:** when adding a new HTML page, serve it via `_serve_static_html` (or an equivalent that calls `_inject_asset_version`), never link it as `/static/foo.html`. Trade-off accepted: boot-time (not per-file-hash) versioning re-downloads even unchanged assets each deploy — intended, since the goal is "force fresh on every deploy".
+
+Preview captures can reuse cached CSS across screenshots; a fresh Playwright context can therefore show the fix while the built-in capture still shows the old style.
+
+**Why:** A mobile photo placeholder remained visible in repeat captures even after a fresh-browser computed-style check confirmed it was hidden. The capture was still requesting the same boot-versioned CSS URL.
+
+**How to apply:** Finish the CSS batch, restart the app to change its asset version, then capture. Do not keep editing correct CSS to match a stale screenshot.

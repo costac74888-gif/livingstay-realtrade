@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import app as app_module
 import auction_service
-from auction_domain import CURRENT_SQL, EFFECTIVE_STATUS_SQL
+from auction_domain import CURRENT_SQL, EFFECTIVE_STATUS_SQL, ELIGIBLE_SQL
 from db import get_conn
 
 
@@ -28,6 +28,34 @@ class AuctionApiTest(unittest.TestCase):
                 self.assertNotIn("detail_fingerprint", item)
                 if "status=bidding" in query:
                     self.assertEqual(item["status"], "bidding")
+
+    def test_officetel_removed_from_public_surfaces_without_destroying_history(self):
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT a.id FROM auction_items a WHERE NOT {ELIGIBLE_SQL} LIMIT 1")
+                excluded = cur.fetchone()
+                cur.execute(CURRENT_SQL + " SELECT COUNT(*) AS n FROM current_auctions")
+                expected_count = cur.fetchone()["n"]
+        if excluded:
+            item_id = excluded["id"]
+            for path in (f"/api/auctions/{item_id}", f"/api/auctions/{item_id}/survey-info",
+                         f"/auctions/{item_id}", f"/auctions/{item_id}/survey"):
+                self.assertEqual(self.client.get(path).status_code, 404, path)
+            with get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM auction_items WHERE id=%s", [item_id])
+                    self.assertIsNotNone(cur.fetchone(), "Keep historical references intact")
+        response = self.client.get("/api/auctions?page_size=100").get_json()
+        self.assertEqual(response["total"], expected_count)
+        self.assertTrue(all("오피스텔" not in (item["usage_name"] or "") and
+                            "오피스텔" not in (item["lodging_category"] or "") for item in response["items"]))
+        for item in response["items"]:
+            self.assertIn("management_no", item)
+            for field in ("land_area_m2", "building_area_m2"):
+                self.assertTrue(item[field] is None or isinstance(item[field], (int, float)))
+        self.assertEqual(self.client.get("/api/auctions?category=오피스텔").status_code, 400)
+        self.assertTrue(all(item["lodging_category"] != "오피스텔" for item in
+                            self.client.get("/api/auctions/map?bbox=124,33,132,39").get_json()["items"]))
 
     def test_invalid_filters_and_nonfinite_bbox(self):
         for path in ("/api/auctions?sort=wrong", "/api/auctions?ratio_max=nan",

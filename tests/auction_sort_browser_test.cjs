@@ -22,6 +22,15 @@ async function main() {
       assert.equal(await page.locator(".auction-row").count(), 10);
       assert.equal(await page.locator("#auctionSearch, #auctionFilterSummary, #auctionSort, .auction-ranges").count(), 0);
       assert.equal(await page.locator(".auction-order-button").count(), 8);
+      assert.equal(await page.locator("#auctionCategory option[value='오피스텔']").count(), 0);
+      assert.equal(await page.locator(".auction-sort-row #auctionPageSize").count(), 1);
+      assert.equal(await page.locator(".auction-list-controls select").count(), 0);
+      assert.equal(await page.locator(".auction-row .auction-photo").count(), 10);
+      assert.equal(await page.locator(".auction-row .auction-management").count(), 10);
+      assert.equal(await page.locator(".auction-row .auction-schedule").count(), 10);
+      assert.equal(await page.locator(".auction-row .auction-prices").count(), 10);
+      assert.ok(await page.locator(".auction-photo [hidden]").evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node).display==="none")));
+      assert.ok((await page.locator(".auction-row").first().getAttribute("href")).includes("auction="));
       const request = async (action, check) => {
         const pending = page.waitForResponse(response => {
           const url = new URL(response.url());
@@ -75,7 +84,17 @@ async function main() {
         ? document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth + 1
         : document.documentElement.scrollWidth <= innerWidth + 1, width));
       assert.deepEqual(errors, []);
-      console.log(`PASS ${width}px: compact toolbar, automatic filters/reset, content fits, no JS errors`);
+      await page.evaluate(()=>document.fonts.ready);
+      require("node:fs").mkdirSync("attached_assets/onbid-list-update",{recursive:true});
+      await page.screenshot({path:`attached_assets/onbid-list-update/list-${width}.png`});
+      console.log(`PASS ${width}px: Onbid-format rows, upper-right page size, officetel removed, sort/filter/reset/pagination, no overflow/JS errors`);
+      if(width===390){
+        await page.locator(".auction-property").first().click();
+        await page.locator(".auction-panel-general").waitFor();
+        assert.equal(new URL(page.url()).searchParams.get("auction")!==null,true);
+        assert.equal(await page.locator("#bTabAuctions").getAttribute("aria-selected"),"true");
+        console.log("PASS property-info click: auction detail opens on the 공매정보 tab");
+      }
       await page.close();
     }
   } finally { await browser.close(); }

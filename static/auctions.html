@@ -19,29 +19,25 @@
   <section class="auction-filter" aria-label="공매 검색 조건">
     <label class="auction-field"><span>시·도</span><select id="auctionSido"><option value="">전체 시·도</option></select></label>
     <label class="auction-field"><span>시·군·구</span><select id="auctionSgg"><option value="">전체 시·군·구</option></select></label>
-    <label class="auction-field"><span>용도</span><select id="auctionCategory"><option value="">전체 용도</option><option>생활숙박</option><option>호텔</option><option>콘도</option><option>모텔</option><option>펜션</option><option>오피스텔</option></select></label>
+     <label class="auction-field"><span>용도</span><select id="auctionCategory"><option value="">전체 용도</option><option>생활숙박</option><option>호텔</option><option>콘도</option><option>모텔</option><option>펜션</option></select></label>
     <label class="auction-field"><span>상태</span><select id="auctionStatus"><option value="">전체 상태</option><option value="bidding">진행</option><option value="scheduled">예정</option><option value="failed">유찰</option><option value="sold">낙찰</option><option value="canceled">취소</option><option value="closed">종료</option></select></label>
     <button type="button" id="auctionReset" class="auction-reset">초기화</button>
   </section>
-  <div class="auction-table-wrap">
-    <table class="auction-table">
-      <thead><tr>
-        <th><button class="auction-order-button" data-sort-key="status" data-sort-label="상태" type="button">상태<span class="auction-order-arrow"></span></button></th>
-        <th class="auction-mobile-combined">용도 · 소재지</th>
-        <th><button class="auction-order-button" data-sort-key="category" data-sort-label="용도" type="button">용도<span class="auction-order-arrow"></span></button></th>
-        <th><button class="auction-order-button" data-sort-key="address" data-sort-label="소재지" type="button">소재지<span class="auction-order-arrow"></span></button></th>
-        <th class="col-area"><button class="auction-order-button" data-sort-key="area" data-sort-label="면적" type="button">면적<span class="auction-order-arrow"></span></button></th>
-        <th class="col-appraisal"><button class="auction-order-button" data-sort-key="appraisal" data-sort-label="감정가" type="button">감정가<span class="auction-order-arrow"></span></button></th>
-        <th><button class="auction-order-button" data-sort-key="price" data-sort-label="최저입찰가" type="button">최저입찰가<span class="auction-order-arrow"></span></button></th>
-        <th class="col-failed"><button class="auction-order-button" data-sort-key="failed" data-sort-label="유찰" type="button">유찰<span class="auction-order-arrow"></span></button></th>
-        <th><button class="auction-order-button is-active" data-sort-key="deadline" data-sort-label="입찰마감" type="button" aria-pressed="true">입찰마감<span class="auction-order-arrow">↑</span></button></th>
-      </tr></thead>
-      <tbody id="auctionResults"><tr><td colspan="9"><div class="auction-loading" role="status">목록을 불러오는 중</div></td></tr></tbody>
-    </table>
+  <div class="auction-sort-row" aria-label="목록 정렬">
+    <span class="auction-sort-caption">정렬</span>
+    <button class="auction-order-button" data-sort-key="status" data-sort-label="상태" type="button">상태<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="category" data-sort-label="용도" type="button">용도<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="address" data-sort-label="소재지" type="button">소재지<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="area" data-sort-label="면적" type="button">면적<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="appraisal" data-sort-label="감정가" type="button">감정가<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="price" data-sort-label="최저입찰가" type="button">최저입찰가<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button" data-sort-key="failed" data-sort-label="유찰" type="button">유찰<span class="auction-order-arrow"></span></button>
+    <button class="auction-order-button is-active" data-sort-key="deadline" data-sort-label="입찰마감" type="button" aria-pressed="true">입찰마감<span class="auction-order-arrow">↑</span></button>
+    <label class="auction-page-size">페이지당 <select id="auctionPageSize" aria-label="페이지당 공매 물건 수"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option></select><span>건</span></label>
   </div>
-  <div class="auction-list-controls"><span>총 <strong id="auctionTotal">—</strong>건</span>
-    <label>페이지당 <select id="auctionPageSize" aria-label="페이지당 공매 물건 수"><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>건</label>
-  </div>
+  <div class="auction-results-heading"><span>공매 물건</span><span>총 <strong id="auctionTotal">—</strong>건</span></div>
+  <div class="auction-column-heading" aria-hidden="true"><span>물건정보</span><span>회차</span><span>입찰기간</span><span>감정평가금액(원)<br>최저입찰가격(원)</span></div>
+  <div id="auctionResults" class="auction-results" aria-live="polite"><div class="auction-loading" role="status">목록을 불러오는 중</div></div>
   <nav id="auctionPagination" class="auction-pagination" aria-label="공매 목록 페이지"></nav>
   <footer class="auction-list-note">온비드 기준 <time id="auctionLastUpdated">갱신 시각 확인 중</time> 갱신 · 입찰 전 원문 공고와 권리관계를 확인해 주세요.</footer>
 </main>
