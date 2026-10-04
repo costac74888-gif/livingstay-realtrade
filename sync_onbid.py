@@ -14,13 +14,14 @@ from urllib.parse import unquote
 import requests
 from psycopg2.extras import Json, execute_values
 
-from addr_norm import normalize_road_prefix, normalize_jibun_prefix, get_building_jibun_key
+from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from auction_domain import (
     ENDPOINTS, PROPERTY_CODES, USAGES, KST, normalize, response_items,
     number, source_date, safe_url, VISIBLE_SQL, ELIGIBLE_SQL, is_collectible,
 )
 from auction_service import STATUS_KEY, SUCCESS_KEY, auction_deep_link
 from db import get_conn
+from auction_building_matching import build_indexes, choose_building
 from geocode_buildings import geocode_address
 from secret_redaction import redact_env_secrets, redact_exception
 
@@ -166,25 +167,15 @@ class Runner:
     def load_master_index(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id,road_address,jibun_address,lat,lng FROM master_buildings")
+                cur.execute("SELECT id,road_address,jibun_address,sgg_text,umd_nm,jibun,lat,lng FROM master_buildings")
                 rows = cur.fetchall()
-        for b in rows:
-            road = normalize_road_prefix(b["road_address"] or "")
-            jibun = get_building_jibun_key(b)
-            if road:
-                self.master_road[road].append(b)
-            if jibun:
-                self.master_jibun[jibun].append(b)
+        self.master_road, self.master_jibun, _ = build_indexes(rows)
 
     def coordinates(self, values):
         road = normalize_road_prefix(values["address_road"]) if values["address_road"] else None
         jibun = normalize_jibun_prefix(values["address_jibun"]) if values["address_jibun"] else None
-        candidates = self.master_road.get(road, []) if road else []
-        if not candidates and jibun:
-            candidates = self.master_jibun.get(jibun, [])
-        # 주소가 같은 마스터가 여러 개면 임의의 건물 ID를 연결하지 않는다.
         multi_parcel = bool(re.search(r"외\s*\d+\s*필지|,\s*\d+-\d+", values["address_jibun"]))
-        building = candidates[0] if len(candidates) == 1 and not multi_parcel else None
+        building = choose_building(values, self.master_road, self.master_jibun)
         if building and building["lat"] is not None and building["lng"] is not None:
             return building["id"], building["lat"], building["lng"]
         # 정규화 키는 공백을 지워 매칭하기 위한 값. 지오코딩에는 실제 주소를 전달한다.

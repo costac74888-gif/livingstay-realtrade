@@ -12,7 +12,7 @@
     if(!host||!item)return;
     const facts=[
       ["소재지",item.address_road||item.address_jibun],
-      ["용도",item.property_type||item.usage_name||item.lodging_category],
+      ["용도",item.usage_name||item.lodging_category],
       ["관리번호",item.management_no],
       ["대지면적",formatArea(item.land_area_m2)],
       ["건물면적",formatArea(item.building_area_m2)]

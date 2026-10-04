@@ -114,8 +114,9 @@ class AuctionApiTest(unittest.TestCase):
         for suffix in ("", "/survey"):
             response = self.client.get(f"/auctions/{item['id']}" + suffix)
             self.assertEqual(response.status_code, 301)
+            resolved = self.client.get("/api/auctions/" + str(item["id"])).get_json()["item"]
             self.assertEqual(response.headers["Location"],
-                             auction_service.auction_deep_link(item["id"], item["master_building_id"]))
+                             auction_service.auction_deep_link(item["id"], resolved["master_building_id"]))
         self.assertIn("last_success_at", self.client.get("/api/auctions").get_json())
         for key in ("status", "category", "address", "area"):
             for direction in ("asc", "desc"):
@@ -169,11 +170,11 @@ class AuctionApiTest(unittest.TestCase):
         self.assertTrue(response.get_json()["items"])
         self.assertEqual(self.client.get("/api/auctions/2147483647").status_code, 404)
 
-    def test_unmatched_detail_reuses_public_list_photo(self):
+    def test_list_only_detail_resolves_existing_building_and_photo(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(CURRENT_SQL + f""" SELECT a.id FROM current_auctions a
-                  WHERE a.master_building_id IS NULL AND {ELIGIBLE_SQL}
+                cur.execute(f""" SELECT a.id FROM auction_items a
+                  WHERE a.source_item_id='2026-0500-027097' AND {ELIGIBLE_SQL}
                   AND a.raw->'list'->>'thnlImgUrlAdr' IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM auction_photos p
                     JOIN auction_items owner ON owner.id=p.auction_item_id
@@ -184,12 +185,21 @@ class AuctionApiTest(unittest.TestCase):
         response = self.client.get("/api/auctions/" + str(row["id"]))
         self.assertEqual(response.status_code, 200)
         data = response.get_json()
-        self.assertIsNone(data["building"])
-        self.assertIsNone(data["item"]["master_building_id"])
+        self.assertIsNotNone(data["building"])
+        self.assertEqual(data["building"]["id"], data["item"]["master_building_id"])
+        self.assertEqual(data["building"]["jibun_address"], "부산광역시 해운대구 중동 1124-8")
         self.assertTrue(data["item"]["thumbnail_url"])
         self.assertEqual(data["photos"][0]["url"], data["item"]["thumbnail_url"])
         self.assertEqual(data["photos"][0]["source"], "auction")
         self.assertNotIn("raw", data["item"])
+        listed = next(item for item in self.client.get("/api/auctions?page_size=100").get_json()["items"]
+                      if item["source_item_id"] == data["item"]["source_item_id"])
+        self.assertEqual(listed["master_building_id"], data["building"]["id"])
+        history = self.client.get("/api/building/" + str(data["building"]["id"]) + "/auctions").get_json()
+        self.assertIn(row["id"], [item["id"] for item in history["items"]])
+        self.assertIn(data["item"]["thumbnail_url"], [photo["url"] for photo in history["photos"]])
+        survey = self.client.get("/api/auctions/" + str(row["id"]) + "/survey-info").get_json()
+        self.assertEqual(survey["item"]["master_building_id"], data["building"]["id"])
 
     def test_detail_photo_fallback_safety_and_existing_photo_priority(self):
         item = {"id": 123, "thumbnail_url": "https://www.onbid.co.kr/list.jpg"}

@@ -16,6 +16,7 @@ from flask import jsonify, request, session
 from psycopg2.extras import Json
 from db import get_conn
 from auction_domain import ELIGIBLE_SQL
+from auction_building_matching import resolve_building
 from survey_defaults import DEFAULT_SETTINGS
 
 KST = ZoneInfo("Asia/Seoul")
@@ -176,9 +177,13 @@ def analysis_links(item):
 def load_item(cur, item_id):
     cur.execute(f"""SELECT a.id,COALESCE(NULLIF(b.building_name,''),a.title,a.usage_name,'공매 물건') AS title,
       COALESCE(NULLIF(a.address_road,''),a.address_jibun,'') AS address,
+      a.address_road,a.address_jibun,
       a.min_bid_price,a.area_m2,a.unit_label,a.bid_end_at,a.status,a.master_building_id
       FROM auction_items a LEFT JOIN master_buildings b ON b.id=a.master_building_id WHERE a.id=%s AND {ELIGIBLE_SQL}""", [item_id])
-    return cur.fetchone()
+    item = cur.fetchone()
+    if item:
+        resolve_building(cur, item)
+    return item
 
 
 def validate_applicant(data):

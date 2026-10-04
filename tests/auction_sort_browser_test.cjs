@@ -93,6 +93,7 @@ async function main() {
         await page.locator(".auction-panel-general").waitFor();
         assert.equal(new URL(page.url()).searchParams.get("auction")!==null,true);
         assert.equal(await page.locator("#bTabAuctions").getAttribute("aria-selected"),"true");
+        assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
         console.log("PASS property-info click: auction detail opens on the 공매정보 tab");
       }
       await page.close();

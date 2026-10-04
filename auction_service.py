@@ -10,6 +10,7 @@ from functools import wraps
 from flask import jsonify, request, redirect, abort
 from auction_domain import CURRENT_SQL, VISIBLE_SQL, EFFECTIVE_STATUS_SQL, ELIGIBLE_SQL, KST, safe_url, number
 from db import get_conn
+from auction_building_matching import resolve_building
 
 STATUS_KEY = "onbid_sync_status"
 SUCCESS_KEY = "onbid_last_success_at"
@@ -25,8 +26,10 @@ def auction_deep_link(item_id, building_id=None):
 def redirect_auction_to_map(item_id):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(f"SELECT a.master_building_id FROM auction_items a WHERE a.id=%s AND {ELIGIBLE_SQL}", [item_id])
+            cur.execute(f"SELECT a.master_building_id,a.address_road,a.address_jibun,a.title FROM auction_items a WHERE a.id=%s AND {ELIGIBLE_SQL}", [item_id])
             item = cur.fetchone()
+            if item:
+                resolve_building(cur, item)
     if not item:
         abort(404)
     return redirect(auction_deep_link(item_id, item["master_building_id"]), code=301)
@@ -267,6 +270,8 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 cur.execute(CURRENT_SQL + CARD_SELECT + " FROM current_auctions a WHERE " + where
                             + " ORDER BY " + order + " LIMIT %s OFFSET %s", params + [page_size, (page - 1) * page_size])
                 items = [serial(r) for r in cur.fetchall()]
+                for item in items:
+                    resolve_building(cur, item)
                 cur.execute("SELECT value FROM app_meta WHERE key=%s", [SUCCESS_KEY])
                 success = cur.fetchone()
                 last_success_at = success["value"] if success else None
@@ -309,7 +314,10 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                   ORDER BY a.bid_end_at ASC NULLS LAST,a.id DESC LIMIT 501
                 """, [west, east, south, north])
                 rows = cur.fetchall()
-        return {"ok": True, "items": [serial(r) for r in rows[:500]], "truncated": len(rows) > 500}
+                items = [serial(r) for r in rows[:500]]
+                for item in items:
+                    resolve_building(cur, item)
+        return {"ok": True, "items": items, "truncated": len(rows) > 500}
 
     @app.get("/api/building/<int:building_id>/auctions")
     @limiter.limit("60 per minute")
@@ -320,13 +328,32 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 cur.execute("SELECT id FROM master_buildings WHERE id=%s", [building_id])
                 if not cur.fetchone():
                     return jsonify({"ok": False, "message": "건물을 찾을 수 없습니다."}), 404
-                cur.execute(CARD_SELECT + f""" FROM auction_items a WHERE a.master_building_id=%s AND {ELIGIBLE_SQL}
-                  ORDER BY a.bid_start_at DESC NULLS LAST,a.id DESC LIMIT 200""", [building_id])
+                cur.execute(f"""SELECT a.id,a.master_building_id,
+                  a.address_road,a.address_jibun,a.title FROM auction_items a
+                  WHERE a.master_building_id IS NULL AND {ELIGIBLE_SQL} AND {VISIBLE_SQL}""")
+                unmatched = cur.fetchall()
+                linked_ids = []
+                for row in unmatched:
+                    building = resolve_building(cur, row)
+                    if building and building["id"] == building_id:
+                        linked_ids.append(row["id"])
+                cur.execute(CARD_SELECT + f""" FROM auction_items a
+                  WHERE (a.master_building_id=%s OR a.id=ANY(%s)) AND {ELIGIBLE_SQL}
+                  ORDER BY a.bid_start_at DESC NULLS LAST,a.id DESC LIMIT 200""", [building_id, linked_ids])
                 items = [serial(r) for r in cur.fetchall()]
+                for item in items:
+                    resolve_building(cur, item)
                 cur.execute(f"""SELECT p.id,p.url,'auction'::text AS source,p.sort_order FROM auction_photos p
-                  JOIN auction_items a ON a.id=p.auction_item_id WHERE a.master_building_id=%s AND {ELIGIBLE_SQL}
-                  ORDER BY a.updated_at DESC,p.sort_order LIMIT 60""", [building_id])
+                  JOIN auction_items a ON a.id=p.auction_item_id
+                  WHERE (a.master_building_id=%s OR a.id=ANY(%s)) AND {ELIGIBLE_SQL}
+                  ORDER BY a.updated_at DESC,p.sort_order LIMIT 60""", [building_id, linked_ids])
                 photos = [serial(r) for r in cur.fetchall()]
+                photo_urls = {photo["url"] for photo in photos}
+                for item in items:
+                    for photo in auction_detail_photos([], item):
+                        if photo["url"] not in photo_urls:
+                            photos.append(photo)
+                            photo_urls.add(photo["url"])
                 photos = building_photos(cur, building_id, photo_reader) + photos
         active = {r["source_item_id"] for r in items if r["is_visible"]}
         return {"ok": True, "items": items, "active_count": len(active), "photos": photos}
@@ -342,6 +369,7 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 if not row:
                     return jsonify({"ok": False, "message": "공매 정보를 찾을 수 없습니다."}), 404
                 item = serial(row)
+                resolve_building(cur, item)
                 cur.execute("""SELECT round_no,bid_start_at,bid_end_at,min_bid_price,result,result_at,
                   source_round_key='current' AS is_current,source_round_key LIKE 'next:%%' AS is_upcoming
                   FROM auction_rounds WHERE auction_item_id=%s

@@ -8768,15 +8768,14 @@ window.openAuctionDetail=async function(id,options={}){
     const requestToken=++_buildingDetailRequestToken;
     const historyMethod=options.replace?"replaceState":"pushState";
     history[historyMethod]({auctionId:item.id},"",auctionMapLink(item));
-     window.renderUnmatchedAuctionDetail?.(panel,item);
+    window.renderUnmatchedAuctionDetail(panel,item);
     panel.classList.remove("panel-collapsed");panel.classList.add("open");panel.scrollTop=0;
     window.livingstaySetPanelToggle?.(true);
     document.getElementById("auctionBackToMap").onclick=()=>{history.pushState({},"","/");restoreDefaultPanel();};
-     await window.renderAuctionPanel(panel.querySelector("#bAuctionPanel"),options.items||[item],{
+    await window.renderAuctionPanel(panel.querySelector("#bAuctionPanel"),options.items||[item],{
       selectedId:item.id,isCurrent:()=>requestToken===_buildingDetailRequestToken,
       onSelect:async selected=>{
-        if(selected.master_building_id)await window.openAuctionDetail(selected.id,{items:options.items||[item]});
-        else history.replaceState({auctionId:selected.id},"",auctionMapLink(selected));
+        await window.openAuctionDetail(selected.id,{items:options.items||[item]});
       }
     });
   }catch(error){if(navigationToken===_auctionNavigationToken)showFallbackToast(error.message||"공매 조회 실패");}
