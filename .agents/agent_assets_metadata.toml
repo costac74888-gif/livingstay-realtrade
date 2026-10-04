@@ -752,3 +752,31 @@ mtime_ms = 1791124680920
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/04a3cea5-971b-424b-a646-75db9ef55fcb/05656f31-00f8-4f8f-a7aa-b24e60ee0405"
 storage_version_token = "1791124734266420"
 content_type = "text/html"
+
+[[outputs]]
+id = "61_7-Pi5k6NMhATUJTZ7a"
+uri = "file://attached_assets/onbid-list-update/desktop-preview.jpg"
+type = "image"
+title = "온비드형 공매목록 · PC"
+description = "물건사진·관리번호·물건정보·회차·입찰기간·가격과 상단 오른쪽 페이지당 개수 선택입니다."
+logical_id = "c181d5c6-0cde-4520-b0e2-8b902d7d19d6"
+content_hash = "sha256:ce829bc3d19105afa19c697128737e4465c714c97613fb6be530b40607c02482"
+size = 128113
+mtime_ms = 1791126372524
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/c181d5c6-0cde-4520-b0e2-8b902d7d19d6/33f5a0e3-9b05-42b8-9f54-9f91668db023"
+storage_version_token = "1791126701237578"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "urbsWf_0zcs5Z4f1B8n1m"
+uri = "file://attached_assets/onbid-list-update/mobile-preview.jpg"
+type = "image"
+title = "온비드형 공매목록 · 모바일"
+description = "390px 화면에서 사진·물건정보·입찰기간·가격을 확인하고, 물건정보를 누르면 공매정보 상세가 열립니다."
+logical_id = "74b05659-737e-484d-858a-fb740e9fdbba"
+content_hash = "sha256:ca3489de1ec35fd0ac9e6c896fcbde970767899349d9c90f2be7549fb83c9f4c"
+size = 71241
+mtime_ms = 1791126674560
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/74b05659-737e-484d-858a-fb740e9fdbba/4b92e9f9-3918-4268-83c3-4324ec75e41e"
+storage_version_token = "1791126702558258"
+content_type = "image/jpeg"
