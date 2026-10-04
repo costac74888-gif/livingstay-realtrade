@@ -43,9 +43,11 @@
   function initList() {
     const results = $("auctionResults");
     if (!results) return;
-    const state = {region:"",category:"",kind:"",status:"",sort:"deadline",page:1};
-    const sortLabels = {deadline:"마감 임박순",discount:"할인율순",new:"신규순",ratio_asc:"최저가율 낮은순",ratio_desc:"최저가율 높은순",failed_asc:"유찰 횟수 적은순",failed_desc:"유찰 횟수 많은순"};
-    const statusLabels = {bidding:"입찰중",scheduled:"입찰예정",failed:"유찰",sold:"낙찰",canceled:"취소",closed:"종료"};
+    const state = {region:"",category:"",kind:"",status:"",sort:"deadline",page:1,pageSize:10};
+    const sortValues = {
+      deadline:["deadline","deadline_desc"],appraisal:["appraisal_asc","appraisal_desc"],
+      price:["price_asc","price_desc"],failed:["failed_asc","failed_desc"],new:["new_asc","new"]
+    };
     let regionTree = {};
     let fetchSequence = 0;
     const fetchPage = async () => {
@@ -53,7 +55,7 @@
       const submitted = {...state};
       results.innerHTML = '<div class="auction-loading" role="status" aria-label="불러오는 중"><i></i><i></i><i></i></div>';
       $("auctionPagination").replaceChildren();
-      const params = new URLSearchParams({page:String(submitted.page),sort:submitted.sort});
+      const params = new URLSearchParams({page:String(submitted.page),sort:submitted.sort,page_size:String(submitted.pageSize)});
       Object.entries({region:submitted.region,category:submitted.category,kind:submitted.kind,status:submitted.status}).forEach(([k,v])=>{if(v!==""&&v!=null)params.set(k,String(v));});
       try {
         const response = await fetch(`/api/auctions?${params}`, {credentials:"same-origin"});
@@ -67,10 +69,6 @@
           results.innerHTML = data.items.map(cardHtml).join("");
         }
         renderPages(Number(data.page || submitted.page), Number(data.pages || 1));
-        $("auctionFilterSummary").textContent = [
-          submitted.region || "전국", submitted.category || "모든 숙박 용도", submitted.kind || "모든 공매 종류",
-          submitted.status ? statusLabels[submitted.status] : "모든 진행 상태", sortLabels[submitted.sort]
-        ].join(" · ");
       } catch (error) {
         if (sequence !== fetchSequence) return;
         results.innerHTML = `<div class="auction-error" role="alert"><strong>${esc(error.message || "네트워크 오류가 발생했습니다.")}</strong><button type="button" id="auctionRetry">다시 불러오기</button></div>`;
@@ -111,15 +109,31 @@
       regionTree=tree&&typeof tree==="object"&&!Array.isArray(tree)?tree:{};
       sido.innerHTML='<option value="">전체</option>'+Object.keys(regionTree).sort().map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join("");
     }).catch(()=>{regionTree={};});
-    sido.addEventListener("change",()=>{const children=regionTree[sido.value]?.sgg||{};sgg.innerHTML='<option value="">전체</option>'+Object.keys(children).sort().map(name=>{const label=name.startsWith(`${sido.value} `)?name.slice(sido.value.length).trim():name;return `<option value="${esc(name)}">${esc(label)}</option>`;}).join("");});
-    document.querySelectorAll("[data-category]").forEach(button=>button.addEventListener("click",()=>{document.querySelectorAll("[data-category]").forEach(b=>b.classList.toggle("is-active",b===button));state.category=button.dataset.category;}));
+    sido.addEventListener("change",()=>{const children=regionTree[sido.value]?.sgg||{};sgg.innerHTML='<option value="">전체</option>'+Object.keys(children).sort().map(name=>{const label=name.startsWith(`${sido.value} `)?name.slice(sido.value.length).trim():name;return `<option value="${esc(name)}">${esc(label)}</option>`;}).join("");applyFilters();});
+    document.querySelectorAll("[data-category]").forEach(button=>button.addEventListener("click",()=>{document.querySelectorAll("[data-category]").forEach(b=>b.classList.toggle("is-active",b===button));applyFilters();}));
     const applyVisibleFilters=()=>{state.region=sgg.value||sido.value;state.category=document.querySelector("[data-category].is-active")?.dataset.category||"";state.kind=$("auctionKind").value;state.status=$("auctionStatus").value;};
-    const syncSortControls=()=>{ $("auctionSort").value=state.sort;document.querySelectorAll(".auction-sort-option").forEach(button=>{const active=button.dataset.sort===state.sort;button.classList.toggle("is-active",active);button.setAttribute("aria-pressed",String(active));});};
-    const selectSort=sort=>{state.sort=sort;state.page=1;syncSortControls();fetchPage();};
-    $("auctionSearch").addEventListener("click",()=>{applyVisibleFilters();state.page=1;fetchPage();});
-    $("auctionSort").addEventListener("change",event=>{applyVisibleFilters();selectSort(event.target.value);});
-    document.querySelectorAll(".auction-sort-option").forEach(button=>button.addEventListener("click",()=>{applyVisibleFilters();selectSort(button.dataset.sort);}));
-    $("auctionReset").addEventListener("click",()=>{sido.value="";sgg.innerHTML='<option value="">전체</option>'; $("auctionKind").value="";$("auctionStatus").value="";document.querySelector('[data-category=""]').click();state.region="";state.kind="";state.status="";state.sort="deadline";state.page=1;syncSortControls();fetchPage();});
+    function applyFilters(){applyVisibleFilters();state.page=1;fetchPage();}
+    const syncSortControls=()=>{document.querySelectorAll(".auction-order-button").forEach(button=>{
+      const values=sortValues[button.dataset.sortKey],active=values.includes(state.sort);
+      const ascending=state.sort===values[0];
+      button.classList.toggle("is-active",active);
+      button.setAttribute("aria-pressed",String(active));
+      button.querySelector(".auction-order-arrow").textContent=active&&ascending?"↑":"↓";
+      button.setAttribute("aria-label",`${button.dataset.sortLabel||button.textContent.replace(/[↑↓]/g,"").trim()} ${active&&ascending?"오름차순":"내림차순"}${active?" 선택됨":""}`);
+    });};
+    [sgg,$("auctionKind"),$("auctionStatus")].forEach(select=>select.addEventListener("change",applyFilters));
+    document.querySelectorAll(".auction-order-button").forEach(button=>button.addEventListener("click",()=>{
+      const values=sortValues[button.dataset.sortKey];
+      state.sort=values.includes(state.sort)?(state.sort===values[0]?values[1]:values[0]):(button.dataset.sortKey==="new"?values[1]:values[0]);
+      applyVisibleFilters();state.page=1;syncSortControls();fetchPage();
+    }));
+    $("auctionPageSize").addEventListener("change",event=>{state.pageSize=Number(event.target.value);applyFilters();});
+    $("auctionReset").addEventListener("click",()=>{
+      sido.value="";sgg.innerHTML='<option value="">전체</option>';$("auctionKind").value="";$("auctionStatus").value="";
+      document.querySelectorAll("[data-category]").forEach(button=>button.classList.toggle("is-active",button.dataset.category===""));
+      state.sort="deadline";state.pageSize=10;$("auctionPageSize").value="10";syncSortControls();applyFilters();
+    });
+    syncSortControls();
     fetchPage();
   }
 

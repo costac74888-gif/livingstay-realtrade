@@ -1,4 +1,4 @@
-/* Public-only checks: no accounts, notifications, external API collection or DB writes. */
+/* Public-only real HTTP/DOM checks; no accounts, notifications or API collection. */
 const { chromium } = require("playwright");
 const { execFileSync } = require("node:child_process");
 const assert = require("node:assert/strict");
@@ -12,70 +12,73 @@ async function main() {
   try {
     for (const width of [390, 768, 1280]) {
       const page = await browser.newPage({
-        viewport: { width, height: 900 },
-        ignoreHTTPSErrors: true,
-        locale: "ko-KR",
+        viewport: { width, height: 900 }, ignoreHTTPSErrors: true, locale: "ko-KR",
         userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
       });
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(origin + "/auctions");
       await page.locator(".auction-card").first().waitFor();
-      assert.equal(await page.locator('input[type="range"]').count(), 0);
-      for (const [sort, field, descending] of [
-        ["ratio_asc", "min_bid_ratio", false],
-        ["ratio_desc", "min_bid_ratio", true],
-        ["failed_asc", "failed_count", false],
-        ["failed_desc", "failed_count", true],
-      ]) {
+      assert.equal(await page.locator(".auction-card").count(), 10);
+      assert.equal(await page.locator("#auctionSearch, #auctionFilterSummary, #auctionSort, .auction-ranges").count(), 0);
+      assert.equal(await page.locator(".auction-order-button").count(), 5);
+      const request = async (action, check) => {
         const pending = page.waitForResponse(response => {
           const url = new URL(response.url());
-          return url.pathname === "/api/auctions" && url.searchParams.get("sort") === sort;
+          return url.pathname === "/api/auctions" && check(url.searchParams);
         });
-        await page.locator(`[data-sort="${sort}"]`).click();
+        await action();
         const response = await pending;
         assert.equal(response.status(), 200);
-        const url = new URL(response.url());
-        for (const key of ["ratio_min", "ratio_max", "failed_min"]) {
-          assert.equal(url.searchParams.has(key), false, `hidden filter ${key}`);
-        }
-        assert.equal(url.searchParams.get("page"), "1");
         const data = await response.json();
-        assert.ok(data.ok && data.items.length);
-        const values = data.items.map(item => item[field]).filter(value => value != null);
-        assert.deepEqual(values, [...values].sort((a, b) => descending ? b - a : a - b));
-        assert.equal(await page.locator("#auctionSort").inputValue(), sort);
-        assert.equal(await page.locator(`[data-sort="${sort}"]`).getAttribute("aria-pressed"), "true");
         await page.waitForFunction(() => !document.querySelector(".auction-loading"));
+        return data;
+      };
+      if (width === 1280) {
+        for (const [key, field, values] of [
+          ["deadline", "bid_end_at", ["deadline_desc", "deadline"]],
+          ["appraisal", "appraisal_price", ["appraisal_asc", "appraisal_desc"]],
+          ["price", "min_bid_price", ["price_asc", "price_desc"]],
+          ["failed", "failed_count", ["failed_asc", "failed_desc"]],
+          ["new", "first_seen_at", ["new", "new_asc"]],
+        ]) {
+          for (const sort of values) {
+            const data = await request(() => page.locator(`[data-sort-key="${key}"]`).click(), params => params.get("sort") === sort && params.get("page") === "1");
+            const descending = sort.endsWith("_desc") || sort === "new";
+            const numbers = data.items.map(item => item[field]).filter(value => value != null);
+            const sorted = [...numbers].sort((a, b) => typeof a === "number" ? (descending ? b - a : a - b) : (descending ? b.localeCompare(a) : a.localeCompare(b)));
+            assert.deepEqual(numbers, sorted);
+            assert.equal(await page.locator(".auction-order-button[aria-pressed=true]").count(), 1);
+            assert.equal(await page.locator(`[data-sort-key="${key}"] .auction-order-arrow`).textContent(), descending ? "↓" : "↑");
+          }
+        }
+        for (const size of [20, 50, 100, 10]) {
+          const data = await request(() => page.selectOption("#auctionPageSize", String(size)), params => params.get("page_size") === String(size) && params.get("page") === "1");
+          assert.equal(data.page_size, size);
+          assert.equal(await page.locator(".auction-card").count(), Math.min(size, data.total));
+          assert.equal(data.pages, Math.ceil(data.total / size));
+        }
+        await request(() => page.locator('[data-page="2"]').click(), params => params.get("page") === "2");
+        await request(() => page.locator('[data-sort-key="price"]').click(), params => params.get("page") === "1" && params.get("sort") === "price_asc");
+        await page.waitForFunction(() => document.querySelector("#auctionSido").options.length > 1);
+        await request(() => page.selectOption("#auctionSido", "경기도"), params => params.get("region") === "경기도");
+        assert.ok(await page.locator("#auctionSgg option").count() > 1);
+        const district = await page.locator("#auctionSgg option").nth(1).getAttribute("value");
+        await request(() => page.selectOption("#auctionSgg", district), params => params.get("region") === district);
+        await request(() => page.selectOption("#auctionKind", "압류"), params => params.get("kind") === "압류");
+        await request(() => page.selectOption("#auctionStatus", "scheduled"), params => params.get("status") === "scheduled");
+        await request(() => page.locator('[data-category="호텔"]').click(), params => params.get("category") === "호텔");
       }
-      const changed = page.waitForResponse(r => new URL(r.url()).searchParams.get("sort") === "new");
-      await page.selectOption("#auctionSort", "new");
-      await changed;
-      assert.equal(await page.locator('[data-sort][aria-pressed="true"]').count(), 0);
-      const reset = page.waitForResponse(r => {
-        const url = new URL(r.url());
-        return url.pathname === "/api/auctions" && url.searchParams.get("sort") === "deadline";
-      });
-      await page.locator("#auctionReset").click();
-      await reset;
-      assert.equal(await page.locator("#auctionSort").inputValue(), "deadline");
-      await page.waitForFunction(() => !document.querySelector(".auction-loading"));
-      // The pre-existing shared desktop header overflows at tablet widths;
-      // verify this change's auction content there, without hiding that separate issue.
+      await request(() => page.locator("#auctionReset").click(), params => params.get("sort") === "deadline" && params.get("page_size") === "10" && !params.has("region") && !params.has("category"));
+      assert.equal(await page.locator("#auctionPageSize").inputValue(), "10");
+      // Shared header has a separately tracked tablet overflow; check auction content there.
       assert.ok(await page.evaluate(width => width === 768
         ? document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth + 1
         : document.documentElement.scrollWidth <= innerWidth + 1, width));
       assert.deepEqual(errors, []);
-      if (width === 390) {
-        await page.evaluate(() => document.fonts.ready);
-        await page.screenshot({ path: "attached_assets/auction-phase2/numeric-sort-mobile.png" });
-      }
-      console.log(`PASS ${width}px: four numeric sorts, no hidden ranges, dropdown sync, reset, auction content fits, no JS errors`);
+      console.log(`PASS ${width}px: compact toolbar, automatic filters/reset, content fits, no JS errors`);
       await page.close();
     }
-  } finally {
-    await browser.close();
-  }
+  } finally { await browser.close(); }
 }
-
 main().catch(error => { console.error(error); process.exitCode = 1; });

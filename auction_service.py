@@ -185,14 +185,23 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
             page = int(request.args.get("page") or 1)
             if not 1 <= page <= 10000:
                 raise ValueError("페이지를 확인해 주세요.")
+            page_size = int(request.args.get("page_size") or 20)
+            if page_size not in (10, 20, 50, 100):
+                raise ValueError("페이지당 건수를 확인해 주세요.")
             order = {
                 "deadline": "a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "deadline_desc": "a.bid_end_at DESC NULLS LAST,a.id DESC",
+                "appraisal_asc": "a.appraisal_price ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "appraisal_desc": "a.appraisal_price DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "price_asc": "a.min_bid_price ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
+                "price_desc": "a.min_bid_price DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "discount": "a.min_bid_ratio ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "ratio_asc": "a.min_bid_ratio ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "ratio_desc": "a.min_bid_ratio DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "failed_asc": "a.failed_count ASC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
                 "failed_desc": "a.failed_count DESC NULLS LAST,a.bid_end_at ASC NULLS LAST,a.id DESC",
-                "new": "a.first_seen_at DESC,a.id DESC",
+                "new": "a.first_seen_at DESC NULLS LAST,a.id DESC",
+                "new_asc": "a.first_seen_at ASC NULLS LAST,a.id DESC",
             }.get(request.args.get("sort", "deadline"))
             if not order:
                 raise ValueError("정렬을 확인해 주세요.")
@@ -203,9 +212,9 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 cur.execute(CURRENT_SQL + " SELECT COUNT(*) AS n FROM current_auctions a WHERE " + where, params)
                 total = int(cur.fetchone()["n"])
                 cur.execute(CURRENT_SQL + CARD_SELECT + " FROM current_auctions a WHERE " + where
-                            + " ORDER BY " + order + " LIMIT 20 OFFSET %s", params + [(page - 1) * 20])
+                            + " ORDER BY " + order + " LIMIT %s OFFSET %s", params + [page_size, (page - 1) * page_size])
                 items = enrich_cards(cur, [serial(r) for r in cur.fetchall()], photo_reader)
-        return {"ok": True, "items": items, "total": total, "page": page, "page_size": 20, "pages": (total + 19) // 20}
+        return {"ok": True, "items": items, "total": total, "page": page, "page_size": page_size, "pages": (total + page_size - 1) // page_size}
 
     @app.get("/api/auctions/map")
     @limiter.limit("60 per minute")

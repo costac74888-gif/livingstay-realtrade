@@ -37,6 +37,14 @@ class AuctionApiTest(unittest.TestCase):
 
     def test_numeric_sort_directions_and_missing_values_last(self):
         for sort, field, descending in (
+            ("deadline", "bid_end_at", False),
+            ("deadline_desc", "bid_end_at", True),
+            ("appraisal_asc", "appraisal_price", False),
+            ("appraisal_desc", "appraisal_price", True),
+            ("price_asc", "min_bid_price", False),
+            ("price_desc", "min_bid_price", True),
+            ("new_asc", "first_seen_at", False),
+            ("new", "first_seen_at", True),
             ("ratio_asc", "min_bid_ratio", False),
             ("ratio_desc", "min_bid_ratio", True),
             ("failed_asc", "failed_count", False),
@@ -56,6 +64,19 @@ class AuctionApiTest(unittest.TestCase):
                     else:
                         self.assertFalse(missing_seen)
                 self.assertEqual(len({item["source_item_id"] for item in items}), len(items))
+
+    def test_allowed_page_sizes_and_pagination(self):
+        for size in (10, 20, 50, 100):
+            with self.subTest(size=size):
+                first = self.client.get(f"/api/auctions?page_size={size}&sort=price_asc").get_json()
+                second = self.client.get(f"/api/auctions?page_size={size}&sort=price_asc&page=2").get_json()
+                self.assertEqual(first["page_size"], size)
+                self.assertEqual(len(first["items"]), min(size, first["total"]))
+                self.assertEqual(first["pages"], (first["total"] + size - 1) // size)
+                self.assertEqual(second["page"], 2)
+                self.assertFalse({item["id"] for item in first["items"]} & {item["id"] for item in second["items"]})
+        for size in ("0", "-1", "11", "101", "100000", "nan"):
+            self.assertEqual(self.client.get("/api/auctions?page_size=" + size).status_code, 400)
 
     def test_detail_photos_rounds_building_and_unknown_id(self):
         with get_conn() as conn:
