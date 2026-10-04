@@ -26,13 +26,55 @@
     const body=$("auctionResults"); if(!body)return;
     body.addEventListener("click",event=>{
       const row=event.target.closest("[data-auction-href]");
+      if(row)rememberPosition();
       if(row&&!event.target.closest("a,button"))location.href=row.dataset.auctionHref;
     });
     const state={region:"",category:"",status:"",sort:"deadline",page:1,pageSize:10};
     const pairs={deadline:["deadline","deadline_desc"],appraisal:["appraisal_asc","appraisal_desc"],price:["price_asc","price_desc"],failed:["failed_asc","failed_desc"],status:["status_asc","status_desc"],category:["category_asc","category_desc"],address:["address_asc","address_desc"],area:["area_asc","area_desc"]};
+    const initial=new URLSearchParams(location.search);
+    state.region=(initial.get("region")||"").slice(0,100);
+    state.sido=initial.get("sido")||"";
+    state.sgg=initial.get("sgg")||"";
+    state.page=Math.min(10000,Math.max(1,parseInt(initial.get("page"),10)||1));
+    const size=Number(initial.get("page_size"));
+    if([10,20,50,100].includes(size))state.pageSize=size;
+    if(Object.values(pairs).flat().includes(initial.get("sort")))state.sort=initial.get("sort");
+    for(const [key,id] of [["category","auctionCategory"],["status","auctionStatus"]]){
+      const value=initial.get(key)||"";
+      if(Array.from($(id).options).some(option=>option.value===value))state[key]=value;
+      $(id).value=state[key];
+    }
+    $("auctionPageSize").value=String(state.pageSize);
+    document.querySelectorAll(".auction-order-button").forEach(button=>{
+      const choices=pairs[button.dataset.sortKey],active=choices.includes(state.sort);
+      button.classList.toggle("is-active",active);button.setAttribute("aria-pressed",String(active));
+      button.querySelector(".auction-order-arrow").textContent=active?(state.sort===choices[0]?"↑":"↓"):"";
+    });
+    function listUrl(){
+      const params=new URLSearchParams({page:String(state.page),page_size:String(state.pageSize),sort:state.sort});
+      for(const key of ["region","category","status","sido","sgg"])if(state[key])params.set(key,state[key]);
+      return "/auctions?"+params;
+    }
+    function rememberPosition(){
+      const url=listUrl(),scroll=Math.max(0,window.scrollY);
+      history.replaceState({...history.state,auctionListScroll:scroll},"",url);
+      try{sessionStorage.setItem("auction:list-position",JSON.stringify({url,scroll}));}catch(_){}
+    }
+    function restorePosition(){
+      try{
+        const saved=JSON.parse(sessionStorage.getItem("auction:list-position")||"null");
+        if(saved?.url===listUrl()&&Number.isFinite(saved.scroll)){
+          requestAnimationFrame(()=>window.scrollTo({top:saved.scroll,behavior:"instant"}));
+        }
+      }catch(_){}
+    }
+    let restorePending=true;
+    window.addEventListener("pagehide",rememberPosition);
+    window.addEventListener("pageshow",event=>{if(event.persisted)restorePosition();});
     let regionTree={},sequence=0;
     const fetchPage=async()=>{
       const seq=++sequence,submitted={...state};
+      history.replaceState({...history.state},"",listUrl());
       body.innerHTML='<div class="auction-loading" role="status">목록을 불러오는 중</div>';
       $("auctionPagination").replaceChildren();
       const params=new URLSearchParams({page:String(submitted.page),page_size:String(submitted.pageSize),sort:submitted.sort});
@@ -46,6 +88,7 @@
         $("auctionLastUpdated").textContent=data.last_success_at?formatUpdate(data.last_success_at):"마지막 성공 갱신 시각 확인 불가";
         body.innerHTML=Array.isArray(data.items)&&data.items.length?data.items.map(rowHtml).join(""):'<div class="auction-empty"><strong>조건에 맞는 공매가 없습니다.</strong><span>필터를 조정해 다시 찾아보세요.</span></div>';
         renderPages(Number(data.page||submitted.page),Number(data.pages||1));
+        if(restorePending){restorePending=false;restorePosition();}
       }catch(error){
         if(seq!==sequence)return;
         body.innerHTML=`<div class="auction-error" role="alert"><strong>${esc(error.message||"네트워크 오류가 발생했습니다.")}</strong><button type="button" id="auctionRetry">다시 불러오기</button></div>`;
@@ -55,6 +98,7 @@
     function rowHtml(item){
       const building=item.master_building_id||item.building_id||item.building?.id;
       const query=new URLSearchParams(building?{building:String(building),tab:"auction",auction:String(item.id)}:{auction:String(item.id)});
+      query.set("auction_list",listUrl());
       const href=`/?${query.toString()}`;
       const category=item.lodging_category||item.usage_name||"용도 미공개";
       const address=item.address_road||item.address_jibun||"주소 미공개";
@@ -99,9 +143,13 @@
       const tree=data?.regions&&typeof data.regions==="object"&&!Array.isArray(data.regions)?data.regions:data;
       regionTree=tree&&typeof tree==="object"&&!Array.isArray(tree)?tree:{};
       sido.innerHTML='<option value="">전체 시·도</option>'+Object.keys(regionTree).sort().map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join("");
+      sido.value=state.sido||Object.keys(regionTree).find(name=>state.region===name||state.region.startsWith(name+" "))||"";
+      fillDistricts();
+      sgg.value=state.sgg||(state.region!==sido.value?state.region:"");
     }).catch(()=>{regionTree={};});
-    const apply=()=>{state.region=sgg.value||sido.value;state.category=category.value;state.status=status.value;state.page=1;fetchPage();};
-    sido.addEventListener("change",()=>{const children=regionTree[sido.value]?.sgg||{};sgg.innerHTML='<option value="">전체 시·군·구</option>'+Object.keys(children).sort().map(name=>{const label=name.startsWith(`${sido.value} `)?name.slice(sido.value.length).trim():name;return `<option value="${esc(name)}">${esc(label)}</option>`;}).join("");apply();});
+    function fillDistricts(){const children=regionTree[sido.value]?.sgg||{};sgg.innerHTML='<option value="">전체 시·군·구</option>'+Object.keys(children).sort().map(name=>{const label=name.startsWith(`${sido.value} `)?name.slice(sido.value.length).trim():name;return `<option value="${esc(name)}">${esc(label)}</option>`;}).join("");}
+    const apply=()=>{state.sido=sido.value;state.sgg=sgg.value;state.region=sgg.value||sido.value;state.category=category.value;state.status=status.value;state.page=1;fetchPage();};
+    sido.addEventListener("change",()=>{fillDistricts();apply();});
     [sgg,category,status].forEach(select=>select.addEventListener("change",apply));
     document.querySelectorAll(".auction-order-button").forEach(button=>button.addEventListener("click",()=>{
       const choices=pairs[button.dataset.sortKey];if(!choices)return;

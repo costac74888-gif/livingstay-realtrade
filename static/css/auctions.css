@@ -29,7 +29,6 @@
 .auction-map-marker-status.status-bidding{background:#bd7046;color:#fff}.auction-map-marker-status.status-scheduled{background:#527462;color:#fff}
 .auction-map-cluster-trigger{padding:7px 10px;border:1px solid #34483d;border-radius:4px;background:#26342f;color:#fff;font:700 11px "Noto Sans KR",sans-serif;cursor:pointer}
 .auction-building-point{width:14px;height:14px;border:2px solid #fbfcf8;border-radius:50%;background:#3e7354;box-shadow:0 1px 4px #17251c75;cursor:pointer;pointer-events:auto}
-#bHeaderCard.is-auction-view .bld-photo-shell{display:none}
 .auction-panel-heading{flex-wrap:wrap}.auction-panel-heading>div{flex:1;min-width:100px}.auction-panel-heading .auction-panel-picker{width:100%;max-width:none}.auction-panel-back{width:100%;padding:2px 0 7px;border:0;background:none;color:#55685d;font:inherit;font-size:10px;text-align:left;cursor:pointer}
 .bld-photo-slide{position:relative}.building-photo-source-label{position:absolute;left:8px;bottom:8px;padding:3px 6px;border-radius:2px;background:#171b19c7;color:#fff;font-size:10px;line-height:1.3;pointer-events:none}
 .b-auction-active-badge{display:inline-flex;align-items:center;border:1px solid #536b59;border-radius:12px;padding:3px 8px;background:#f7faf6;color:#34483b;text-decoration:none;font-size:10px;font-weight:800}
@@ -77,6 +76,9 @@
 .auction-tag{display:inline-flex;align-items:center;gap:3px;padding:2px 5px;border:1px solid #d7e2d8;background:#f8faf7;color:#5d6f61;font-size:9px;line-height:1.25}
 .auction-tag b{color:#598065;font-size:8px;font-weight:700}
 .auction-status{margin-left:2px}
+#auctionDetailPhotoHeader{position:relative;min-width:0}
+#auctionDetailPhotoHeader .auction-panel-gallery{margin-bottom:12px}
+dialog.auction-panel-lightbox{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0}
 .auction-management{color:#34443a;font:700 12px var(--auction-mono);letter-spacing:.01em}
 .auction-title{max-width:100%;color:#25352c;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
 .auction-address{max-width:100%;color:#68756c;font-size:10px;line-height:1.45;white-space:normal;overflow-wrap:anywhere}

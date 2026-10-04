@@ -8,6 +8,30 @@
   const statusText=value=>({bidding:"입찰중",scheduled:"입찰예정",failed:"유찰",sold:"낙찰",canceled:"취소",closed:"종료"})[value]||"상태 확인";
   const sourceText=value=>({listing:"매물사진",auction:"공매·온비드",tourapi:"호텔·TourAPI",gocamping:"캠핑·고캠핑",google_streetview:"거리뷰·구글",streetview:"거리뷰·구글",operator:"운영자 등록"})[value]||"건물 사진";
   const valid= (host,seq,isCurrent)=>generations.get(host)===seq&&(!isCurrent||isCurrent());
+  window.auctionListReturnUrl=function(){
+    const candidate=new URLSearchParams(location.search).get("auction_list")||document.referrer;
+    try{
+      const url=new URL(candidate,location.origin);
+      return url.origin===location.origin&&url.pathname==="/auctions"&&!url.username&&!url.password
+        ?url.pathname+url.search:null;
+    }catch(_){return null;}
+  };
+  window.returnFromAuctionDetail=function(){
+    const list=window.auctionListReturnUrl();
+    if(list){location.assign(list);return;}
+    if(history.length>1){history.back();return;}
+    location.assign("/auctions");
+  };
+  function ensureBackButton(){
+    const header=document.getElementById("bHeaderCard")||document.querySelector(".auction-panel-unmatched-heading");
+    if(!header)return;
+    let button=header.querySelector("[data-auction-panel-back],#auctionBackToMap");
+    if(!button){button=document.createElement("button");button.type="button";header.prepend(button);}
+    button.className="auction-panel-back";
+    button.dataset.auctionPanelBack="";
+    button.textContent=window.auctionListReturnUrl()?"← 공매목록으로":"← 이전 화면";
+    button.onclick=window.returnFromAuctionDetail;
+  }
   window.renderUnmatchedAuctionDetail=function(host,item){
     if(!host||!item)return;
     const facts=[
@@ -18,6 +42,7 @@
       ["건물면적",formatArea(item.building_area_m2)]
     ];
     host.innerHTML=`<section class="side-card auction-panel-unmatched-heading"><button type="button" id="auctionBackToMap" class="side-more">← 지도로</button><h2>${esc(item.title||item.usage_name||"공매 물건 상세")}</h2><p>${esc(item.address_road||item.address_jibun||"소재지 확인 필요")}</p><p class="auction-panel-unmatched">공매 정보에 매칭된 건물 정보가 없습니다. 실제 건물의 존재 여부는 확인되지 않았습니다.</p></section><div class="b-inline-tabs auction-panel-unmatched-tabs" role="tablist" aria-label="공매 물건 상세 정보"><button type="button" class="b-detail-tab" id="bTabProperty" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button><button type="button" class="b-detail-tab" id="bTabOperations" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button><button type="button" class="b-detail-tab active" id="bTabAuctions" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="true" tabindex="0">공매정보</button></div><section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>01</span><h3>공매 자료에 확인된 부동산 정보</h3></div><dl class="auction-panel-facts">${facts.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value||"자료에 없음")}</dd></div>`).join("")}</dl></section><p class="auction-panel-unmatched">건축물대장과 실거래 자료는 연결되어 있지 않습니다. 공매 자료에 없는 정보는 확인된 사실로 표시하지 않습니다.</p></section><section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>02</span><h3>운영정보</h3></div><div class="auction-panel-content"><p class="auction-panel-unmatched">운영정보를 확인할 수 없습니다. 이 화면에 연결된 영업신고 자료가 없으며, 이는 미신고 또는 폐업을 의미하지 않습니다.</p></div></section></section><section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions"></section>`;
+    ensureBackButton();
     const tabs=Array.from(host.querySelectorAll('[role="tab"]'));
     const panels={property:host.querySelector("#bPropertyPanel"),operations:host.querySelector("#bOperationsPanel"),auctions:host.querySelector("#bAuctionPanel")};
     const activate=tab=>{
@@ -75,13 +100,7 @@
         }
         if(!valid(host,seq,opts.isCurrent)||String(selected.id)!==currentId)return;
         const item=data.item;building=building||data.building||null;
-        if(building){
-          const heading=host.querySelector(".auction-panel-heading");
-          heading.insertAdjacentHTML("afterbegin",'<button type="button" class="auction-panel-back" data-auction-panel-back>← 이전 화면</button>');
-          heading.querySelector("[data-auction-panel-back]").addEventListener("click",()=>{
-            host.closest(".side-panel")?.querySelector("#btnBackToList")?.click();
-          });
-        }
+        if(building)ensureBackButton();
         const priority={listing:0,auction:1,tourapi:2,gocamping:3,google_streetview:4,streetview:4,operator:5};
         const allPhotos=[...(buildingPhotos||[]),...(data.photos||[])].filter(photo=>photo&&safeUrl(photo.url)).sort((a,b)=>(priority[a.source]??6)-(priority[b.source]??6)||Number(a.sort_order||0)-Number(b.sort_order||0));
         const seen=new Set(),photos=allPhotos.filter(photo=>{const src=safeUrl(photo.url);if(seen.has(src))return false;seen.add(src);return true;});
@@ -95,7 +114,27 @@
         const placeFacts=[[ "용도",category ],["상태",statusText(item.status)],["소재지",address],["면적",item.area_m2?`${Number(item.area_m2).toLocaleString("ko-KR",{maximumFractionDigits:1})}㎡ · ${Math.round(Number(item.area_m2)/3.3058)}평`:"확인 필요"],["감정가",money(item.appraisal_price)],["최저입찰가",`${money(item.min_bid_price)}${item.min_bid_ratio==null?"":` · ${Number(item.min_bid_ratio).toLocaleString("ko-KR",{maximumFractionDigits:1})}%`}`],["입찰기간",`${date(item.bid_start_at)} – ${date(item.bid_end_at)}`],["회차 · 유찰",`${item.round_no||"—"}회차 · ${Number(item.failed_count||0)}회`],["처분방식",item.disposal_method||"정보 없음"],["공고기관",item.notice_org||"정보 없음"]];
         const content=host.querySelector(".auction-panel-content");
         content.innerHTML=`${gallery}<section class="auction-panel-section auction-panel-general"><div class="auction-panel-section-title"><span>01</span><h3>공매 일반정보</h3></div><div class="auction-panel-title"><div><span class="auction-status status-${esc(item.status||"unknown")}">${esc(statusText(item.status))}</span><h4>${esc(title)}</h4><p>${esc(address)} · ${esc(category)}</p></div></div><dl class="auction-panel-facts">${placeFacts.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join("")}</dl>${roundsHtml}${link?`<a class="auction-panel-onbid" href="${esc(link)}" target="_blank" rel="noopener noreferrer">온비드 원문 공고 보기 <span aria-hidden="true">↗</span></a>`:'<div class="auction-panel-onbid is-disabled" aria-disabled="true">온비드 원문 링크가 제공되지 않았습니다</div>'}</section><section class="auction-panel-survey-section" aria-label="투자분석 및 현황조사"><div data-auction-survey-slot></div></section><button type="button" class="auction-panel-favorite" data-auction-favorite>관심 등록 · 알림</button>${!building?'<p class="auction-panel-unmatched">연결된 건물 정보가 없습니다. 공매 정보와 제공기관 원문을 기준으로 확인해 주세요.</p>':""}<p class="auction-panel-disclaimer">공매 정보 출처: 한국자산관리공사 온비드. 입찰 전 원문 공고와 권리관계를 반드시 확인하세요. 홈앤스테이는 입찰을 대행하거나 결과를 보장하지 않습니다.</p><div class="auction-panel-lightbox" hidden role="dialog" aria-modal="true" aria-label="공매 사진 크게 보기"><button type="button" data-lightbox-close aria-label="닫기">×</button><button type="button" data-lightbox-prev aria-label="이전 사진">‹</button><img alt=""><button type="button" data-lightbox-next aria-label="다음 사진">›</button><span data-lightbox-count></span></div>`;
-        bindGallery(content,photos);
+        // 탭을 바꿔도 사진은 상세 상단에 유지한다.
+        const header=document.getElementById("bHeaderCard")||document.querySelector(".auction-panel-unmatched-heading");
+        if(header){
+          let photoHeader=header.querySelector("#auctionDetailPhotoHeader");
+          if(!photoHeader){
+            photoHeader=document.createElement("div");photoHeader.id="auctionDetailPhotoHeader";
+            const back=header.querySelector("[data-auction-panel-back]");
+            if(back)back.after(photoHeader);else header.prepend(photoHeader);
+          }
+          // 기존 관심저장·공유·뒤로가기의 실제 버튼과 이벤트를 보존한다.
+          const actions=Array.from(header.querySelectorAll(".bld-photo-actions"));
+          photoHeader.replaceChildren();
+          const picture=content.querySelector(".auction-panel-gallery,.auction-panel-no-photo");
+          const lightbox=content.querySelector(".auction-panel-lightbox");
+          if(picture)photoHeader.appendChild(picture);
+          if(lightbox)photoHeader.appendChild(lightbox);
+          actions.forEach(action=>photoHeader.appendChild(action));
+          const originalPhotos=header.querySelector(".bld-photo-shell");
+          if(originalPhotos)originalPhotos.hidden=true;
+          bindGallery(photoHeader,photos);
+        }else bindGallery(content,photos);
         bindFavorite(content,item,building);
         if(typeof window.mountAuctionSurveyDetail==="function")window.mountAuctionSurveyDetail(content.querySelector("[data-auction-survey-slot]"),item.id);
       }catch(error){
@@ -109,11 +148,18 @@
   };
   function activeRank(item){return ["bidding","scheduled","failed"].includes(String(item.status||"").toLowerCase())?0:1;}
   function bindGallery(host,photos){
-    const box=host.querySelector(".auction-panel-lightbox");if(!box||!photos.length)return;
+    let box=host.querySelector(".auction-panel-lightbox");if(!box||!photos.length)return;
+    // Native dialog enters the browser top layer, above the map/header stacking contexts.
+    if(box.localName!=="dialog"){
+      const dialog=document.createElement("dialog");
+      Array.from(box.attributes).forEach(attribute=>dialog.setAttribute(attribute.name,attribute.value));
+      dialog.append(...box.childNodes);box.replaceWith(dialog);box=dialog;
+    }
     let index=0,previousFocus=null;
     const show=next=>{index=(next+photos.length)%photos.length;const image=box.querySelector("img");image.src=safeUrl(photos[index].url);image.alt=`공매 사진 ${index+1}`;box.querySelector("[data-lightbox-count]").textContent=`${index+1} / ${photos.length}`;};
-    const close=()=>{box.hidden=true;if(previousFocus?.isConnected)previousFocus.focus();};
-    host.querySelectorAll("[data-photo-index]").forEach(image=>image.addEventListener("click",()=>{previousFocus=image;show(Number(image.dataset.photoIndex));box.hidden=false;box.querySelector("[data-lightbox-close]").focus();}));
+    const close=()=>{if(box.open)box.close();box.hidden=true;if(previousFocus?.isConnected)previousFocus.focus();};
+    host.querySelectorAll("[data-photo-index]").forEach(image=>image.addEventListener("click",()=>{previousFocus=image;show(Number(image.dataset.photoIndex));box.hidden=false;box.showModal();box.querySelector("[data-lightbox-close]").focus();}));
+    box.addEventListener("cancel",event=>{event.preventDefault();close();});
     box.querySelector("[data-lightbox-close]").addEventListener("click",close);
     box.querySelector("[data-lightbox-prev]").addEventListener("click",()=>show(index-1));
     box.querySelector("[data-lightbox-next]").addEventListener("click",()=>show(index+1));

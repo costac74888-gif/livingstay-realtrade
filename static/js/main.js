@@ -8583,6 +8583,9 @@ function renderBuildingPanel(id, options={}){
   // 사진 위 뒤로가기는 브라우저 뒤로가기와 같은 기록을 사용한다.
   // 검색TOP100에서 열었으면 해당 목록 상태가 들어 있는 이전 history entry로 복귀한다.
   const closeDetail = () => {
+    if(window.__auctionPanelContext&&window.auctionListReturnUrl?.()){
+      window.returnFromAuctionDetail();return;
+    }
     if (history.state?.buildingId === Number(id) && history.length > 1) {
       history.back();
       return;
@@ -8730,6 +8733,8 @@ function auctionMapLink(item){
   const params=new URLSearchParams();
   if(item.master_building_id){params.set("building",String(item.master_building_id));params.set("tab","auction");}
   params.set("auction",String(item.id));
+  const list=window.auctionListReturnUrl?.();
+  if(list)params.set("auction_list",list);
   return "/?"+params;
 }
 function focusAuctionMap(item){
@@ -8771,7 +8776,7 @@ window.openAuctionDetail=async function(id,options={}){
     window.renderUnmatchedAuctionDetail(panel,item);
     panel.classList.remove("panel-collapsed");panel.classList.add("open");panel.scrollTop=0;
     window.livingstaySetPanelToggle?.(true);
-    document.getElementById("auctionBackToMap").onclick=()=>{history.pushState({},"","/");restoreDefaultPanel();};
+    document.getElementById("auctionBackToMap").onclick=window.returnFromAuctionDetail;
     await window.renderAuctionPanel(panel.querySelector("#bAuctionPanel"),options.items||[item],{
       selectedId:item.id,isCurrent:()=>requestToken===_buildingDetailRequestToken,
       onSelect:async selected=>{
