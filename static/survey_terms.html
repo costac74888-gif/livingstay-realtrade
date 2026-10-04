@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공매 현황조사 약관 · 홈앤스테이</title>
+<link rel="icon" href="/static/img/favicon.ico">
+<link rel="stylesheet" href="/static/css/survey.css">
+<style>body{margin:0;font-family:"Noto Sans KR","Apple SD Gothic Neo",sans-serif}.survey-terms-page{min-height:100dvh;background:#f4f5f1;padding:24px 16px 64px}.survey-terms-inner{max-width:760px;margin:auto}.survey-terms-brand{font-size:11px;font-weight:800;letter-spacing:.12em;color:#476454}.survey-terms-inner h1{font-size:28px;letter-spacing:-.05em;margin:24px 0 4px}.survey-terms-updated{font-size:11px;color:#758078;margin:0 0 18px}.survey-terms-body{background:#fffefa;border:1px solid #e4e7e2;padding:22px;line-height:1.8;font-size:13px}.survey-terms-body h2{font-size:16px;border-top:1px solid #e4e7e2;padding-top:18px;margin-top:26px}.survey-terms-error{background:#fff8ec;border:1px dashed #d5b982;padding:16px;color:#775a29;font-size:12px}</style>
+</head>
+<body class="survey-terms-page">
+<main class="survey-terms-inner">
+<div class="survey-terms-brand">HOME &amp; STAY · 공매 현황조사</div>
+<h1>공매 현황조사 약관</h1><p class="survey-terms-updated" id="surveyTermsUpdated">관리자 등록 문서를 불러옵니다.</p>
+<article id="surveyTermsBody" class="survey-terms-body" aria-live="polite">불러오는 중</article>
+</main>
+<script>
+(async function(){const body=document.getElementById("surveyTermsBody");try{const res=await fetch("/api/legal/survey_terms",{credentials:"same-origin"});const data=await res.json().catch(()=>({}));if(!res.ok||data.ok!==true||!data.content)throw new Error(data.message||"공매 조사 약관을 불러오지 못했습니다.");body.innerHTML=data.content;if(data.updated_at)document.getElementById("surveyTermsUpdated").textContent="최종 개정일 "+data.updated_at;}catch(error){body.innerHTML='<div class="survey-terms-error">약관을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요. <button type="button" id="surveyTermsRetry">다시 불러오기</button></div>';document.getElementById("surveyTermsRetry").addEventListener("click",function(){location.reload();});}})();
+</script>
+</body></html>

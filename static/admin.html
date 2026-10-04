@@ -190,6 +190,7 @@
         <button class="admin-menu-item" data-menu="warehouse">데이터 원본 창고</button>
          <button class="admin-menu-item" data-menu="tourism-datalab">관광 데이터랩 원본</button>
         <button class="admin-menu-item" data-menu="datasync">데이터 동기화</button>
+        <button class="admin-menu-item" data-menu="admin-survey">공매 현황조사</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
@@ -1305,9 +1306,13 @@
         actionCenter = actionRes && actionRes.ok ? await actionRes.json() : { ok: false };
         overview = overviewRes && overviewRes.ok ? await overviewRes.json() : null;
       } catch (e) {
+        if (location.hash === "#admin-survey") return;
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
+      // A dashboard response started before menu navigation must not replace
+      // the new survey form (including any inputs the administrator is editing).
+      if (location.hash === "#admin-survey") return;
       renderStats(data, mapBld, actionCenter, overview);
       loadPartnerBuildingCounts();
     }
@@ -3055,6 +3060,7 @@
     const LEGAL_DOCS = [
       { type: "terms", label: "이용약관" },
       { type: "privacy", label: "개인정보처리방침" },
+      { type: "survey_terms", label: "공매 조사 약관" },
     ];
     let legalCurrentType = "terms";
 
@@ -3131,7 +3137,7 @@
       });
       const doc = LEGAL_DOCS.find((x) => x.type === type) || LEGAL_DOCS[0];
       const preview = document.getElementById("legalPreviewLink");
-      preview.href = type === "privacy" ? "/privacy" : "/terms";
+      preview.href = type === "privacy" ? "/privacy" : type === "survey_terms" ? "/terms/survey" : "/terms";
       preview.textContent = `${doc.label} 공개 페이지 열기 ↗`;
       loadLegalDoc(type);
     }
@@ -5460,6 +5466,11 @@
           <p class="legal-admin-hint">한국자산관리공사 온비드의 숙박시설 공매 데이터를 확인하고, 신규·변경 물건을 수집합니다.</p>
           <div id="onbidSyncStatus" class="geo-status" role="status">현황 불러오는 중…</div>
           <div class="legal-admin-actions"><span id="onbidSyncMessage" class="legal-msg" role="alert"></span><button id="onbidSyncRun" class="admin-btn admin-btn-primary" type="button">온비드 공매 수집 실행</button></div>
+        </div>
+        <div class="legal-admin" style="margin-top:12px">
+          <div class="legal-admin-head"><h2 class="legal-admin-title">공매 현황조사 운영</h2></div>
+          <p class="legal-admin-hint">조사 금액·신청 조건을 관리하고 접수된 신청의 입금 및 조사 진행 상태를 기록합니다.</p>
+          <a href="#admin-survey" class="admin-btn" style="display:inline-flex;text-decoration:none">현황조사 설정 및 신청 관리</a>
         </div>
         <div class="legal-admin" style="margin-top:16px" id="dsSecWeeklyDigest">
           <div class="legal-admin-head">
@@ -9073,6 +9084,7 @@
       if (menuKey === "legal") { showLegal(); return; }
       if (menuKey === "policies") { showPolicies(); return; }
       if (menuKey === "datasync") { showDataSync(); return; }
+      if (menuKey === "admin-survey") { if (typeof window.showAdminSurvey === "function") window.showAdminSurvey(); return; }
       if (menuKey === "brokers") { showBrokers(); return; }
       if (menuKey === "lodgings") { showLodgings(); return; }
       if (menuKey === "new-buildings") { showNewBuildingCandidates(); return; }
@@ -9105,7 +9117,7 @@
         <h3 style="margin-top:24px">수신함</h3><div id="adminNotificationInbox">불러오는 중…</div>
         <h3 style="margin-top:24px">이메일 발송 이력</h3><div id="adminNotificationEmailHistory">불러오는 중…</div>`;
       const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-      const labels = {new_signup:"신규 회원가입",direct_listing:"직거래 매물",broker_listing_request:"중개 매물 의뢰",buy_request:"매수 의뢰",partner_agent:"중개사 신청",partner_operator:"운영업체 신청",partner_loan_consultant:"대출상담사 신청",partner_lodging_operator:"숙박 운영자 신청",ota_booking_link_request:"OTA 링크 신청"};
+      const labels = {new_signup:"신규 회원가입",direct_listing:"직거래 매물",broker_listing_request:"중개 매물 의뢰",buy_request:"매수 의뢰",survey_request:"공매 조사 신청",partner_agent:"중개사 신청",partner_operator:"운영업체 신청",partner_loan_consultant:"대출상담사 신청",partner_lodging_operator:"숙박 운영자 신청",ota_booking_link_request:"OTA 링크 신청"};
       try {
         const [subs, inbox, history] = await Promise.all([
           fetch("/api/admin/notification-subscriptions").then(r=>r.json()),
@@ -9892,6 +9904,7 @@
 
   </script>
   <script src="/static/js/pw_toggle.js"></script>
+<script src="/static/js/admin-survey.js"></script>
 <script>
 (function(){
   const badge = document.getElementById("envBadge");

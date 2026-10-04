@@ -1,0 +1,79 @@
+.survey-block{--sv-ink:#202522;--sv-muted:#758078;--sv-line:#e4e7e2;--sv-paper:#fffefa;--sv-orange:#c27a3a;color:var(--sv-ink);margin:18px 0 0;background:var(--sv-paper);border:1px solid var(--sv-line);border-radius:5px;overflow:hidden}
+.survey-head{padding:18px 19px 14px;border-bottom:1px solid var(--sv-line)}
+.survey-kicker{font:700 10px "JetBrains Mono",monospace;letter-spacing:.13em;color:#476454}
+.survey-head h2{font-size:18px;line-height:1.35;letter-spacing:-.045em;margin:6px 0 4px}
+.survey-head p,.survey-copy{margin:0;color:var(--sv-muted);font-size:11.5px;line-height:1.75}
+.survey-body{padding:15px 18px 18px}
+.survey-source-facts{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--sv-line);margin:0 0 14px}
+.survey-fact{padding:10px 11px;border-bottom:1px solid var(--sv-line);min-width:0}
+.survey-fact:nth-child(odd){border-right:1px solid var(--sv-line)}
+.survey-fact:nth-last-child(-n+2){border-bottom:0}
+.survey-fact span{display:block;color:var(--sv-muted);font-size:10px;margin-bottom:3px}
+.survey-fact strong{font-size:12px;overflow-wrap:anywhere}
+.survey-analysis-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:13px}
+.survey-analysis-link{min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid #d9dfd7;color:#29342e;text-decoration:none;font-size:11.5px;font-weight:750;transition:background .16s,border-color .16s}
+.survey-analysis-link:hover{background:#f2f5f0;border-color:#829283}
+.survey-analysis-link span:last-child{font-size:16px;color:#476454}
+.survey-comparison{padding:11px 12px;background:#f2f4ef;border-left:2px solid #476454;margin-top:12px;font-size:11px;line-height:1.65}
+.survey-checklist{display:grid;gap:8px;margin-top:12px}
+.survey-check-item{padding:11px 12px;border:1px solid #ead5c2;background:#fffaf4}
+.survey-check-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.survey-check-top strong{font-size:12px}
+.survey-check-state{flex:none;background:#f7e7d7;color:#9b5b22;padding:3px 7px;font-size:9px;font-weight:800}
+.survey-check-item p{margin:6px 0 0;color:#6e716a;font-size:10.5px;line-height:1.65;white-space:pre-line}
+.survey-apply{display:flex;align-items:center;justify-content:center;min-height:45px;margin-top:14px;background:#29342e;color:white;text-decoration:none;font-size:12px;font-weight:800}
+.survey-apply:hover{background:#43584a}
+.survey-apply:disabled{border:0;opacity:.58;cursor:not-allowed}
+.survey-checklist-heading{margin:20px 0 0;font-size:13px;letter-spacing:-.02em}
+.survey-analysis-notice{margin:10px 0 0;padding:9px 10px;border-left:2px solid #c27a3a;background:#fbf4eb;color:#6d573f;font-size:10.5px;line-height:1.6;white-space:pre-line}
+.survey-market-reference{margin:10px 0 0;padding:9px 10px;background:#f2f4ef;color:#445548;font-size:10px;line-height:1.6}
+.survey-unavailable{margin-top:14px;padding:11px 12px;background:#f3f4f1;color:#626c63;font-size:11px;line-height:1.6}
+.survey-loading{padding:24px;text-align:center;color:var(--sv-muted);font-size:12px}
+.survey-error{padding:13px;background:#fff7f4;color:#934a3e;font-size:12px;line-height:1.6}
+.survey-error button{margin-left:8px;border:0;background:none;color:#29342e;text-decoration:underline;cursor:pointer;font:inherit}
+.survey-page{--sv-ink:#202522;--sv-muted:#758078;--sv-line:#e4e7e2;--sv-paper:#f4f5f1;--sv-accent:#c27a3a;min-height:100dvh;background:var(--sv-paper);color:var(--sv-ink);font-family:"Noto Sans KR",sans-serif;padding:26px 16px 64px}
+.survey-wrap{max-width:760px;margin:0 auto}
+.survey-back{display:inline-flex;color:#667169;text-decoration:none;font-size:12px;margin-bottom:14px}
+.survey-page-title{margin:0 0 5px;font-size:clamp(24px,5vw,34px);letter-spacing:-.06em}
+.survey-page-intro{margin:0 0 20px;color:var(--sv-muted);font-size:12px;line-height:1.7}
+.survey-card{background:#fffefa;border:1px solid var(--sv-line);border-radius:5px;margin:12px 0;overflow:hidden}
+.survey-card h2{font-size:14px;margin:0;padding:14px 16px;border-bottom:1px solid var(--sv-line)}
+.survey-card-content{padding:14px 16px}
+.survey-report-items{counter-reset:surveyitem;display:grid;gap:8px}
+.survey-report-item{position:relative;padding:11px 12px 11px 43px;border:1px solid var(--sv-line);font-size:11px;line-height:1.6}
+.survey-report-item:before{counter-increment:surveyitem;content:"0" counter(surveyitem);position:absolute;left:12px;top:11px;color:var(--sv-accent);font:700 11px "JetBrains Mono",monospace}
+.survey-provider-note{margin-top:13px;padding:12px;background:#f1f3ee;border-left:2px solid #476454;font-size:10.5px;line-height:1.75;white-space:pre-line}
+.survey-type-options{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.survey-type-option{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--sv-line);padding:12px;cursor:pointer}
+.survey-type-option:has(input:checked){border-color:#536b59;background:#f2f5f0}
+.survey-type-option input{margin-top:3px;accent-color:#476454}
+.survey-type-option b{display:block;font-size:12px}
+.survey-type-option small{display:block;margin-top:4px;color:var(--sv-muted);font-size:10px;line-height:1.5}
+.survey-total{margin-top:12px;padding:13px;background:#f3f4ef;display:flex;justify-content:space-between;align-items:center}
+.survey-total-label{font-size:11px;font-weight:700}.survey-total-price{font:700 18px "JetBrains Mono",monospace}
+.survey-total-was{color:#909890;text-decoration:line-through;font-size:10px;margin-right:6px}
+.survey-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.survey-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.survey-field.is-wide{grid-column:1/-1}
+.survey-field label{font-size:10px;font-weight:750;color:#576259}
+.survey-field input,.survey-field textarea{width:100%;box-sizing:border-box;border:1px solid #dfe3dd;border-radius:3px;background:#fffefa;padding:10px;color:var(--sv-ink);font:12px "Noto Sans KR",sans-serif}
+.survey-field textarea{resize:vertical;min-height:74px}
+.survey-field input:focus,.survey-field textarea:focus{outline:2px solid #dce5dc;border-color:#687c6b}
+.survey-agreements{display:grid;gap:9px}
+.survey-agreement{display:flex;align-items:flex-start;gap:8px;font-size:10.5px;line-height:1.6}
+.survey-agreement input{margin-top:3px;accent-color:#476454}
+.survey-agreement a{color:#34483b;text-decoration:underline;text-underline-offset:2px}
+.survey-submit{width:100%;min-height:46px;border:0;background:#29342e;color:#fff;font:800 12px "Noto Sans KR",sans-serif;cursor:pointer}
+.survey-submit:hover{background:#43584a}.survey-submit:disabled{opacity:.55;cursor:wait}
+.survey-form-message{min-height:18px;margin:8px 0;color:#934a3e;font-size:11px}
+.survey-receipt{padding:20px;background:#fffefa;border:1px solid #cbd6ca}
+.survey-receipt h2{margin:0 0 7px;font-size:19px;letter-spacing:-.04em}
+.survey-receipt p{font-size:11px;color:var(--sv-muted);line-height:1.7}
+.survey-receipt-no{font:700 15px "JetBrains Mono",monospace;margin:14px 0;padding:10px;background:#f2f4ef}
+.survey-payment{padding:13px;background:#f3f4ef;font-size:11px;line-height:1.8}
+.survey-copy-account{margin-top:10px;padding:9px 12px;border:1px solid #29342e;background:#fff;color:#29342e;font:700 11px "Noto Sans KR",sans-serif;cursor:pointer}
+.survey-terms-link{font-size:10px;color:#526354}
+.survey-legal .survey-card-content{font-size:13px;line-height:1.8;overflow-wrap:anywhere}
+.survey-legal h2{margin-top:23px}
+.survey-legal p,.survey-legal li{font-size:13px}
+@media(max-width:540px){.survey-page{padding:18px 12px 45px}.survey-source-facts{grid-template-columns:1fr 1fr}.survey-analysis-links{grid-template-columns:1fr}.survey-type-options{grid-template-columns:1fr}.survey-form-grid{grid-template-columns:1fr}.survey-field.is-wide{grid-column:auto}.survey-head,.survey-body{padding-left:13px;padding-right:13px}.survey-fact{padding:9px}.survey-fact strong{font-size:11px}}

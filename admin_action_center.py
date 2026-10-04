@@ -25,6 +25,7 @@ _DEEP_LINKS = {
     "bug_report": "/admin#bug-reports",
     "sync_failure": "/admin#datasync",
     "streetview_usage": "/admin#datasync",
+    "survey_request": "/admin#admin-survey",
 }
 _CATEGORY_LABELS = {
     "approval_required": "승인 필요",
@@ -205,6 +206,16 @@ def action_items(cur, limit=500):
                 _compact_phone(r.get("phone")), r.get("deal_type"),
                 _money_label(r.get("price_krw")) or r.get("desired_price"),
             ),
+        ))
+
+    cur.execute("""SELECT id,request_no,created_at,auction_title,applicant_name,phone,total_fee
+      FROM survey_requests WHERE status='received'
+      ORDER BY created_at DESC LIMIT %s""", (limit,))
+    for r in cur.fetchall():
+        add("new_registration", _item(
+            "survey_request", r, f"현황조사 {r['request_no']}", "normal", False,
+            _summary(r["auction_title"], r["applicant_name"], _compact_phone(r["phone"]),
+                     f"{r['total_fee']:,}원"),
         ))
 
     cur.execute("""SELECT id, created_at, severity, contact, page_url

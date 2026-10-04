@@ -409,7 +409,7 @@ atexit.register(close_connection_pool)
 
 # 스키마 버전 — db.py의 테이블/컬럼/제약을 바꾸면 반드시 이 값을 올려야
 # 다음 부팅 때 init_db가 DDL을 다시 실행한다. (값이 같으면 전부 건너뛰어 부팅이 빨라짐)
-SCHEMA_VERSION = "2026-10-04-auction-1"
+SCHEMA_VERSION = "2026-10-04-auction-2"
 # PostgreSQL 세션 advisory lock 키. 버전 불일치 때만 잡으므로 최신 스키마 부팅은
 # DB 잠금 대기 없이 즉시 끝난다. 값은 이 프로젝트의 init_db 전용 고정 식별자다.
 _SCHEMA_INIT_ADVISORY_LOCK_KEY = 719_240_391
@@ -4405,6 +4405,8 @@ def _run_init_db():
 
     from auction_schema import ensure_auction_schema
     ensure_auction_schema(cur)
+    from survey_schema import ensure_survey_schema
+    ensure_survey_schema(cur)
     _seed_hotel_operation_metrics(cur)
     conn.commit()
     cur.close()
@@ -4933,7 +4935,7 @@ def _seed_admin_notification_subscriptions():
             SELECT a.id,v.event_type,TRUE,FALSE FROM admin_users a CROSS JOIN (VALUES
               ('new_signup'),('direct_listing'),('broker_listing_request'),('buy_request'),
               ('partner_agent'),('partner_operator'),('partner_loan_consultant'),
-              ('partner_lodging_operator'),('ota_booking_link_request')
+              ('partner_lodging_operator'),('ota_booking_link_request'),('survey_request')
             ) v(event_type)
             ON CONFLICT (admin_user_id,event_type) DO NOTHING
         """)

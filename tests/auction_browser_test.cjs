@@ -39,7 +39,9 @@ const { execFileSync } = require("node:child_process");
   await page.waitForSelector(".auction-info-card");
   await page.waitForTimeout(2500);
   assert.equal(await page.locator(".auction-round.is-current").count(), 1);
-  assert.equal(await page.locator("#auctionAnalysisSlot").textContent(), "");
+  await page.waitForSelector("#auctionAnalysisSlot .survey-analysis-link");
+  assert.equal(await page.locator("#auctionAnalysisSlot .survey-analysis-link").count(), 3);
+  assert.equal(await page.locator("#auctionAnalysisSlot .survey-check-state").count(), 3);
   assert.ok((await page.locator('a.auction-onbid').getAttribute("href")).startsWith("https://www.onbid.co.kr/"));
   const images = page.locator(".auction-gallery-slide img");
   if (await images.count()) {
@@ -48,7 +50,7 @@ const { execFileSync } = require("node:child_process");
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".auction-lightbox").isVisible(), false);
   }
-  console.log("PASS detail: real photos, current-round identity, original link, empty analysis slot");
+  console.log("PASS detail: real photos, current-round identity, original link, additive analysis/checklist");
   await page.goto(base + "/");
   await page.waitForTimeout(4000);
   if (await page.locator("#welcomeClose").isVisible()) await page.click("#welcomeClose");

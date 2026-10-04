@@ -8045,7 +8045,7 @@ def admin_action_center():
 _ADMIN_EVENT_TYPES = (
     "new_signup", "direct_listing", "broker_listing_request", "buy_request",
     "partner_agent", "partner_operator", "partner_loan_consultant",
-    "partner_lodging_operator", "ota_booking_link_request",
+    "partner_lodging_operator", "ota_booking_link_request", "survey_request",
 )
 
 
@@ -8497,7 +8497,7 @@ def apply_presale_page():
 
 # ---- 약관/개인정보처리방침 (legal_documents) ----
 # doc_type은 'terms' 또는 'privacy' 두 값만 허용한다.
-_LEGAL_DOC_TYPES = ("terms", "privacy")
+_LEGAL_DOC_TYPES = ("terms", "privacy", "survey_terms")
 
 
 @app.route("/api/legal/<doc_type>")
@@ -38072,6 +38072,8 @@ register_auction_routes(
     app, limiter, _serve_static_html, require_admin, _start_detached_sync,
     _public_building_photo_rows, _streetview_fallback_photos, current_user,
 )
+from survey_service import register_survey_routes, start_survey_scheduler
+register_survey_routes(app, limiter, _serve_static_html, require_admin)
 
 
 if __name__ == "__main__":
