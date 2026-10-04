@@ -61,6 +61,25 @@ def serial(row):
     return result
 
 
+def auction_detail_photos(rows, item):
+    """검증된 상세 사진이 없으면 목록에 공개된 온비드 사진을 재사용한다."""
+    photos = []
+    seen = set()
+    for row in rows:
+        photo = serial(row)
+        url = safe_url(photo.get("url"))
+        if url and url not in seen:
+            photos.append({**photo, "url": url, "source": "auction"})
+            seen.add(url)
+    thumbnail = safe_url(item.get("thumbnail_url"))
+    if not photos and thumbnail:
+        photos.append({
+            "id": "onbid-list-" + str(item["id"]), "url": thumbnail,
+            "source": "auction", "sort_order": 0,
+        })
+    return photos
+
+
 def public_cache(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):
@@ -357,7 +376,7 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                   WHERE owner.source=%s AND owner.source_item_id=%s
                   ORDER BY (owner.id=%s) DESC,owner.updated_at DESC,p.sort_order,p.id""",
                             [item["source"], item["source_item_id"], item_id])
-                auction_photos = [serial(r) for r in cur.fetchall()]
+                auction_photos = auction_detail_photos(cur.fetchall(), item)
                 building, photos = None, auction_photos
                 if item["master_building_id"]:
                     cur.execute("""SELECT id,building_name,road_address,jibun_address,sgg_cd,umd_nm,jibun,lat,lng

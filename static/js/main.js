@@ -8768,11 +8768,11 @@ window.openAuctionDetail=async function(id,options={}){
     const requestToken=++_buildingDetailRequestToken;
     const historyMethod=options.replace?"replaceState":"pushState";
     history[historyMethod]({auctionId:item.id},"",auctionMapLink(item));
-    panel.innerHTML=`<section class="side-card"><button type="button" id="auctionBackToMap" class="side-more">← 지도로</button><h2>${escapeHtml(item.title||"공매정보")}</h2><p>${escapeHtml(item.address_road||item.address_jibun||"주소 확인 필요")}</p></section><div class="b-inline-tabs" role="tablist"><button class="b-detail-tab active" id="bTabAuctions" role="tab" aria-selected="true" aria-controls="bAuctionPanel">공매정보</button></div><section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions"></section>`;
+     window.renderUnmatchedAuctionDetail?.(panel,item);
     panel.classList.remove("panel-collapsed");panel.classList.add("open");panel.scrollTop=0;
     window.livingstaySetPanelToggle?.(true);
     document.getElementById("auctionBackToMap").onclick=()=>{history.pushState({},"","/");restoreDefaultPanel();};
-    await window.renderAuctionPanel(document.getElementById("bAuctionPanel"),options.items||[item],{
+     await window.renderAuctionPanel(panel.querySelector("#bAuctionPanel"),options.items||[item],{
       selectedId:item.id,isCurrent:()=>requestToken===_buildingDetailRequestToken,
       onSelect:async selected=>{
         if(selected.master_building_id)await window.openAuctionDetail(selected.id,{items:options.items||[item]});

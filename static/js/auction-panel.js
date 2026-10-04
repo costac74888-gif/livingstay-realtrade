@@ -8,6 +8,45 @@
   const statusText=value=>({bidding:"입찰중",scheduled:"입찰예정",failed:"유찰",sold:"낙찰",canceled:"취소",closed:"종료"})[value]||"상태 확인";
   const sourceText=value=>({listing:"매물사진",auction:"공매·온비드",tourapi:"호텔·TourAPI",gocamping:"캠핑·고캠핑",google_streetview:"거리뷰·구글",streetview:"거리뷰·구글",operator:"운영자 등록"})[value]||"건물 사진";
   const valid= (host,seq,isCurrent)=>generations.get(host)===seq&&(!isCurrent||isCurrent());
+  window.renderUnmatchedAuctionDetail=function(host,item){
+    if(!host||!item)return;
+    const facts=[
+      ["소재지",item.address_road||item.address_jibun],
+      ["용도",item.property_type||item.usage_name||item.lodging_category],
+      ["관리번호",item.management_no],
+      ["대지면적",formatArea(item.land_area_m2)],
+      ["건물면적",formatArea(item.building_area_m2)]
+    ];
+    host.innerHTML=`<section class="side-card auction-panel-unmatched-heading"><button type="button" id="auctionBackToMap" class="side-more">← 지도로</button><h2>${esc(item.title||item.usage_name||"공매 물건 상세")}</h2><p>${esc(item.address_road||item.address_jibun||"소재지 확인 필요")}</p><p class="auction-panel-unmatched">공매 정보에 매칭된 건물 정보가 없습니다. 실제 건물의 존재 여부는 확인되지 않았습니다.</p></section><div class="b-inline-tabs auction-panel-unmatched-tabs" role="tablist" aria-label="공매 물건 상세 정보"><button type="button" class="b-detail-tab" id="bTabProperty" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button><button type="button" class="b-detail-tab" id="bTabOperations" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button><button type="button" class="b-detail-tab active" id="bTabAuctions" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="true" tabindex="0">공매정보</button></div><section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>01</span><h3>공매 자료에 확인된 부동산 정보</h3></div><dl class="auction-panel-facts">${facts.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value||"자료에 없음")}</dd></div>`).join("")}</dl></section><p class="auction-panel-unmatched">건축물대장과 실거래 자료는 연결되어 있지 않습니다. 공매 자료에 없는 정보는 확인된 사실로 표시하지 않습니다.</p></section><section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>02</span><h3>운영정보</h3></div><div class="auction-panel-content"><p class="auction-panel-unmatched">운영정보를 확인할 수 없습니다. 이 화면에 연결된 영업신고 자료가 없으며, 이는 미신고 또는 폐업을 의미하지 않습니다.</p></div></section></section><section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions"></section>`;
+    const tabs=Array.from(host.querySelectorAll('[role="tab"]'));
+    const panels={property:host.querySelector("#bPropertyPanel"),operations:host.querySelector("#bOperationsPanel"),auctions:host.querySelector("#bAuctionPanel")};
+    const activate=tab=>{
+      const selected=tab.dataset.panel;
+      tabs.forEach(candidate=>{
+        const active=candidate===tab;
+        candidate.classList.toggle("active",active);
+        candidate.setAttribute("aria-selected",String(active));
+        candidate.tabIndex=active?0:-1;
+      });
+      Object.entries(panels).forEach(([name,panel])=>{if(panel)panel.hidden=name!==selected;});
+    };
+    tabs.forEach(tab=>{
+      tab.addEventListener("click",()=>activate(tab));
+      tab.addEventListener("keydown",event=>{
+        if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
+        event.preventDefault();
+        const index=tabs.indexOf(tab);
+        const next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(index+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;
+        tabs[next]?.focus();
+        if(tabs[next])activate(tabs[next]);
+      });
+    });
+    activate(host.querySelector('#bTabAuctions'));
+  };
+  function formatArea(value){
+    if(value==null||value===""||!Number.isFinite(Number(value)))return "";
+    return `${Number(value).toLocaleString("ko-KR",{maximumFractionDigits:2})}㎡`;
+  }
   window.renderAuctionPanel=async function(host,items,options){
     if(!host)return;
     const opts=options||{}, list=(Array.isArray(items)?items:[]).filter(Boolean);

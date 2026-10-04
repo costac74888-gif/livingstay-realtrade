@@ -169,6 +169,41 @@ class AuctionApiTest(unittest.TestCase):
         self.assertTrue(response.get_json()["items"])
         self.assertEqual(self.client.get("/api/auctions/2147483647").status_code, 404)
 
+    def test_unmatched_detail_reuses_public_list_photo(self):
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(CURRENT_SQL + f""" SELECT a.id FROM current_auctions a
+                  WHERE a.master_building_id IS NULL AND {ELIGIBLE_SQL}
+                  AND a.raw->'list'->>'thnlImgUrlAdr' IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM auction_photos p
+                    JOIN auction_items owner ON owner.id=p.auction_item_id
+                    WHERE owner.source=a.source AND owner.source_item_id=a.source_item_id)
+                  LIMIT 1""")
+                row = cur.fetchone()
+        self.assertIsNotNone(row, "Validate a real unmatched item with a list-only thumbnail")
+        response = self.client.get("/api/auctions/" + str(row["id"]))
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertIsNone(data["building"])
+        self.assertIsNone(data["item"]["master_building_id"])
+        self.assertTrue(data["item"]["thumbnail_url"])
+        self.assertEqual(data["photos"][0]["url"], data["item"]["thumbnail_url"])
+        self.assertEqual(data["photos"][0]["source"], "auction")
+        self.assertNotIn("raw", data["item"])
+
+    def test_detail_photo_fallback_safety_and_existing_photo_priority(self):
+        item = {"id": 123, "thumbnail_url": "https://www.onbid.co.kr/list.jpg"}
+        photo = {"id": 1, "url": "https://www.onbid.co.kr/detail.jpg", "sort_order": 0}
+        self.assertEqual(auction_service.auction_detail_photos([photo, photo], item),
+                         [{**photo, "source": "auction"}])
+        self.assertEqual(auction_service.auction_detail_photos([], item)[0]["url"],
+                         item["thumbnail_url"])
+        self.assertEqual(auction_service.auction_detail_photos(
+            [{"url": "javascript:alert(1)"}], item)[0]["url"], item["thumbnail_url"])
+        for url in (None, "", "javascript:alert(1)", "https://www.onbid.co.kr/x?serviceKey=secret"):
+            self.assertEqual(auction_service.auction_detail_photos(
+                [], {**item, "thumbnail_url": url}), [])
+
     def test_admin_auth_and_detached_claim_contract(self):
         self.assertEqual(self.client.get("/api/admin/onbid-status").status_code, 401)
         self.assertEqual(self.client.post("/api/admin/sync-onbid").status_code, 401)
