@@ -2325,7 +2325,7 @@ def get_building(building_id):
     # Operating records are separate from building-register property facts.
     # Both sources are active/public-safe only; registry linkage is exact
     # normalized address (road first, jibun fallback).
-    building["membership_access"] = membership_access("official_operating_records")
+    building["membership_access"] = membership_access("official_operating_records", cur=cur)
     if building["membership_access"]["required"]:
         # 행정운영 요약은 기존 경로로 계산한다. 유료 상세 원장은 조회·전달하지 않는다.
         building["operating_records"] = []
@@ -38093,6 +38093,8 @@ register_auction_routes(
 )
 from survey_service import register_survey_routes, start_survey_scheduler
 register_survey_routes(app, limiter, _serve_static_html, require_admin)
+from membership_service import register_membership_routes
+register_membership_routes(app, limiter, require_admin, current_user)
 
 
 if __name__ == "__main__":

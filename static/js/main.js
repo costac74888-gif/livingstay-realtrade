@@ -203,6 +203,12 @@ window.refreshFavoritesUI = async function(){
 // auth.js가 window.dispatchEvent()로 발생시키므로 리스너도 window에 등록해야 함.
 // (document.addEventListener는 window 이벤트를 수신하지 못함 — 타깃 불일치 버그 수정)
 window.addEventListener("livingstay:auth", async function(){
+  const openId=window.__openBuildingId;
+  if(openId&&typeof renderBuildingPanel==="function"){
+    const card=document.getElementById("bApprovedRosterOperatingBody");
+    if(card)card.textContent="계정 이용 상태를 확인하고 있습니다.";
+    renderBuildingPanel(openId);
+  }
   await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
   if (typeof renderFavChips === "function") renderFavChips();
@@ -6308,14 +6314,60 @@ function _renderApprovedRosterOperatingInfo(b){
   const card = document.getElementById("bApprovedRosterOperatingCard");
   const body = document.getElementById("bApprovedRosterOperatingBody");
   if (!card || !body) return;
-  body.innerHTML = `
-    <div class="side-card-title">공식 영업·운영 정보</div>
-    <div class="b-membership-notice" role="status">
-      <strong>멤버십 준비 중</strong>
-      <p>상세 공식 영업·운영 기록은 유료 멤버십 서비스로 준비 중이며, 현재는 공개하지 않습니다.</p>
-      <a href="/membership">멤버십 안내</a>
-    </div>`;
-  card.style.display = "";
+  // Fail closed. The building endpoint is authoritative and only sets
+  // required:false after checking an active membership period server-side.
+  if (!b || !b.membership_access || b.membership_access.required !== false) {
+    body.innerHTML = `<div class="side-card-title">공식 영업·운영 정보</div>
+      <div class="b-membership-notice" role="status"><strong>멤버십 회원 전용 정보</strong>
+      <p>상세 공식 영업·운영 기록은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자가 입금을 확인하면 이용할 수 있습니다.</p>
+      <a href="/membership">멤버십 이용·신청</a></div>`;
+    card.style.display = "";
+    return;
+  }
+  const records = Array.isArray(b.operating_records) ? b.operating_records : [];
+  // Keep the existing official-record renderer intact; it is the source of
+  // truth for the real public registry and approved-roster record schema.
+  const official = records.length ? records : (b.operating_info ? [{
+    registered_name:b.operating_info.facility_name,legal_category:b.operating_info.subtype,
+    hotel_grade:b.operating_info.hotel_grade,
+    permit_number_masked:b.operating_info.registration_number_masked||b.operating_info.registration_number,
+    official_room_count:b.operating_info.official_room_count,
+    official_road_address:b.operating_info.address,source_name:b.operating_info.source,
+    source_updated_at:b.operating_info.reference_year,source_category:"annual_tourism_roster",active_status:"영업/정상"
+  }] : []);
+  if (!official.length) {
+    body.innerHTML=`<div class="side-card-title">공식 영업·운영 정보</div><p class="b-ops-source-note">현재 이 건물에 연결된 상세 공식 기록이 없습니다.</p>
+      <div class="b-membership-notice"><button type="button" data-membership-building-check>이번 달 포함 확인 신청</button> <a href="/membership">이용 내역</a></div>`;
+    body.querySelector("[data-membership-building-check]")?.addEventListener("click",()=>{
+      window.openMembershipCheck?.({building_id:Number(b.id),title:b.building_name,address:b.road_address||b.jibun_address});
+    });
+    card.style.display="";return;
+  }
+  const value=item=>item==null||String(item).trim()===""?"-":escapeHtml(String(item));
+  const count=(item,unit)=>Number.isFinite(Number(item))?`${Number(item).toLocaleString("ko-KR")}${unit}`:"-";
+  body.innerHTML=`<div class="side-card-title">공식 영업·운영 정보 <span class="side-sub">${official.length}건</span></div>
+    ${official.map(info=>{
+      const isCamping=info.official_site_count!=null||info.camping_site_composition!=null;
+      const sourceLabel=info.source_category==="annual_tourism_roster"?"관광숙박업 등록현황(문체부)":info.source_name;
+      const sourceDate=info.reference_year?`${info.reference_year}년`:value(info.source_updated_at);
+      const address=info.official_road_address||info.official_jibun_address;
+      const campingBreakdown=[["일반",info.camping_general_site_count],["오토",info.camping_auto_site_count],["글램핑",info.camping_glamping_site_count],["카라반",info.camping_caravan_site_count]].filter(([,n])=>n!=null).map(([label,n])=>`${label} ${count(n,"면")}`).join(" · ");
+      return `<div class="camp-detail-block"><div class="b-ops-source-label">${value(sourceLabel)} <span>${value(sourceDate)}</span></div>
+      <dl class="camp-detail-list"><div><dt>등록명칭</dt><dd>${value(info.registered_name)}</dd></div><div><dt>법정 업종</dt><dd>${value(info.legal_category)}</dd></div>
+      ${info.hotel_grade?`<div><dt>호텔 등급</dt><dd>${value(info.hotel_grade)}</dd></div>`:""}
+      <div><dt>허가·신고번호</dt><dd>${value(info.permit_number_masked||info.permit_number)}</dd></div>
+      <div><dt>영업 상태</dt><dd>${value(info.active_status)}${info.status_detail?` · ${value(info.status_detail)}`:""}</dd></div><div><dt>허가일</dt><dd>${value(info.permit_date)}</dd></div>
+      <div><dt>${isCamping?"공식 사이트 수":"공식 객실수"}</dt><dd>${isCamping?count(info.official_site_count,"면"):count(info.official_room_count,"실")}</dd></div>
+      ${isCamping?`<div><dt>사이트 구성 운영형태</dt><dd>${value(info.camping_site_composition)}${campingBreakdown?` · ${escapeHtml(campingBreakdown)}`:""}</dd></div>`:""}
+      <div><dt>공식 주소</dt><dd>${value(address)}</dd></div><div><dt>출처</dt><dd>${value((info.source_provenance||[info.source_name]).filter(Boolean).join(" · "))}</dd></div>
+      <div><dt>기준·갱신일</dt><dd>${value(sourceDate)}</dd></div></dl></div>`;
+    }).join("")}
+    <button type="button" data-building-membership-check style="margin-top:12px;padding:9px 13px;border:1px solid #3d5948;border-radius:6px;background:#3d5948;color:#fff;font:700 12px 'Noto Sans KR',sans-serif;cursor:pointer">이번 달 포함 확인 신청</button>`;
+  body.querySelector("[data-building-membership-check]")?.addEventListener("click",()=>{
+    const buildingId=b.id??b.building_id??window.__openBuildingId;
+    if(typeof window.openMembershipCheck==="function")window.openMembershipCheck({building_id:Number(buildingId),title:b.building_name||b.name,address:b.road_address||b.jibun_address});
+  });
+  card.style.display="";
 }
 
 const STRUCTURE_A_TYPES = [];

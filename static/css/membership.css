@@ -1,80 +1,65 @@
-.membership-page{
-  min-height:calc(100dvh - var(--header-h, 63px));
-  padding:clamp(28px,6vw,72px) 18px 76px;
-  background:#f3f5f2;
-  color:var(--ink,#16202e);
-}
-.membership-wrap{width:min(100%,820px);margin:0 auto}
-.membership-eyebrow{
-  margin:0 0 12px;color:#607365;font:700 11px/1.4 'JetBrains Mono',monospace;
-  letter-spacing:.12em;text-transform:uppercase;
-}
-.membership-title{
-  max-width:660px;margin:0;font-size:clamp(30px,6vw,48px);
-  line-height:1.23;letter-spacing:-.065em;font-weight:800;
-}
-.membership-lead{
-  max-width:620px;margin:16px 0 30px;color:#59665e;
-  font-size:14px;line-height:1.85;word-break:keep-all;
-}
-.membership-status{
-  display:flex;align-items:center;gap:9px;margin:0 0 16px;
-  padding:12px 15px;border:1px solid #d6dfd7;background:#eaf0e9;
-  color:#3d5948;font-size:13px;font-weight:700;line-height:1.6;
-}
-.membership-status::before{
-  content:"";width:8px;height:8px;flex:none;border-radius:50%;background:#66836d;
-}
-.membership-sections{display:grid;gap:10px}
-.membership-section{
-  padding:20px 21px;background:#fff;border:1px solid #e0e5df;border-radius:8px;
-}
-.membership-section h2{margin:0 0 7px;font-size:16px;letter-spacing:-.025em;line-height:1.5}
-.membership-section p{margin:0;color:#68736b;font-size:13px;line-height:1.8;word-break:keep-all}
-.section-kicker{margin:0 0 6px!important;color:#718276!important;font-size:10px!important;font-weight:800;letter-spacing:.1em;line-height:1.5!important}
-.membership-price{
-  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:16px;
-  padding:20px 22px;background:#edf2ec;border-color:#d6e0d7;
-}
-.membership-price h2{margin:0}
-.price-value{grid-column:2;grid-row:1/3;color:#294b39!important;font-size:clamp(26px,5vw,34px)!important;font-weight:800;letter-spacing:-.055em;line-height:1.2!important;white-space:nowrap}
-.price-value span{font-size:13px;font-weight:700;letter-spacing:0}
-.price-note{grid-column:1/-1;margin-top:13px!important;padding-top:12px;border-top:1px solid #d6e0d7;font-size:12px!important}
-.membership-scope{padding:22px}
-.scope-intro{margin-bottom:16px!important}
-.membership-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0;padding:0;list-style:none}
-.membership-checks li{display:flex;gap:11px;min-width:0;padding:15px 13px;background:#f5f7f4;border:1px solid #e5eae4;border-radius:6px}
+.membership-page{min-height:calc(100dvh - var(--header-h,63px));padding:clamp(28px,5vw,68px) 18px 76px;background:#f3f5f2;color:#202922}
+.membership-wrap{width:min(100%,920px);margin:0 auto}
+.membership-hero{display:block;position:relative;padding:clamp(24px,5vw,52px);margin-bottom:20px;background:#e7eee7;border:1px solid #d6e0d7;border-radius:12px;overflow:hidden}
+.membership-hero:after{content:"";position:absolute;right:-75px;bottom:-165px;width:350px;height:350px;border:1px solid #c4d3c7;border-radius:50%;box-shadow:0 0 0 28px #e7eee780,0 0 0 58px #e7eee750;pointer-events:none}
+.membership-eyebrow,.section-kicker{margin:0 0 12px;color:#607365;font:700 10px/1.5 'JetBrains Mono',monospace;letter-spacing:.13em}
+.membership-title{position:relative;z-index:1;max-width:720px;margin:0;font-size:clamp(34px,6vw,58px);line-height:1.2;letter-spacing:-.07em;font-weight:800}
+.membership-title em{color:#45634e;font-style:normal}
+.membership-lead{max-width:560px;margin:18px 0 26px;color:#59665e;font-size:14px;line-height:1.85;word-break:keep-all}
+.membership-price-line{position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:15px;max-width:560px;padding:14px 0;border-top:1px solid #cbd8cc;color:#607365;font:700 10px 'JetBrains Mono',monospace;letter-spacing:.08em}
+.membership-price-line strong{color:#294b39;font:800 clamp(24px,4vw,32px)/1 'Noto Sans KR',sans-serif;letter-spacing:-.05em;white-space:nowrap}
+.membership-price-line small{margin-left:7px;color:#627267;font-size:12px;letter-spacing:0}
+.membership-section,.membership-card{padding:22px;background:#fff;border:1px solid #e0e5df;border-radius:9px}
+.membership-section h2,.membership-card h2{margin:0 0 8px;font-size:18px;letter-spacing:-.04em}
+.membership-section p,.membership-card p{color:#68736b;font-size:13px;line-height:1.8;word-break:keep-all}
+.membership-loading{padding:24px;text-align:center;color:#607365;font-size:13px}.membership-loading span{display:inline-block;width:9px;height:9px;margin-right:8px;border-radius:50%;background:#75917b;animation:memberPulse 1.4s ease-in-out infinite alternate}
+@keyframes memberPulse{to{opacity:.35;transform:scale(.75)}}
+.membership-dashboard{display:grid;gap:12px;margin:0 0 20px}
+.member-summary{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(200px,.8fr);gap:12px}
+.membership-card{min-width:0}
+.member-state{display:inline-flex;align-items:center;gap:7px;margin:0 0 10px;padding:5px 9px;border-radius:999px;background:#edf2ed;color:#41614a;font-size:11px;font-weight:800}
+.member-state:before{content:"";width:6px;height:6px;border-radius:50%;background:#6d9275}
+.member-state.is-pending{background:#faf1dd;color:#88672a}.member-state.is-pending:before{background:#b4863f}
+.member-state.is-inactive{background:#f1f2ef;color:#68736b}.member-state.is-inactive:before{background:#929b92}
+.member-metric{font-size:34px!important;font-weight:800!important;color:#294b39!important;letter-spacing:-.06em;line-height:1.2!important}
+.member-metric small{font-size:13px;letter-spacing:0;color:#69766d}
+.member-plan-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:13px;padding-top:12px;border-top:1px solid #e8ece7;color:#657168;font-size:12px}
+.membership-btn{min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0 15px;border:1px solid #3d5948;border-radius:5px;background:#3d5948;color:#fff;text-decoration:none;font:700 12px 'Noto Sans KR',sans-serif;cursor:pointer}
+.membership-btn:hover{background:#4c6b58}.membership-btn.secondary{background:white;color:#3d5948}.membership-btn.danger{border-color:#b76c62;background:white;color:#9e5147}.membership-btn:disabled{opacity:.5;cursor:wait}
+.member-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.bank-box{margin-top:15px;padding:14px;background:#f4f6f2;border-left:2px solid #849985;color:#47544a;font-size:12px;line-height:1.8}
+.bank-box strong{display:block;margin-bottom:4px;color:#26382c;font-size:13px}
+.membership-form{display:grid;gap:12px;margin-top:14px}.membership-field label{display:block;margin-bottom:5px;color:#526055;font-size:11px;font-weight:800}
+.membership-field input,.membership-field textarea{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid #dce2dc;border-radius:5px;background:#fff;color:#202922;font:13px 'Noto Sans KR',sans-serif}
+.membership-field textarea{min-height:90px;resize:vertical}.membership-field input:focus,.membership-field textarea:focus{outline:2px solid #d9e4d9;border-color:#829984}
+.membership-consent{display:flex;align-items:flex-start;gap:9px;color:#5e695f;font-size:12px;line-height:1.6}.membership-consent input{margin-top:3px;accent-color:#45634e}
+.membership-message{min-height:18px;margin:0;color:#9e5147!important;font-size:12px!important}
+.membership-list{display:grid;gap:8px;margin-top:12px}
+.member-row{padding:12px 13px;border:1px solid #e7ebe5;border-radius:6px;background:#fafbf9}
+.member-row-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.member-row h3{margin:0;font-size:13px;line-height:1.55}
+.member-row p{margin:4px 0 0;font-size:11px}
+.member-row .membership-btn{min-height:32px;padding:0 10px;font-size:11px}
+.member-report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:10px 0}
+.member-result{padding:8px;background:#f0f3ef;color:#58665a;font-size:10px;line-height:1.5}
+.member-result b{display:block;color:#3b5440;font-size:11px}
+.member-result.is-issue{background:#fbefec;color:#8e5148}.member-result.is-issue b{color:#8e5148}
+.member-report{padding:11px;background:#f5f6f2;color:#465148;font-size:12px;line-height:1.75;white-space:pre-line}
+.membership-scope{margin-top:20px;padding:24px}
+.section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}.section-kicker{margin-bottom:6px!important;color:#718276!important;font-size:10px!important;font-weight:800}
+.scope-intro{margin:0 0 15px!important}
+.membership-checks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0;padding:0;list-style:none}
+.membership-checks li{display:flex;gap:11px;min-width:0;padding:14px 12px;background:#f5f7f4;border:1px solid #e5eae4;border-radius:6px}
 .check-number{flex:none;color:#718276;font:700 11px/1.6 'JetBrains Mono',monospace}
-.membership-checks h3{margin:0 0 5px;font-size:13px;line-height:1.5;letter-spacing:-.025em}
-.membership-checks p{font-size:12px;line-height:1.7}
-.scope-limit{margin-top:14px!important;padding:12px 14px;background:#f8f6f0;border-left:2px solid #b4863f;color:#655d4e!important;font-size:12px!important}
-.membership-caution{background:#fbfaf7}
-.membership-caution .section-kicker{color:#927448!important}
-.membership-footnote{
-  margin:17px 0 0;padding:15px 17px;border-left:3px solid #b4863f;
-  background:#fbf5e9;color:#6f6044;font-size:11.5px;line-height:1.75;word-break:keep-all;
-}
-.membership-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:25px}
-.membership-actions a{
-  display:inline-flex;align-items:center;justify-content:center;min-height:42px;
-  padding:0 17px;border:1px solid #3d5948;border-radius:6px;
-  background:#3d5948;color:#fff;text-decoration:none;font-size:12px;font-weight:700;
-}
-.membership-actions a.secondary{background:transparent;color:#3d5948}
-.membership-actions a:hover{background:#4c6b58;color:#fff}
-.membership-actions a:focus-visible{outline:2px solid #b4863f;outline-offset:3px}
-@media(max-width:600px){
-  .membership-page{padding:30px 14px 54px}
-  .membership-title{font-size:32px}
-  .membership-lead{margin:13px 0 24px;font-size:13px}
-  .membership-section{padding:17px 16px}
-  .membership-price{grid-template-columns:minmax(0,1fr) auto;column-gap:8px}
-  .price-value{font-size:25px!important}
-  .price-value span{font-size:12px}
-  .membership-scope{padding:18px 16px}
-  .membership-checks{grid-template-columns:1fr;gap:7px}
-  .membership-checks li{padding:12px}
-  .scope-limit{padding:11px 12px}
-  .membership-actions{display:grid}
-  .membership-actions a{width:100%}
-}
+.membership-checks h3{margin:0 0 4px;font-size:13px;line-height:1.5}.membership-checks p{margin:0;font-size:11px!important;line-height:1.7!important}
+.scope-limit{margin:14px 0 0!important;padding:12px 14px;background:#f8f6f0;border-left:2px solid #b4863f;color:#655d4e!important;font-size:11px!important}
+.membership-bottom{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-top:18px;padding:20px 4px}
+.membership-bottom h2{margin:0 0 4px;font-size:16px}.membership-bottom p{margin:0;color:#68736b;font-size:12px}
+.membership-actions{display:flex;gap:8px;flex-wrap:wrap}.membership-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:0 14px;border:1px solid #3d5948;border-radius:5px;background:#3d5948;color:#fff;text-decoration:none;font-size:11px;font-weight:700}.membership-actions a.secondary{background:transparent;color:#3d5948}
+.membership-dialog-backdrop{position:fixed;z-index:9999;inset:0;display:grid;place-items:center;padding:16px;background:#16202eb8}.membership-dialog{width:min(100%,560px);max-height:min(88dvh,760px);overflow:auto;background:#fbfcf9;border-radius:10px;box-shadow:0 20px 70px #1118;padding:22px}
+.membership-dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px}.membership-dialog-head h2{margin:0;font-size:20px}.membership-dialog-close{width:34px;height:34px;border:1px solid #dce2dc;border-radius:50%;background:#fff;color:#3b493e;font-size:18px;cursor:pointer}
+.membership-empty,.membership-error{padding:18px;background:#fafbf9;border:1px solid #e5eae4;border-radius:7px;color:#667166;font-size:13px;line-height:1.7}
+.membership-error{border-color:#e8c5bf;background:#fff6f3;color:#904f46}
+.membership-footnote{color:#788078;font-size:10px;line-height:1.7}
+@media(max-width:650px){.membership-page{padding:20px 13px 46px}.membership-hero{padding:25px 19px}.membership-title{font-size:35px}.membership-lead{font-size:13px}.member-summary{grid-template-columns:1fr}.membership-checks,.member-report-grid{grid-template-columns:1fr}.membership-checks li{padding:12px}.membership-bottom{align-items:flex-start;flex-direction:column}.membership-actions{display:grid;width:100%}.membership-actions a{width:100%}.membership-section,.membership-card{padding:17px}.member-row-head{align-items:flex-start}.membership-dialog{padding:18px}}
+@media(prefers-reduced-motion:reduce){.membership-loading span{animation:none}}

@@ -290,8 +290,14 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
     @app.get("/api/survey/config")
     @limiter.limit("60 per minute")
     def survey_config():
-        if membership_access("auction_survey")["required"]:
+        access = membership_access("auction_survey")
+        if access["required"]:
             return locked_response("auction_survey")
+        if access.get("period_id"):
+            response = jsonify(ok=True, config={"membership_included": True, "visit_fee": None},
+                               membership_access=access)
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
         with survey_connection() as conn:
             with conn.cursor() as cur:
                 config, _ = load_quote(cur, load_settings(cur))
@@ -320,6 +326,24 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
                 item = load_item(cur, item_id)
         if not item:
             return jsonify(ok=False, message="공매 물건을 찾을 수 없습니다."), 404
+        if access.get("period_id"):
+            from membership_common import membership_connection
+            with membership_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM membership_checks WHERE period_id=%s", [access["period_id"]])
+                    used = cur.fetchone() is not None
+            response = jsonify(
+                ok=True, item=serial(item), config={"membership_included": True},
+                membership_access=access,
+                availability={"can_apply": not used, "reason": "이번 이용기간의 물건 1건을 이미 신청했습니다." if used else ""},
+                analysis_links=analysis_links(item), comparison=None,
+                analysis_notice="기존 분석 화면에서 확인된 면적·최저입찰가를 기준으로 분석합니다.",
+                checklist=[{"key": key, "label": label, "check_status": "need_check",
+                            "description": "월 1개 동일 물건에 자료·전화 확인으로 제공합니다."}
+                           for key, label in CHECKS],
+            )
+            response.headers["Cache-Control"] = "private, no-store"
+            return response
         response = jsonify(ok=True, item=serial(item), config=config,
                            availability=availability(item, settings), analysis_links=analysis_links(item),
                            analysis_notice="확인된 전용면적과 최저입찰가만 전달합니다. 기존 분석 화면의 입력 범위를 벗어나거나 만원 단위로 정확히 표현할 수 없는 금액은 자동 입력하지 않습니다.",
@@ -334,8 +358,19 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
     def survey_create(item_id):
         if reject_cross_site():
             return jsonify(ok=False, message="허용되지 않은 요청입니다."), 403
-        if membership_access("auction_survey")["required"]:
+        access = membership_access("auction_survey")
+        if access["required"]:
             return locked_response("auction_survey")
+        if access.get("period_id"):
+            from membership_checks import submit_check
+            from membership_common import mutation_payload
+            try:
+                return submit_check(mutation_payload(), session["user_id"],
+                                    forced_auction_id=item_id)
+            except PermissionError as exc:
+                return jsonify(ok=False, message=str(exc)), 403
+            except ValueError as exc:
+                return jsonify(ok=False, message=str(exc)), 400
         data = request.get_json(silent=True)
         try:
             cleaned = validate_applicant(data)

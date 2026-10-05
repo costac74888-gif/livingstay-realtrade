@@ -1,27 +1,27 @@
-"""유료 상세정보의 공개 경계. 결제·권한 정책 승인 전에는 모두 잠근다.
-
-계정의 사업장/파트너 역할은 유료 구독이 아니다. 기존 역할 연결을
-구독 권한으로 해석하거나 로그인만으로 상세정보를 풀지 않는다.
-"""
-from flask import jsonify
+"""Paid access is backed by an administrator-verified bank payment, never a role."""
+from flask import has_request_context, session
+from membership_common import active_period, membership_connection, reply
 
 
-def membership_access(feature):
-    return {
-        "required": True,
-        "available": False,
-        "status": "preparing",
-        "feature": feature,
-        "info_url": "/membership",
-    }
+def membership_access(feature, cur=None):
+    access = {"required": True, "available": False, "status": "inactive",
+              "feature": feature, "info_url": "/membership"}
+    user_id = session.get("user_id") if has_request_context() else None
+    if not user_id:
+        return access
+    if cur is not None:
+        period = active_period(cur, user_id)
+    else:
+        with membership_connection() as conn:
+            with conn.cursor() as cursor:
+                period = active_period(cursor, user_id)
+    if period:
+        access.update(required=False, available=True, status="active", period_id=period["id"],
+                      expires_at=period["ends_at"].isoformat())
+    return access
 
 
 def locked_response(feature):
-    response = jsonify(
-        ok=False,
-        code="MEMBERSHIP_PREPARING",
-        message="유료 멤버십 준비 중입니다. 상세정보 열람과 신규 현황조사 신청은 아직 제공되지 않습니다.",
-        membership_access=membership_access(feature),
-    )
-    response.headers["Cache-Control"] = "no-store"
-    return response, 403
+    return reply(403, ok=False, code="MEMBERSHIP_REQUIRED",
+                 message="입금 확인 후 활성화된 멤버십이 필요합니다.",
+                 membership_access=membership_access(feature))

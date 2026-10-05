@@ -191,6 +191,7 @@
          <button class="admin-menu-item" data-menu="tourism-datalab">관광 데이터랩 원본</button>
         <button class="admin-menu-item" data-menu="datasync">데이터 동기화</button>
         <button class="admin-menu-item" data-menu="admin-survey">공매 현황조사</button>
+        <button class="admin-menu-item" data-menu="admin-membership">멤버십 운영</button>
         <button class="admin-menu-item" data-menu="members">회원관리</button>
         <button class="admin-menu-item" data-menu="listings">매물관리</button>
         <button class="admin-menu-item" data-menu="transactions">실거래관리</button>
@@ -1306,13 +1307,13 @@
         actionCenter = actionRes && actionRes.ok ? await actionRes.json() : { ok: false };
         overview = overviewRes && overviewRes.ok ? await overviewRes.json() : null;
       } catch (e) {
-        if (location.hash === "#admin-survey") return;
+        if (["#admin-survey","#admin-membership"].includes(location.hash)) return;
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
       // A dashboard response started before menu navigation must not replace
       // the new survey form (including any inputs the administrator is editing).
-      if (location.hash === "#admin-survey") return;
+      if (["#admin-survey","#admin-membership"].includes(location.hash)) return;
       renderStats(data, mapBld, actionCenter, overview);
       loadPartnerBuildingCounts();
     }
@@ -9086,6 +9087,7 @@
       if (menuKey === "policies") { showPolicies(); return; }
       if (menuKey === "datasync") { showDataSync(); return; }
       if (menuKey === "admin-survey") { if (typeof window.showAdminSurvey === "function") window.showAdminSurvey(); return; }
+      if (menuKey === "admin-membership") { if (typeof window.showAdminMembership === "function") window.showAdminMembership(); return; }
       if (menuKey === "brokers") { showBrokers(); return; }
       if (menuKey === "lodgings") { showLodgings(); return; }
       if (menuKey === "new-buildings") { showNewBuildingCandidates(); return; }
@@ -9906,6 +9908,7 @@
   </script>
   <script src="/static/js/pw_toggle.js"></script>
 <script src="/static/js/admin-survey.js"></script>
+<script src="/static/js/admin-membership.js"></script>
 <script>
 (function(){
   const badge = document.getElementById("envBadge");

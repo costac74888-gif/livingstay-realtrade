@@ -48,9 +48,9 @@
     if (!target) return;
     target.innerHTML = `<section class="survey-membership-notice" role="status">
       <span class="survey-kicker">MEMBERSHIP ACCESS</span>
-      <h2>멤버십 준비 중</h2>
-      <p>현황조사 정보와 신청 기능은 멤버십 서비스 준비 후 이용하실 수 있습니다.</p>
-      <a href="${esc(membershipInfoUrl(data))}">멤버십 안내</a>
+      <h2>멤버십 회원 전용 정보</h2>
+      <p>공식 영업·운영 기록은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자 확인을 거쳐 이용할 수 있습니다.</p>
+      <a href="${esc(membershipInfoUrl(data))}">멤버십 이용·신청</a>
     </section>`;
   }
 
@@ -91,7 +91,9 @@
       ${matched && comparison && comparison.text ? `<div class="survey-comparison">${esc(comparison.text)}</div>` : ""}
       <h3 class="survey-checklist-heading">생활형숙박시설 체크리스트</h3>
       <div class="survey-checklist">${checkItems}</div>
-      ${canApply ? `<button class="survey-apply" type="button" data-open-auction-survey="${esc(id)}">현황조사 신청</button>` : `<button class="survey-apply" type="button" disabled>현황조사 신청</button>${availabilityText ? `<p class="survey-copy">${esc(availabilityText)}</p>` : ""}`}
+       ${item.membership_included === true && item.membership_access?.required === false && item.membership_access?.status === "active"
+         ? `<button class="survey-apply" type="button" data-open-auction-survey="${esc(id)}">이번 달 포함 확인 신청</button>`
+         : `<a class="survey-apply" href="/membership">멤버십 이용 안내</a>`}
       </div></section>`;
     slot.querySelector("[data-open-auction-survey]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
     if (matched) loadMarketReference(item).then(reference => {
@@ -134,8 +136,10 @@
   }
 
   const detailMounts = new WeakMap();
+  const activeSurveyMounts = new Map();
   window.mountAuctionSurveyDetail = async function(slot,id) {
     if(!slot||!id)return;
+    activeSurveyMounts.set(slot,id);
     const sequence=(detailMounts.get(slot)||0)+1;detailMounts.set(slot,sequence);
     slot.innerHTML=`<section class="survey-block"><div class="survey-loading" role="status">투자분석과 현황조사 정보를 확인 중입니다.</div></section>`;
     try {
@@ -147,6 +151,8 @@
       }
       if(!data.item)throw new Error("공매 정보를 찾을 수 없습니다.");
       const item=data.item;if(item.id==null)item.id=id;
+      item.membership_access=data.membership_access||item.membership_access||null;
+      item.membership_included=Boolean(data.config&&data.config.membership_included===true);
       renderDetail(slot,id,item,data.analysis_links,data.comparison,data.checklist,data.availability,data.analysis_notice);
     } catch(error) {
       if(detailMounts.get(slot)!==sequence||!slot.isConnected)return;
@@ -158,57 +164,31 @@
       slot.querySelector("[data-survey-retry]")?.addEventListener("click",()=>window.mountAuctionSurveyDetail(slot,id));
     }
   };
+  window.addEventListener("livingstay:auth",()=>{
+    activeSurveyMounts.forEach((id,slot)=>{
+      if(slot.isConnected)window.mountAuctionSurveyDetail(slot,id);
+      else activeSurveyMounts.delete(slot);
+    });
+  });
 
   let surveyDrawerSequence=0;
   window.openAuctionSurvey = async function(id) {
     if(!id)return;
     const sequence=++surveyDrawerSequence;
-    let drawer=document.getElementById("auctionSurveyDrawer");
-    if(!drawer){
-      drawer=document.createElement("div");
-      drawer.id="auctionSurveyDrawer";
-      drawer.className="survey-drawer";
-      drawer.hidden=true;
-      drawer.innerHTML=`<div class="survey-drawer-backdrop" data-survey-close></div><section class="survey-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="auctionSurveyDrawerTitle"><header class="survey-drawer-header"><div><span class="survey-kicker">PROPERTY DUE DILIGENCE</span><h2 id="auctionSurveyDrawerTitle">현황조사 신청</h2></div><button type="button" class="survey-drawer-close" data-survey-close aria-label="신청창 닫기">×</button></header><div class="survey-drawer-content" id="auctionSurveyDrawerContent"></div></section>`;
-      document.body.append(drawer);
-      drawer.addEventListener("click",event=>{if(event.target.closest("[data-survey-close]"))closeSurveyDrawer();});
-      drawer.addEventListener("keydown",event=>{
-        if(event.key==="Escape"){event.preventDefault();closeSurveyDrawer();return;}
-        if(event.key!=="Tab")return;
-        const focusable=[...drawer.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(node=>node.offsetParent!==null);
-        if(!focusable.length){event.preventDefault();return;}
-        const first=focusable[0],last=focusable[focusable.length-1];
-        if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
-        else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
-      });
-    }
-    drawer._returnFocus=document.activeElement;
-    drawer.hidden=false;document.body.classList.add("survey-drawer-open");
-    const panel=drawer.querySelector(".survey-drawer-panel");
-    panel.querySelector(".survey-drawer-close").focus();
-    const content=drawer.querySelector("#auctionSurveyDrawerContent");
-    content.innerHTML='<div class="survey-loading" role="status">조사 범위와 신청 조건을 확인 중입니다.</div>';
     try {
       const auction=await loadAuctionInfo(id);
-      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
-      if(membershipRequired(auction)){
-        renderMembershipNotice(content,auction);
+      if(sequence!==surveyDrawerSequence)return;
+      if(membershipRequired(auction)){location.href=membershipInfoUrl(auction);return}
+      const access=auction.membership_access||auction.item?.membership_access;
+      if(access?.required===false&&access?.status==="active"&&auction.config?.membership_included===true&&window.openMembershipCheck){
+        window.openMembershipCheck({auction_id:Number(id),title:auction.item?.title,address:auction.item?.address});
         return;
       }
-      const configData=await jsonRequest("/api/survey/config");
-      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
-      const item=auction.item||{},config=configData.config||auction.config||{};
-      if(!auction.availability||auction.availability.can_apply!==true)throw new Error(auction.availability?.reason||"현재 현황조사 신청이 불가능합니다.");
-      renderApplication(content,id,item,config,auction.checklist);
-      panel.querySelector(".survey-drawer-header h2").focus?.();
+      location.href="/membership";
     } catch(error) {
-      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
-      if(error.data && error.data.code === "MEMBERSHIP_PREPARING"){
-        renderMembershipNotice(content,error.data);
-        return;
-      }
-      content.innerHTML=`<div class="survey-error" role="alert"><strong>${esc(error.message||"신청 정보를 불러오지 못했습니다.")}</strong><p>잠시 후 다시 시도해 주세요.</p><button type="button" data-drawer-retry>다시 불러오기</button></div>`;
-      content.querySelector("[data-drawer-retry]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
+      if(sequence!==surveyDrawerSequence)return;
+      if(error.data&&error.data.membership_access?.required===true){location.href=membershipInfoUrl(error.data);return}
+      alert(error.message||"멤버십 이용 상태를 확인하지 못했습니다.");
     }
   };
   function closeSurveyDrawer() {

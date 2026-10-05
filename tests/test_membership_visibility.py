@@ -1,4 +1,4 @@
-"""유료화 준비 중에는 로그인·역할과 무관하게 공개 상세 원장과 조사 신청을 차단한다."""
+"""입금 확인 전에는 로그인·역할과 무관하게 상세 원장과 조사 신청을 차단한다."""
 import unittest
 from unittest.mock import patch
 
@@ -19,7 +19,7 @@ class MembershipVisibilityTest(unittest.TestCase):
             access = membership_access(feature)
             self.assertTrue(access["required"])
             self.assertFalse(access["available"])
-            self.assertEqual(access["status"], "preparing")
+            self.assertEqual(access["status"], "inactive")
             self.assertEqual(access["info_url"], "/membership")
 
     def test_public_building_omits_records_but_keeps_free_summary(self):
@@ -66,7 +66,7 @@ class MembershipVisibilityTest(unittest.TestCase):
                 ):
                     self.assertEqual(result.status_code, 403)
                     data = result.get_json()
-                    self.assertEqual(data["code"], "MEMBERSHIP_PREPARING")
+                    self.assertEqual(data["code"], "MEMBERSHIP_REQUIRED")
                     self.assertNotIn("config", data)
                     self.assertNotIn("receipt", data)
                     self.assertIn("no-store", result.headers["Cache-Control"])
@@ -93,11 +93,13 @@ class MembershipVisibilityTest(unittest.TestCase):
             item.assert_not_called()
         self.assertEqual(self.client.get("/api/auctions/999999999/survey-info").status_code, 404)
 
-    def test_membership_page_does_not_sell_an_unavailable_service(self):
+    def test_membership_page_describes_approved_bank_scope_without_auto_activation(self):
         response = self.client.get("/membership")
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn("현재 멤버십 가입 및 유료 기능 활성화는 제공되지 않습니다.", html)
+        self.assertIn('id="membershipApp"', html)
+        self.assertIn("/static/js/membership.js", html)
+        self.assertNotIn("현재 멤버십 가입 및 유료 기능 활성화는 제공되지 않습니다.", html)
         for text in ("29,000", "무제한", "영업신고", "위탁운영", "관리비", "미확인", "이월", "현장"):
             self.assertIn(text, html)
         self.assertRegex(html, r"월\s*1")
