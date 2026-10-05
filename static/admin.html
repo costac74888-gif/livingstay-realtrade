@@ -4175,6 +4175,24 @@
     }
 
     // ---- 데이터 동기화 배너 (배포 후 미실행 항목 안내) ----
+    async function loadPublicApiRelayStatus() {
+      const box = document.getElementById("publicApiRelayStatus");
+      if (!box) return;
+      try {
+        const response = await fetch("/api/admin/public-api-relay/status");
+        if (!response.ok) throw new Error("중계 상태 조회 실패");
+        const data = await response.json();
+        const labels = {bldg_hub:"건축HUB 중계",rtms:"실거래 중계"};
+        box.textContent = Object.entries(labels).map(([key,label])=>{
+          const row = data.services[key];
+          const time = row.last_success_at ? new Date(row.last_success_at).toLocaleString("ko-KR") : "없음";
+          return `${label}: ${row.enabled ? "켜짐" : "꺼짐"} · 마지막 성공: ${time} · 최근 오류: ${row.last_error_code || "없음"}`;
+        }).join(" / ");
+      } catch (_) {
+        box.textContent = "중계 상태를 불러오지 못했습니다.";
+      }
+    }
+
     async function loadDataSyncBanner() {
       const box = document.getElementById("dsBanner");
       if (!box) return;
@@ -5448,6 +5466,7 @@
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">데이터 동기화</h2>
           </div>
+          <p id="publicApiRelayStatus" class="legal-admin-hint" role="status">중계 상태 확인 중…</p>
           <p class="legal-admin-hint">
             아래 순서는 <b>권장 실행 순서</b>입니다(① 건물 생성 → ②③ 정보 보강 → ④~⑦ 거래·외부 데이터 연결).
             각 버튼은 개별 실행이며 자동으로 이어지지 않습니다. 모든 작업은 백그라운드로 진행되어
@@ -5924,6 +5943,7 @@
         </div>
       `;
       applyDataSyncScopeGuides();
+      loadPublicApiRelayStatus();
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);

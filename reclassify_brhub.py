@@ -79,7 +79,7 @@ def main():
             continue
         plat_gb, bun, ji = parse_jibun(r["jibun"])
         try:
-            label, detail, _title, reason = classify_lodging_type(r["sgg_cd"], bjdong_cd, plat_gb, bun, ji)
+            label, detail, _title, reason = classify_lodging_type(r["sgg_cd"], bjdong_cd, plat_gb, bun, ji, purpose="batch")
         except Exception as e:
             print(f"  [{r['id']}] {r['building_name']}: API 오류 {repr(e)[:100]} — 다음 실행 때 재시도")
             continue

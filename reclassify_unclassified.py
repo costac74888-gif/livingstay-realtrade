@@ -93,7 +93,8 @@ def probe():
               f"sgg={row['sgg_cd']} umd={row['umd_nm']} jibun={row['jibun']}")
         try:
             label, detail, subtype, title, reason = classify_lodging_type(
-                row["sgg_cd"], bjd_cd, plat_gb, bun, ji
+                row["sgg_cd"], bjd_cd, plat_gb, bun, ji,
+                purpose="batch",
             )
             print(f"  → label={label!r}  detail={detail!r}  subtype={subtype!r}")
             print(f"  → reason={reason!r}")
@@ -187,7 +188,8 @@ def run(args, status_key=None, run_id=None):
 
             try:
                 label, detail, subtype, title, reason = classify_lodging_type(
-                    row["sgg_cd"], bjd_cd, plat_gb, bun, ji
+                    row["sgg_cd"], bjd_cd, plat_gb, bun, ji,
+                    purpose="batch",
                 )
             except Exception as e:
                 skipped += 1

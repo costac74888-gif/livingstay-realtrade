@@ -18,6 +18,8 @@ from datetime import datetime
 from xml.etree import ElementTree as ET
 
 import requests
+from public_api_client import public_api_get
+from secret_redaction import redact_exception
 
 from address_utils import normalize_umd_nm
 from db import get_conn
@@ -165,7 +167,7 @@ def fetch_trade(source_api, sgg_cd, ymd, key, page_size=1000):
     page = 1
     while True:
         _claim_call()
-        response = requests.get(
+        response = public_api_get(
             API_ENDPOINTS[source_api],
             params={
                 "serviceKey": key,
@@ -175,13 +177,14 @@ def fetch_trade(source_api, sgg_cd, ymd, key, page_size=1000):
                 "pageNo": page,
             },
             timeout=(15, 60),
+            purpose="batch",
         )
         response.raise_for_status()
         root = ET.fromstring(response.content)
         code = (root.findtext(".//resultCode") or "").strip()
         if code not in SUCCESS_RESULT_CODES:
             message = (root.findtext(".//resultMsg") or "unknown error").strip()
-            raise RuntimeError(f"{source_api} API error {code}: {message}")
+            raise RuntimeError(redact_exception(f"{source_api} API error {code}: {message}", ()))
         page_rows = [
             {child.tag: (child.text or "").strip() for child in item}
             for item in root.iter("item")

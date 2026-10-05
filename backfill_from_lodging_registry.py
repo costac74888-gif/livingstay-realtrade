@@ -283,7 +283,8 @@ def run(sgg_filter=None, dry_run=False, status_key=None, run_id=None, use_hub=Fa
             time.sleep(REQUEST_SLEEP)
             try:
                 label, detail, subtype, title, reason = classify_lodging_type(
-                    sgg_cd, bjdong_cd, plat_gb, bun2, ji2
+                    sgg_cd, bjdong_cd, plat_gb, bun2, ji2,
+                    purpose="batch",
                 )
                 if not label:
                     raise ValueError(f"건축HUB 판정불가: {reason}")

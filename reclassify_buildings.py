@@ -72,7 +72,7 @@ def reclassify(force: bool, dry_run: bool):
             continue
 
         try:
-            label, detail, title, reason = classify_lodging_type(row["sgg_cd"], bjdong_cd, plat_gb, bun, ji)
+            label, detail, title, reason = classify_lodging_type(row["sgg_cd"], bjdong_cd, plat_gb, bun, ji, purpose="batch")
         except Exception as e:
             print(f"  분류 실패 (id={row['id']}, {row['building_name']}): {e}")
             counts["미확인"] += 1
@@ -153,7 +153,7 @@ def reclassify_unmatched(dry_run: bool):
             continue
 
         try:
-            label, detail, title, reason = classify_lodging_type(row["sgg_cd"], bjdong_cd, plat_gb, bun, ji)
+            label, detail, title, reason = classify_lodging_type(row["sgg_cd"], bjdong_cd, plat_gb, bun, ji, purpose="batch")
         except Exception as e:
             print(f"  분류 실패 ({row['building_name']} {row['umd_nm']} {row['jibun']}): {e}")
             counts["미확인"] += 1

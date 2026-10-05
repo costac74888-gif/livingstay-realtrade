@@ -371,7 +371,7 @@ class ScheduledSyncPlanTests(unittest.TestCase):
             brhub = f.read()
         with open("sync_permits.py", encoding="utf-8") as f:
             permits = f.read()
-        self.assertIn("claim_building_hub_request()\n    r = requests.get", brhub)
+        self.assertIn("claim_building_hub_request()\n    r = public_api_get", brhub)
         self.assertIn("claim_building_hub_request()\n    r = requests.get", permits)
 
     def test_manual_child_lock_failure_fences_its_claim(self):

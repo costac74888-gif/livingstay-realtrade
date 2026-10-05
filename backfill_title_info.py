@@ -601,6 +601,7 @@ def _run_with_open_connection(limit=None, ids=None, only_missing=True, sleep=0.2
                     b["sgg_cd"], bjd, plat_gb, bun, ji,
                     timeout=(PROVIDER_CONNECT_TIMEOUT_SEC, PROVIDER_READ_TIMEOUT_SEC),
                     retry_max=0,
+                    purpose="batch",
                 )
                 consec_err = 0  # 성공적으로 응답 받음
                 api_response_count += 1

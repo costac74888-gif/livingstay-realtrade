@@ -8,14 +8,20 @@ from urllib.parse import quote, quote_plus, unquote
 _SECRET_QUERY_PARAM_RE = re.compile(
     r"(?i)([?&](?:serviceKey|confmKey|apiKey|client_secret)=)([^&\s\"']+)"
 )
+PUBLIC_API_SECRET_NAMES = (
+    "RELAY_TOKEN", "RELAY_TOKEN_BATCH", "BLD_SERVICE_KEY",
+    "BLD_INSPECTION_SERVICE_KEY", "RTMS_SERVICE_KEY", "DATA_GO_KR_BROKER_API_KEY",
+)
+_RELAY_URL_RE = re.compile(r"https?://[^\s\"'<>]*/v1/fetch\?[^\s\"'<>]+", re.I)
 
 
 def redact_env_secrets(text, env_names):
     """Redact raw and URL-encoded environment secret variants from text."""
     redacted = str(text)
+    redacted = _RELAY_URL_RE.sub("[중계 요청 URL 숨김]", redacted)
     candidates = set()
 
-    for name in env_names:
+    for name in set(env_names) | set(PUBLIC_API_SECRET_NAMES):
         value = os.environ.get(name, "")
         if not value:
             continue
@@ -30,6 +36,10 @@ def redact_env_secrets(text, env_names):
             if candidate:
                 candidates.add(quote(candidate, safe=""))
                 candidates.add(quote_plus(candidate, safe=""))
+                candidates.add(quote(quote(candidate, safe=""), safe=""))
+                candidates.add(quote_plus(quote_plus(candidate, safe=""), safe=""))
+                candidates.add(quote(quote_plus(candidate, safe=""), safe=""))
+                candidates.add(quote_plus(quote(candidate, safe=""), safe=""))
 
     for candidate in sorted((item for item in candidates if item), key=len, reverse=True):
         redacted = redacted.replace(candidate, "***")

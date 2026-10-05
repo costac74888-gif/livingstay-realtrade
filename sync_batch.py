@@ -27,6 +27,7 @@ from datetime import datetime
 from xml.etree import ElementTree as ET
 
 import requests
+from public_api_client import public_api_get
 import psycopg2
 
 from db import get_conn, init_db
@@ -281,7 +282,7 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
         "numOfRows": 999,
         "pageNo": 1,
     }
-    resp = requests.get(RTMS_URL, params=params, timeout=15)
+    resp = public_api_get(RTMS_URL, params=params, timeout=15, purpose="batch")
     if resp.status_code == 429:
         # 과호출 차단 — 재시도 큐로 넘기기 위해 전용 예외로 구분한다.
         raise RateLimitError(f"429 Too Many Requests ({sgg_cd}, {deal_ymd})")
@@ -459,7 +460,7 @@ def _process_trades(
 
             plat_gb, bun, ji = parse_jibun(jibun)
             try:
-                label, detail, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+                label, detail, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji, purpose="batch")
             except Exception as e:
                 print(f"  생숙 검증 실패({umd_nm} {jibun}): {e}")
                 stats["unmatched"] += 1

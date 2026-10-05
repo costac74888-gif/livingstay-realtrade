@@ -45,6 +45,7 @@ from datetime import datetime
 from xml.etree import ElementTree as ET
 
 import requests
+from public_api_client import public_api_get
 
 from db import get_conn, init_db
 from address_utils import road_to_jibun, BjdongMap, parse_jibun, normalize_umd_nm
@@ -111,7 +112,7 @@ def fetch_nrg_trade(sgg_cd: str, deal_ymd: str) -> list[dict]:
         "numOfRows": 999,
         "pageNo": 1,
     }
-    resp = requests.get(RTMS_URL, params=params, timeout=15)
+    resp = public_api_get(RTMS_URL, params=params, timeout=15, purpose="batch")
     resp.raise_for_status()
     root = ET.fromstring(resp.content)
 
@@ -210,7 +211,7 @@ def discover(region_offset: int, region_limit: int, months: int, list_only: bool
 
                 plat_gb, bun, ji = parse_jibun(jibun)
                 try:
-                    label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji)
+                    label, detail, subtype, title, reason = classify_lodging_type(sgg_cd, bjdong_cd, plat_gb, bun, ji, purpose="batch")
                 except Exception as e:
                     print(f"  대장 조회 실패: {e}")
                     month_had_error = True

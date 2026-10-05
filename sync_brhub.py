@@ -42,6 +42,8 @@ import time
 from datetime import date, datetime
 
 import requests
+from public_api_client import RelayError, public_api_get
+from secret_redaction import redact_exception
 
 from db import get_conn
 from quota_policy import QuotaExhausted, claim_building_hub_request, korea_today, regular_cap
@@ -185,12 +187,14 @@ def _fetch_page(key, sgg, bjd, page):
     params = {"serviceKey": key, "sigunguCd": sgg, "bjdongCd": bjd,
               "numOfRows": str(NUM_ROWS), "pageNo": str(page), "_type": "json"}
     claim_building_hub_request()
-    r = requests.get(API_URL, params=params, timeout=30)
+    r = public_api_get(API_URL, params=params, timeout=30, purpose="batch")
     r.raise_for_status()
     d = r.json()
     header = d.get("response", {}).get("header", {})
     if header.get("resultCode") not in ("00", None):
-        raise RuntimeError(f"API 오류 {header.get('resultCode')}: {header.get('resultMsg')}")
+        raise RuntimeError(redact_exception(
+            f"API 오류 {header.get('resultCode')}: {header.get('resultMsg')}", ()
+        ))
     body = d.get("response", {}).get("body", {}) or {}
     items = body.get("items") or {}
     item = items.get("item") if isinstance(items, dict) else None
@@ -235,6 +239,8 @@ def _fetch_all_dong_pages(key, sgg_cd, bjd_cd, sleep_s):
                 last_exc = None
                 break
             except Exception as e:
+                if isinstance(e, RelayError) and not e.retryable:
+                    return None, page - 1, repr(e)[:160], saw_429
                 if isinstance(e, QuotaExhausted):
                     return (
                         None,

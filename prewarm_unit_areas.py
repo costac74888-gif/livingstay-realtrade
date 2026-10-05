@@ -142,7 +142,7 @@ def run(limit=None, ids=None, only_missing=True, sleep=0.3, daily_cap=None):
 
             # fetch_expos_area_strict: 전송 오류·resultCode 비정상 시 예외 전파
             # 정상 응답 0건이면 [] 반환 → sentinel 삽입
-            raw = fetch_expos_area_strict(b["sgg_cd"], bjd, plat_gb, bun, ji)
+            raw = fetch_expos_area_strict(b["sgg_cd"], bjd, plat_gb, bun, ji, purpose="batch")
             # 여기까지 도달 = API 정상 응답 → consec_err 초기화
             consec_err = 0
 

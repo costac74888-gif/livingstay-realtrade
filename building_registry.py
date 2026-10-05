@@ -29,6 +29,7 @@ import requests
 from requests.exceptions import ConnectTimeout, RequestException
 
 from secret_redaction import redact_exception
+from public_api_client import public_api_get
 
 BLD_SERVICE_KEY = os.environ.get("BLD_SERVICE_KEY", "")
 BLD_TITLE_URL = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo"
@@ -47,7 +48,7 @@ class BuildingRegistryRequestError(RuntimeError):
     """A building-registry transport error with credentials removed."""
 
 
-def _get_with_retry(url, params, timeout, retry_max=None):
+def _get_with_retry(url, params, timeout, retry_max=None, purpose="realtime"):
     """ConnectTimeout에 한해 최대 _RETRY_MAX 회 재시도.
 
     4xx/5xx 같은 진짜 API 오류는 재시도해도 의미 없으므로 즉시 올린다.
@@ -58,7 +59,7 @@ def _get_with_retry(url, params, timeout, retry_max=None):
     max_retries = _RETRY_MAX if retry_max is None else max(0, int(retry_max))
     for attempt in range(1 + max_retries):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
+            response = public_api_get(url, params=params, timeout=timeout, purpose=purpose)
             response.raise_for_status()
             return response
         except ConnectTimeout as e:
@@ -119,7 +120,7 @@ def resolve_api_building_name(title: dict | None) -> str:
     return ""
 
 
-def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, retry_max=None):
+def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, retry_max=None, purpose="realtime"):
     """표제부(getBrTitleInfo) 조회 → 이 지번에 선 '모든 동'의 raw dict 리스트. 없으면 []
 
     용도 병기는 '지번 내 전체 동'을 봐야 정확하므로, totalCount만큼 페이징해서
@@ -141,7 +142,7 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         resp = _get_with_retry(
-            BLD_TITLE_URL, params=params, timeout=timeout, retry_max=retry_max
+            BLD_TITLE_URL, params=params, timeout=timeout, retry_max=retry_max, purpose=purpose
         )
         try:
             root = ET.fromstring(resp.content)
@@ -166,7 +167,7 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
     return rows
 
 
-def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """지역지구구역(getBrJijiguInfo) — 용도지역/지구/구역 목록."""
     params = {
         "serviceKey": BLD_SERVICE_KEY,
@@ -177,7 +178,7 @@ def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     }
     resp = _get_with_retry(
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
-        params=params, timeout=10,
+        params=params, timeout=10, purpose=purpose,
     )
     try:
         root = ET.fromstring(resp.content)
@@ -212,13 +213,13 @@ def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
-def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """표제부 조회 → 대표 동 dict 1개 반환(없으면 None).
 
     한 지번에 여러 동이 잡히면 '숙박' 용도 동을 우선하고 그중 호수(hoCnt) 최댓값을 취한다.
     (용도 분류는 classify_lodging_type이 전 동을 합쳐서 하고, 이 함수는 대표 동 정보용.)
     """
-    rows = _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    rows = _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
     if not rows:
         return None
     lodging = [r for r in rows if "숙박" in (r.get("mainPurpsCdNm", "") or "")]
@@ -226,7 +227,7 @@ def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return _title_row_to_dict(max(pool, key=_hocnt))
 
 
-def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """층별개요(getBrFlrOulnInfo) 조회 → 각 층의 주용도/상세용도 리스트.
     조회 자체 실패 시 None(재시도 필요) — '층에 생숙 없음'(빈 리스트)과 구분한다.
     층수가 많은 대형 건물도 빠짐없이 보도록 totalCount만큼 페이징한다."""
@@ -246,7 +247,7 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
         }
         try:
-            resp = _get_with_retry(BLD_FLOOR_URL, params=params, timeout=15)
+            resp = _get_with_retry(BLD_FLOOR_URL, params=params, timeout=15, purpose=purpose)
         except Exception:
             return None  # 조회 실패 — "생숙 아님"과 구분해서 나중에 재시도 가능하게 함
 
@@ -280,26 +281,26 @@ def fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return floors
 
 
-def fetch_expos_area(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_expos_area(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """전유부(호실별 전용면적) 조회 — getBrExposPubuseAreaInfo.
 
     반환: [(ho, area_sqm), ...] 전용부분(exposPubuseAreaGbCd=="1")만.
     실패 시 [] 반환 — 매물등록 자체를 막지 않는다.
     """
     try:
-        return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+        return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
     except Exception:
         return []
 
 
-def fetch_expos_area_strict(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_expos_area_strict(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """전유부 조회 — 배치/프리워밍용 엄격 버전.
 
     반환: [(ho, area_sqm), ...] — API가 0건을 정상 응답하면 [] 반환.
     HTTP/재시도 실패·XML 파싱 오류 등 전송 계층 장애 시 예외를 그대로 전파.
     호출자가 실패와 진정한 빈 응답을 구분할 수 있다.
     """
-    return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    return _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
 
 
 def _check_api_result_code(root):
@@ -317,11 +318,14 @@ def _check_api_result_code(root):
         msg_el = root.find(".//resultMsg")
         msg = (msg_el.text or "").strip() if msg_el is not None else ""
         raise RuntimeError(
-            f"건축HUB API 오류 — resultCode={code!r} resultMsg={msg!r}"
+            redact_exception(
+                f"건축HUB API 오류 — resultCode={code!r} resultMsg={msg!r}",
+                _SECRET_ENV_NAMES,
+            )
         )
 
 
-def _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """fetch_expos_area / fetch_expos_area_strict 공유 구현.
 
     전송 실패·XML 파싱 오류·API resultCode 오류 시 예외 전파.
@@ -342,7 +346,7 @@ def _fetch_expos_area_inner(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
             "pageNo": page,
             "type": "xml",
         }
-        resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15)
+        resp = _get_with_retry(BLD_EXPOS_URL, params=params, timeout=15, purpose=purpose)
         root = ET.fromstring(resp.content)
         _check_api_result_code(root)
 
@@ -415,7 +419,7 @@ def _combine_labels(categories):
     return "복합" if len(categories) > 1 else next(iter(categories))
 
 
-def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """
     이 지번의 건물을 생활/관광/일반/복합으로 분류한다 (표제부 → 필요시 층별개요 순).
     2개 이상 카테고리가 섞이면 '복합'으로 통합 반환한다.
@@ -428,7 +432,7 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
 
     표제부에서 확정되면 층별개요는 조회하지 않는다(불필요한 대기 제거).
     """
-    rows = _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    rows = _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
     time.sleep(REQUEST_SLEEP)
 
     if not rows:
@@ -467,7 +471,7 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         return _combine_labels(categories), combined, subtype, title, "표제부의 여러 동/용도가 섞여 복합으로 분류"
 
     # 2차: 표제부만으론 판정 안 됨 → 층별개요 추가 조회, 전 층을 훑어 카테고리 집합을 모은다
-    floors = fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    floors = fetch_floor_outline(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
     time.sleep(REQUEST_SLEEP)
 
     if floors is None:
@@ -508,7 +512,7 @@ def classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
     return None, full_detail, None, title, "표제부·층별개요 모두 판정 불가(용도 표기 없음)"
 
 
-def is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """
     이 지번의 건물이 생활숙박시설인지 최종 판정한다 (하위호환용 얇은 래퍼).
     내부적으로 classify_lodging_type()을 호출해 3분류한 뒤 True/False/None으로 축약한다.
@@ -520,7 +524,7 @@ def is_living_stay(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
       - None  : 표제부 없음 / 층별개요 조회 실패 / 판정불가 (나중에 재시도 필요, '아니다'와 다름)
                 title is None 여부로 '표제부 자체 없음'과 '조회는 됐으나 판정불가'를 구분할 수 있다.
     """
-    label, _detail, _subtype, title, reason = classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji)
+    label, _detail, _subtype, title, reason = classify_lodging_type(sigungu_cd, bjdong_cd, plat_gb, bun, ji, purpose=purpose)
     if label == "생활":
         return True, title, reason
     if label:  # '호텔','콘도', 또는 '호텔·콘도' 등 병기 라벨 전부 생숙 아님으로 축약

@@ -20230,6 +20230,14 @@ def admin_datasync_overview():
     })
 
 
+@app.get("/api/admin/public-api-relay/status")
+@require_admin
+def admin_public_api_relay_status():
+    """Read-only, non-sensitive local relay telemetry; never probe the provider."""
+    from public_api_client import relay_status
+    return jsonify({"ok": True, "services": relay_status()})
+
+
 @app.route("/api/admin/scheduled-sync-status")
 @require_admin
 def admin_scheduled_sync_status():

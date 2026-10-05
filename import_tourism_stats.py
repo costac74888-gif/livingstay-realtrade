@@ -717,7 +717,7 @@ def _classify_hub_title_snapshot(title_rows, identities):
 
 def enrich_latest_top100_lodging_buildings(
         cur, bjdong=None, *, road_to_jibun_fn=road_to_jibun,
-        fetch_title_rows_fn=_fetch_title_rows):
+        fetch_title_rows_fn=None):
     """Create only one unambiguous lodging HUB building for confirmed TOP100.
 
     The Kakao road address is converted to a legal parcel before calling
@@ -725,6 +725,9 @@ def enrich_latest_top100_lodging_buildings(
     not resolved by business name, title name, or coordinates; it is recorded
     for manual review.  ``bjdong`` and API callables are injectable for tests.
     """
+    if fetch_title_rows_fn is None:
+        def fetch_title_rows_fn(*args):
+            return _fetch_title_rows(*args, purpose="batch")
     if bjdong is None:
         code_path = os.environ.get("BJDONG_CODE_CSV", "법정동코드_전체자료.zip")
         if not os.path.exists(code_path):
