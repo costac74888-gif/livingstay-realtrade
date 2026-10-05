@@ -38,9 +38,10 @@ const fs = require("node:fs");
   await page.waitForSelector("#bAuctionPanel .auction-panel-general");
   await page.waitForTimeout(2500);
   assert.equal(await page.locator(".auction-panel-round.is-current").count(), 1);
-  await page.waitForSelector("#bAuctionPanel .survey-analysis-link");
-  assert.equal(await page.locator("#bAuctionPanel .survey-analysis-link").count(), 3);
-  assert.equal(await page.locator("#bAuctionPanel .survey-check-state").count(), 3);
+  await page.waitForSelector("#bAuctionPanel .survey-membership-notice");
+  assert.equal(await page.locator("#bAuctionPanel .survey-analysis-link").count(), 0);
+  assert.equal(await page.locator("#bAuctionPanel .survey-check-state").count(), 0);
+  assert.equal(await page.locator("#bAuctionPanel .survey-membership-notice a").getAttribute("href"), "/membership");
   assert.ok((await page.locator('a.auction-panel-onbid').getAttribute("href")).startsWith("https://www.onbid.co.kr/"));
   const images = page.locator(".auction-panel-photo img");
   if (await images.count()) {
@@ -49,7 +50,7 @@ const fs = require("node:fs");
     await page.keyboard.press("Escape");
     assert.equal(await page.locator(".auction-panel-lightbox").isVisible(), false);
   }
-  console.log("PASS detail: real photos, current-round identity, original link, additive analysis/checklist");
+  console.log("PASS detail: real photos, current-round identity, original link, survey membership restriction");
   await page.goto(base + "/");
   await page.waitForTimeout(4000);
   if (await page.locator("#welcomeClose").isVisible()) await page.click("#welcomeClose");
@@ -125,7 +126,7 @@ const fs = require("node:fs");
   await page.locator(".auction-panel-general").waitFor();
   assert.equal(new URL(page.url()).searchParams.get("auction"),String(other.id));
   assert.equal(new URL(page.url()).searchParams.get("building"),null);
-  assert.equal(await page.locator(".b-detail-tab:visible").count(),1);
+  assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
   console.log("PASS grouped selection: switching between matched/unmatched items updates panel, tab scope and deep link");
   const unmatched=Number(execFileSync("python",["-c",
     "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute('SELECT id FROM auction_items WHERE master_building_id IS NULL ORDER BY id LIMIT 1');print(q.fetchone()['id'])"
@@ -133,7 +134,7 @@ const fs = require("node:fs");
   await page.goto(base+"/auctions/"+unmatched+"/survey");
   await page.locator(".auction-panel-general").waitFor();
   assert.ok(page.url().endsWith("/?auction="+unmatched));
-  assert.equal(await page.locator(".b-detail-tab:visible").count(),1);
+  assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
   assert.equal(await page.locator(".survey-analysis-link").count(),0);
   await page.screenshot({path:"attached_assets/auction-integrated/unmatched-desktop.png"});
   await page.evaluate(id => window.openBuildingDetail(id), sample.master_building_id);
@@ -156,4 +157,4 @@ const fs = require("node:fs");
   assert.deepEqual(errors, []);
   console.log("PASS browser JavaScript: no unhandled errors");
   await browser.close();
-})().catch(e => { console.error(e.message); process.exit(1); });
+})().catch(e => { console.error(e.stack || e.message); process.exit(1); });

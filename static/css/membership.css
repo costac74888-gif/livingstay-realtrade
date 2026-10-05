@@ -1,0 +1,54 @@
+.membership-page{
+  min-height:calc(100dvh - var(--header-h, 63px));
+  padding:clamp(28px,6vw,72px) 18px 76px;
+  background:#f3f5f2;
+  color:var(--ink,#16202e);
+}
+.membership-wrap{width:min(100%,760px);margin:0 auto}
+.membership-eyebrow{
+  margin:0 0 12px;color:#607365;font:700 11px/1.4 'JetBrains Mono',monospace;
+  letter-spacing:.12em;text-transform:uppercase;
+}
+.membership-title{
+  max-width:660px;margin:0;font-size:clamp(30px,6vw,48px);
+  line-height:1.23;letter-spacing:-.065em;font-weight:800;
+}
+.membership-lead{
+  max-width:620px;margin:16px 0 30px;color:#59665e;
+  font-size:14px;line-height:1.85;word-break:keep-all;
+}
+.membership-status{
+  display:flex;align-items:center;gap:9px;margin:0 0 16px;
+  padding:12px 15px;border:1px solid #d6dfd7;background:#eaf0e9;
+  color:#3d5948;font-size:12px;font-weight:700;
+}
+.membership-status::before{
+  content:"";width:8px;height:8px;flex:none;border-radius:50%;background:#66836d;
+}
+.membership-sections{display:grid;gap:10px}
+.membership-section{
+  padding:20px 21px;background:#fff;border:1px solid #e0e5df;border-radius:8px;
+}
+.membership-section h2{margin:0 0 7px;font-size:14px;letter-spacing:-.025em}
+.membership-section p{margin:0;color:#68736b;font-size:12px;line-height:1.8;word-break:keep-all}
+.membership-footnote{
+  margin:17px 0 0;padding:15px 17px;border-left:3px solid #b4863f;
+  background:#fbf5e9;color:#6f6044;font-size:11.5px;line-height:1.75;word-break:keep-all;
+}
+.membership-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:25px}
+.membership-actions a{
+  display:inline-flex;align-items:center;justify-content:center;min-height:42px;
+  padding:0 17px;border:1px solid #3d5948;border-radius:6px;
+  background:#3d5948;color:#fff;text-decoration:none;font-size:12px;font-weight:700;
+}
+.membership-actions a.secondary{background:transparent;color:#3d5948}
+.membership-actions a:hover{background:#4c6b58;color:#fff}
+.membership-actions a:focus-visible{outline:2px solid #b4863f;outline-offset:3px}
+@media(max-width:600px){
+  .membership-page{padding:30px 14px 54px}
+  .membership-title{font-size:32px}
+  .membership-lead{margin:13px 0 24px;font-size:13px}
+  .membership-section{padding:17px 16px}
+  .membership-actions{display:grid}
+  .membership-actions a{width:100%}
+}

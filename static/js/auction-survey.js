@@ -38,6 +38,21 @@
   const displayArea = item => finite(item.area_m2) && Number(item.area_m2) > 0
     ? `${Number(item.area_m2).toLocaleString("ko-KR",{maximumFractionDigits:2})}㎡${item.unit_label ? ` · ${item.unit_label}` : ""}`
     : "확인 필요";
+  const membershipRequired = data => Boolean(data && data.membership_access && data.membership_access.required === true);
+  const membershipInfoUrl = data => {
+    const candidate = data && data.membership_access && data.membership_access.info_url;
+    return typeof candidate === "string" && candidate.startsWith("/") && !candidate.startsWith("//")
+      ? candidate : "/membership";
+  };
+  function renderMembershipNotice(target, data) {
+    if (!target) return;
+    target.innerHTML = `<section class="survey-membership-notice" role="status">
+      <span class="survey-kicker">MEMBERSHIP ACCESS</span>
+      <h2>멤버십 준비 중</h2>
+      <p>현황조사 정보와 신청 기능은 멤버십 서비스 준비 후 이용하실 수 있습니다.</p>
+      <a href="${esc(membershipInfoUrl(data))}">멤버십 안내</a>
+    </section>`;
+  }
 
   function renderDetail(slot, id, item, links, comparison, checklist, availability, analysisNotice) {
     const matched = Boolean(item.master_building_id);
@@ -126,11 +141,19 @@
     try {
       const data=await loadAuctionInfo(id);
       if(detailMounts.get(slot)!==sequence||!slot.isConnected)return;
+      if(membershipRequired(data)){
+        renderMembershipNotice(slot,data);
+        return;
+      }
       if(!data.item)throw new Error("공매 정보를 찾을 수 없습니다.");
       const item=data.item;if(item.id==null)item.id=id;
       renderDetail(slot,id,item,data.analysis_links,data.comparison,data.checklist,data.availability,data.analysis_notice);
     } catch(error) {
       if(detailMounts.get(slot)!==sequence||!slot.isConnected)return;
+      if(error.data && error.data.code === "MEMBERSHIP_PREPARING"){
+        renderMembershipNotice(slot,error.data);
+        return;
+      }
       slot.innerHTML=`<section class="survey-block"><div class="survey-error" role="alert">${esc(error.message||"현황조사 정보를 불러오지 못했습니다.")}<button type="button" data-survey-retry>다시 불러오기</button></div></section>`;
       slot.querySelector("[data-survey-retry]")?.addEventListener("click",()=>window.mountAuctionSurveyDetail(slot,id));
     }
@@ -166,7 +189,13 @@
     const content=drawer.querySelector("#auctionSurveyDrawerContent");
     content.innerHTML='<div class="survey-loading" role="status">조사 범위와 신청 조건을 확인 중입니다.</div>';
     try {
-      const [auction,configData]=await Promise.all([loadAuctionInfo(id),jsonRequest("/api/survey/config")]);
+      const auction=await loadAuctionInfo(id);
+      if(sequence!==surveyDrawerSequence||drawer.hidden)return;
+      if(membershipRequired(auction)){
+        renderMembershipNotice(content,auction);
+        return;
+      }
+      const configData=await jsonRequest("/api/survey/config");
       if(sequence!==surveyDrawerSequence||drawer.hidden)return;
       const item=auction.item||{},config=configData.config||auction.config||{};
       if(!auction.availability||auction.availability.can_apply!==true)throw new Error(auction.availability?.reason||"현재 현황조사 신청이 불가능합니다.");
@@ -174,6 +203,10 @@
       panel.querySelector(".survey-drawer-header h2").focus?.();
     } catch(error) {
       if(sequence!==surveyDrawerSequence||drawer.hidden)return;
+      if(error.data && error.data.code === "MEMBERSHIP_PREPARING"){
+        renderMembershipNotice(content,error.data);
+        return;
+      }
       content.innerHTML=`<div class="survey-error" role="alert"><strong>${esc(error.message||"신청 정보를 불러오지 못했습니다.")}</strong><p>잠시 후 다시 시도해 주세요.</p><button type="button" data-drawer-retry>다시 불러오기</button></div>`;
       content.querySelector("[data-drawer-retry]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
     }
@@ -282,6 +315,10 @@
       try {
         const response = await fetch(`/api/auctions/${encodeURIComponent(id)}/survey-requests`,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
         const data = await response.json().catch(()=>({}));
+        if(response.status===403&&data.code==="MEMBERSHIP_PREPARING"){
+          renderMembershipNotice(app,data);
+          return;
+        }
         if (response.status === 409) {
           const fresh = await jsonRequest("/api/survey/config");
           const updated = fresh.config || {};

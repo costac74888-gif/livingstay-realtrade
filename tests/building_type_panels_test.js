@@ -51,14 +51,16 @@ expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
 expect(
-  main.includes('"bReservationCard", "bTourismDataCard", "bLodgingOperatorCard"') &&
+  main.includes('"bReservationCard", "bAdminCard", "bTourismDataCard", "bLodgingOperatorCard"') &&
   main.includes('"bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard"') &&
   !main.includes('"bStoresCard", "bPartnerBannerCard"'),
-  "운영정보의 예약·관광통계·시설운영파트너·공식영업정보 순서 또는 마지막 파트너 배너 배치가 올바르지 않습니다.",
+  "운영정보의 예약·행정운영·관광통계·시설운영파트너·멤버십 안내 순서가 올바르지 않습니다.",
 );
 expect(!main.includes("_reservationBar(b, false)"), "생활숙박시설의 예약 안내가 탭 밖에 중복 표시됩니다.");
 expect(main.includes('"bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard"'), "Structure B 부동산 패널에 실거래 카드가 묶이지 않았습니다.");
-expect(main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'), "매물내놓기·매수의뢰와 숙박알리미·행정운영이 부동산정보 패널에 묶이지 않았습니다.");
+expect(main.includes('property: [\n      "bRequestCard", "bSignalCard",') &&
+  !main.includes('property: [\n      "bRequestCard", "bSignalCard", "bAdminCard"'),
+  "행정운영이 여전히 부동산정보 패널에 있습니다.");
 expect(
   main.includes('<div class="b-request-privacy-note">직거래·중개 매물등록과 매수의뢰를 비공개로 진행할 수 있습니다.</div>') &&
   css.includes(".b-request-privacy-note"),
@@ -110,11 +112,8 @@ expect(main.includes('id="bOperatorInfoDisclaimer"') && main.includes('Boolean(o
 expect(
   main.includes("function _renderApprovedRosterOperatingInfo") &&
   main.includes("bApprovedRosterOperatingCard") &&
-  main.includes("등록명칭") &&
-  main.includes("법정 업종") &&
-  main.includes("공식 객실수") &&
-  main.includes("관광숙박업 등록현황(문체부)"),
-  "승인 명부 기반 운영정보 라벨이 없습니다.",
+  main.includes("현재는 공개하지 않습니다."),
+  "공식 영업 상세기록의 비노출 안내가 없습니다.",
 );
 expect(
   main.includes("data-property-name=") &&
@@ -138,16 +137,16 @@ expect(
 );
 expect(main.includes("운영형태 · 사이트 구성"), "캠핑 사이트 구성이 법정 업종처럼 표시됩니다.");
 expect(
-  main.includes("operating_records") &&
   main.includes("공식 영업·운영 정보") &&
-  main.includes("사이트 구성 운영형태") &&
-  main.includes("official_site_count"),
-  "통합 공개 영업정보 다중 레코드·캠핑 사이트 구분 계약이 없습니다.",
+  main.includes("멤버십 준비 중") &&
+  main.includes('href="/membership"'),
+  "공식 상세 영업정보가 멤버십 준비 안내로 전환되지 않았습니다.",
 );
 expect(
-  main.includes("호텔 등급") &&
+  !main.slice(main.indexOf("function _renderApprovedRosterOperatingInfo(b){"),
+    main.indexOf("const STRUCTURE_A_TYPES")).includes("permit_number") &&
   !main.includes("<dt>전화</dt>"),
-  "공개 운영정보는 호텔등급을 보존하고 전화번호를 노출하지 않아야 합니다.",
+  "멤버십 준비 안내 안에 공식 원장 상세값이 남아 있습니다.",
 );
 
 console.log("OK  건물 유형별 상세 패널 회귀 점검");

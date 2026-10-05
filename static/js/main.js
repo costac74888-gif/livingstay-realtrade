@@ -6307,60 +6307,14 @@ function _renderNonCampingOperations(b){
 function _renderApprovedRosterOperatingInfo(b){
   const card = document.getElementById("bApprovedRosterOperatingCard");
   const body = document.getElementById("bApprovedRosterOperatingBody");
-  const records = Array.isArray(b.operating_records) ? b.operating_records : [];
-  // New unified contract carries registry and approved-roster evidence.  The
-  // legacy operating_info fallback keeps older API deployments usable.
-  const official = records.length ? records : (b.operating_info ? [{
-    registered_name: b.operating_info.facility_name,
-    legal_category: b.operating_info.subtype,
-    hotel_grade: b.operating_info.hotel_grade,
-    permit_number_masked: b.operating_info.registration_number_masked || b.operating_info.registration_number,
-    official_room_count: b.operating_info.official_room_count,
-    official_road_address: b.operating_info.address,
-    source_name: b.operating_info.source,
-    source_updated_at: b.operating_info.reference_year,
-    source_category: "annual_tourism_roster",
-    active_status: "영업/정상",
-  }] : []);
   if (!card || !body) return;
-  if (!official.length) {
-    card.style.display = "none"; body.innerHTML = "";
-    return;
-  }
-  const value = item => item == null || String(item).trim() === "" ? "-" : escapeHtml(String(item));
-  const count = (item, unit) => Number.isFinite(Number(item)) ? `${Number(item).toLocaleString("ko-KR")}${unit}` : "-";
   body.innerHTML = `
-    <div class="side-card-title">공식 영업·운영 정보 <span class="side-sub">${official.length}건</span></div>
-    ${official.map(info => {
-      const isCamping = info.official_site_count != null
-        || info.camping_site_composition != null;
-      const sourceLabel = info.source_category === "annual_tourism_roster"
-        ? "관광숙박업 등록현황(문체부)"
-        : info.source_name;
-      const sourceDate = info.reference_year ? `${info.reference_year}년`
-        : value(info.source_updated_at);
-      const address = info.official_road_address || info.official_jibun_address;
-      const campingBreakdown = [
-        ["일반", info.camping_general_site_count], ["오토", info.camping_auto_site_count],
-        ["글램핑", info.camping_glamping_site_count], ["카라반", info.camping_caravan_site_count],
-      ].filter(([, n]) => n != null).map(([label, n]) => `${label} ${count(n, "면")}`).join(" · ");
-      return `<div class="camp-detail-block">
-        <div class="b-ops-source-label">${value(sourceLabel)} <span>${value(sourceDate)}</span></div>
-        <dl class="camp-detail-list">
-          <div><dt>등록명칭</dt><dd>${value(info.registered_name)}</dd></div>
-          <div><dt>법정 업종</dt><dd>${value(info.legal_category)}</dd></div>
-          ${info.hotel_grade ? `<div><dt>호텔 등급</dt><dd>${value(info.hotel_grade)}</dd></div>` : ""}
-          <div><dt>허가·신고번호</dt><dd>${value(info.permit_number_masked || info.permit_number)}</dd></div>
-          <div><dt>영업 상태</dt><dd>${value(info.active_status)}${info.status_detail ? ` · ${value(info.status_detail)}` : ""}</dd></div>
-          <div><dt>허가일</dt><dd>${value(info.permit_date)}</dd></div>
-          <div><dt>${isCamping ? "공식 사이트 수" : "공식 객실수"}</dt><dd>${isCamping ? count(info.official_site_count, "면") : count(info.official_room_count, "실")}</dd></div>
-          ${isCamping ? `<div><dt>사이트 구성 운영형태</dt><dd>${value(info.camping_site_composition)}${campingBreakdown ? ` · ${escapeHtml(campingBreakdown)}` : ""}</dd></div>` : ""}
-          <div><dt>공식 주소</dt><dd>${value(address)}</dd></div>
-          <div><dt>출처</dt><dd>${value((info.source_provenance || [info.source_name]).filter(Boolean).join(" · "))}</dd></div>
-          <div><dt>기준·갱신일</dt><dd>${value(sourceDate)}</dd></div>
-        </dl>
-      </div>`;
-    }).join("")}`;
+    <div class="side-card-title">공식 영업·운영 정보</div>
+    <div class="b-membership-notice" role="status">
+      <strong>멤버십 준비 중</strong>
+      <p>상세 공식 영업·운영 기록은 유료 멤버십 서비스로 준비 중이며, 현재는 공개하지 않습니다.</p>
+      <a href="/membership">멤버십 안내</a>
+    </div>`;
   card.style.display = "";
 }
 
@@ -6463,11 +6417,11 @@ function _setupBuildingPanels(type, force=false){
   const ids = {
     operations: [
       "bCampCard", "bNonCampingOperationsCard",
-      "bReservationCard", "bTourismDataCard", "bLodgingOperatorCard",
+      "bReservationCard", "bAdminCard", "bTourismDataCard", "bLodgingOperatorCard",
       "bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard",
     ],
     property: [
-      "bRequestCard", "bSignalCard", "bAdminCard",
+      "bRequestCard", "bSignalCard",
       "bAreaFilterCard", "bTrendCard", "bTimelineCard", "bTxCard",
       "bListingsCard", "bBldgInfoCard", "bAgentCard", "bStoresCard",
     ],

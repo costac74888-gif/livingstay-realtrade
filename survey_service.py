@@ -18,6 +18,7 @@ from db import get_conn
 from auction_domain import ELIGIBLE_SQL
 from auction_building_matching import resolve_building
 from survey_defaults import DEFAULT_SETTINGS
+from premium_membership import membership_access, locked_response
 
 KST = ZoneInfo("Asia/Seoul")
 SETTINGS_LOCK = 72941682
@@ -289,6 +290,8 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
     @app.get("/api/survey/config")
     @limiter.limit("60 per minute")
     def survey_config():
+        if membership_access("auction_survey")["required"]:
+            return locked_response("auction_survey")
         with survey_connection() as conn:
             with conn.cursor() as cur:
                 config, _ = load_quote(cur, load_settings(cur))
@@ -299,6 +302,17 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
     @app.get("/api/auctions/<int:item_id>/survey-info")
     @limiter.limit("60 per minute")
     def survey_info(item_id):
+        access = membership_access("auction_survey")
+        if access["required"]:
+            # 유료 원문·설정·가격표·점검자료는 응답과 HTML 어디에도 싣지 않는다.
+            with survey_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(f"SELECT a.id FROM auction_items a WHERE a.id=%s AND {ELIGIBLE_SQL}", [item_id])
+                    if not cur.fetchone():
+                        return jsonify(ok=False, message="공매 물건을 찾을 수 없습니다."), 404
+            response = jsonify(ok=True, item=None, membership_access=access)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         with survey_connection() as conn:
             with conn.cursor() as cur:
                 settings = load_settings(cur)
@@ -320,6 +334,8 @@ def register_survey_routes(app, limiter, serve_html, require_admin):
     def survey_create(item_id):
         if reject_cross_site():
             return jsonify(ok=False, message="허용되지 않은 요청입니다."), 403
+        if membership_access("auction_survey")["required"]:
+            return locked_response("auction_survey")
         data = request.get_json(silent=True)
         try:
             cleaned = validate_applicant(data)

@@ -28,6 +28,7 @@ import math
 import html as _html
 import hashlib
 import hmac
+from premium_membership import membership_access
 import threading
 import subprocess
 import secrets as _secrets
@@ -780,6 +781,11 @@ def building_page(building_id):
     (static/building.html은 롤백 대비 남겨두되 더 이상 서빙하지 않는다.)
     """
     return _serve_app_shell(building_id, request.args.get("listing", type=int))
+
+
+@app.get("/membership")
+def membership_page():
+    return _serve_static_html("membership.html")
 
 
 _AUTHORITY_INDEX = None
@@ -2319,21 +2325,29 @@ def get_building(building_id):
     # Operating records are separate from building-register property facts.
     # Both sources are active/public-safe only; registry linkage is exact
     # normalized address (road first, jibun fallback).
-    registry_records = _public_lodging_registry_records(cur, building)
-    annual_records = _public_annual_operating_records(cur, building_id)
-    building["operating_records"] = _mask_public_operating_record_numbers(
-        _sort_public_operating_records(
-            _deduplicate_public_operating_records(registry_records + annual_records)
+    building["membership_access"] = membership_access("official_operating_records")
+    if building["membership_access"]["required"]:
+        # 행정운영 요약은 기존 경로로 계산한다. 유료 상세 원장은 조회·전달하지 않는다.
+        building["operating_records"] = []
+    else:
+        registry_records = _public_lodging_registry_records(cur, building)
+        annual_records = _public_annual_operating_records(cur, building_id)
+        building["operating_records"] = _mask_public_operating_record_numbers(
+            _sort_public_operating_records(
+                _deduplicate_public_operating_records(registry_records + annual_records)
+            )
         )
-    )
     # 영업신고가 여러 건이면 신고 객실수가 가장 많은 사업장을 대표로 노출한다.
     # 객실수가 없거나 같을 때는 원장의 기존 순서를 안정적으로 보존한다.
     building["operating_primary"] = (
         building["operating_records"][0] if building["operating_records"] else None
     )
-    building["operating_record_count"] = len(building["operating_records"])
+    building["operating_record_count"] = (
+        None if building["membership_access"]["required"] else len(building["operating_records"])
+    )
     # Compatibility field for existing clients: annual roster only.
-    operating_info = annual_tourism_roster.latest_linked_operating_info(cur, building_id)
+    operating_info = (None if building["membership_access"]["required"] else
+                      annual_tourism_roster.latest_linked_operating_info(cur, building_id))
     if operating_info:
         operating_info = dict(operating_info)
         masked_registration = _masked_public_operating_permit_number(

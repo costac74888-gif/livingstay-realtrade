@@ -199,7 +199,8 @@ class AuctionApiTest(unittest.TestCase):
         self.assertIn(row["id"], [item["id"] for item in history["items"]])
         self.assertIn(data["item"]["thumbnail_url"], [photo["url"] for photo in history["photos"]])
         survey = self.client.get("/api/auctions/" + str(row["id"]) + "/survey-info").get_json()
-        self.assertEqual(survey["item"]["master_building_id"], data["building"]["id"])
+        self.assertIsNone(survey["item"])
+        self.assertTrue(survey["membership_access"]["required"])
 
     def test_detail_photo_fallback_safety_and_existing_photo_priority(self):
         item = {"id": 123, "thumbnail_url": "https://www.onbid.co.kr/list.jpg"}

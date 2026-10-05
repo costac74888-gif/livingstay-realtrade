@@ -101,6 +101,12 @@ class SurveyAPI(unittest.TestCase):
 
     def setUp(self):
         self.limiter.reset()
+        # Keep the existing service/quote/admin regressions on an explicitly
+        # authorised test path. Default public restrictions have separate tests.
+        self.membership_patch = patch.object(service, "membership_access", return_value={
+            "required": False, "available": True, "status": "test-authorised"})
+        self.membership_patch.start()
+        self.addCleanup(self.membership_patch.stop)
         self.conn = get_conn()
         self.connection_patch = patch.object(service, "get_conn", return_value=BorrowedTransaction(self.conn))
         self.connection_patch.start()

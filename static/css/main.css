@@ -466,6 +466,11 @@
   .b-tourism-building-rank small{width:100%;color:var(--ink-soft);font-size:10px;}
   .b-tourism-building-rank strong{color:var(--brass-dark);font-size:14px;}
   .b-tourism-building-rank span{color:var(--ink);font-size:11px;font-weight:600;}
+  .b-membership-notice{margin-top:9px;padding:12px;border:1px solid #dce5df;border-radius:7px;background:#f4f6f1;color:var(--ink);}
+  .b-membership-notice strong{display:block;color:#3d5948;font-size:12px;}
+  .b-membership-notice p{margin:5px 0 9px;color:var(--ink-soft);font-size:11px;line-height:1.65;}
+  .b-membership-notice a{display:inline-flex;align-items:center;min-height:30px;padding:0 10px;border-radius:5px;background:#3d5948;color:#fff;text-decoration:none;font-size:10.5px;font-weight:700;}
+  .b-membership-notice a:hover{background:#4c6b58;}
    @media(max-width:420px){.b-tourism-surge-badge{font-size:10px;padding-inline:7px}.b-tourism-metrics{grid-template-columns:1fr 1fr}}
   .map-measure-label{
     padding:4px 7px; border:1px solid #EAD9B8; border-radius:6px;
