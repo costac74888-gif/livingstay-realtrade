@@ -165,6 +165,9 @@ SITE_URL = "https://homenstay.com"
 [userenv.production]
 RELAY_BASE_URL = "https://relay.homenstay.com"
 
+[userenv.development]
+RELAY_BASE_URL = "https://relay.homenstay.com"
+
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "scripts/start-prod.sh"]

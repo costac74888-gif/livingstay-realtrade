@@ -42,6 +42,13 @@
       ["건물면적",formatArea(item.building_area_m2)]
     ];
     host.innerHTML=`<section class="side-card auction-panel-unmatched-heading"><button type="button" id="auctionBackToMap" class="side-more">← 지도로</button><h2>${esc(item.title||item.usage_name||"공매 물건 상세")}</h2><p>${esc(item.address_road||item.address_jibun||"소재지 확인 필요")}</p><p class="auction-panel-unmatched">공매 정보에 매칭된 건물 정보가 없습니다. 실제 건물의 존재 여부는 확인되지 않았습니다.</p></section><div class="b-inline-tabs auction-panel-unmatched-tabs" role="tablist" aria-label="공매 물건 상세 정보"><button type="button" class="b-detail-tab" id="bTabProperty" data-panel="property" role="tab" aria-controls="bPropertyPanel" aria-selected="false" tabindex="-1">부동산정보</button><button type="button" class="b-detail-tab" id="bTabOperations" data-panel="operations" role="tab" aria-controls="bOperationsPanel" aria-selected="false" tabindex="-1">운영정보</button><button type="button" class="b-detail-tab active" id="bTabAuctions" data-panel="auctions" role="tab" aria-controls="bAuctionPanel" aria-selected="true" tabindex="0">공매정보</button></div><section id="bPropertyPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabProperty" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>01</span><h3>공매 자료에 확인된 부동산 정보</h3></div><dl class="auction-panel-facts">${facts.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value||"자료에 없음")}</dd></div>`).join("")}</dl></section><p class="auction-panel-unmatched">건축물대장과 실거래 자료는 연결되어 있지 않습니다. 공매 자료에 없는 정보는 확인된 사실로 표시하지 않습니다.</p></section><section id="bOperationsPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabOperations" hidden><section class="auction-panel-section"><div class="auction-panel-section-title"><span>02</span><h3>운영정보</h3></div><div class="auction-panel-content"><p class="auction-panel-unmatched">운영정보를 확인할 수 없습니다. 이 화면에 연결된 영업신고 자료가 없으며, 이는 미신고 또는 폐업을 의미하지 않습니다.</p></div></section></section><section id="bAuctionPanel" class="b-detail-panel" role="tabpanel" aria-labelledby="bTabAuctions"></section>`;
+    const lookup=document.createElement("div");
+    lookup.id="auctionBuildingLookupStatus";
+    lookup.className="auction-panel-unmatched";
+    lookup.setAttribute("role","status");
+    lookup.setAttribute("aria-live","polite");
+    lookup.textContent="건축물대장 우선 조회를 준비하고 있습니다.";
+    host.querySelector(".auction-panel-unmatched-heading")?.appendChild(lookup);
     ensureBackButton();
     const tabs=Array.from(host.querySelectorAll('[role="tab"]'));
     const panels={property:host.querySelector("#bPropertyPanel"),operations:host.querySelector("#bOperationsPanel"),auctions:host.querySelector("#bAuctionPanel")};
@@ -67,6 +74,48 @@
       });
     });
     activate(host.querySelector('#bTabAuctions'));
+  };
+
+  window.enrichUnmatchedAuction=async function(host,item,options={}){
+    let attempts=0;
+    const current=()=>host.isConnected&&Boolean(options.isCurrent?.());
+    const node=()=>host.querySelector("#auctionBuildingLookupStatus");
+    const show=(message,retry=false)=>{
+      const target=node();if(!current()||!target)return;
+      target.textContent=message;
+      if(retry){
+        const button=document.createElement("button");
+        button.type="button";button.className="side-more";button.textContent="조회 다시 확인";
+        button.addEventListener("click",()=>{attempts=0;if(current())void begin("POST");},{once:true});
+        target.appendChild(button);
+      }
+    };
+    const begin=async method=>{
+      if(!current())return;
+      try{
+        const response=await fetch(`/api/auctions/${encodeURIComponent(item.id)}/building-lookup`,{
+          method,credentials:"same-origin",cache:"no-store"
+        });
+        const data=await response.json();
+        if(!current())return;
+        if(!response.ok||!data.ok||!data.lookup)throw new Error(data.message||"조회 상태를 확인하지 못했습니다.");
+        const lookup=data.lookup;
+        show(lookup.message||"건축물대장 확인 중입니다.");
+        if(lookup.state==="done"&&lookup.building_id){
+          await options.onLinked?.();
+          return;
+        }
+        if(lookup.state==="running"&&attempts++<60){
+          setTimeout(()=>{if(current())void begin("GET");},2000);
+        }else{
+          show(lookup.state==="running"?"조회가 계속 진행 중입니다. 잠시 후 다시 확인해 주세요.":lookup.message,
+            ["running","failed","busy"].includes(lookup.state));
+        }
+      }catch(error){
+        show(error.message||"건축물대장 조회 상태를 확인하지 못했습니다.",true);
+      }
+    };
+    await begin("POST");
   };
   function formatArea(value){
     if(value==null||value===""||!Number.isFinite(Number(value)))return "";

@@ -365,7 +365,6 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
 
     @app.get("/api/auctions/<int:item_id>")
     @limiter.limit("60 per minute")
-    @public_cache
     def auction_detail(item_id):
         with get_conn() as conn:
             with conn.cursor() as cur:
@@ -427,6 +426,34 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                 for photo in photos:
                     unique.setdefault(photo["url"], photo)
         return {"ok": True, "item": item, "rounds": rounds, "photos": list(unique.values()), "building": building}
+
+    @app.route("/api/auctions/<int:item_id>/building-lookup", methods=["GET", "POST"])
+    @limiter.limit("60 per minute", methods=["GET"])
+    @limiter.limit("6 per minute; 30 per hour", methods=["POST"])
+    def auction_building_lookup(item_id):
+        from urllib.parse import urlsplit
+        from auction_building_enrichment import status, start_lookup, MESSAGES
+        # Only a same-origin user action may start external work. GET stays read-only.
+        origin = request.headers.get("Origin")
+        if request.method == "POST" and (
+                request.headers.get("Sec-Fetch-Site") == "cross-site" or
+                (origin and urlsplit(origin).netloc != request.host)):
+            return jsonify({"ok": False, "message": "동일한 사이트에서 요청해 주세요."}), 403
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""SELECT a.master_building_id FROM auction_items a
+                  WHERE a.id=%s AND {ELIGIBLE_SQL}""", [item_id])
+                item = cur.fetchone()
+                if not item:
+                    return jsonify({"ok": False, "message": "공매 정보를 찾을 수 없습니다."}), 404
+                lookup = ({"state": "done", "message": MESSAGES["done"],
+                           "building_id": item["master_building_id"]}
+                          if item["master_building_id"] else status(cur, item_id))
+        if request.method == "POST" and not item["master_building_id"]:
+            lookup = start_lookup(item_id)
+        response = jsonify({"ok": True, "lookup": lookup})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/api/admin/onbid-status")
     @require_admin

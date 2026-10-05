@@ -80,6 +80,12 @@ def resolve_building(cur, item):
     roads, parcels, by_id = get_indexes(cur)
     # 기존 확정 연결은 유지하고 미연결·삭제된 ID만 주소로 재검증한다.
     building = by_id.get(item.get("master_building_id"))
+    # 별도 온디맨드 러너가 저장한 신규 건물은 워커별 5분 인덱스에 없을 수 있다.
+    if not building and item.get("master_building_id"):
+        cur.execute("""SELECT id,building_name,road_address,jibun_address,
+          sgg_text,umd_nm,jibun,lodging_type,lodging_type_detail,lat,lng
+          FROM master_buildings WHERE id=%s""", [item["master_building_id"]])
+        building = cur.fetchone()
     if not building:
         building = choose_building(item, roads, parcels)
     item["master_building_id"] = building["id"] if building else None

@@ -119,5 +119,7 @@
 - [데스크톱 분석 조건 밀도](desktop-analysis-condition-density.md) — 조건 슬라이더를 여러 열로 압축할 때 내부 최소폭·조작 영역과 결과 열 하단 정렬을 함께 확인한다.
 - [공통 면적 입력과 탭별 URL](common-area-tab-url.md) — 공통 면적 변경은 비활성 탭의 내부 계산을 유발할 수 있으므로 URL 소유권은 활성 탭 기준으로 제한한다.
 - [온비드 공매 범위와 판정](onbid-auction-scope.md) — 모든 공매에 기존 상세 3탭 유지; 도로명·지번 충돌은 보류. 법원경매 자동조회 금지, 수탁≠신탁, 마감≠최종결과.
+- [공매 행정개편 코드](onbid-administrative-code-identity.md) — 과거 구명은 유일한 공식 동 대응만 치환; HUB의 신·구 코드 지원 방향을 고정 가정하지 않는다.
+- [공매 초기 진입 인증 경합](auction-panel-auth-refresh.md) — 늦은 계정 상태 확인과 전체 이력 응답이 선택 공매·상세 탭을 초기화하지 않게 한다.
 - [공매 현황조사 서비스 경계](auction-survey-service-boundaries.md) — 업무대행과 중개·입찰대행을 구분하며, 건물 미매칭은 분석만 제한하고 조사 접수와 분리한다.
 - [유료 멤버십 범위](premium-membership-scope.md) — 월 29,000원·기존 공매 계좌 입금 확인 후 활성화; 동일 물건 월 1개 세 항목 확인, 현장 방문·횟수 이월 제외.

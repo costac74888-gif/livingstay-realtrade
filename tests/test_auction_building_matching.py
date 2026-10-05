@@ -63,6 +63,7 @@ class AuctionBuildingMatchingTest(unittest.TestCase):
 
     def test_existing_id_preserved_and_deleted_id_resolved_without_db_write(self):
         cursor = Mock()
+        cursor.fetchone.return_value = None
         with patch("auction_building_matching.get_indexes", return_value=self.index):
             existing = {**self.item, "master_building_id": 2}
             self.assertEqual(resolve_building(cursor, existing)["id"], 2)
@@ -70,7 +71,17 @@ class AuctionBuildingMatchingTest(unittest.TestCase):
             self.assertEqual(resolve_building(cursor, deleted)["id"], 1)
             self.assertEqual(deleted["master_building_id"], 1)
             self.assertEqual(deleted["lat"], self.first["lat"])
-        cursor.execute.assert_not_called()
+        cursor.execute.assert_called_once()
+        self.assertIn("WHERE id=%s", cursor.execute.call_args[0][0])
+
+    def test_newly_saved_building_bypasses_stale_worker_index(self):
+        cursor = Mock()
+        new = {**self.first, "id": 999}
+        cursor.fetchone.return_value = new
+        with patch("auction_building_matching.get_indexes", return_value=self.index):
+            item = {**self.item, "master_building_id": 999}
+            self.assertEqual(resolve_building(cursor, item)["id"], 999)
+        cursor.execute.assert_called_once()
 
 
 if __name__ == "__main__":

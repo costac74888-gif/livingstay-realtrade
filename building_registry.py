@@ -120,7 +120,7 @@ def resolve_api_building_name(title: dict | None) -> str:
     return ""
 
 
-def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, retry_max=None, purpose="realtime"):
+def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, retry_max=None, purpose="realtime", max_pages=20):
     """표제부(getBrTitleInfo) 조회 → 이 지번에 선 '모든 동'의 raw dict 리스트. 없으면 []
 
     용도 병기는 '지번 내 전체 동'을 봐야 정확하므로, totalCount만큼 페이징해서
@@ -151,6 +151,7 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
             raise RuntimeError(
                 f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
             )
+        _check_api_result_code(root)
         items = root.findall(".//item")
         rows.extend({c.tag: (c.text or "").strip() for c in it} for it in items)
 
@@ -160,8 +161,10 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
         except ValueError:
             total = len(rows)
 
-        if not items or len(rows) >= total or page >= 20:
+        if not items or len(rows) >= total:
             break
+        if page >= max_pages:
+            raise RuntimeError("건축물대장 조회 페이지 한도 초과: 전체 후보 확인 필요")
         page += 1
         time.sleep(REQUEST_SLEEP)
     return rows

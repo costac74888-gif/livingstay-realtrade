@@ -207,7 +207,10 @@ window.addEventListener("livingstay:auth", async function(){
   if(openId&&typeof renderBuildingPanel==="function"){
     const card=document.getElementById("bApprovedRosterOperatingBody");
     if(card)card.textContent="계정 이용 상태를 확인하고 있습니다.";
-    renderBuildingPanel(openId);
+    renderBuildingPanel(openId,{
+      ...(window.__auctionPanelContext||{}),
+      detailTab:document.querySelector('.b-detail-tab[aria-selected="true"]')?.dataset.panel
+    });
   }
   await loadServerFavKeys();
   if (typeof updateFavCountLabel === "function") updateFavCountLabel();
@@ -6050,6 +6053,32 @@ async function loadBuildingAuctionPanel(buildingId, building){
   const panel=document.getElementById("bAuctionPanel");
   const tab=document.getElementById("bTabAuctions");
   if(!panel)return;
+  let initialized=false,renderVersion=0;
+  const showItems=async combined=>{
+    const version=++renderVersion,context=window.__auctionPanelContext;
+    if(tab){
+      tab.hidden=false;
+      document.getElementById("bInlineTypeTabs").style.display="";
+      if(!isTabbedBuildingType(building?.lodging_type))_setupBuildingPanels(building?.lodging_type,true);
+    }else{
+      panel.hidden=false;panel.classList.add("side-card");
+      document.getElementById("bHeaderCard")?.appendChild(panel);
+    }
+    if(!initialized&&(context?.auctionId||context?.tab==="auction")){
+      const target=context?.detailTab==="property"?"bTabProperty":context?.detailTab==="operations"?"bTabOperations":"bTabAuctions";
+      (document.getElementById(target)||tab)?.click();
+      if(target==="bTabAuctions")document.getElementById("bHeaderCard")?.classList.add("is-auction-view");
+    }
+    initialized=true;
+    await window.renderAuctionPanel(panel,[...combined.values()],{
+      selectedId:context?.auctionId,isCurrent:()=>isCurrent()&&version===renderVersion,
+      onSelect:async item=>{
+        if(!isCurrent()||version!==renderVersion)return;
+        if(Number(item.master_building_id)!==Number(buildingId)){await window.openAuctionDetail(item.id,{items:[...combined.values()]});return;}
+        history.replaceState({buildingId,auctionId:item.id},"",auctionMapLink(item));
+      }
+    });
+  };
   const makeNoHistory=()=>{
     const note=document.createElement("div");
     note.className="b-auction-empty";
@@ -6072,11 +6101,19 @@ async function loadBuildingAuctionPanel(buildingId, building){
     else{const header=document.getElementById("bHeaderCard");if(header){header.appendChild(note);}}
   };
   try{
+    // The selected detail was independently confirmed by the server. Do not
+    // wait for a potentially slow full building-history scan to show its tab.
+    const initial=(window.__auctionPanelContext?.items||[])
+      .filter(item=>Number(item.master_building_id)===Number(buildingId));
+    if(initial.length)await showItems(new Map(initial.map(item=>[String(item.id),item])));
+    if(!isCurrent())return;
     const response=await fetch(`/api/building/${encodeURIComponent(buildingId)}/auctions`,{credentials:"same-origin"});
     const data=await response.json().catch(()=>({}));
     if(!isCurrent())return;
     if(!response.ok||!data.ok)throw new Error("building auctions unavailable");
-    const items=Array.isArray(data.items)?data.items:[];
+    const combined=new Map((Array.isArray(data.items)?data.items:[]).map(item=>[String(item.id),item]));
+    (window.__auctionPanelContext?.items||[]).forEach(item=>combined.set(String(item.id),item));
+    const items=[...combined.values()];
     const seenActive=new Set();
     const active=items.filter(item=>item.is_visible).sort((a,b)=>
       (a.status!=="bidding")-(b.status!=="bidding")||new Date(a.bid_start_at||"2999-01-01")-new Date(b.bid_start_at||"2999-01-01")
@@ -6116,18 +6153,7 @@ async function loadBuildingAuctionPanel(buildingId, building){
         row.appendChild(badge);
       }
     }
-    const context=window.__auctionPanelContext;
-    const combined=new Map(items.map(item=>[String(item.id),item]));
-    (context?.items||[]).forEach(item=>combined.set(String(item.id),item));
-    if(context?.auctionId||context?.tab==="auction"){tab?.click();document.getElementById("bHeaderCard")?.classList.add("is-auction-view");}
-    await window.renderAuctionPanel(panel,[...combined.values()],{
-      selectedId:context?.auctionId,isCurrent,
-      onSelect:async item=>{
-        if(!isCurrent())return;
-        if(Number(item.master_building_id)!==Number(buildingId)){await window.openAuctionDetail(item.id,{items:[...combined.values()]});return;}
-        history.replaceState({buildingId,auctionId:item.id},"",auctionMapLink(item));
-      }
-    });
+    await showItems(combined);
   }catch(_error){
     if(!isCurrent())return;
     const note=document.createElement("div");note.className="b-auction-empty";note.textContent="공매 이력을 불러오지 못했습니다. 잠시 후 건물 정보를 다시 열어 확인해 주세요.";
@@ -8611,7 +8637,7 @@ function renderBuildingPanel(id, options={}){
   const panel = document.querySelector(".side-panel");
   if (!panel) return;
   ++_auctionNavigationToken;
-  window.__auctionPanelContext=options.auctionId||options.tab==="auction"?{auctionId:options.auctionId,items:options.items||[],tab:options.tab}:null;
+  window.__auctionPanelContext=options.auctionId||options.tab==="auction"?{auctionId:options.auctionId,items:options.items||[],tab:options.tab,detailTab:options.detailTab}:null;
   closeMapSearchbar();
   window.__openBuildingId = Number(id);
   _buildingDetailRequestToken += 1;
@@ -8804,7 +8830,8 @@ window.openAuctionDetail=async function(id,options={}){
     const item=data.item;
     focusAuctionMap({...item,lat:item.lat??data.building?.lat,lng:item.lng??data.building?.lng});
     if(item.master_building_id&&data.building){
-      const opts={auctionId:item.id,items:options.items||[item]};
+      const opts={auctionId:item.id,items:(options.items||[item]).map(candidate=>
+        String(candidate.id)===String(item.id)?{...candidate,...item}:candidate),detailTab:options.detailTab};
       if(options.replace){
         history.replaceState({buildingId:item.master_building_id,auctionId:item.id},"",auctionMapLink(item));
         renderBuildingPanel(item.master_building_id,opts);
@@ -8831,6 +8858,15 @@ window.openAuctionDetail=async function(id,options={}){
         await window.openAuctionDetail(selected.id,{items:options.items||[item]});
       }
     });
+    if(navigationToken===_auctionNavigationToken&&requestToken===_buildingDetailRequestToken){
+      window.enrichUnmatchedAuction?.(panel,item,{
+        isCurrent:()=>navigationToken===_auctionNavigationToken&&requestToken===_buildingDetailRequestToken,
+        onLinked:()=>window.openAuctionDetail(item.id,{
+          replace:true,items:options.items||[item],
+          detailTab:panel.querySelector('.b-detail-tab[aria-selected="true"]')?.dataset.panel
+        })
+      });
+    }
   }catch(error){if(navigationToken===_auctionNavigationToken)showFallbackToast(error.message||"공매 조회 실패");}
 };
 async function openAuctionDeepLink(){
