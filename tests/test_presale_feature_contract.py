@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import io
 import unittest
+from unittest.mock import patch
 
 
 class PresaleFeatureContractTests(unittest.TestCase):
@@ -156,8 +157,10 @@ class PresaleFeatureContractTests(unittest.TestCase):
         self.assertNotIn('result["serviceKey"]', self.app)
 
     def test_applyhome_matching_requires_exact_address_and_rejects_ambiguity(self):
-        os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
-        os.environ["DATA_GO_KR_BROKER_API_KEY"] = "test-key"
+        self.enterContext(patch.dict(os.environ, {
+            "SKIP_STARTUP_SCHEMA_INIT": "1",
+            "DATA_GO_KR_BROKER_API_KEY": "test-key",
+        }))
         import app as server
         class Response:
             def __init__(self, items): self.items = items
@@ -186,7 +189,6 @@ class PresaleFeatureContractTests(unittest.TestCase):
             self.assertEqual(server._check_applyhome("다른 이름", "서울시 정확로 1")["status"], "unverified")
         finally:
             server.requests.get = original
-            os.environ.pop("DATA_GO_KR_BROKER_API_KEY", None)
 
     def test_safe_url_rejects_private_local_and_credentials(self):
         os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"

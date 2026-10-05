@@ -42,16 +42,17 @@ expect(!index.includes('id="sideFavList"'), "최근 관심물건 위젯의 목�
 expect(!index.includes('id="sideRankingCard"'), "거래량 TOP 별도 위젯이 데이터랩 편입 후에도 남아 있습니다.");
 expect(index.includes('id="dataLabCard"'), "데이터랩 컨테이너가 없습니다.");
 [
-  "lodging", "volume", "change", "highest", "consign", "closure",
+  "lodging", "volume", "change", "highest", "consign", "lodging_rank",
   "tourism_domestic", "tourism_foreign", "tourism_consume", "visitor_surge", "region_volume",
 ].forEach((key) => {
   expect(index.includes(`data-datalab-key="${key}"`), `데이터랩 ${key} 항목이 없습니다.`);
 });
 const tabKeys = [...index.matchAll(/data-datalab-key="([^"]+)"/g)].map((match) => match[1]);
 expect(
-  tabKeys.join(",") === "lodging,volume,change,highest,consign,closure,presale,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge,region_volume",
+  tabKeys.join(",") === "lodging,volume,change,highest,consign,lodging_rank,presale,tourism_domestic,tourism_foreign,tourism_consume,visitor_surge,region_volume",
   "데이터랩 12개 탭 순서가 아닙니다."
 );
+expect(!tabKeys.includes("closure"), "공개 데이터랩에 폐업 메뉴가 노출됩니다.");
 expect(
   main.includes('region_volume: "/api/stats/transactions-by-sido"') &&
   main.includes("function renderDataLabRegionVolume") &&
@@ -191,7 +192,7 @@ expect(
 );
 expect(
   main.includes('const HS_RECENT_MAX = 5') &&
-  main.includes("list.slice(0, HS_RECENT_MAX)"),
+  main.includes(".slice(0, HS_RECENT_MAX)"),
   "최근검색 화면 표시 개수가 5개로 제한되지 않았습니다."
 );
 expect(

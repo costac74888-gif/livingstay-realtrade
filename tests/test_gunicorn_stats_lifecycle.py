@@ -33,9 +33,17 @@ class GunicornStatsLifecycleTests(unittest.TestCase):
         config = _load_gunicorn_config()
         start_worker = Mock()
         start_badge_worker = Mock()
+        start_notification_worker = Mock()
+        start_onbid_scheduler = Mock()
+        start_survey_scheduler = Mock()
+        detached_sync = Mock()
         fake_app_module = SimpleNamespace(
             start_master_stats_worker=start_worker,
             start_badge_waitlist_worker=start_badge_worker,
+            start_admin_notification_email_worker=start_notification_worker,
+            start_onbid_scheduler=start_onbid_scheduler,
+            start_survey_scheduler=start_survey_scheduler,
+            _start_detached_sync=detached_sync,
         )
         server = SimpleNamespace(log=Mock())
         worker = SimpleNamespace(pid=12345)
@@ -45,6 +53,9 @@ class GunicornStatsLifecycleTests(unittest.TestCase):
 
         start_worker.assert_called_once_with()
         start_badge_worker.assert_called_once_with()
+        start_notification_worker.assert_called_once_with()
+        start_onbid_scheduler.assert_called_once_with(detached_sync, server.log)
+        start_survey_scheduler.assert_called_once_with(server.log)
         server.log.exception.assert_not_called()
 
     def test_worker_service_defers_cold_rebuild_to_background_loop(self):

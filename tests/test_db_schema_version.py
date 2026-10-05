@@ -68,6 +68,9 @@ class SchemaVersionGateTests(unittest.TestCase):
     def test_outdated_schema_runs_full_initialization_once_under_lock(self):
         first_conn, first_cur = _connection_with_row()
         lock_conn, lock_cur = _connection_with_row()
+        # New membership-only fast path first probes for an existing app_meta.
+        # This fixture represents a missing ledger, not an incomplete dict row.
+        lock_cur.fetchone.return_value = {"existing": None}
 
         @contextmanager
         def held_lock():

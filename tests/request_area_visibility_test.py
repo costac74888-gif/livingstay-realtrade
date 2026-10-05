@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,8 +20,9 @@ def main():
 
     require(db, [
         "ALTER TABLE buy_requests ADD COLUMN IF NOT EXISTS area_sqm NUMERIC",
-        'SCHEMA_VERSION = "2026-09-09-13"',
     ], "매수의뢰 면적 스키마")
+    if not re.search(r'SCHEMA_VERSION = "\d{4}-\d{2}-\d{2}-[^"]+"', db):
+        raise AssertionError("버전이 지정된 스키마 마커가 없습니다.")
     require(main_js, [
         'id="brAreaSqm"',
         "required placeholder=",

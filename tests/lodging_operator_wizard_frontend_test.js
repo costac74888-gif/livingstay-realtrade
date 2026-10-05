@@ -15,7 +15,7 @@ function expect(ok, message) { if (!ok) throw new Error(message); }
   expect(apply.includes(text), `운영자 신청 마법사에 ${text} 처리가 없습니다.`)
 );
 expect(manage.includes("/api/lodging-operator/photos"), "운영자 사진 목록 API가 없습니다.");
-expect(manage.includes("/photos/reorder") && manage.includes("photo_ids:photos.map") && manage.includes("/primary") && manage.includes("data-delete"),
+expect(manage.includes("/photos/reorder") && /photo_ids:\s*photos\.map/.test(manage) && manage.includes("/primary") && manage.includes("data-delete"),
   "사진 순서·대표·삭제 관리 기능이 없습니다.");
 expect(main.includes('params.set("building_id"') && building.includes("building_id=${encodeURIComponent(buildingId)}"),
   "건물 상세 진입 등록 링크가 building_id를 전달하지 않습니다.");

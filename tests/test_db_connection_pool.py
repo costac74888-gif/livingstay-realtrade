@@ -177,10 +177,13 @@ class _ClusterCursor:
 
     def execute(self, _sql, _params=None):
         self.executed = True
+        self.sql = _sql
         if self.pool.fail_sql:
             raise RuntimeError("simulated cluster SQL failure")
 
     def fetchall(self):
+        if "FROM tourism_stats" in self.sql:
+            return []
         return [{
             "region_name": "서울특별시",
             "sgg_text_full": None,
@@ -190,6 +193,10 @@ class _ClusterCursor:
             "cnt_live": 1,
             "cnt_tour": 0,
             "cnt_gen": 0,
+            "cnt_airbnb": 0,
+            "cnt_farm": 0,
+            "cnt_camping": 0,
+            "cnt_hanok": 0,
             "cnt_mixed": 0,
             "cnt_pre_completion": 0,
             "cnt_unknown": 0,
@@ -257,6 +264,9 @@ class _BoundedClusterPool:
 
 class ClusterConnectionCleanupTests(unittest.TestCase):
     def setUp(self):
+        # Auction counts have their own connection/cursor lifecycle tests.
+        # This bounded one-connection fixture owns the building query only.
+        self.enterContext(patch("auction_service.cluster_counts", return_value={}))
         _reset_pool_state()
         app_module._cluster_cache.clear()
         app_module.app.config.update(

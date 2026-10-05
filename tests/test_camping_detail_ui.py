@@ -60,7 +60,9 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn('operator-banner-cta', self.main_source)
         self.assertIn('운영 파트너 등록', self.main_source)
         self.assertIn(
-            'operations: ["bCampCard", "bNonCampingOperationsCard", "bReservationCard", "bLodgingOperatorCard", "bOperatorInfoDisclaimer"]',
+            '"bCampCard", "bNonCampingOperationsCard",\n'
+            '      "bReservationCard", "bAdminCard", "bTourismDataCard", "bApprovedRosterOperatingCard",\n'
+            '      "bLodgingOperatorCard", "bOperatorInfoDisclaimer",',
             self.main_source,
         )
 
@@ -95,7 +97,7 @@ class CampingDetailUiTests(unittest.TestCase):
         self.assertIn("gocamping_photos =", self.app_source)
         self.assertNotIn('camping["image_urls"] and not building["photos"]', self.app_source)
         self.assertIn('photo?.source === "gocamping"', self.main_source)
-        self.assertIn("renderPhotoSlider(gocampingInitial)", self.main_source)
+        self.assertIn("renderPhotos(gocampingInitial)", self.main_source)
         self.assertIn(
             "saved?.streetview_available === true && !gocampingInitial.length",
             self.main_source,

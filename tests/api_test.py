@@ -137,8 +137,10 @@ def check_admin_action_center_api(client):
         return "관리자 액션 센터 API가 정상 응답하지 않음"
     if set(payload.get("categories") or {}) != expected_categories:
         return "액션 센터의 4개 카테고리가 누락됨"
-    if set(payload.get("counts") or {}) != expected_categories | {"total"}:
+    if set(payload.get("counts") or {}) != expected_categories | {"total", "survey_requests"}:
         return "액션 센터의 카테고리별 count가 누락됨"
+    if not isinstance(payload["counts"]["survey_requests"], int) or payload["counts"]["survey_requests"] < 0:
+        return "액션 센터 현황조사 의뢰 건수가 올바르지 않음"
     if (not isinstance(payload.get("generated_at"), str)
             or payload.get("recipient_email") != admin_action_center.company_email()
             or not isinstance(payload.get("items"), list)):
@@ -1804,16 +1806,17 @@ def _check_partner_badge_policy(client):
             return ["파트너 뱃지: 테스트용 마스터 건물이 37개 미만입니다."]
         agent_bld, operator_bld, loan_bld, agent_approval_bld, loan_approval_bld, *_ = building_ids
         cur.execute("""
+            WITH eligible_regions AS (
+                SELECT sgg_text FROM master_buildings
+                WHERE building_name <> '-'
+                GROUP BY sgg_text HAVING COUNT(*) >= 12
+            )
             SELECT DISTINCT ON (mb.sgg_text)
                    mb.id, mb.building_name, mb.sgg_text, mb.umd_nm
             FROM master_buildings mb
+            JOIN eligible_regions eligible ON eligible.sgg_text=mb.sgg_text
             WHERE mb.sgg_text IS NOT NULL AND mb.sgg_text <> ''
               AND mb.building_name <> '-'
-              AND (
-                  SELECT COUNT(*) FROM master_buildings same_sgg
-                  WHERE same_sgg.sgg_text=mb.sgg_text
-                    AND same_sgg.building_name <> '-'
-              ) >= 12
               AND NOT EXISTS (
                   SELECT 1 FROM agent_buildings ab
                   WHERE ab.master_building_id=mb.id AND ab.has_priority_badge
@@ -2791,23 +2794,25 @@ def _check_admin_building_broker_details(client):
 
         matched_name = f"브로커상세매칭 {token}"
         fallback_name = f"브로커상세폴백 {token}"
-        road = f"테스트특별시 브로커검증구 상세로 {token[-3:]}"
-        jibun = f"테스트특별시 브로커검증동 {token[-3:]}-1번지"
-        fallback_road = f"테스트특별시 브로커검증구 폴백로 {token[-3:]}"
-        fallback_jibun = f"테스트특별시 브로커검증동 {token[-3:]}-2번지"
+        # Do not use the last three clock digits as an address: leading zeros
+        # and collisions change canonical matching and make exact counts flaky.
+        road = f"테스트특별시 브로커검증구 상세{run_id}로 101"
+        jibun = f"테스트특별시 브로커검증{run_id}동 101-1번지"
+        fallback_road = f"테스트특별시 브로커검증구 폴백{run_id}로 202"
+        fallback_jibun = f"테스트특별시 브로커검증{run_id}동 202-2번지"
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source, lat, lng)
             VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test', 37.5, 127.0)
             RETURNING id
-        """, (matched_name, road, jibun, f"{token[-3:]}-1"))
+        """, (matched_name, road, jibun, "101-1"))
         matched_building_id = cur.fetchone()["id"]
         cur.execute("""
             INSERT INTO master_buildings
                 (building_name, road_address, jibun_address, sgg_text, umd_nm, jibun, source)
             VALUES (%s, %s, %s, '테스트특별시 브로커검증구', '브로커검증동', %s, 'api_test')
             RETURNING id
-        """, (fallback_name, fallback_road, fallback_jibun, f"{token[-3:]}-2"))
+        """, (fallback_name, fallback_road, fallback_jibun, "202-2"))
         fallback_building_id = cur.fetchone()["id"]
 
         # 동일 주소의 2건은 반환하고, 지번만 일치하는 1건은 도로명 우선 규칙상 제외한다.
@@ -2818,11 +2823,11 @@ def _check_admin_building_broker_details(client):
             ),
             (
                 f"TEST-BROKER-{run_id}-2", "두번째 표준중개",
-                road, f"테스트특별시 다른동 {token[-3:]}-7번지", "https://example.test/second", "휴업",
+                road, f"테스트특별시 다른{run_id}동 303-7번지", "https://example.test/second", "휴업",
             ),
             (
                 f"TEST-BROKER-{run_id}-J", "지번전용 중개",
-                f"테스트특별시 다른구 무관로 {token[-3:]}", jibun, "javascript:alert(1)", None,
+                f"테스트특별시 다른구 무관{run_id}로 404", jibun, "javascript:alert(1)", None,
             ),
         ]
         for index, (reg_number, office_name, broker_road, broker_jibun, homepage_url, biz_status) in enumerate(broker_specs):

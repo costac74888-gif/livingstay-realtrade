@@ -247,7 +247,10 @@ class AuctionApiTest(unittest.TestCase):
         conn = get_conn()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id FROM users ORDER BY id LIMIT 1")
+                # Never depend on a real user's old notification dedup keys.
+                # The whole fixture (including this member) is rolled back.
+                cur.execute("INSERT INTO users(email,name) VALUES(%s,'알림검증') RETURNING id",
+                            [uuid.uuid4().hex + "@example.invalid"])
                 user = cur.fetchone()
                 cur.execute("""SELECT a.id,a.master_building_id,b.building_name,b.road_address,
                   a.source,a.source_item_id,a.sale_kind,a.min_bid_price
@@ -258,9 +261,11 @@ class AuctionApiTest(unittest.TestCase):
                   VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
                             [user["id"], item["building_name"], item["road_address"], item["master_building_id"]])
                 cur.execute("""INSERT INTO auction_watches(user_id,master_building_id,created_at)
-                  VALUES(%s,%s,NOW()-INTERVAL '1 day') ON CONFLICT(user_id,master_building_id)
+                  VALUES(%s,%s,(SELECT MIN(owner.first_seen_at)-INTERVAL '1 second'
+                    FROM auction_items owner WHERE owner.source=%s AND owner.source_item_id=%s))
+                  ON CONFLICT(user_id,master_building_id)
                   DO UPDATE SET created_at=EXCLUDED.created_at,enabled=TRUE""",
-                            [user["id"], item["master_building_id"]])
+                            [user["id"], item["master_building_id"], item["source"], item["source_item_id"]])
                 cur.execute("SELECT COUNT(*) AS n FROM notifications WHERE user_id=%s", [user["id"]])
                 before = cur.fetchone()["n"]
                 notify_auction_watchers(cur, item["id"], item)

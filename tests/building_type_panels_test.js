@@ -51,8 +51,8 @@ expect(main.includes('href="https://jnjclub.co.kr/"') && main.includes('/static/
 expect(main.includes("const bizReportBannerHtml") && main.includes(") + bizReportBannerHtml;"), "미준공 건물의 행정운영에 숙박업등록 배너가 없습니다.");
 expect(main.includes("${lodgingListHtml}\n      ${bizReportBannerHtml}"), "영업상호 목록 다음에 숙박업등록 배너가 배치되지 않았습니다.");
 expect(
-  main.includes('"bReservationCard", "bAdminCard", "bTourismDataCard", "bLodgingOperatorCard"') &&
-  main.includes('"bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard"') &&
+  main.includes('"bReservationCard", "bAdminCard", "bTourismDataCard", "bApprovedRosterOperatingCard"') &&
+  main.includes('"bLodgingOperatorCard", "bOperatorInfoDisclaimer"') &&
   !main.includes('"bStoresCard", "bPartnerBannerCard"'),
   "운영정보의 예약·행정운영·관광통계·시설운영파트너·멤버십 안내 순서가 올바르지 않습니다.",
 );
@@ -112,7 +112,8 @@ expect(main.includes('id="bOperatorInfoDisclaimer"') && main.includes('Boolean(o
 expect(
   main.includes("function _renderApprovedRosterOperatingInfo") &&
   main.includes("bApprovedRosterOperatingCard") &&
-  main.includes("현재는 공개하지 않습니다."),
+  main.includes("b.membership_access.required !== false") &&
+  main.includes('class="b-membership-notice"'),
   "공식 영업 상세기록의 비노출 안내가 없습니다.",
 );
 expect(
@@ -138,15 +139,17 @@ expect(
 expect(main.includes("운영형태 · 사이트 구성"), "캠핑 사이트 구성이 법정 업종처럼 표시됩니다.");
 expect(
   main.includes("공식 영업·운영 정보") &&
-  main.includes("멤버십 준비 중") &&
+  main.includes("멤버십 회원 전용 정보") &&
   main.includes('href="/membership"'),
-  "공식 상세 영업정보가 멤버십 준비 안내로 전환되지 않았습니다.",
+  "공식 상세 영업정보의 활성 멤버십 안내가 없습니다.",
 );
+const rosterStart = main.indexOf("function _renderApprovedRosterOperatingInfo(b){");
+const rosterLockedEnd = main.indexOf("return;", main.indexOf("b.membership_access.required !== false", rosterStart));
+expect(rosterStart >= 0 && rosterLockedEnd > rosterStart, "비회원 원장 정보 차단 분기가 없습니다.");
+const lockedRoster = main.slice(rosterStart, rosterLockedEnd);
 expect(
-  !main.slice(main.indexOf("function _renderApprovedRosterOperatingInfo(b){"),
-    main.indexOf("const STRUCTURE_A_TYPES")).includes("permit_number") &&
-  !main.includes("<dt>전화</dt>"),
-  "멤버십 준비 안내 안에 공식 원장 상세값이 남아 있습니다.",
+  !lockedRoster.includes("permit_number") && !lockedRoster.includes("<dt>전화</dt>"),
+  "비회원 멤버십 안내 안에 공식 원장 상세값이 남아 있습니다.",
 );
 
 console.log("OK  건물 유형별 상세 패널 회귀 점검");

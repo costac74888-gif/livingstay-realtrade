@@ -102,6 +102,9 @@
 - [비신뢰 문서 즉시 분석](untrusted-document-analysis.md) — 네이티브 파서는 프로세스 그룹 격리·단일 실행하며, ADR은 같은 기간의 객실매출·판매객실 수로만 계산한다.
 - [자동검사 외부 알림 차단](test-notification-isolation.md) — 임시 신청을 만드는 자동검사는 실제 이메일·SMS를 절대 발송하지 않도록 최하위 발송 함수에서 차단한다.
 - [전체 검사 모의 처리 수명](test-mock-lifetime.md) — patch.stopall은 다른 모듈의 장기 fixture도 해제하므로 새 검사는 자신이 만든 patch만 종료한다.
+- [검사 preload 비용](test-preload-cost.md) — Node 검사 계측은 minifier 자식에도 상속되므로 브라우저 의존성은 실제 브라우저 검사에서만 불러온다.
+- [오프라인 실행기와 단독 CI](offline-wrapper-vs-standalone.md) — 전체 실행기의 주입 환경에서 통과해도 실제 등록된 단독 명령에서의 통과는 별도로 확인한다.
+- [브라우저 검사 UA](browser-test-user-agents.md) — HeadlessChrome 차단의 204는 page.goto의 ERR_ABORTED로 보일 수 있어 방문자 UI 검사는 일반 UA를 쓴다.
 - [관리자 액션센터 알림 정책](admin-action-center-policy.md) — 관리자 업무 기준화면은 통합 액션센터; 긴급은 즉시, 일반은 일일 요약하며 수신자는 회사소개 문의 이메일을 따른다.
 - [관리자 이벤트 알림 전달](admin-event-notification-delivery.md) — 신청 알림은 원본과 원자적으로 적재하고 이메일은 응답 밖의 멱등 outbox 워커가 전달한다.
 - [자산분석 메뉴 공개 범위](analysis-menu-visibility.md) — 메뉴는 항상 노출하고 분석 이용은 로그인한 일반회원·파트너에게 허용하며 서명 공유 링크는 유지한다.

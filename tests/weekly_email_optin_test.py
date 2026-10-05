@@ -13,7 +13,7 @@ class WeeklyEmailOptInTests(unittest.TestCase):
     def test_schema_defaults_and_migration_preserve_explicit_choice(self):
         self.assertIn("weekly_email_enabled BOOLEAN DEFAULT TRUE", DB)
         self.assertIn("updated_weekly_email_at TIMESTAMP", DB)
-        self.assertRegex(DB, r'SCHEMA_VERSION = "\d{4}-\d{2}-\d{2}-\d{2}"')
+        self.assertRegex(DB, r'SCHEMA_VERSION = "\d{4}-\d{2}-\d{2}-[^"]+"')
         for table in ("agents", "operators", "loan_consultants"):
             self.assertIn(
                 f"weekly_email_enabled BOOLEAN NOT NULL DEFAULT TRUE", DB

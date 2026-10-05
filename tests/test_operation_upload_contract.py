@@ -30,8 +30,10 @@ class OperationUploadContractTests(unittest.TestCase):
     def test_frontend_posts_files_and_applies_occ_and_adr_immediately(self):
         self.assertIn('fetch("/api/analysis/operation-upload"', self.frontend)
         self.assertIn('form.append("files", file)', self.frontend)
-        self.assertIn('$("operationOcc").value = appliedOcc', self.frontend)
-        self.assertIn('$("operationAdr").value = Math.round(result.adr)', self.frontend)
+        self.assertIn('sliderUtils.clampHard("occ", appliedOcc)', self.frontend)
+        self.assertIn('$("operationOcc").value = String(appliedOcc)', self.frontend)
+        self.assertIn('sliderUtils.clampHard("adr", Math.round(result.adr))', self.frontend)
+        self.assertIn('$("operationAdr").value = String(uploadedAdr)', self.frontend)
         self.assertIn("result.occupancy_days", self.frontend)
         self.assertIn("sold / (rooms * days) * 10000", self.frontend)
         self.assertIn("OCC 계산 불가", self.frontend)

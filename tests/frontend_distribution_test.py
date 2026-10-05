@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from offline_support.frontend_workspace import frontend_workspace, serve_frontend_workspace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,13 +51,7 @@ def current_release() -> tuple[str, Path]:
     return release_id, release_dir
 
 
-def check_failed_build_keeps_release() -> None:
-    spec = importlib.util.spec_from_file_location(
-        "build_frontend_for_test", ROOT / "scripts" / "build_frontend.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader
-    spec.loader.exec_module(module)
+def check_failed_build_keeps_release(module) -> None:
     before = MARKER.read_bytes()
     original_minify = module.minify
 
@@ -81,8 +76,8 @@ def check_failed_build_keeps_release() -> None:
         fail("실패한 빌드가 기존 릴리스를 삭제함")
 
 
-def main() -> None:
-    subprocess.run(["npm", "run", "build:frontend"], cwd=ROOT, check=True)
+def check_distribution(builder) -> None:
+    builder.main()
     release_id, release_dir = current_release()
     minified = sorted((release_dir / "js").glob("*.min.js"))
     html_files = sorted((release_dir / "html").glob("*.html"))
@@ -109,13 +104,23 @@ def main() -> None:
             if term in text:
                 fail(f"배포 HTML에 금지 문구 잔존: {path.name} / {term}")
 
-    check_failed_build_keeps_release()
+    check_failed_build_keeps_release(builder)
 
     os.environ["SERVE_MINIFIED_ASSETS"] = "1"
     os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
     os.environ["SKIP_APP_BOOT_TASKS"] = "1"
     sys.path.insert(0, str(ROOT))
-    from app import app  # noqa: E402
+    import app as server  # noqa: E402
+    with serve_frontend_workspace(server, builder):
+        check_routes(server.app, release_id, release_dir)
+
+    print(
+        f"OK  원자적 릴리스 {release_id} · 압축 JS {len(minified)}개 · "
+        f"HTML {len(html_files)}개 인라인 추출 · 원본/구 경로 차단"
+    )
+
+
+def check_routes(app, release_id, release_dir):
 
     client = app.test_client()
     home = client.get("/")
@@ -153,10 +158,13 @@ def main() -> None:
         if client.get(path).status_code != 404:
             fail(f"기존 경로가 404가 아님: {path}")
 
-    print(
-        f"OK  원자적 릴리스 {release_id} · 압축 JS {len(minified)}개 · "
-        f"HTML {len(html_files)}개 인라인 추출 · 원본/구 경로 차단"
-    )
+def main() -> None:
+    global STATIC, MARKER
+    with frontend_workspace(ROOT) as builder:
+        STATIC = builder.STATIC
+        MARKER = builder.MARKER
+        print(f"Isolated frontend workspace: {builder.ROOT}", flush=True)
+        check_distribution(builder)
 
 
 if __name__ == "__main__":

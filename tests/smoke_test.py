@@ -80,22 +80,22 @@ def _ca_bundle():
 
 def run_local():
     """Flask 테스트 클라이언트로 in-process 검사."""
+    from pathlib import Path
+    from offline_support.frontend_workspace import frontend_workspace, serve_frontend_workspace
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    build = subprocess.run(
-        ["npm", "run", "build:frontend"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    if build.returncode != 0:
-        return [f"프론트 배포 빌드 실패: {(build.stderr or build.stdout).strip()}"]
     os.environ["SERVE_MINIFIED_ASSETS"] = "1"
+    os.environ["SKIP_STARTUP_SCHEMA_INIT"] = "1"
+    os.environ["SKIP_APP_BOOT_TASKS"] = "1"
     # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
     sys.path.insert(0, root)
-    from app import app  # noqa: E402
+    with frontend_workspace(Path(root)) as builder:
+        builder.main()
+        import app as server
+        with serve_frontend_workspace(server, builder):
+            return _run_local_checks(root, server.app)
 
+
+def _run_local_checks(root, app):
     print("모드: 로컬 (Flask 테스트 클라이언트)")
     failures = []
     client = app.test_client()

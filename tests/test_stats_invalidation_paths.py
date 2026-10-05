@@ -998,6 +998,9 @@ class AppMutationInvalidationTests(unittest.TestCase):
         ])
 
     def test_operator_building_assignment_marks_after_commit_and_not_on_missing_building(self):
+        # This test owns mutation/invalidation, not unified-account auth. The
+        # latter now queries a separate role ledger before calling get_conn.
+        self.enterContext(patch.object(app_module, "_legacy_business_session_allowed", return_value=True))
         events = []
 
         def respond(sql, _params):
@@ -1014,6 +1017,7 @@ class AppMutationInvalidationTests(unittest.TestCase):
             session["operator_id"] = 17
         with (
             patch.object(app_module, "get_conn", return_value=conn),
+            patch.object(app_module, "MAX_FREE_BUILDINGS", 10),
             patch.object(
                 app_module,
                 "mark_master_stats_invalidated",

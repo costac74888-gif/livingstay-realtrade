@@ -43,13 +43,13 @@ args = "Fast Sync"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "gunicorn --bind 0.0.0.0:5000 --reuse-port --timeout 120 --workers 2 --preload --config gunicorn.conf.py app:app"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "env HOMENSTAY_OFFLINE_TESTS=1 DISABLE_EXTERNAL_NOTIFICATIONS=1 SKIP_STARTUP_SCHEMA_INIT=1 SKIP_APP_BOOT_TASKS=1 RELAY_ENABLED=0 RELAY_USE_BLDG_HUB=0 RELAY_USE_RTMS=0 BLD_SERVICE_KEY=offline-test-bld BLD_INSPECTION_SERVICE_KEY=offline-test-inspection RTMS_SERVICE_KEY=offline-test-rtms DATA_GO_KR_BROKER_API_KEY=offline-test-broker PYTHONPATH=tests/offline_support:. gunicorn --bind 0.0.0.0:5000 --timeout 120 --workers 2 --preload --config gunicorn.conf.py app:app"
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "smoke"

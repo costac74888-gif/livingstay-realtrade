@@ -15,7 +15,7 @@ class TourApiPartialGalleryContractTests(unittest.TestCase):
         self.assertIn("if (data.status === \"cached\") return;", main)
         self.assertIn("const mergePhotos = (...groups)", main)
         self.assertIn(
-            "renderPhotoSlider(mergePhotos(photos, local.photos))",
+            "renderPhotos(mergePhotos(photos, local.photos))",
             main,
         )
         self.assertIn(
@@ -25,7 +25,7 @@ class TourApiPartialGalleryContractTests(unittest.TestCase):
         )
         self.assertIn(
             "if (mergedPhotos.length) {\n"
-            "            renderPhotoSlider(mergedPhotos);",
+            "            renderPhotos(mergedPhotos);",
             main,
         )
         self.assertIn("BUILDING_PHOTO_LOCAL_CACHE_VERSION = 2", main)

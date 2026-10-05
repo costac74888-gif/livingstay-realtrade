@@ -16,8 +16,9 @@ const expectedTypes = [
 ];
 
 expect(lodging, "공통 법정 숙박분류 유틸이 노출되지 않았습니다.");
+expect(lodging.order[0] === "전체", "전체 필터가 목록 첫 항목이 아닙니다.");
 expect(
-  JSON.stringify(Array.from(lodging.order)) === JSON.stringify(expectedTypes),
+  JSON.stringify(Array.from(lodging.order).slice(1)) === JSON.stringify(expectedTypes),
   "공통 법정 숙박분류 순서가 기준과 다릅니다.",
 );
 

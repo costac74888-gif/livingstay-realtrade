@@ -31,8 +31,8 @@ expect(
 );
 
 const detailRender = main.slice(
-  main.indexOf("const bName = b.display_building_name"),
-  main.indexOf("const bName = b.display_building_name") + 14000,
+  main.indexOf("const bName = b.display_building_name || b.property_info?.building_name"),
+  main.indexOf("const bName = b.display_building_name || b.property_info?.building_name") + 14000,
 );
 expect(
   detailRender.includes(
@@ -41,7 +41,7 @@ expect(
   "명칭 확인 필요 여부가 상세 API의 현재 신고 상태를 사용하지 않습니다.",
 );
 expect(
-  detailRender.includes("b.display_building_name || b.building_name") &&
+  detailRender.includes("b.display_building_name || b.property_info?.building_name || b.building_name") &&
     detailRender.includes("b.building_name_report_display") &&
     detailRender.includes("영업신고(최다) 기준"),
   "상세페이지가 활성 영업신고 대표명과 최다 기준 라벨을 표시하지 않습니다.",
