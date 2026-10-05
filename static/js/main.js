@@ -6349,7 +6349,7 @@ function _renderApprovedRosterOperatingInfo(b){
     body.innerHTML = `<div class="side-card-title">공식 영업·운영 정보</div>
       <div class="b-membership-notice" role="status">
       <strong><svg class="b-membership-mark" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 7.5h14M6 12h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m14.5 10 .8 1.5 1.7.2-1.2 1.1.3 1.7-1.6-.8-1.5.8.3-1.7-1.2-1.1 1.7-.2z" fill="currentColor"/></svg> 멤버십 회원 전용 정보</strong>
-      <p>상세 공식 영업·운영 기록은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자가 입금을 확인하면 이용할 수 있습니다.</p>
+      <p>상세 공식 영업·운영 기록과 확인 항목은 활성 멤버십 회원에게 제공됩니다.</p>
       <dl class="b-membership-preview" aria-label="멤버십 전용 공식 기록 미리보기">
         <div><dt>등록명칭</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
         <div><dt>법정 업종</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>

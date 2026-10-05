@@ -147,6 +147,15 @@ const rosterStart = main.indexOf("function _renderApprovedRosterOperatingInfo(b)
 const rosterLockedEnd = main.indexOf("return;", main.indexOf("b.membership_access.required !== false", rosterStart));
 expect(rosterStart >= 0 && rosterLockedEnd > rosterStart, "비회원 원장 정보 차단 분기가 없습니다.");
 const lockedRoster = main.slice(rosterStart, rosterLockedEnd);
+const auctionSurvey = fs.readFileSync("static/js/auction-survey.js", "utf8");
+const membershipNotice = "<p>상세 공식 영업·운영 기록과 확인 항목은 활성 멤버십 회원에게 제공됩니다.</p>";
+expect(
+  lockedRoster.includes(membershipNotice) && auctionSurvey.includes(membershipNotice) &&
+  !lockedRoster.includes("월 29,000원") &&
+  !auctionSurvey.includes("공매 물건의 상세 공식") &&
+  !auctionSurvey.includes("월 29,000원, 계좌 송금"),
+  "운영정보·공매정보 멤버십 안내 문구가 서로 다르거나 삭제한 요금 안내가 남아 있습니다.",
+);
 expect(
   !lockedRoster.includes("permit_number") && !lockedRoster.includes("<dt>전화</dt>"),
   "비회원 멤버십 안내 안에 공식 원장 상세값이 남아 있습니다.",
