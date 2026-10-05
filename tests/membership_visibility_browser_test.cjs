@@ -22,14 +22,29 @@ const assert=require("node:assert/strict");
       await page.locator("#bAdminCard").waitFor({state:"visible"});
       const placement=await page.locator("#bOperationsPanel").evaluate(panel=>{
         const ids=[...panel.children].map(node=>node.id);
-        return {reservation:ids.indexOf("bReservationCard"),admin:ids.indexOf("bAdminCard"),tourism:ids.indexOf("bTourismDataCard")};
+        return {reservation:ids.indexOf("bReservationCard"),admin:ids.indexOf("bAdminCard"),tourism:ids.indexOf("bTourismDataCard"),
+          official:ids.indexOf("bApprovedRosterOperatingCard"),partner:ids.indexOf("bLodgingOperatorCard"),
+          disclaimer:ids.indexOf("bOperatorInfoDisclaimer")};
       });
       assert.equal(placement.admin,placement.reservation+1);
       assert.equal(placement.tourism,placement.admin+1);
+      assert.equal(placement.official,placement.tourism+1);
+      assert.equal(placement.partner,placement.official+1);
+      assert.equal(placement.disclaimer,placement.partner+1);
       assert.equal(await page.locator("#bPropertyPanel #bAdminCard").count(),0);
       await page.locator("#bApprovedRosterOperatingCard .b-membership-notice").waitFor({state:"visible"});
-      assert.equal(await page.locator("#bApprovedRosterOperatingBody dl").count(),0);
-      assert.ok(!(await page.locator("#bApprovedRosterOperatingBody").textContent()).includes("허가·신고번호"));
+      await page.locator("#bApprovedRosterOperatingBody .b-membership-preview").waitFor({state:"visible"});
+      const masks=page.locator("#bApprovedRosterOperatingBody .b-membership-mask");
+      assert.equal(await masks.count(),10);
+      assert.ok((await masks.allTextContents()).every(value=>value==="멤버십 회원 전용"));
+      assert.equal(await page.locator("#bApprovedRosterOperatingBody .camp-detail-block").count(),0);
+      assert.equal(await page.locator("#bApprovedRosterOperatingBody .b-membership-mark").count(),1);
+      assert.ok(!(await page.locator("#bApprovedRosterOperatingBody").textContent()).includes("🔒"));
+      const colors=await page.evaluate(()=>[
+        getComputedStyle(document.querySelector(".hnav-auctions")).backgroundColor,
+        getComputedStyle(document.querySelector(".map-legend [data-auction-layer] i")).backgroundColor
+      ]);
+      assert.deepEqual(colors,["rgb(61, 89, 72)","rgb(61, 89, 72)"]);
       const response=await page.request.get(`${base}/api/building/${building}`);
       const payload=await response.json();
       assert.deepEqual(payload.operating_records,[]);
@@ -37,6 +52,8 @@ const assert=require("node:assert/strict");
       assert.equal(payload.operating_primary,null);
       assert.equal(payload.membership_access.required,true);
       assert.ok(Array.isArray(payload.lodgings));
+      await page.locator("#bApprovedRosterOperatingCard").scrollIntoViewIfNeeded();
+      await page.screenshot({path:`attached_assets/membership-preview-${width}.png`,animations:"disabled"});
       await page.locator("#bApprovedRosterOperatingBody a").click();
       await page.waitForURL("**/membership");
       await page.locator("#membershipApp [data-login]").waitFor();
@@ -44,7 +61,7 @@ const assert=require("node:assert/strict");
       assert.equal(await page.locator('form[action*="checkout"],button[data-purchase]').count(),0);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
       assert.deepEqual(errors,[]);
-      console.log(`PASS ${width}px: reservation → free admin → tourism; no official detail payload/DOM; truthful membership page`);
+      console.log(`PASS ${width}px: official preview → operating partner; masked placeholders only, protected API, non-lock mark, green auction nav/legend and membership CTA`);
       await page.close();
     }
   } finally {await browser.close();}

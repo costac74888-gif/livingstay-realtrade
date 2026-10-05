@@ -82,6 +82,7 @@ async function main() {
     assert.equal(c._clusterOverlays.length, 1);
     const html = c._clusterOverlays[0].content.innerHTML;
     assert.ok(html.includes("공매 3"));
+    assert.ok(html.includes("background:#3d5948"), "Auction cluster uses the reference green");
     assert.ok(!html.includes("숙박만지역") && !html.includes("#red") && !html.includes("cluster-visitor-count"));
     assert.ok(!calls[0].includes("lodging_type"));
     c._auctionLayerEnabled = false;

@@ -45,9 +45,9 @@ async function main() {
           tabBorder: style.borderTopStyle, navBackground: nav.backgroundColor, navBorder: nav.borderTopStyle };
       });
       assert.ok(layout.above, "Photo is above all three tabs");
-      assert.notEqual(layout.tabBackground, "rgba(0, 0, 0, 0)");
+      assert.equal(layout.tabBackground, "rgb(61, 89, 72)");
       assert.equal(layout.tabBorder, "solid");
-      assert.notEqual(layout.navBackground, "rgba(0, 0, 0, 0)");
+      assert.equal(layout.navBackground, "rgb(61, 89, 72)");
       assert.equal(layout.navBorder, "solid");
       await page.locator("#auctionDetailPhotoHeader [data-photo-index]").first().click();
       assert.ok(await page.locator(".auction-panel-lightbox").isVisible());
@@ -89,7 +89,7 @@ async function main() {
       assert.equal(await page.locator("#auctionSido").inputValue(), "부산광역시");
       assert.equal(await page.locator("#auctionPageSize").inputValue(), "20");
       assert.deepEqual(errors, []);
-      console.log(`PASS ${width}px: photo above tabs + lightbox, grey rectangular auction buttons, page 2 filters/sort/scroll restored with button and browser Back, region/district/page-size restoration`);
+      console.log(`PASS ${width}px: photo above tabs + lightbox, reference-green auction buttons, page 2 filters/sort/scroll restored with button and browser Back, region/district/page-size restoration`);
       await page.close();
     }
   } finally { await browser.close(); }

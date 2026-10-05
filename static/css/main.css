@@ -467,10 +467,18 @@
   .b-tourism-building-rank strong{color:var(--brass-dark);font-size:14px;}
   .b-tourism-building-rank span{color:var(--ink);font-size:11px;font-weight:600;}
   .b-membership-notice{margin-top:9px;padding:12px;border:1px solid #dce5df;border-radius:7px;background:#f4f6f1;color:var(--ink);}
-  .b-membership-notice strong{display:block;color:#3d5948;font-size:12px;}
+  .b-membership-notice strong{display:flex;align-items:center;gap:6px;color:#3d5948;font-size:12px;}
+  .b-membership-mark{width:17px;height:17px;flex:0 0 17px;}
   .b-membership-notice p{margin:5px 0 9px;color:var(--ink-soft);font-size:11px;line-height:1.65;}
   .b-membership-notice a{display:inline-flex;align-items:center;min-height:30px;padding:0 10px;border-radius:5px;background:#3d5948;color:#fff;text-decoration:none;font-size:10.5px;font-weight:700;}
   .b-membership-notice a:hover{background:#4c6b58;}
+  .b-membership-preview{margin:10px 0 12px;padding:0;border:1px solid #dce5df;border-radius:5px;background:#fff;overflow:hidden;}
+  .b-membership-preview>div{display:grid;grid-template-columns:minmax(110px,.8fr) minmax(0,1.2fr);gap:8px;padding:6px 8px;border-bottom:1px solid #edf0eb;font-size:10px;line-height:1.35;}
+  .b-membership-preview>div:last-child{border-bottom:0;}
+  .b-membership-preview dt{color:var(--ink-soft);font-weight:600;}
+  .b-membership-preview dd{min-width:0;margin:0;color:#708078;}
+  .b-membership-mask{display:inline-block;padding:2px 6px;border:1px solid #e1e7e1;border-radius:3px;background:#f2f5f1;color:#66766c;font-size:9.5px;font-weight:700;letter-spacing:.02em;}
+  .b-membership-notice a.b-membership-cta{display:flex;justify-content:center;width:100%;min-height:36px;padding:0 12px;border:1px solid #3d5948;border-radius:5px;background:#3d5948;color:#fff;font-size:11px;font-weight:800;letter-spacing:.01em;}
    @media(max-width:420px){.b-tourism-surge-badge{font-size:10px;padding-inline:7px}.b-tourism-metrics{grid-template-columns:1fr 1fr}}
   .map-measure-label{
     padding:4px 7px; border:1px solid #EAD9B8; border-radius:6px;
@@ -1215,16 +1223,18 @@
   white-space:nowrap; transition:background .15s, color .15s, border-color .15s;
 }
 .hnav-btn.hnav-auctions{
-  color:#59625D; background:#F0F1EF; border-color:#CFD3D0;
+  color:#fff; background:#3d5948; border-color:#3d5948;
 }
 .hnav-btn.hnav-auctions:hover,
 .hnav-btn.hnav-auctions:focus-visible,
 .hnav-btn.hnav-auctions[aria-current="page"]{
-  color:#36413A; background:#E1E4E1; border-color:#AEB6B0;
+  color:#fff; background:#3d5948; border-color:#3d5948;
 }
 .hnav-btn.hnav-auctions:focus-visible{
-  outline:2px solid #7A8B7F; outline-offset:2px;
+  outline:2px solid #3d5948; outline-offset:2px;
 }
+.map-legend .auction-legend-toggle.active{background:#3d5948;color:#fff;}
+.map-legend .auction-legend-toggle:focus-visible{outline:2px solid #3d5948;outline-offset:2px;}
 .hnav-btn:hover{ background:var(--brass-tint); color:var(--brass-dark); border-color:#EAD9B8; }
 .nav-badge{
   position:absolute; top:-8px; right:2px; padding:2px 4px;
@@ -1619,7 +1629,7 @@
   background:#FBECE9; color:#8A4A43; border-color:#EDCFC9;
 }
 .b-detail-tab[data-panel="auctions"]{
-  background:#F0F1EF; color:#59625D; border-color:#CFD3D0;
+  background:#3d5948; color:#fff; border-color:#3d5948;
 }
 .b-detail-tab[data-panel="operations"]:hover,
 .b-detail-tab[data-panel="operations"].active{
@@ -1633,11 +1643,11 @@
 }
 .b-detail-tab[data-panel="auctions"]:hover,
 .b-detail-tab[data-panel="auctions"].active{
-  background:#E1E4E1; color:#36413A; border-color:#AEB6B0;
-  box-shadow:0 2px 6px rgba(54,65,58,.12);
+  background:#3d5948; color:#fff; border-color:#3d5948;
+  box-shadow:0 2px 6px rgba(61,89,72,.2);
 }
 .b-detail-tab[data-panel="auctions"]:focus-visible{
-  outline:2px solid #69766D; outline-offset:2px;
+  outline:2px solid #3d5948; outline-offset:2px;
 }
 .b-detail-tab:focus-visible{outline:2px solid #7EAED2;outline-offset:2px;}
 .b-detail-panel{

@@ -35,6 +35,8 @@ const fs = require("node:fs");
   assert.ok(sample);
   await page.setViewportSize({width:1280,height:900});
   await page.goto(base + "/auctions/" + sample.id);
+  await page.locator("#bTabAuctions").waitFor({state:"visible"});
+  await page.locator("#bTabAuctions").click();
   await page.waitForSelector("#bAuctionPanel .auction-panel-general");
   await page.waitForTimeout(2500);
   assert.equal(await page.locator(".auction-panel-round.is-current").count(), 1);
@@ -70,6 +72,10 @@ const fs = require("node:fs");
     }, sample);
     await page.waitForSelector(".auction-map-marker", { timeout: 20000 });
     assert.ok(await page.locator(".auction-map-marker").count());
+    for (const part of [".auction-map-marker-top",".auction-map-marker-bottom"]) {
+      assert.equal(await page.locator(part).first().evaluate(node=>getComputedStyle(node).backgroundColor),
+        "rgb(61, 89, 72)");
+    }
     console.log("PASS live Kakao map: auction marker layer at individual-marker zoom");
     fs.mkdirSync("attached_assets/auction-integrated",{recursive:true});
     for(const [label,width] of [["desktop",1280],["mobile",390]]){

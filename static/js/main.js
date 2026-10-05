@@ -2801,7 +2801,7 @@ async function loadClusterOverlays(clusterLevel, filters = {}){
       })
       .join("");
     const auctionCount=_auctionLayerEnabled?Math.max(0,Number(item.auction_count)||0):0;
-    const auctionSegment=auctionCount>0?`<span style="display:inline-flex;align-items:center;justify-content:center;flex:1;width:100%;height:100%;background:#111;color:#fff;font-size:10px;font-weight:700;line-height:1;overflow:hidden;">공매 ${auctionCount}</span>`:"";
+    const auctionSegment=auctionCount>0?`<span style="display:inline-flex;align-items:center;justify-content:center;flex:1;width:100%;height:100%;background:#3d5948;color:#fff;font-size:10px;font-weight:700;line-height:1;overflow:hidden;">공매 ${auctionCount}</span>`:"";
 
     const el = document.createElement("div");
     el.className = "map-cluster-badge";
@@ -6318,9 +6318,22 @@ function _renderApprovedRosterOperatingInfo(b){
   // required:false after checking an active membership period server-side.
   if (!b || !b.membership_access || b.membership_access.required !== false) {
     body.innerHTML = `<div class="side-card-title">공식 영업·운영 정보</div>
-      <div class="b-membership-notice" role="status"><strong>멤버십 회원 전용 정보</strong>
+      <div class="b-membership-notice" role="status">
+      <strong><svg class="b-membership-mark" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 7.5h14M6 12h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m14.5 10 .8 1.5 1.7.2-1.2 1.1.3 1.7-1.6-.8-1.5.8.3-1.7-1.2-1.1 1.7-.2z" fill="currentColor"/></svg> 멤버십 회원 전용 정보</strong>
       <p>상세 공식 영업·운영 기록은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자가 입금을 확인하면 이용할 수 있습니다.</p>
-      <a href="/membership">멤버십 이용·신청</a></div>`;
+      <dl class="b-membership-preview" aria-label="멤버십 전용 공식 기록 미리보기">
+        <div><dt>등록명칭</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>법정 업종</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>호텔 등급</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>허가·신고번호</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>영업 상태</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>허가일</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>공식 객실수·사이트 수</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>공식 주소</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>출처</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+        <div><dt>기준·갱신일</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>
+      </dl>
+      <a class="b-membership-cta" href="/membership">멤버십 이용·신청</a></div>`;
     card.style.display = "";
     return;
   }
@@ -6469,8 +6482,8 @@ function _setupBuildingPanels(type, force=false){
   const ids = {
     operations: [
       "bCampCard", "bNonCampingOperationsCard",
-      "bReservationCard", "bAdminCard", "bTourismDataCard", "bLodgingOperatorCard",
-      "bOperatorInfoDisclaimer", "bApprovedRosterOperatingCard",
+      "bReservationCard", "bAdminCard", "bTourismDataCard", "bApprovedRosterOperatingCard",
+      "bLodgingOperatorCard", "bOperatorInfoDisclaimer",
     ],
     property: [
       "bRequestCard", "bSignalCard",
