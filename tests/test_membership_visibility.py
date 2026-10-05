@@ -96,7 +96,15 @@ class MembershipVisibilityTest(unittest.TestCase):
     def test_membership_page_does_not_sell_an_unavailable_service(self):
         response = self.client.get("/membership")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("현재 멤버십 가입 및 유료 기능 활성화는 제공되지 않습니다.", response.get_data(as_text=True))
+        html = response.get_data(as_text=True)
+        self.assertIn("현재 멤버십 가입 및 유료 기능 활성화는 제공되지 않습니다.", html)
+        for text in ("29,000", "무제한", "영업신고", "위탁운영", "관리비", "미확인", "이월", "현장"):
+            self.assertIn(text, html)
+        self.assertRegex(html, r"월\s*1")
+        self.assertRegex(html, r"동일|같은")
+        self.assertNotIn("가격, 구독 기간, 결제 방법과 멤버십 활성화 일정은 아직 확정", html)
+        self.assertNotIn('id="surveyRequestForm"', html)
+        self.assertNotIn("data-purchase", html)
 
 
 if __name__ == "__main__":
