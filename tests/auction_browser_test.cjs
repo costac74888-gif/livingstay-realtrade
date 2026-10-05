@@ -40,10 +40,15 @@ const fs = require("node:fs");
   await page.waitForSelector("#bAuctionPanel .auction-panel-general");
   await page.waitForTimeout(2500);
   assert.equal(await page.locator(".auction-panel-round.is-current").count(), 1);
-  await page.waitForSelector("#bAuctionPanel .survey-membership-notice");
+  await page.waitForSelector("#bAuctionPanel .auction-membership-zone");
+  assert.equal(await page.locator("#bAuctionPanel .survey-membership-notice").count(),0);
+  assert.equal(await page.locator("#bAuctionPanel .auction-membership-zone").count(),1);
+  assert.equal(await page.locator("#bAuctionPanel .auction-membership-zone .b-membership-mark").count(),1);
+  assert.ok((await page.locator("#bAuctionPanel .auction-membership-zone .b-membership-mask").allTextContents())
+    .every(value=>value==="멤버십 회원 전용"));
   assert.equal(await page.locator("#bAuctionPanel .survey-analysis-link").count(), 0);
   assert.equal(await page.locator("#bAuctionPanel .survey-check-state").count(), 0);
-  assert.equal(await page.locator("#bAuctionPanel .survey-membership-notice a").getAttribute("href"), "/membership");
+  assert.equal(await page.locator("#bAuctionPanel .auction-membership-zone a").getAttribute("href"), "/membership");
   assert.ok((await page.locator('a.auction-panel-onbid').getAttribute("href")).startsWith("https://www.onbid.co.kr/"));
   const images = page.locator(".auction-panel-photo img");
   if (await images.count()) {
@@ -72,10 +77,10 @@ const fs = require("node:fs");
     }, sample);
     await page.waitForSelector(".auction-map-marker", { timeout: 20000 });
     assert.ok(await page.locator(".auction-map-marker").count());
-    for (const part of [".auction-map-marker-top",".auction-map-marker-bottom"]) {
-      assert.equal(await page.locator(part).first().evaluate(node=>getComputedStyle(node).backgroundColor),
-        "rgb(61, 89, 72)");
-    }
+    assert.equal(await page.locator(".auction-map-marker-top").first().evaluate(node=>getComputedStyle(node).backgroundColor),
+      "rgb(255, 255, 255)");
+    assert.equal(await page.locator(".auction-map-marker-bottom").first().evaluate(node=>getComputedStyle(node).backgroundColor),
+      "rgb(61, 89, 72)");
     console.log("PASS live Kakao map: auction marker layer at individual-marker zoom");
     fs.mkdirSync("attached_assets/auction-integrated",{recursive:true});
     for(const [label,width] of [["desktop",1280],["mobile",390]]){

@@ -46,11 +46,18 @@
   };
   function renderMembershipNotice(target, data) {
     if (!target) return;
-    target.innerHTML = `<section class="survey-membership-notice" role="status">
-      <span class="survey-kicker">MEMBERSHIP ACCESS</span>
-      <h2>멤버십 회원 전용 정보</h2>
-      <p>공식 영업·운영 기록은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자 확인을 거쳐 이용할 수 있습니다.</p>
-      <a href="${esc(membershipInfoUrl(data))}">멤버십 이용·신청</a>
+    const previewFields = [
+      "등록명칭","법정 업종","호텔 등급","허가·신고번호","영업 상태",
+      "허가일","공식 객실수·사이트 수","공식 주소","출처","기준·갱신일",
+      "영업신고 현황","위탁운영 승계 여부","관리비 체납 여부"
+    ];
+    target.innerHTML = `<section class="auction-membership-zone b-membership-notice" role="status">
+      <strong><svg class="b-membership-mark" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 7.5h14M6 12h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m14.5 10 .8 1.5 1.7.2-1.2 1.1.3 1.7-1.6-.8-1.5.8.3-1.7-1.2-1.1 1.7-.2z" fill="currentColor"/></svg> 멤버십 회원 전용 정보</strong>
+      <p>공매 물건의 상세 공식 영업·운영 기록과 확인 항목은 활성 멤버십 회원에게 제공됩니다. 월 29,000원, 계좌 송금 후 관리자가 입금을 확인하면 이용할 수 있습니다.</p>
+      <dl class="b-membership-preview" aria-label="멤버십 전용 공매 공식 기록 및 확인 항목 미리보기">
+        ${previewFields.map(label=>`<div><dt>${esc(label)}</dt><dd><span class="b-membership-mask">멤버십 회원 전용</span></dd></div>`).join("")}
+      </dl>
+      <a class="b-membership-cta" href="${esc(membershipInfoUrl(data))}">멤버십 이용·신청</a>
     </section>`;
   }
 
@@ -83,7 +90,10 @@
       rowFact("입찰 마감", date(item.bid_end_at)),
       rowFact("물건 상태", statusLabel(item.status))
     ].join("");
-    slot.innerHTML = `<section class="survey-block" aria-labelledby="surveyAnalysisTitle">
+    slot.innerHTML = `<section class="auction-membership-zone b-membership-notice auction-membership-active" aria-labelledby="auctionMembershipTitle">
+      <strong id="auctionMembershipTitle"><svg class="b-membership-mark" viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 7.5h14M6 12h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="m14.5 10 .8 1.5 1.7.2-1.2 1.1.3 1.7-1.6-.8-1.5.8.3-1.7-1.2-1.1 1.7-.2z" fill="currentColor"/></svg> 멤버십 회원 전용 정보</strong>
+      <p>활성 멤버십으로 제공되는 공매 투자분석 및 현황조사 정보입니다.</p>
+      <section class="survey-block" aria-labelledby="surveyAnalysisTitle">
       <header class="survey-head"><h2 id="surveyAnalysisTitle">투자분석</h2></header>
       <div class="survey-body"><div class="survey-source-facts">${facts}</div>
       ${matched ? (analysis ? `<div class="survey-analysis-links">${analysis}</div>` : "") : `<div class="survey-unavailable">건물 매칭 전이라 분석을 제공하지 않습니다.</div>`}
@@ -94,7 +104,8 @@
        ${item.membership_included === true && item.membership_access?.required === false && item.membership_access?.status === "active"
          ? `<button class="survey-apply" type="button" data-open-auction-survey="${esc(id)}">이번 달 포함 확인 신청</button>`
          : `<a class="survey-apply" href="/membership">멤버십 이용 안내</a>`}
-      </div></section>`;
+       </div></section>
+    </section>`;
     slot.querySelector("[data-open-auction-survey]")?.addEventListener("click",()=>window.openAuctionSurvey(id));
     if (matched) loadMarketReference(item).then(reference => {
       if (!reference || !slot.isConnected) return;

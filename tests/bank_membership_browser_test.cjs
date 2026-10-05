@@ -114,6 +114,20 @@ finally:c.close()
       await page.goto(base+"/membership");
       await page.getByText("자동검증 보고서:",{exact:false}).waitFor();
       assert.equal(await page.locator(".member-result").filter({hasText:"미확인"}).count(),2);
+      const auctionList=await json(await page.request.get(base+"/api/auctions?page_size=10"));
+      assert.ok(auctionList.items.length,"Live auction is needed to verify the paid information zone");
+      await page.goto(base+`/?auction=${auctionList.items[0].id}&tab=auction`);
+      await page.locator("#bTabAuctions").waitFor({state:"visible"});
+      await page.locator("#bTabAuctions").click();
+      const paidZone=page.locator("#bAuctionPanel .auction-membership-zone");
+      await paidZone.waitFor({state:"visible"});
+      assert.equal(await paidZone.count(),1);
+      assert.equal(await paidZone.locator(".b-membership-mask").count(),0);
+      assert.ok(await paidZone.locator(".survey-source-facts").isVisible());
+      assert.ok(await paidZone.locator("[data-open-auction-survey]").isVisible());
+      assert.equal(await page.locator("#bAuctionPanel .survey-membership-notice").count(),0);
+      await page.goto(base+"/membership");
+      await page.locator("#memberDepositor").waitFor();
       // Early renewal extends a future paid period; it does not reset this one.
       await page.fill("#memberDepositor","멤버십 자동검증");
       await page.check('[name="agree_terms"]');

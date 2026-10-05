@@ -98,15 +98,30 @@ async function main() {
   assert.ok(calls[0].startsWith("/api/auctions/map?"));
   assert.equal(c._auctionMapOverlays.length, 2);
   c.fetch=async()=>({ok:true,json:async()=>({ok:true,items:[
-    {id:1,lat:37,lng:127,master_building_id:9,status:"bidding"},
-    {id:2,lat:37,lng:127,master_building_id:10,status:"scheduled"},
+    {id:1,lat:37,lng:127,master_building_id:9,status:"bidding",lodging_category:"생활숙박",area_m2:66.116,min_bid_price:180000000},
+    {id:2,lat:37,lng:127,master_building_id:10,status:"scheduled",lodging_category:"생활숙박",area_m2:99.174,min_bid_price:320000000},
   ]})});
   c.markerColor=()=>"#123456";
   await c.loadAuctionMapOverlays();
   assert.equal(c._auctionMapOverlays.length,2,"One grouped box plus independently clickable building point");
-  assert.ok(c._auctionMapOverlays[0].content.innerHTML.includes("공매 2건"));
+  const groupedHtml=c._auctionMapOverlays[0].content.innerHTML;
+  assert.ok(groupedHtml.includes("2건"));
+  assert.ok(groupedHtml.includes("생활숙박") && groupedHtml.includes("20평") && groupedHtml.includes("1.8억"),
+    "Grouped marker shows the same representative item's actual use, area and current minimum price");
+  assert.ok(!groupedHtml.includes("물건 선택") && !groupedHtml.includes("3.2억"));
+  assert.ok(c._auctionMapOverlays[0].content.title.replace(/[,\s]/g,"").includes("180000000원"),
+    "Tooltip preserves the exact current minimum price");
   assert.ok(!c._auctionMapOverlays[0].content.innerHTML.includes("/auctions/"));
   assert.ok(c._auctionMapOverlays[0].content.innerHTML.includes("진행"));
+  for (const value of [null,"",0,-1,"invalid"]) {
+    c.fetch=async()=>({ok:true,json:async()=>({ok:true,items:[
+      {id:3,lat:37,lng:127,lodging_category:"호텔",area_m2:value,min_bid_price:value,status:"scheduled"}
+    ]})});
+    await c.loadAuctionMapOverlays();
+    const html=c._auctionMapOverlays[0].content.innerHTML;
+    assert.ok(html.includes("미확인") && !html.includes("0평") && !html.includes(">0만"),
+      "Missing/invalid auction values must not turn into zero area or price");
+  }
   c.setAuctionMapLayer(true, { refresh: false });
   assert.equal(c.state.lodging_type, "");
   assert.equal(selector.value, "");

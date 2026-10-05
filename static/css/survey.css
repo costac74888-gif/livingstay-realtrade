@@ -31,11 +31,6 @@
 .survey-loading{padding:24px;text-align:center;color:var(--sv-muted);font-size:12px}
 .survey-error{padding:13px;background:#fff7f4;color:#934a3e;font-size:12px;line-height:1.6}
 .survey-error button{margin-left:8px;border:0;background:none;color:#29342e;text-decoration:underline;cursor:pointer;font:inherit}
-.survey-membership-notice{padding:20px;background:#f4f6f1;border:1px solid #dce5df;color:#26342f}
-.survey-membership-notice h2{margin:7px 0 6px;font-size:17px;letter-spacing:-.04em}
-.survey-membership-notice p{margin:0;color:#68756c;font-size:11.5px;line-height:1.7}
-.survey-membership-notice a{display:inline-flex;align-items:center;min-height:36px;margin-top:13px;padding:0 13px;background:#3d5948;color:#fff;text-decoration:none;font-size:11px;font-weight:700}
-.survey-membership-notice a:hover{background:#4c6b58}
 .survey-page{--sv-ink:#202522;--sv-muted:#758078;--sv-line:#e4e7e2;--sv-paper:#f4f5f1;--sv-accent:#c27a3a;min-height:100dvh;background:var(--sv-paper);color:var(--sv-ink);font-family:"Noto Sans KR",sans-serif;padding:26px 16px 64px}
 .survey-wrap{max-width:760px;margin:0 auto}
 .survey-back{display:inline-flex;color:#667169;text-decoration:none;font-size:12px;margin-bottom:14px}

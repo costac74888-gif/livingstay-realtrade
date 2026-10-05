@@ -23,9 +23,11 @@
 /* Map overlays remain isolated from the map and its underlying lodging markers. */
 .auction-map-marker{position:relative;width:max-content;max-width:210px;font-family:"Noto Sans KR",sans-serif;text-align:center;filter:drop-shadow(0 2px 3px #0003);transform:translateY(-42px);pointer-events:auto}
 .auction-map-marker:after{position:absolute;left:50%;bottom:-9px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid #3d5948;content:"";transform:translateX(-50%);pointer-events:none}
-.auction-map-marker-top{padding:4px 8px;background:#3d5948;border:1.5px solid #3d5948;border-bottom:0;color:#fff;border-radius:4px 4px 0 0;font-size:10px;font-weight:800;white-space:nowrap}
-.auction-map-marker-bottom{position:relative;min-height:23px;padding:4px 27px 4px 8px;background:#3d5948;color:#fff;font-size:10px;font-weight:700;white-space:nowrap}
-.auction-map-marker-status{position:absolute;right:4px;bottom:3px;margin:0;padding:1px 3px;background:#e4eae5;color:#34483d;font-size:8px;font-weight:800;line-height:1.1}
+.auction-map-marker-top{display:flex;justify-content:center;align-items:center;gap:5px;min-height:21px;padding:3px 7px;background:#fff;border:1px solid #3d5948;color:#26342f;font-size:9px;font-weight:800;white-space:nowrap}
+.auction-map-marker-top b{padding-left:5px;border-left:1px solid #cdd8cf;color:#53695a;font-size:8px;font-weight:800}
+.auction-map-marker-bottom{display:flex;justify-content:center;align-items:center;gap:4px;min-height:22px;padding:3px 8px;background:#3d5948;color:#fff;font-size:10px;font-weight:800;white-space:nowrap}
+.auction-map-marker-bottom small{font-size:8px;font-weight:600;opacity:.86}
+.auction-map-marker-status{position:absolute;right:-14px;bottom:-11px;z-index:1;margin:0;padding:2px 4px;border:1px solid #d7e1d8;background:#fbfcf8;color:#34483d;font-size:8px;font-weight:800;line-height:1.1;white-space:nowrap}
 .auction-map-marker-status.status-bidding{background:#bd7046;color:#fff}.auction-map-marker-status.status-scheduled{background:#527462;color:#fff}
 .auction-map-cluster-trigger{padding:7px 10px;border:1px solid #3d5948;border-radius:4px;background:#3d5948;color:#fff;font:700 11px "Noto Sans KR",sans-serif;cursor:pointer}
 .auction-building-point{width:14px;height:14px;border:2px solid #fbfcf8;border-radius:50%;background:#3d5948;box-shadow:0 1px 4px #17251c75;cursor:pointer;pointer-events:auto}

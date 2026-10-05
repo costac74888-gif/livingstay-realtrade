@@ -2644,19 +2644,43 @@ async function loadAuctionMapOverlays(){
     grouped.forEach(items=>{
       const pos=new kakao.maps.LatLng(items[0].lat,items[0].lng);
       const escText=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+      const areaInPyeong=item=>{
+        const raw=item&&item.area_m2;
+        if(raw==null||raw==="")return "미확인";
+        const sqm=Number(raw);
+        if(!Number.isFinite(sqm)||sqm<=0)return "미확인";
+        const pyeong=sqm/3.3058;
+        return pyeong<1?"1평 미만":`${Math.round(pyeong).toLocaleString("ko-KR")}평`;
+      };
+      const currentMinBid=item=>{
+        const raw=item&&item.min_bid_price;
+        if(raw==null||raw==="")return "미확인";
+        const price=Number(raw);
+        if(!Number.isFinite(price)||price<=0)return "미확인";
+        if(price>=100000000)return `${(price/100000000).toFixed(1).replace(/\.0$/,"")}억`;
+        const manwon=Math.round(price/10000);
+        return manwon>0?`${manwon.toLocaleString("ko-KR")}만원`:"1만원 미만";
+      };
+      const exactCurrentMinBidWon=item=>{
+        const raw=item&&item.min_bid_price;
+        const price=raw==null||raw===""?NaN:Number(raw);
+        return Number.isFinite(price)&&price>0?`${String(raw)}원`:"미확인";
+      };
+      const auctionStatus=item=>item.status==="scheduled"?"예정":item.status==="bidding"?"진행":(item.status||"상태 확인");
       const badge=document.createElement("div");
       badge.className="auction-map-marker";
       badge.dataset.auctionGroup=`${Number(items[0].lat).toFixed(5)},${Number(items[0].lng).toFixed(5)}`;
-      if(items.length===1){
-        const item=items[0], sqm=Number(item.area_m2), price=Number(item.min_bid_price);
-        const area=Number.isFinite(sqm)&&sqm>0?`${Math.round(sqm/3.3058)}평`:"면적 확인";
-        const amount=!Number.isFinite(price)||price<=0?"가격 확인":price>=100000000?`${(price/100000000).toFixed(1).replace(/\.0$/,"")}억`:`${Math.round(price/10000).toLocaleString("ko-KR")}만`;
-        const status=item.status==="scheduled"?"예정":"진행";
-        badge.innerHTML=`<div class="auction-map-marker-top">${escText(item.lodging_category||"숙박시설")} ${escText(item.sale_kind==="신탁"?"신탁공매":"공매")}</div><div class="auction-map-marker-bottom">${area} ${amount}<span class="auction-map-marker-status">${status}</span></div>`;
-        badge.title=`${item.lodging_category||"숙박시설"} · ${item.area_m2==null?"면적 확인":`${item.area_m2}㎡`} · 최저입찰가 ${Number.isFinite(price)&&price>0?price.toLocaleString("ko-KR")+"원":"확인 필요"}`;
-      }else{
-        badge.innerHTML=`<div class="auction-map-marker-top">공매 ${items.length}건</div><div class="auction-map-marker-bottom">물건 선택<span class="auction-map-marker-status">${items.every(item=>item.status==="scheduled")?"예정":"진행"}</span></div>`;
-      }
+      // API items use current_auctions, whose min_bid_price is the latest active round's value.
+      // Keep its stable first row as the representative and the panel's opening selection.
+      const item=items[0];
+      const types=[...new Set(items.map(entry=>String(entry.lodging_category||entry.property_type||entry.usage_name||"숙박시설").trim()))];
+      const typeLabel=types.length>1?"복수용도":(item.lodging_category||item.property_type||item.usage_name||"숙박시설");
+      const category=item.sale_kind==="신탁"?"신탁공매":"공매";
+      const countLabel=items.length>1?` · ${items.length}건`:"";
+      const area=areaInPyeong(item), amount=currentMinBid(item);
+      const status=auctionStatus(item);
+      badge.innerHTML=`<div class="auction-map-marker-top"><span>${escText(typeLabel)} ${escText(category)}</span>${items.length>1?`<b>${items.length}건</b>`:""}</div><div class="auction-map-marker-bottom">${items.length>1?`<small>첫 물건</small>`:""}<span>${escText(area)} · ${escText(amount)}</span></div><span class="auction-map-marker-status ${item.status==="scheduled"?"status-scheduled":item.status==="bidding"?"status-bidding":""}">${escText(status)}</span>`;
+      badge.title=`${typeLabel}${countLabel} · 대표: ${item.title||item.lodging_category||"첫 물건"} · ${item.area_m2==null||item.area_m2===""?"면적 미확인":`${item.area_m2}㎡`} · 현재 최저입찰가 ${exactCurrentMinBidWon(item)} (첫 물건 기준)`;
       badge.setAttribute("role","button");badge.tabIndex=0;
       const open=()=>window.openAuctionDetail(items[0].id,{items});
       badge.addEventListener("click",event=>{event.stopPropagation();open();});
