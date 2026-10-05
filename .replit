@@ -162,6 +162,12 @@ BJDONG_CODE_CSV = "법정동코드_전체자료.zip"
 PUBLIC_BASE_URL = "https://homenstay.com"
 SITE_URL = "https://homenstay.com"
 
+[userenv.production]
+RELAY_BASE_URL = "https://relay.homenstay.com"
+RELAY_ENABLED = "0"
+RELAY_USE_BLDG_HUB = "0"
+RELAY_USE_RTMS = "0"
+
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "scripts/start-prod.sh"]
