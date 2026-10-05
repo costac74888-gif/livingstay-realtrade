@@ -18,6 +18,7 @@ from addr_norm import normalize_road_prefix, normalize_jibun_prefix
 from auction_domain import (
     ENDPOINTS, PROPERTY_CODES, USAGES, KST, normalize, response_items,
     number, source_date, safe_url, VISIBLE_SQL, ELIGIBLE_SQL, is_collectible,
+    category, VERIFIED_LIVING_CATEGORY_SQL,
 )
 from auction_service import STATUS_KEY, SUCCESS_KEY, auction_deep_link
 from db import get_conn
@@ -167,7 +168,7 @@ class Runner:
     def load_master_index(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT id,road_address,jibun_address,sgg_text,umd_nm,jibun,lat,lng FROM master_buildings")
+                cur.execute("SELECT id,road_address,jibun_address,sgg_text,umd_nm,jibun,lodging_type,lodging_type_detail,lat,lng FROM master_buildings")
                 rows = cur.fetchall()
         self.master_road, self.master_jibun, _ = build_indexes(rows)
 
@@ -176,6 +177,11 @@ class Runner:
         jibun = normalize_jibun_prefix(values["address_jibun"]) if values["address_jibun"] else None
         multi_parcel = bool(re.search(r"외\s*\d+\s*필지|,\s*\d+-\d+", values["address_jibun"]))
         building = choose_building(values, self.master_road, self.master_jibun)
+        if building and values.get("lodging_category") in (None, "", "기타"):
+            values["lodging_category"] = category({
+                "cltrUsgSclsCtgrNm": values.get("usage_name"),
+                "onbidCltrNm": values.get("title"),
+            }, building)
         if building and building["lat"] is not None and building["lng"] is not None:
             return building["id"], building["lat"], building["lng"]
         # 정규화 키는 공백을 지워 매칭하기 위한 값. 지오코딩에는 실제 주소를 전달한다.
@@ -235,6 +241,8 @@ class Runner:
             if not is_collectible(row):
                 continue
             val = normalize(row)
+            building = choose_building(val, self.master_road, self.master_jibun)
+            val["lodging_category"] = category(row, building)
             raw = {"list": row}
             if val["status"] in ("sold", "canceled", "failed"):
                 raw["_confirmed_result"] = val["status"]
@@ -251,6 +259,15 @@ class Runner:
                     assignments.append(f"{column}=COALESCE(NULLIF(EXCLUDED.{column},''),auction_items.{column})")
                 elif column == "sale_kind":
                     assignments.append("sale_kind=CASE WHEN auction_items.sale_kind='신탁' THEN auction_items.sale_kind ELSE EXCLUDED.sale_kind END")
+                elif column == "lodging_category":
+                    # 목록의 넓은 숙박시설 문구로 확인된 대장 분류를 매일 되돌리지 않는다.
+                    assignments.append("lodging_category=CASE WHEN EXCLUDED.lodging_category='기타' "
+                                       "AND (NULLIF(EXCLUDED.address_jibun,'') IS NULL OR "
+                                       "EXCLUDED.address_jibun=auction_items.address_jibun) "
+                                       "AND (NULLIF(EXCLUDED.address_road,'') IS NULL OR "
+                                       "EXCLUDED.address_road=auction_items.address_road) AND " +
+                                       VERIFIED_LIVING_CATEGORY_SQL.replace("a.", "auction_items.") +
+                                       " THEN '생활숙박' ELSE EXCLUDED.lodging_category END")
                 elif column == "status":
                     assignments.append("""status=CASE
                       WHEN auction_items.status='closed' AND EXCLUDED.status IN ('sold','canceled','failed')
@@ -306,6 +323,11 @@ class Runner:
                     raise LostOwnership()
                 cur.execute("SELECT status,raw FROM auction_items WHERE id=%s FOR UPDATE", [target["id"]])
                 previous = cur.fetchone()
+                evidence = previous["raw"].get("_building_category_evidence")
+                if (not building_id and evidence and evidence.get("source") == "master_building"
+                        and evidence.get("address_jibun") == values["address_jibun"]):
+                    values["lodging_category"] = category(merged, evidence)
+                    raw["_building_category_evidence"] = evidence
                 previous_result = previous["raw"].get("_confirmed_result")
                 result = values["status"]
                 if result in ("sold", "canceled", "failed"):
@@ -402,6 +424,7 @@ class Runner:
         worker.start()
         try:
             rows = self.collect_lists()
+            self.load_master_index()
             staged, changed = self.stage_rows(rows)
             # 목록 원장이 정상적으로 전부 커밋된 시각. 상세 예산 소진과 구분한다.
             with get_conn() as conn:
@@ -417,7 +440,6 @@ class Runner:
                     cur.execute("""UPDATE auction_items a SET status='closed',
                       raw=a.raw||'{"_confirmed_result":"failed"}'::jsonb,updated_at=NOW()
                       WHERE a.status='failed' AND NOT """ + VISIBLE_SQL)
-            self.load_master_index()
             # 입찰 중·가장 가까운 예정 물건을 먼저 상세 조회. 한 물건의 먼 미래 회차가
             # 다른 물건의 첫 사진 수집을 밀어내지 않게 첫 회차 후보를 우선한다.
             ordered = sorted(changed, key=lambda s: (

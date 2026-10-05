@@ -19,6 +19,30 @@ ELIGIBLE_SQL = """(
  AND POSITION('오피스텔' IN COALESCE(a.lodging_category,''))=0
  AND POSITION('오피스텔' IN COALESCE(a.raw->'list'->>'cltrUsgSclsCtgrNm',''))=0
 )"""
+VERIFIED_LIVING_CATEGORY_SQL = """(EXISTS (
+   SELECT 1 FROM master_buildings category_building
+   WHERE category_building.id=a.master_building_id
+     AND category_building.lodging_type='생활'
+     AND REGEXP_REPLACE(COALESCE(category_building.lodging_type_detail,''),'[[:space:]]','','g')
+         ~ '생활(형)?숙박'
+ ) OR (
+   NOT EXISTS (SELECT 1 FROM master_buildings current_building WHERE current_building.id=a.master_building_id)
+   AND
+   a.raw->'_building_category_evidence'->>'source'='master_building'
+   AND a.raw->'_building_category_evidence'->>'lodging_type'='생활'
+   AND NULLIF(a.raw->'_building_category_evidence'->>'address_jibun','')=NULLIF(a.address_jibun,'')
+   AND REGEXP_REPLACE(COALESCE(a.raw->'_building_category_evidence'->>'lodging_type_detail',''),
+       '[[:space:]]','','g') ~ '생활(형)?숙박'
+ ))"""
+EFFECTIVE_CATEGORY_SQL = f"""CASE
+ WHEN a.lodging_category='생활숙박'
+   AND a.raw->'_building_category_evidence'->>'source'='master_building'
+   AND REGEXP_REPLACE(COALESCE(a.usage_name,'') || ' ' || COALESCE(a.title,''),'[[:space:]]','','g')
+       !~ '생활(형)?숙박|생숙'
+   AND NOT COALESCE({VERIFIED_LIVING_CATEGORY_SQL},FALSE) THEN '기타'
+ WHEN COALESCE(a.lodging_category,'기타') IN ('','기타') AND {VERIFIED_LIVING_CATEGORY_SQL}
+ THEN '생활숙박'
+ ELSE a.lodging_category END"""
 STATUS_CODES = {"0001": "scheduled", "0002": "bidding", "0010": "sold", "0011": "failed", "0012": "canceled"}
 EFFECTIVE_STATUS_SQL = """CASE
  WHEN a.status IN ('scheduled','bidding') AND a.bid_end_at<NOW() THEN 'closed'
@@ -107,7 +131,7 @@ def response_items(data):
     return items, int(body.get("totalCount") or 0)
 
 
-def category(row):
+def category(row, building=None):
     usage = str(row.get("cltrUsgSclsCtgrNm") or "")
     title = str(row.get("onbidCltrNm") or "")
     text = usage + " " + title
@@ -121,6 +145,10 @@ def category(row):
     ):
         if any(term in text for term in terms):
             return result
+    if building and building.get("lodging_type") == "생활" and re.search(
+        r"생활(?:형)?숙박", re.sub(r"\s+", "", building.get("lodging_type_detail") or "")
+    ):
+        return "생활숙박"
     return "기타"
 
 

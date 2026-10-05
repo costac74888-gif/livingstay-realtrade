@@ -108,7 +108,8 @@
       const ratioText=ratio===null?"":`<span class="auction-price-ratio">${ratio.toLocaleString("ko-KR",{maximumFractionDigits:1})}%</span>`;
       const image=item.thumbnail_url?`<img src="${esc(item.thumbnail_url)}" alt="물건 사진" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="auction-photo-missing" hidden>사진 없음</span>`:'<span class="auction-photo-missing">사진 없음</span>';
       const status=item.status?`<span class="auction-status status-${esc(item.status)}">${esc(statusName(item.status))}</span>`:"";
-      const tags=[["재산종류",item.property_type||item.sale_kind],["처분방식",item.disposal_method],["용도",item.usage_name||item.lodging_category]].filter(entry=>entry[1]);
+      const displayUsage=item.lodging_category&&item.lodging_category!=="기타"?item.lodging_category:item.usage_name;
+      const tags=[["재산종류",item.property_type||item.sale_kind],["처분방식",item.disposal_method],["용도",displayUsage]].filter(entry=>entry[1]);
       const tagHtml=tags.map(([label,value])=>`<span class="auction-tag"><b>${esc(label)}</b>${esc(value)}</span>`).join("");
       const failed=numeric(item.failed_count);
       const round=item.round_no==null||item.round_no===""?"회차 미공개":`${esc(item.round_no)}회차`;

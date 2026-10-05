@@ -8,7 +8,7 @@ from datetime import datetime
 from functools import wraps
 
 from flask import jsonify, request, redirect, abort
-from auction_domain import CURRENT_SQL, VISIBLE_SQL, EFFECTIVE_STATUS_SQL, ELIGIBLE_SQL, KST, safe_url, number
+from auction_domain import CURRENT_SQL, VISIBLE_SQL, EFFECTIVE_STATUS_SQL, EFFECTIVE_CATEGORY_SQL, ELIGIBLE_SQL, KST, safe_url, number
 from db import get_conn
 from auction_building_matching import resolve_building
 
@@ -34,7 +34,7 @@ def redirect_auction_to_map(item_id):
         abort(404)
     return redirect(auction_deep_link(item_id, item["master_building_id"]), code=301)
 PUBLIC_COLUMNS = f"""a.id,a.source,a.source_item_id,a.pbct_cdtn_no,a.sale_kind,a.usage_name,
-a.lodging_category,a.title,a.unit_label,a.address_road,a.address_jibun,a.area_m2,
+({EFFECTIVE_CATEGORY_SQL}) AS lodging_category,a.title,a.unit_label,a.address_road,a.address_jibun,a.area_m2,
 a.appraisal_price,a.min_bid_price,a.min_bid_ratio,a.round_no,a.failed_count,
 a.bid_start_at,a.bid_end_at,({EFFECTIVE_STATUS_SQL}) AS status,a.status_changed_at,a.disposal_method,
 a.notice_org,a.notice_no,a.detail_url,a.lat,a.lng,a.master_building_id,
@@ -121,7 +121,9 @@ def filters():
         if value:
             if value not in choices:
                 raise ValueError("유효하지 않은 " + key)
-            where.append(f"({EFFECTIVE_STATUS_SQL})=%s" if column == "status" else f"a.{column}=%s")
+            expression = (EFFECTIVE_STATUS_SQL if column == "status" else
+                          EFFECTIVE_CATEGORY_SQL if column == "lodging_category" else f"a.{column}")
+            where.append(f"({expression})=%s")
             params.append(value)
     for key, operator in (("ratio_min", ">="), ("ratio_max", "<=")):
         value = request.args.get(key)
@@ -259,6 +261,9 @@ def register_auction_routes(app, limiter, serve_html, require_admin, start_job, 
                                        ("area", "a.area_m2"))
                    for direction in ("asc", "desc")},
             }.get(request.args.get("sort", "deadline"))
+            if request.args.get("sort") in ("category_asc", "category_desc"):
+                direction = "ASC" if request.args["sort"] == "category_asc" else "DESC"
+                order = f"({EFFECTIVE_CATEGORY_SQL}) {direction} NULLS LAST,a.id DESC"
             if not order:
                 raise ValueError("정렬을 확인해 주세요.")
         except (ValueError, TypeError):

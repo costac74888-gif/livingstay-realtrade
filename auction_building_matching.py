@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 
 from addr_norm import normalize_road_prefix, normalize_jibun_prefix, get_building_jibun_key
+from auction_domain import category
 
 _cache = None
 _expires_at = 0
@@ -69,7 +70,7 @@ def get_indexes(cur):
     with _lock:
         if _cache is None or time.monotonic() >= _expires_at:
             cur.execute("""SELECT id,building_name,road_address,jibun_address,
-              sgg_text,umd_nm,jibun,lodging_type,lat,lng FROM master_buildings""")
+              sgg_text,umd_nm,jibun,lodging_type,lodging_type_detail,lat,lng FROM master_buildings""")
             _cache = build_indexes(cur.fetchall())
             _expires_at = time.monotonic() + 300
     return _cache
@@ -83,6 +84,11 @@ def resolve_building(cur, item):
         building = choose_building(item, roads, parcels)
     item["master_building_id"] = building["id"] if building else None
     if building:
+        if item.get("lodging_category") in (None, "", "기타"):
+            item["lodging_category"] = category({
+                "cltrUsgSclsCtgrNm": item.get("usage_name"),
+                "onbidCltrNm": item.get("title"),
+            }, building)
         item["building_name"] = building.get("building_name")
         item["building_lodging_type"] = building.get("lodging_type")
         for coordinate in ("lat", "lng"):
