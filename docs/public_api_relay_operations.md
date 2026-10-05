@@ -104,6 +104,11 @@ DB를 변경하지 않고 로컬 임시 파일에 세 가지 비민감 값만 �
 
 ## 검증
 
+현재 실제 연결 점검에서는 건축HUB realtime 조회가 성공했지만 실거래 batch 조회는
+`RELAY_FORBIDDEN` / HTTP 403으로 거절됐다. 운영 스위치는 모두 OFF로 유지했다.
+중계 서버의 토큰 용도·서비스 허용 정책을 확인한 후, 새 실호출 승인으로 재점검해야 한다.
+세부 결과와 게시 차단 사유는 `docs/public_api_relay_verification.md`의 최신 운영 연결 점검을 따른다.
+
 `tests/test_public_api_client.py`: T1–T10, 오류 8종, 두 retry 루프, 429 구분,
 4종 실거래·건축물대장 파싱, 목적별 토큰, 예산 소유권, URL 검증, 인증 URL 비노출, 관리자 인증.
 `tests/public_api_relay_admin_test.cjs`: 기존 메뉴의 상태 표시·안전한 문자열·조회 실패.
