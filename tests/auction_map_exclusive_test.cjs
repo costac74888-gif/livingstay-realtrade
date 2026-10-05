@@ -133,6 +133,43 @@ async function main() {
   resolve({ ok: true, json: async () => ({ ok: true, items: [{ lat: 37, lng: 127 }] }) });
   await late;
   assert.equal(c._auctionMapOverlays.length, 0, "Disabled layer must reject a late response");
+  c.state.lodging_type = "";
+  c._lastMapFilters = {};
+  const buildingPoint = new Overlay({ content: new Element() });
+  buildingPoint.setMap(c.kakaoMap);
+  c._clusterOverlays = [buildingPoint];
+  c.fetch = async () => ({ ok: true, json: async () => ({ ok: true, items: [
+    {id:4,lat:37,lng:127,master_building_id:9,lodging_category:"생활숙박",area_m2:66,min_bid_price:180000000,status:"bidding"},
+  ] }) });
+  await c.loadAuctionMapOverlays();
+  assert.equal(c._auctionMapOverlays.length, 1, "All view displays the auction box without a duplicate building point");
+  assert.equal(c._auctionMapOverlays[0].map, c.kakaoMap);
+  assert.equal(buildingPoint.map, c.kakaoMap, "All view retains the ordinary building layer");
+  c.state.lodging_type = "호텔";
+  c.fetch = async () => { throw new Error("A specific lodging filter must not fetch auction boxes"); };
+  await c.loadAuctionMapOverlays();
+  assert.equal(c._auctionMapOverlays.length, 0);
+  c.state.lodging_type = "";
+  c._currentMapMode = "sgg";
+  await c.loadAuctionMapOverlays();
+  assert.equal(c._auctionMapOverlays.length, 0, "Zoomed-out view keeps regional clusters");
+  c._currentMapMode = "markers";
+  empty.innerHTML = "건물 조회 안내";
+  empty.style.display = "none";
+  c.fetch = async () => ({ ok: true, json: async () => ({ ok: true, items: [] }) });
+  await c.loadAuctionMapOverlays();
+  assert.equal(empty.innerHTML, "건물 조회 안내", "Empty auction results must not replace the all-view banner");
+  assert.equal(empty.style.display, "none");
+  c.fetch = async () => ({ ok: false, json: async () => ({ ok: false }) });
+  await c.loadAuctionMapOverlays();
+  assert.equal(empty.innerHTML, "건물 조회 안내", "An auction error must not replace the all-view building feedback");
+  assert.equal(empty.style.display, "none");
+  c.fetch = () => new Promise(done => { resolve = done; });
+  const lateAll = c.loadAuctionMapOverlays();
+  c.setAuctionMapLayer(true, { refresh: false });
+  resolve({ ok: true, json: async () => ({ ok: true, items: [{ lat: 37, lng: 127 }] }) });
+  await lateAll;
+  assert.equal(c._auctionMapOverlays.length, 0, "Switching to auction-only rejects a late all-view response");
   c._auctionLayerEnabled = true;
   c.fetch = async () => ({ ok: true, json: async () => ({ ok: true, items: [] }) });
   await c.loadAuctionMapOverlays();
@@ -140,6 +177,6 @@ async function main() {
   c.fetch = async () => ({ ok: false, json: async () => ({ ok: false }) });
   await c.loadAuctionMapOverlays();
   assert.ok(empty.innerHTML.includes("불러오지 못했습니다"));
-  console.log("PASS auction-only province/city/district, marker route, restore, late-response fencing, empty/error states");
+  console.log("PASS all-view auction boxes, exclusive filters, zoom transitions, late-response fencing, empty/error isolation");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

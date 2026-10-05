@@ -2622,7 +2622,11 @@ async function loadAuctionMapOverlays(){
   const gen = ++_auctionMapRequest;
   _auctionMapOverlays.forEach(overlay => overlay.setMap(null));
   _auctionMapOverlays = [];
-  if (!_auctionLayerEnabled || _currentMapMode !== "markers") return;
+  // 전체 보기는 건물 포인트와 공매 박스를 함께 표시한다.
+  // 공매 범례는 여전히 공매만 보는 배타적 필터다.
+  const auctionOnly = _auctionLayerEnabled;
+  const allLodgings = !(_lastMapFilters.lodging_type || state.lodging_type);
+  if ((!auctionOnly && !allLodgings) || _currentMapMode !== "markers") return;
   const bounds = kakaoMap.getBounds();
   if (!bounds) return;
   const sw=bounds.getSouthWest(), ne=bounds.getNorthEast();
@@ -2630,7 +2634,7 @@ async function loadAuctionMapOverlays(){
   try {
     const response=await fetch(`/api/auctions/map?${params}`);
     const data=await response.json();
-    if(gen!==_auctionMapRequest||!_auctionLayerEnabled||_currentMapMode!=="markers")return;
+    if(gen!==_auctionMapRequest||_currentMapMode!=="markers")return;
     if(!response.ok||!data.ok)throw new Error("공매 조회 실패");
     const grouped=new Map();
     (data.items||[]).filter(item=>item&&item.lat!=null&&item.lng!=null).forEach(item=>{
@@ -2639,8 +2643,9 @@ async function loadAuctionMapOverlays(){
       grouped.get(key).push(item);
     });
     const emptyEl=document.getElementById("mapEmpty");
-    if(grouped.size===0)showMapEmptyBanner("이 지역에 지도에 표시할 공매 물건이 없습니다.");
-    else if(emptyEl)emptyEl.style.display="none";
+    if(grouped.size===0){
+      if(auctionOnly)showMapEmptyBanner("이 지역에 지도에 표시할 공매 물건이 없습니다.");
+    }else if(emptyEl)emptyEl.style.display="none";
     grouped.forEach(items=>{
       const pos=new kakao.maps.LatLng(items[0].lat,items[0].lng);
       const escText=value=>String(value==null?"":value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -2690,7 +2695,7 @@ async function loadAuctionMapOverlays(){
       overlay.setMap(kakaoMap);_auctionMapOverlays.push(overlay);
       // 배타적 공매 레이어에서도 해당 건물의 용도 포인트는 별도 클릭 대상이다.
       const building=items.find(item=>item.master_building_id);
-      if(building){
+      if(building && auctionOnly){
         const point=document.createElement("button");
         point.type="button";point.className="auction-building-point";
         point.dataset.auctionGroup=badge.dataset.auctionGroup;
@@ -2703,9 +2708,9 @@ async function loadAuctionMapOverlays(){
       }
     });
   }catch(error){
-    if(gen!==_auctionMapRequest||!_auctionLayerEnabled)return;
+    if(gen!==_auctionMapRequest)return;
     console.warn("[AUCTION MAP] 공매 레이어 로드 실패",error);
-    showMapEmptyBanner("공매 정보를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요.");
+    if(auctionOnly)showMapEmptyBanner("공매 정보를 불러오지 못했습니다. 잠시 후 다시 선택해 주세요.");
   }
 }
 
