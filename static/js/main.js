@@ -8923,7 +8923,7 @@ window.addEventListener("popstate", event => {
 async function loadBuildingCountLabel(){
   const countEl = document.getElementById("mapCount");
   try {
-    const res = await fetch("/api/building-count");
+    const res = await fetch(IS_ADMIN ? "/api/building-count?admin=1" : "/api/building-count");
     if (!res.ok) throw new Error("건물 건수 조회 실패");
     const d = await res.json();
     const unclassified = document.querySelector('.map-legend .lg[data-lodging-type="미분류"]');

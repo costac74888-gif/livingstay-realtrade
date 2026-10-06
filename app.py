@@ -5339,13 +5339,14 @@ def get_building_count():
 
 
 def _show_unclassified_legend():
-    """개발 프리뷰와 인증된 관리자만 미분류 범례를 노출한다."""
+    """개발 프리뷰 또는 인증된 관리자의 명시적인 관리자 지도 모드만 노출."""
     host = request.host.partition(":")[0].lower()
     preview = (
         os.environ.get("REPLIT_DEPLOYMENT") != "1"
         and (host in {"localhost", "127.0.0.1"} or host.endswith(".replit.dev"))
     )
-    return bool(session.get("admin")) or preview
+    admin_mode = request.args.get("admin") == "1" and bool(session.get("admin"))
+    return admin_mode or preview
 
 
 @app.route("/api/regions")
@@ -24224,14 +24225,21 @@ def admin_buildings_full_stats():
     with get_conn() as conn:
         with conn.cursor() as cur:
             auction_stats = auction_building_stats(cur)
-    # 공매는 용도가 아니므로 기존 숙박 합계·캐시를 수정하지 않고 별도 열로 붙인다.
+    # 공매는 용도가 아니므로 기존 숙박 합계·캐시를 수정하지 않는다.
     payload["rows"] = [
         dict(row, auction_building_count=(
             auction_stats["count"] if row["type"] == "전체"
             else auction_stats["by_type"].get(row["type"], 0)
         ))
         for row in payload.get("rows", [])
+        if row.get("type") != "공매"
     ]
+    payload["rows"].append({
+        "type": "공매",
+        "building_count": auction_stats["count"],
+        "auction_building_count": auction_stats["count"],
+        "reference_only": True,
+    })
     return jsonify(payload)
 
 

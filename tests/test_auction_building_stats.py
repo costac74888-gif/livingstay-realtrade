@@ -29,17 +29,20 @@ class AuctionBuildingStatsTests(unittest.TestCase):
 
     def test_preview_and_admin_only_not_query_string(self):
         cases = [
-            ("localhost", "0", False, True),
-            ("example.replit.dev", "0", False, True),
-            ("homenstay.com", "0", False, False),
-            ("localhost", "1", False, False),
-            ("homenstay.com", "1", False, False),
-            ("homenstay.com", "1", True, True),
+            ("localhost", "0", False, "", True),
+            ("example.replit.dev", "0", False, "", True),
+            ("homenstay.com", "0", False, "", False),
+            ("localhost", "1", False, "", False),
+            ("homenstay.com", "1", False, "", False),
+            ("homenstay.com", "1", True, "", False),
+            ("homenstay.com", "1", True, "admin=1", True),
+            ("homenstay.com", "1", False, "admin=1", False),
+            ("homenstay.com", "1", True, "admin=true&preview=1", False),
         ]
-        for host, deployment, admin, expected in cases:
-            with self.subTest(host=host, deployment=deployment, admin=admin), \
+        for host, deployment, admin, query, expected in cases:
+            with self.subTest(host=host, deployment=deployment, admin=admin, query=query), \
                     patch.dict(os.environ, {"REPLIT_DEPLOYMENT": deployment}), \
-                    web.app.test_request_context("/?admin=true&preview=1", base_url="https://" + host):
+                    web.app.test_request_context("/?" + query, base_url="https://" + host):
                 web.session["admin"] = admin
                 self.assertEqual(web._show_unclassified_legend(), expected)
 
@@ -64,9 +67,34 @@ class AuctionBuildingStatsTests(unittest.TestCase):
             response = client.get("/api/admin/buildings/full-stats")
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()["rows"]
-        self.assertEqual([r["auction_building_count"] for r in rows], [2, 2, 0])
-        self.assertEqual([r["building_count"] for r in rows], [10, 7, 3])
+        self.assertEqual([r["auction_building_count"] for r in rows], [2, 2, 0, 2])
+        self.assertEqual([r["building_count"] for r in rows], [10, 7, 3, 2])
+        self.assertEqual(rows[-1]["type"], "공매")
+        self.assertTrue(rows[-1]["reference_only"])
         self.assertNotIn("auction_building_count", source["rows"][0])
+
+    def test_production_api_uses_mode_and_auth_not_admin_cookie_alone(self):
+        client = web.app.test_client()
+        client.environ_base["HTTP_USER_AGENT"] = "Mozilla/5.0"
+        connection = MagicMock()
+        connection.cursor.return_value.fetchall.return_value = [{"t": "생활", "c": 10}]
+        connection.cursor.return_value.fetchone.return_value = {"c": 19}
+        with patch.dict(os.environ, {"REPLIT_DEPLOYMENT": "1"}), \
+                patch.object(web, "get_conn", return_value=connection), \
+                patch("auction_service.auction_building_stats", return_value={
+                    "count": 2, "by_type": {"생활": 2},
+                }), patch.object(web.limiter, "enabled", False):
+            for authenticated, query, expected in [
+                (True, "", False), (True, "?admin=1", True),
+                (False, "?admin=1", False), (False, "", False),
+            ]:
+                with client.session_transaction() as session:
+                    session["admin"] = authenticated
+                result = client.get("/api/building-count" + query)
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(result.get_json()["show_unclassified_legend"], expected)
+                self.assertEqual(result.get_json()["auction_building_count"], 2)
+                self.assertEqual(result.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":

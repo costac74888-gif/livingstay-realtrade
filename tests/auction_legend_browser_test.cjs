@@ -28,7 +28,10 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
         template.innerHTML = html;
         document.body.append(template.content.querySelector(".map-legend"));
       }, index);
-      await page.evaluate(code => {window.eval(code);}, main.slice(loadStart, loadEnd));
+      await page.evaluate(code => {
+        window.IS_ADMIN=false;
+        window.eval(code);
+      }, main.slice(loadStart, loadEnd));
       assert.equal(await page.locator('.lg[data-lodging-type="미분류"]').isVisible(), false);
       for (const show of [false, true, false]) {
         await page.evaluate(async show => {
@@ -61,19 +64,30 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
     const page = await browser.newPage();
     await page.route("**/*", route => route.abort());
     await page.setContent('<div id="bldFullStats"></div>');
+    await page.evaluate(code => {window.IS_ADMIN=true;window.eval(code);}, main.slice(loadStart, loadEnd));
+    const adminCountPath = await page.evaluate(async () => {
+      let requested;
+      window.fetch=async path => {requested=path;return {ok:true,json:async()=>({})};};
+      await loadBuildingCountLabel();
+      return requested;
+    });
+    assert.equal(adminCountPath, "/api/building-count?admin=1");
     await page.evaluate(code => {window.eval(code);}, admin.slice(adminStart, adminEnd));
     await page.evaluate(async () => {
       window.fetch = async () => ({json:async () => ({ok:true,rows:[
         {type:"전체",building_count:10,auction_building_count:2},
         {type:"생활",building_count:7,auction_building_count:2},
         {type:"일반",building_count:3,auction_building_count:0},
+        {type:"공매",building_count:2,auction_building_count:2,reference_only:true},
       ]})});
       await loadBldFullStats();
     });
     const texts = await page.locator("#bldFullStats").innerText();
     assert.match(texts, /공매건물/);
-    assert.equal(await page.locator('td[title*="현재 공개 공매"]').count(), 3);
-    assert.deepEqual(await page.locator('td[title*="현재 공개 공매"]').allTextContents(), ["2","2","0"]);
+    assert.equal(await page.locator('td[title*="현재 공개 공매"]').count(), 4);
+    assert.deepEqual(await page.locator('td[title*="현재 공개 공매"]').allTextContents(), ["2","2","0","2"]);
+    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').innerText(), "공매");
+    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').locator("..").locator("td").nth(1).innerText(), "2");
     console.log("PASS real legend: four widths, role visibility, counts, single row, scroll access; admin counts including zero");
   } finally {
     await browser.close();

@@ -420,7 +420,7 @@
           return `<td title="${GENERAL_UNITS_TOOLTIP}" style="text-align:right;padding:4px 8px;color:var(--ink-soft);font-size:10px;cursor:help;">${label}</td>`;
         };
         const COLS = [
-          { label: "용도",        key: null,                fmt: (row) => `<td style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
+          { label: "용도",        key: null,                fmt: (row) => `<td ${row.reference_only ? 'title="공매는 별도 참고 집계이며 위 숙박 용도와 중복될 수 있습니다. 전체 숙박시설 합계에는 더하지 않습니다."' : ""} style="padding:4px 8px;font-weight:inherit;">${row.type}</td>` },
           { label: "건물수(시설수)", key: "building_count", fmt: (row) => {
               const value = row.type === "캠핑" ? row.camping_facility_count : row.building_count;
               return `<td style="text-align:right;padding:4px 8px;">${n(value)}</td>`;
