@@ -289,8 +289,11 @@ class PublicApiRelayTest(unittest.TestCase):
             session["admin"] = True
         result = client.get("/api/admin/public-api-relay/status")
         self.assertEqual(result.status_code,200)
-        self.assertEqual(set(result.get_json()),{"ok","services"})
+        self.assertEqual(set(result.get_json()),{
+            "ok","services","sections","checked_at","observation_scope",
+        })
         self.assertEqual(set(result.get_json()["services"]),{"bldg_hub","rtms"})
+        self.assertEqual(result.headers["Cache-Control"],"no-store")
 
 
 if __name__ == "__main__":

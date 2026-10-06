@@ -86,6 +86,20 @@
     .ds-scope-locked a.admin-btn {
       opacity: .48 !important; pointer-events: none !important; cursor: not-allowed !important;
     }
+    .ds-relay-toolbar { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .ds-relay-refresh { border:1px solid #DDE1E6; border-radius:5px; background:#fff; color:#4B5662; padding:4px 8px; font-family:inherit; font-size:11px; font-weight:700; cursor:pointer; }
+    .ds-relay-refresh:hover { border-color:#B4863F; color:#8F6A2F; }
+    .ds-relay-refresh:focus-visible,.ds-route-badge:focus-visible { outline:2px solid #B4863F; outline-offset:2px; }
+    .ds-route-legend { margin:4px 0 12px; color:#5B6572; font-size:10.5px; line-height:1.55; }
+    .ds-route-legend strong { color:#34404c; }
+    .ds-section-routes { display:flex; align-items:center; justify-content:flex-end; gap:4px; flex-wrap:wrap; min-width:0; margin-left:auto; }
+    .ds-route-badge { display:inline-flex; align-items:center; max-width:100%; border-radius:999px; padding:3px 8px; border:1px solid transparent; font-size:12px; line-height:1.35; font-weight:800; white-space:normal; color:#4B5662; background:#EEF0F2; }
+    .ds-route-badge.is-on { color:#217A42; background:#E8F5EC; border-color:#C5E4CD; }
+    .ds-route-badge.is-off { color:#76684F; background:#F4F1EA; border-color:#E5DDCC; }
+    .ds-route-badge.is-unknown { color:#A2372D; background:#FDE9E6; border-color:#F0C3BC; }
+    .ds-route-badge.is-pending { color:#697482; background:#F4F6F7; border-color:#DDE1E6; }
+    .ds-section-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    @media(max-width:520px){ .ds-section-head{align-items:flex-start}.ds-section-routes{justify-content:flex-start;margin-left:0}.ds-route-legend{font-size:10px} }
    .presale-field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;font-weight:700;color:var(--ink-soft)}
    .presale-field .member-edit-input{margin:0}
    @media(max-width:700px){#presaleForm,#promotionForm{grid-template-columns:1fr!important}.presale-field[style]{grid-column:auto!important}}
@@ -4178,18 +4192,89 @@
     async function loadPublicApiRelayStatus() {
       const box = document.getElementById("publicApiRelayStatus");
       if (!box) return;
+      const requestId = (globalThis.__publicApiRelayRequestId || 0) + 1;
+      globalThis.__publicApiRelayRequestId = requestId;
+      const isCurrent = () => globalThis.__publicApiRelayRequestId === requestId
+        && document.getElementById("publicApiRelayStatus") === box;
+      const renderUnknown = () => {
+        document.querySelectorAll?.(".ds-section-routes").forEach((list) => {
+          const badge = document.createElement("span");
+          badge.className = "ds-route-badge is-unknown";
+          badge.textContent = "확인 불가";
+          badge.setAttribute("aria-label", "중계 및 연결 경로 상태를 확인할 수 없습니다.");
+          list.replaceChildren(badge);
+        });
+      };
       try {
         const response = await fetch("/api/admin/public-api-relay/status");
         if (!response.ok) throw new Error("중계 상태 조회 실패");
         const data = await response.json();
+        if (!isCurrent()) return;
+        if (!data || data.ok !== true) throw new Error("중계 상태 응답 오류");
         const labels = {bldg_hub:"건축HUB 중계",rtms:"실거래 중계"};
-        box.textContent = Object.entries(labels).map(([key,label])=>{
-          const row = data.services[key];
+        const services = data && data.services && typeof data.services === "object" ? data.services : {};
+        const summary = Object.entries(labels).map(([key,label])=>{
+          const row = services[key];
+          if (!row || typeof row.enabled !== "boolean") return `${label}: 확인 불가 · 마지막 성공: 없음 · 최근 오류: 없음`;
           const time = row.last_success_at ? new Date(row.last_success_at).toLocaleString("ko-KR") : "없음";
           return `${label}: ${row.enabled ? "켜짐" : "꺼짐"} · 마지막 성공: ${time} · 최근 오류: ${row.last_error_code || "없음"}`;
         }).join(" / ");
+        box.textContent = summary;
+
+        const sections = data && data.sections && typeof data.sections === "object" ? data.sections : {};
+        document.querySelectorAll?.(".ds-section-routes").forEach((list) => {
+          const section = document.getElementById(list.dataset.sectionId);
+          if (!section || !section.contains(list)) return;
+          const result = sections[list.dataset.sectionId];
+          const routes = result && Array.isArray(result.routes) ? result.routes : [];
+          const fragment = document.createDocumentFragment();
+          if (!routes.length) {
+            const badge = document.createElement("span");
+            badge.className = "ds-route-badge is-unknown";
+            badge.textContent = "확인 불가";
+            badge.setAttribute("aria-label", "연결 경로 상태를 확인할 수 없습니다.");
+            fragment.appendChild(badge);
+          } else {
+            routes.forEach((route) => {
+              const badge = document.createElement("span");
+              badge.className = "ds-route-badge";
+              const serviceLabel = route && (route.label || route.service) ? String(route.label || route.service) : "연결 경로";
+              let text = "확인 불가";
+              let stateClass = "is-unknown";
+              if (route && route.mode === "relay" && typeof route.enabled === "boolean") {
+                text = route.enabled ? "중계 ON" : "중계 OFF";
+                stateClass = route.enabled ? "is-on" : "is-off";
+              } else if (route && route.mode === "direct") { text = "직접 연결"; stateClass = "is-off"; }
+              else if (route && route.mode === "web") { text = "웹 수집"; stateClass = "is-off"; }
+              else if (route && route.mode === "file") { text = "파일·승인"; stateClass = "is-off"; }
+              else if (route && route.mode === "internal") { text = "내부 처리"; stateClass = "is-off"; }
+              else if (route && route.mode === "disabled") { text = "사용 중지"; stateClass = "is-off"; }
+              badge.classList.add(stateClass);
+              badge.textContent = routes.length > 1 ? `${serviceLabel} · ${text}` : text;
+              const details = [
+                `${serviceLabel}: ${text}`,
+                route && route.mode === "relay" && route.enabled === false ? "OFF는 중계 대신 직접 경로를 사용한다는 뜻입니다." : "",
+                route && route.mode === "relay" && route.enabled === true ? "ON은 중계 설정 상태이며 제공기관 응답 성공을 뜻하지 않습니다." : "",
+                route && route.last_success_at ? `마지막 성공 시각은 HTTP 전송 접수 기록입니다(의미 검증·DB 반영 성공 아님): ${String(route.last_success_at)}` : "",
+                route && route.mode === "relay" && !route.last_success_at ? "이 서버에 중계 HTTP 성공 기록이 없습니다(실패 확정 아님)." : "",
+                route && route.last_error_code ? `최근 중계 오류: ${String(route.last_error_code)}(과거 기록일 수 있음).` : "",
+                route && route.mode === "disabled" ? "관리자 화면에서 사용 중지된 작업입니다. 별도 정기 배치의 종료 게이트 상태를 뜻하지 않습니다." : "",
+                data.checked_at ? `상태 조회 시각: ${String(data.checked_at)}.` : "",
+                "이 서버의 현재 런타임 기록이며 별도 배포된 정기 배치는 포함하지 않습니다.",
+                route && ["direct","web","file","internal"].includes(route.mode) ? "경로 분류이며 실시간 연결 상태 검증은 아닙니다." : ""
+              ].filter(Boolean).join(" ");
+              badge.title = details;
+              badge.tabIndex = 0;
+              badge.setAttribute("aria-label", details);
+              fragment.appendChild(badge);
+            });
+          }
+          list.replaceChildren(fragment);
+        });
       } catch (_) {
+        if (!isCurrent()) return;
         box.textContent = "중계 상태를 불러오지 못했습니다.";
+        renderUnknown();
       }
     }
 
@@ -5466,7 +5551,16 @@
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">데이터 동기화</h2>
           </div>
-          <p id="publicApiRelayStatus" class="legal-admin-hint" role="status">중계 상태 확인 중…</p>
+          <div class="ds-relay-toolbar">
+            <p id="publicApiRelayStatus" class="legal-admin-hint" role="status" aria-live="polite">중계 상태 확인 중…</p>
+            <button id="publicApiRelayRefresh" class="ds-relay-refresh" type="button">상태 새로고침</button>
+          </div>
+          <p class="ds-route-legend">
+            <strong>상태 읽기 안내</strong> · 중계 OFF는 직접 경로 사용, ON은 중계 설정이며 제공기관 응답 성공을 뜻하지 않습니다.
+            마지막 성공은 HTTP 전송 접수 기록(의미 검증·DB 반영 성공 아님)입니다.
+            직접 연결·웹 수집·파일·승인·내부 처리는 경로 분류일 뿐 실시간 연결 상태 확인이 아닙니다.
+            현재 서버의 런타임 기록이며 별도 배포된 정기 배치는 포함하지 않습니다.
+          </p>
           <p class="legal-admin-hint">
             아래 순서는 <b>권장 실행 순서</b>입니다(① 건물 생성 → ②③ 정보 보강 → ④~⑦ 거래·외부 데이터 연결).
             각 버튼은 개별 실행이며 자동으로 이어지지 않습니다. 모든 작업은 백그라운드로 진행되어
@@ -5942,8 +6036,23 @@
           </div>
         </div>
       `;
+      document.querySelectorAll('[id^="dsSec"]').forEach((section) => {
+        const header = section.querySelector(".legal-admin-head");
+        if (!header || !header.querySelector("h2")) return;
+        header.classList.add("ds-section-head");
+        const routes = document.createElement("span");
+        routes.className = "ds-section-routes";
+        routes.dataset.sectionId = section.id;
+        routes.setAttribute("aria-label", `${section.querySelector("h2").textContent} 연결 경로 상태`);
+        const pending = document.createElement("span");
+        pending.className = "ds-route-badge is-pending";
+        pending.textContent = "확인 중";
+        routes.appendChild(pending);
+        header.appendChild(routes);
+      });
       applyDataSyncScopeGuides();
       loadPublicApiRelayStatus();
+      document.getElementById("publicApiRelayRefresh").addEventListener("click", loadPublicApiRelayStatus);
       document.getElementById("brhubSyncRunBtn").addEventListener("click", runBrhubSync);
       document.getElementById("brhubRescanRunBtn").addEventListener("click", runBrhubRescan);
       document.getElementById("backfillLodgingRunBtn").addEventListener("click", runBackfillLodging);
