@@ -310,3 +310,48 @@
     font-size: 13px;
   }
 }
+
+/* Mobile legibility for property and operations analysis. Chart canvases,
+   plotted labels and axis ticks are deliberately not resized. */
+@media screen and (max-width:760px){
+  .analysis-shell{font-size:17px;line-height:1.6}
+  .analysis-heading h1,.analysis-heading h2{font-size:25px;line-height:1.35}
+  .analysis-kicker,.analysis-heading p,.analysis-building-copy,
+  .analysis-building-identity,.analysis-building-title{font-size:16px;line-height:1.6}
+  .analysis-tabs button,.analysis-mode-bar .analysis-tabs button{min-height:46px;font-size:16px}
+  .analysis-filter,.analysis-filter label,.am-field,.operation-field{font-size:16px}
+  .analysis-filter input,.analysis-filter select,.am-field input,.am-field select,
+  .operation-field input,.operation-field select,.operation-inputs input,
+  .operation-inputs select{min-height:44px;font-size:16px}
+  .am-btn,.am-actions .am-btn,.analysis-report-actions button{min-height:46px;font-size:16px}
+  .analysis-card,.chart-card,.detail-card,.comparison-basis-card{font-size:17px;line-height:1.6}
+  .card-head,.detail-section-title,.analysis-report-verdict{font-size:17px;line-height:1.45}
+  .analysis-building-title,.detail-name,.detail-metric .value,.detail-metric strong,
+  .price,.analysis-report-verdict strong{font-size:21px;line-height:1.4}
+  .analysis-building-copy,.detail-address,.detail-disclaimer,.detail-source,
+  .detail-empty,.detail-status,.candidate-description,.candidate-more,
+  .methodology,.formula,.operation-chart-explanation,.operation-rental-notice,
+  .operation-empty-actions,.positioning-copy,.positioning-source-note,
+  .positioning-verdict{font-size:16px;line-height:1.6}
+  .detail-metrics,.detail-metric{min-width:0}
+  .detail-metric{overflow-wrap:anywhere}
+  .detail-metric .num,.num{font-size:17px}
+  .pill,.legend,.legend-line,.positioning-legend,.legend-nearby,.legend-other,
+  .legend-selected{font-size:13px;line-height:1.45}
+  .analysis-report-common-actions,.am-actions{flex-wrap:wrap}
+  .analysis-report-common-actions button,.am-actions .am-btn{flex:1 1 45%;white-space:normal}
+  .operation-inputs{grid-template-columns:minmax(0,1fr)!important}
+  .operation-room,.operation-run,.operation-upload{font-size:16px;line-height:1.6}
+  .operation-room input,.operation-room select,.operation-room button{font-size:16px}
+  .method-summary,.method-summary-head,.summary-tile{font-size:16px;line-height:1.6}
+  .summary-tile strong,.summary-tile b{font-size:18px}
+  .table-expand-btn{min-height:42px;font-size:14px}
+  .analysis-table-wrap,.table-wrap{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+@media screen and (max-width:430px){
+  .analysis-heading h1,.analysis-heading h2{font-size:23px}
+  .analysis-mode-bar .analysis-tabs{gap:4px}
+  .analysis-mode-bar .analysis-tabs button{font-size:14px;white-space:normal;line-height:1.35}
+  .detail-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .analysis-report-common-actions button,.am-actions .am-btn{flex-basis:100%}
+}

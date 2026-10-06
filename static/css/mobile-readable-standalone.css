@@ -1,0 +1,38 @@
+/* Mobile typography for standalone public/legal utility pages that do not
+   load the shared main.css bundle. Desktop presentation is left untouched. */
+@media screen and (max-width:700px){
+  html{-webkit-text-size-adjust:100%}
+  body{font-size:17px;line-height:1.6}
+  .legal-header,.legal-header-inner{min-width:0}
+  .legal-header{padding:17px 14px}
+  .legal-brand,.legal-home{font-size:15px!important;line-height:1.45}
+  .legal-wrap,.legal-content,.legal-body{font-size:16px;line-height:1.75}
+  .legal-wrap p,.legal-wrap li,.legal-content p,.legal-content li,
+  .legal-body p,.legal-body li{font-size:16px!important;line-height:1.75}
+  .legal-wrap h1,.legal-content h1,.legal-body h1{font-size:25px!important;line-height:1.35}
+  .legal-wrap h2,.legal-content h2,.legal-body h2{font-size:19px!important;line-height:1.45}
+  .legal-updated,.legal-placeholder{font-size:16px;line-height:1.6}
+  .legal-body table{font-size:16px;display:block;max-width:100%;overflow-x:auto}
+
+  .wrap{min-height:100dvh;padding:16px}
+  .wrap .card{padding:25px 20px}
+  .wrap .brand{font-size:14px}
+  .wrap h1{font-size:25px;line-height:1.35}
+  .wrap .intro,.wrap .message,.wrap .back{font-size:16px;line-height:1.65}
+  .wrap label{font-size:16px}
+  .wrap input,.wrap select,.wrap textarea{min-height:46px;font-size:16px}
+  .wrap button{min-height:46px;font-size:16px}
+
+  .survey-terms-page{padding:18px 12px 42px!important}
+  .survey-terms-brand,.survey-terms-updated{font-size:14px!important;line-height:1.5}
+  .survey-terms-inner h1{font-size:25px!important;line-height:1.35}
+  .survey-terms-body{padding:17px!important;font-size:16px!important;line-height:1.75}
+  .survey-terms-body p,.survey-terms-body li{font-size:16px!important;line-height:1.75}
+  .survey-terms-body h2{font-size:19px!important;line-height:1.45}
+  .survey-terms-error{font-size:15px!important;line-height:1.6}
+
+  body:has(.card) .card{max-width:calc(100vw - 24px);padding:28px 22px}
+  body:has(.card) .card h1{font-size:24px;line-height:1.4}
+  body:has(.card) .card p{font-size:16px!important;line-height:1.7}
+  body:has(.card) .card .btn,body:has(.card) .card .link{font-size:16px;line-height:1.5}
+}

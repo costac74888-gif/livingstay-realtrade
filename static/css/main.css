@@ -939,6 +939,172 @@
   }
 }
 
+/* Mobile reading pass: keep the existing compositions, but bring dense UI copy
+   up to a comfortable reading size. Map geometry/marker labels and chart canvas
+   ticks intentionally remain compact so they do not collide. */
+@media screen and (max-width:700px){
+  html{font-size:17px;-webkit-text-size-adjust:100%}
+  body{font-size:17px;line-height:1.55}
+  p,li,dd,dt{line-height:1.6}
+  input,select,textarea{font-size:16px}
+
+  header{gap:8px 10px;padding:11px 14px}
+  .brand-text .name{font-size:15px}
+  .page-title{font-size:15px;line-height:1.35}
+  .header-right{font-size:14px;max-width:54%;line-height:1.45}
+  .header-actions,.header-menu,.header-nav{min-width:0}
+  .hnav-btn,.hamburger-btn{font-size:15px}
+
+  .search-panel,.results-panel{padding-left:12px;padding-right:12px}
+  .panel-card{padding:16px 14px}
+  .field label{font-size:15px}
+  .field select,.field input[type=text],.field input[type=search]{font-size:16px;min-height:44px}
+  .btn-search,.btn-reset{font-size:16px;min-height:44px}
+  .search-row2{flex-wrap:wrap;white-space:normal;font-size:15px;line-height:1.45}
+  .search-row2 label,.fav-chip,.fav-more-btn,.transactions-note{font-size:14px}
+  .recent-search-row{flex-wrap:wrap;font-size:14px}
+  .recent-search-label{font-size:14px}
+  .recent-search-chip{font-size:14px;max-width:min(68vw,240px)}
+  .results-head h2{font-size:19px}
+  .results-head .count{font-size:15px}
+
+  table.data-table tbody tr{
+    grid-template-columns:30px minmax(0,1fr) max-content;
+    grid-template-areas:"star name price" "star addr addr" "star area date" "star floor type";
+    gap:5px 8px;padding:13px 12px;
+  }
+  table.data-table tbody td{min-width:0;line-height:1.45}
+  td.col-name{font-size:16px;line-height:1.4;overflow-wrap:anywhere}
+  td.col-price{font-size:17px;white-space:normal;max-width:100%;overflow-wrap:anywhere}
+  td.col-price .m-only{font-size:13px}
+  td.col-addr{font-size:14px;overflow-wrap:anywhere}
+  td.col-area,td.col-floor{font-size:14px}
+  td.col-date{font-size:13px;white-space:normal;text-align:right}
+  td.col-type{font-size:13px}
+  .tag{font-size:13px;padding:3px 8px}
+  .empty-state,.loading,.side-empty{font-size:15px;line-height:1.6}
+  .empty-state .big{font-size:18px}
+  .pager button{font-size:15px;min-height:42px}
+  .pager .cur{font-size:14px}
+
+  /* Building information + operating information panels rendered from JS */
+  .side-panel{font-size:16px}
+  .side-card{padding:16px 15px}
+  .side-card-title{font-size:18px;line-height:1.4}
+  .side-sub{font-size:14px}
+  .b-detail-panel,.b-detail-panel p,.b-detail-panel li,
+  .b-detail-panel td,.b-detail-panel th,.b-info-table,
+  .b-info-table td,.b-info-table th,.b-bldg-grid,.b-bldg-k,.b-bldg-v,
+  .b-ops-card,.b-ops-card p,.b-ops-card li,.b-tourism-data-card,
+  .b-detail-tabs,.b-detail-tab,.b-inline-tabs,.b-inline-tabs button{
+    font-size:15px;
+    line-height:1.55;
+  }
+  .b-detail-panel h1,.b-detail-panel h2,.b-detail-panel h3,
+  .b-info-table h2,.b-tourism-data-card h2,.b-tourism-data-card h3{
+    font-size:19px;line-height:1.4;
+  }
+  .b-detail-panel [style*="font-size:8px"],
+  .b-detail-panel [style*="font-size:9px"],
+  .b-detail-panel [style*="font-size:10px"],
+  .b-detail-panel [style*="font-size:11px"],
+  .b-detail-panel [style*="font-size:12px"],
+  .b-detail-panel [style*="font-size:13px"],
+  .b-detail-panel [style*="font-size:14px"],
+  .b-ops-card [style*="font-size:8px"],
+  .b-ops-card [style*="font-size:9px"],
+  .b-ops-card [style*="font-size:10px"],
+  .b-ops-card [style*="font-size:11px"],
+  .b-ops-card [style*="font-size:12px"],
+  .b-ops-card [style*="font-size:13px"],
+  .b-ops-card [style*="font-size:14px"]{font-size:15px!important;line-height:1.5!important}
+  .b-detail-panel [style*="font-size:18px"],
+  .b-detail-panel [style*="font-size:20px"]{font-size:21px!important}
+  .b-price,.b-price-value,.b-detail-price,.b-metric-value{font-size:21px;line-height:1.35}
+  .b-tourism-metric small,.b-tourism-metric>span,.b-tourism-region-scope span,
+  .b-tourism-attractions-list li,.b-membership-notice>p,
+  .b-membership-preview>div,.b-membership-preview dt,.b-membership-preview dd,
+  .b-ops-intro,.b-ops-disclaimer,.b-ops-source-label span,
+  .b-ops-live,.b-ops-badges,.b-source-link,.operator-banner-copy span{
+    font-size:14px;line-height:1.55
+  }
+  .b-tourism-metric strong,.b-tourism-building-rank strong,
+  .operator-banner-copy b{font-size:17px;white-space:normal;overflow-wrap:anywhere}
+  .b-ops-quick-actions a,.camp-contact>div,.camp-detail-list>div,
+  .camp-intro,.camp-detail-block p,.camp-amenities>span{font-size:15px;line-height:1.55}
+  .camp-chips span,.camp-chips>a,.camp-amenities>span{padding:6px 10px}
+  .camp-contact>div,.camp-detail-list>div{grid-template-columns:minmax(82px,30%) minmax(0,1fr);gap:10px}
+  .b-ops-quick-actions{flex-wrap:wrap}
+  .b-ops-quick-actions a{flex:1 1 42%;min-height:44px;white-space:normal}
+  .operator-banner{align-items:flex-start;flex-wrap:wrap}
+  .operator-banner-copy{flex-basis:calc(100% - 64px)}
+  .operator-banner-cta{width:100%;min-height:44px;white-space:normal;font-size:15px}
+  .datalab-nav{gap:6px}
+  .datalab-tab{min-height:42px;padding:8px 6px;font-size:13px}
+  .datalab-tab>span:last-child{white-space:normal;line-height:1.3}
+  .datalab-heading strong,.datalab-heatmap-title,.datalab-surge-title{font-size:16px}
+  .datalab-caption,.datalab-meta,.datalab-region,.datalab-value{font-size:14px}
+  .datalab-permit-note,.datalab-heatmap-caption,.datalab-surge-caption,
+  .datalab-heatmap-note,.datalab-surge-note{font-size:13px;line-height:1.55}
+  .datalab-table{font-size:13px}
+  .datalab-table th,.datalab-table td{padding:8px 4px;font-size:13px;line-height:1.4}
+  .datalab-table .datalab-sub-row td{font-size:12px}
+  .map-legend{font-size:12px}
+  .map-searchbar .field label{font-size:14px}
+  .map-searchbar .field select,.map-searchbar .field input{font-size:16px}
+
+  /* Forms, dialogs and shared member/operator navigation */
+  .auth-modal,.company-modal,.admin-modal,.listing-checklist-dialog{max-width:calc(100vw - 24px)}
+  .auth-modal-title,.company-modal-title,.admin-modal-title{font-size:22px}
+  .auth-field label,.auth-remember,.auth-consent-row,.auth-consent-detail,
+  .auth-error,.auth-forgot-link,.auth-switch,.auth-kakao{font-size:15px;line-height:1.55}
+  .auth-field input,.auth-field select,.auth-submit{font-size:16px;min-height:46px}
+  .auth-consent{font-size:15px;line-height:1.6}
+  .form-label,.admin-form-label,.admin-input,.admin-btn,.admin-menu-item,
+  .admin-login-sub,.admin-login-msg{font-size:15px}
+  .admin-input{min-height:44px}
+  .admin-layout,.admin-main{min-width:0}
+  .site-footer{padding:26px 16px}
+  .footer-desc,.footer-meta p{font-size:14px;line-height:1.65}
+  .listing-checklist-dialog header strong{font-size:19px}
+  .listing-checklist-dialog header span,.listing-checklist-disclaimer,
+  .listing-checklist-progress,.listing-checklist-group summary,
+  .listing-checklist-group summary span,.listing-checklist-copy strong,
+  .listing-checklist-value,.listing-checklist-loading{font-size:14px;line-height:1.55}
+  .listing-checklist-seller{font-size:12px}
+
+  /* Building detail legacy page and compact listing contexts */
+  #bTxSection{font-size:15px!important;line-height:1.55}
+  #bTxSection select{max-width:100%;min-height:42px;font-size:15px}
+  #headerCard [style*="font-size:11px"],
+  #headerCard [style*="font-size:11.5px"],
+  #headerCard [style*="font-size:12px"],
+  #headerCard [style*="font-size:13px"]{font-size:15px!important;line-height:1.5!important}
+  #headerCard h1{font-size:23px!important;line-height:1.35}
+  #headerCard [style*="font-size:18px"]{font-size:20px!important}
+  #txTableWrap{max-width:100%}
+  #txTableWrap table.data-table tbody tr{grid-template-columns:minmax(0,1fr) max-content;grid-template-areas:"name price" "addr addr" "area date" "floor type"}
+  #txTableWrap td.col-name{font-size:15px}
+  #txTableWrap td.col-price{font-size:16px}
+  #submitModal>div,#correctionModal>div{width:auto!important;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:20px 18px!important}
+  #submitModal h3,#correctionModal h3{font-size:20px!important;line-height:1.4}
+  #submitModal p,#correctionModal p,#submitModal label,#correctionModal label,
+  #submitModal input,#correctionModal input,#submitModal select,#correctionModal select{
+    font-size:15px!important;line-height:1.55
+  }
+}
+
+@media screen and (max-width:420px){
+  .search-panel,.results-panel{padding-left:9px;padding-right:9px}
+  .panel-card{padding:14px 12px}
+  .side-card{padding:14px 12px}
+  .datalab-nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .b-ops-quick-actions a{flex-basis:100%}
+  .camp-site-grid,.camp-facts{grid-template-columns:1fr}
+  .camp-contact>div,.camp-detail-list>div{grid-template-columns:78px minmax(0,1fr)}
+  #submitModal>div,#correctionModal>div{padding:18px 15px!important}
+}
+
 /* ============================================================
    관리자(E화면) 전용 스타일 — admin_login.html / admin.html / 재사용 DataGrid
    기존 색상 변수(--brass/--ink/--line/--card 등)를 그대로 따른다.
@@ -1976,4 +2142,173 @@
    .listing-checklist-body{padding:12px;}
    .listing-checklist-dialog header{padding:13px 14px;}
    .listing-checklist-progress{align-items:flex-start;flex-direction:column;gap:2px;}
+}
+
+/* Final mobile overrides intentionally live at the end of the shared bundle:
+   page-specific rules above must not shrink building/operations copy again. */
+@media screen and (max-width:700px){
+  .search-panel p,.search-panel li,.search-panel dt,.search-panel dd,
+  .search-panel label,.search-panel .help,.search-panel .hint,
+  .search-panel .form-help,.search-panel .field-help{font-size:16px;line-height:1.6}
+  .search-panel [style*="font-size:9px"],
+  .search-panel [style*="font-size:10px"],
+  .search-panel [style*="font-size:11px"],
+  .search-panel [style*="font-size:12px"],
+  .search-panel [style*="font-size:13px"],
+  .search-panel [style*="font-size:14px"],
+  .search-panel [style*="font-size:15px"]{font-size:16px!important;line-height:1.55!important}
+  .search-panel h1{font-size:25px;line-height:1.35}
+  .search-panel h2{font-size:21px;line-height:1.4}
+  .search-panel h3{font-size:18px;line-height:1.45}
+  form label,.form-label,.admin-form-label{font-size:16px}
+  form input:not([type=checkbox]):not([type=radio]),
+  form select,form textarea{font-size:16px}
+  form button,.side-more,.btn-search,.btn-reset{min-height:44px;font-size:16px}
+  .agent-tab,.agent-guide,.agent-guide li{font-size:16px;line-height:1.6}
+  .agent-tab{min-height:44px}
+  .agent-guide{color:#37443b}
+  .transactions-note,.recent-search-row,.search-row2{color:#535f6c}
+  .field label,.auction-field>span,.admin-form-label,.auth-field label{color:#53606d}
+  .side-card-title{font-size:18px!important}
+  .b-detail-panel,.b-detail-panel p,.b-detail-panel li,
+  .b-detail-panel td,.b-detail-panel th,.b-info-table,
+  .b-info-table td,.b-info-table th,.b-bldg-grid,.b-bldg-k,.b-bldg-v,
+  .b-ops-card,.b-ops-card p,.b-ops-card li,.b-tourism-data-card,
+  .b-detail-tabs,.b-detail-tab,.b-inline-tabs,.b-inline-tabs button{
+    font-size:16px!important;line-height:1.55
+  }
+  .b-bldg-v{font-size:17px!important;overflow-wrap:anywhere}
+  .b-detail-panel h1,.b-detail-panel h2,.b-detail-panel h3,
+  .b-tourism-data-card h2,.b-tourism-data-card h3{font-size:19px!important;line-height:1.4}
+  .b-detail-panel [style*="font-size:8px"],
+  .b-detail-panel [style*="font-size:9px"],
+  .b-detail-panel [style*="font-size:10px"],
+  .b-detail-panel [style*="font-size:11px"],
+  .b-detail-panel [style*="font-size:12px"],
+  .b-detail-panel [style*="font-size:13px"],
+  .b-detail-panel [style*="font-size:14px"],
+  .b-detail-panel [style*="font-size:15px"],
+  .b-ops-card [style*="font-size:8px"],
+  .b-ops-card [style*="font-size:9px"],
+  .b-ops-card [style*="font-size:10px"],
+  .b-ops-card [style*="font-size:11px"],
+  .b-ops-card [style*="font-size:12px"],
+  .b-ops-card [style*="font-size:13px"],
+  .b-ops-card [style*="font-size:14px"],
+  .b-ops-card [style*="font-size:15px"]{font-size:16px!important;line-height:1.5!important}
+  .b-info-table tbody th,.b-bldg-k{font-size:16px!important;color:#53606d}
+  .b-info-table tbody td{font-size:17px!important}
+  .b-tourism-metric small,.b-tourism-metric>span,.b-tourism-region-scope span,
+  .b-tourism-attractions-list li,.b-membership-notice>p,.b-membership-preview>div,
+  .b-membership-preview dt,.b-membership-preview dd,.b-ops-intro,
+  .b-ops-disclaimer,.b-ops-source-label span,.b-ops-live,
+  .b-source-link,.operator-banner-copy span{font-size:16px!important;line-height:1.55;color:#4f5c53}
+  .b-tourism-metric strong,.operator-banner-copy b{font-size:17px!important;white-space:normal;overflow-wrap:anywhere}
+  .b-detail-tabs,.b-inline-tabs{display:flex;flex-wrap:wrap;gap:6px}
+  .b-detail-tab,.b-inline-tabs button{min-height:42px;padding:8px 10px;white-space:normal}
+  .b-price,.b-price-value,.b-detail-price,.b-metric-value{font-size:21px!important;line-height:1.35}
+  .b-listing-l1{font-size:14px!important}
+  .b-listing-l2{font-size:16px!important;line-height:1.45}
+  .b-listing-l3,.b-listing-l4{font-size:13px!important;line-height:1.45}
+  .datalab-nav{gap:6px}
+  .datalab-tab{min-height:42px;font-size:13px}
+  .datalab-heading strong,.datalab-heatmap-title,.datalab-surge-title{font-size:16px}
+  .datalab-caption,.datalab-meta,.datalab-region,.datalab-value{font-size:14px}
+  .datalab-permit-note,.datalab-heatmap-caption,.datalab-surge-caption,
+  .datalab-heatmap-note,.datalab-surge-note{font-size:15px;line-height:1.55;color:#53606d}
+  .datalab-table-wrap{overflow-x:auto}
+  .datalab-table{min-width:430px}
+  .datalab-table th,.datalab-table td{font-size:15px;line-height:1.45}
+  .side-empty,.side-soon,.side-soon-desc,.datalab-loading,.datalab-error{font-size:16px;color:#4f5d69;line-height:1.6}
+  .b-ops-quick-actions{flex-wrap:wrap}
+  .b-ops-quick-actions a{flex:1 1 42%;min-height:46px;font-size:16px;white-space:normal}
+  .camp-contact>div,.camp-detail-list>div{grid-template-columns:minmax(82px,30%) minmax(0,1fr);gap:10px;font-size:16px;line-height:1.6}
+  .camp-intro,.camp-detail-block p,.camp-amenities>span{font-size:16px;line-height:1.6}
+  .operator-banner{align-items:flex-start;flex-wrap:wrap}
+  .operator-banner-cta{width:100%;min-height:46px;font-size:16px;white-space:normal}
+  .listing-checklist-dialog header span,.listing-checklist-disclaimer,
+  .listing-checklist-progress,.listing-checklist-group summary,
+  .listing-checklist-group summary span,.listing-checklist-copy strong,
+  .listing-checklist-value,.listing-checklist-loading{font-size:16px;line-height:1.55}
+}
+@media screen and (max-width:420px){
+  .datalab-nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .b-ops-quick-actions a{flex-basis:100%}
+  .camp-site-grid,.camp-facts{grid-template-columns:1fr}
+  .map-legend{max-width:calc(100vw - 24px)}
+}
+@media screen and (max-width:700px){
+  /* Partner/application forms define several compact rules in page-local style
+     blocks after main.css, so these semantic floors use scoped importance. */
+  .search-panel .field label,.operator-card .field label,
+  .operator-apply .field label,.search-panel form label{font-size:16px!important;line-height:1.5}
+  .search-panel .field input:not([type=checkbox]):not([type=radio]),
+  .search-panel .field select,.search-panel .field textarea,
+  .operator-card .field input:not([type=checkbox]):not([type=radio]),
+  .operator-card .field select,.operator-card .field textarea{
+    min-height:46px;font-size:16px!important;line-height:1.5!important
+  }
+  .operator-card .field button,.operator-card .btn-search,
+  .operator-card .op-actions button{min-height:46px;font-size:16px!important}
+  .operator-hero h1{font-size:23px!important}
+  .operator-hero p,.operator-card .op-note,.operator-card #formError,
+  .operator-card #submitError,.selected-building-label,
+  .selected-building-address,.doc-state,.op-choice small{
+    font-size:16px!important;line-height:1.6!important;color:#4f5c53
+  }
+  .selected-building-name{font-size:18px!important;line-height:1.45}
+  .op-step{font-size:14px!important;line-height:1.4}
+  .op-choice{font-size:16px;line-height:1.55}
+  .admin-login-title{font-size:25px}
+  .admin-login-sub,.admin-login-msg{font-size:16px;line-height:1.6;color:#52606d}
+  .admin-input{min-height:48px;font-size:16px!important}
+  .admin-btn{min-height:46px;font-size:16px!important}
+}
+
+/* Page-local style blocks are loaded after this file. Use targeted overrides
+   for reading/form text, never a universal size that enlarges icons or maps. */
+@media screen and (max-width:700px){
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  select,textarea{font-size:16px!important;line-height:1.5}
+  .ls-filter-grid .field label,.tx-filter-grid .field label{
+    font-size:16px!important;line-height:1.45
+  }
+  .listings-sub,.ls-empty,.ls-view-tabs button,.ls-view-tabs .ls-count,
+  .ls-filter-grid .btn-search,.ls-favbar,.whole-finance,
+  .whole-info-title,.whole-info-values,.whole-info-toggle,
+  .whole-metrics,.whole-caution,.whole-listing-description,
+  .whole-listing-description-title{font-size:16px!important;line-height:1.55}
+  .ls-card-l1,.ls-card-l3,.ls-card-l4{
+    font-size:16px!important;line-height:1.55;white-space:normal;
+    overflow-wrap:anywhere
+  }
+  .ls-card-l2{font-size:21px!important;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
+  .ls-card-info{min-width:0}
+  .ls-card-l4{flex-wrap:wrap}
+  .ls-board-tbl{font-size:16px!important}
+  .ls-board-tbl th,.td-area,.td-date{font-size:16px!important;line-height:1.5}
+  .partner-page p,.partner-building-context,
+  .partner-cat-card strong,.partner-cat-card span:not(.partner-cat-icon){
+    font-size:16px!important;line-height:1.6
+  }
+  .guide-wrap p,.guide-wrap li,.guide-wrap td,.guide-wrap th,
+  .guide-wrap summary,.guide-wrap .guide-desc,.guide-wrap .guide-note{
+    font-size:16px!important;line-height:1.65
+  }
+  .search-panel .mp-section-title,.search-panel .mypage-context-help,
+  .search-panel .mypage-context-title,.search-panel .agent-guide,
+  .search-panel .transactions-note{font-size:16px!important;line-height:1.6}
+  .b-listing-l1,.b-listing-l3,.b-listing-l4{font-size:16px!important;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+  .b-listing-l2{font-size:21px!important;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
+  .b-listing-l4{flex-wrap:wrap}
+  #bBuildingTitle{font-size:21px!important;line-height:1.45}
+  .b-building-addresses{font-size:16px!important;line-height:1.6;overflow-wrap:anywhere}
+  .b-building-addresses>div{align-items:flex-start!important}
+  .b-building-addresses>div>span:first-child{width:64px!important;color:var(--ink-soft)!important}
+  .b-building-addresses>div>span:nth-child(2){min-width:0;flex:1}
+  .b-reservation-bar{flex-wrap:wrap;gap:12px}
+  .b-reservation-bar>div{flex:1 1 100%}
+  .b-reservation-bar strong,.b-reservation-bar span{font-size:16px;line-height:1.6}
+  .b-reservation-bar span{max-width:none;white-space:normal;overflow:visible}
+  .b-reserve-btn,.b-connect-btn{font-size:16px;min-height:44px;padding:9px 12px}
 }

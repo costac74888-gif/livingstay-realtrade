@@ -63,3 +63,22 @@
 .membership-footnote{color:#788078;font-size:10px;line-height:1.7}
 @media(max-width:650px){.membership-page{padding:20px 13px 46px}.membership-hero{padding:25px 19px}.membership-title{font-size:35px}.membership-lead{font-size:13px}.member-summary{grid-template-columns:1fr}.membership-checks,.member-report-grid{grid-template-columns:1fr}.membership-checks li{padding:12px}.membership-bottom{align-items:flex-start;flex-direction:column}.membership-actions{display:grid;width:100%}.membership-actions a{width:100%}.membership-section,.membership-card{padding:17px}.member-row-head{align-items:flex-start}.membership-dialog{padding:18px}}
 @media(prefers-reduced-motion:reduce){.membership-loading span{animation:none}}
+@media screen and (max-width:700px){
+  .membership-page{font-size:16px;line-height:1.6}
+  .membership-eyebrow,.section-kicker{font-size:13px;letter-spacing:.08em}
+  .membership-title{font-size:clamp(31px,9vw,39px);line-height:1.2}
+  .membership-lead,.membership-section p,.membership-card p,
+  .membership-loading,.membership-error,.membership-empty{font-size:16px;line-height:1.65}
+  .membership-section h2,.membership-dialog-head h2,.membership-bottom h2{font-size:21px;line-height:1.4}
+  .membership-field label,.membership-consent,.bank-box,.bank-box strong,
+  .member-plan-meta,.member-row p,.member-result,.member-result b,
+  .member-report,.membership-message{font-size:16px;line-height:1.6}
+  .membership-field input,.membership-field select,.membership-field textarea,
+  .membership-form button,.membership-btn{min-height:44px;font-size:16px}
+  .member-state{font-size:14px}
+  .membership-price-line small,.member-metric small{font-size:16px}
+  .member-row h3,.membership-checks h3{font-size:17px;line-height:1.5}
+  .member-row .membership-btn,.membership-actions a{min-height:46px;font-size:16px;white-space:normal}
+  .membership-footnote{font-size:16px;line-height:1.65;color:#4f5d52}
+  .section-kicker{color:#526758!important}
+}

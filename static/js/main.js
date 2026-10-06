@@ -7148,7 +7148,7 @@ async function loadBuildingHeader(id){
       <span id="bPropertyBadges" style="display:contents;" hidden>${propertyBadges}${preBadge}</span>
     </div>
     ${(b.road_address || b.jibun_address || b.zip_code) ? `
-    <div style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">
+    <div class="b-building-addresses" style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">
       <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
         <span style="width:44px; flex-shrink:0; white-space:nowrap; color:var(--ink-soft2,#999);">도로명</span>
         <span>${escapeHtml(b.road_address || "-")}</span>

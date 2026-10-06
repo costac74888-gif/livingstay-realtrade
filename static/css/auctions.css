@@ -136,3 +136,93 @@ dialog.auction-panel-lightbox{width:100vw;height:100dvh;max-width:none;max-heigh
   .auction-prices .auction-minimum b{font-size:10px}
   .auction-sort-row .auction-order-button{padding:0 5px;font-size:8px}
 }
+
+/* Mobile-first readability for the auction register; map marker labels above
+   remain intentionally small to preserve their geographic fit. */
+@media screen and (max-width:760px){
+  .auction-list-page{padding:20px 12px 46px}
+  .auction-filter{gap:9px;padding:12px}
+  .auction-field{gap:6px}
+  .auction-field>span{font-size:16px;line-height:1.4;color:#536258}
+  .auction-field select,.auction-list-controls select{height:44px;padding:0 10px;font-size:16px}
+  .auction-reset{height:44px;padding:0 15px;font-size:15px}
+  .auction-sort-row{gap:5px;padding:9px}
+  .auction-sort-caption{font-size:16px}
+  .auction-sort-row .auction-order-button{min-height:42px;padding:0 9px;font-size:16px}
+  .auction-page-size{font-size:16px}
+  .auction-page-size select{height:42px;font-size:16px}
+  .auction-results-heading{font-size:16px;line-height:1.5}
+  .auction-results-heading>span:first-child{font-size:18px}
+  .auction-results-heading strong{font-size:16px}
+  .auction-row{grid-template-columns:82px minmax(0,1fr);column-gap:11px;row-gap:9px;padding:13px 10px}
+  .auction-photo{width:82px;min-height:100px;max-height:128px}
+  .auction-property{gap:5px}
+  .auction-management{font-size:15px}
+  .auction-title{font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+  .auction-address{font-size:16px;line-height:1.55}
+  .auction-area-line{font-size:16px;line-height:1.5}
+  .auction-tag{padding:4px 6px;font-size:14px;line-height:1.35}
+  .auction-tag b{font-size:13px}
+  .auction-status{padding:5px 7px;font-size:14px}
+  .auction-round{font-size:15px}
+  .auction-schedule{gap:7px;padding:10px 8px;font-size:16px;line-height:1.5;overflow-wrap:anywhere}
+  .auction-schedule b{font-size:15px}
+  .auction-schedule i{font-size:14px}
+  .auction-prices{gap:10px;padding:9px 10px}
+  .auction-prices small{font-size:14px;line-height:1.45}
+  .auction-prices b{font-size:18px;line-height:1.4;overflow-wrap:anywhere}
+  .auction-prices .auction-minimum b{font-size:21px}
+  .auction-price-ratio{font-size:14px}
+  .auction-list-controls{font-size:16px;gap:12px;flex-wrap:wrap}
+  .auction-list-controls strong{font-size:16px}
+  .auction-pagination button{min-width:40px;height:40px;font-size:14px}
+  .auction-list-note{font-size:16px;line-height:1.6;color:#58665d}
+  .auction-list-note time{font-size:16px}
+  .auction-loading,.auction-empty,.auction-error{font-size:15px;line-height:1.6}
+  .auction-empty strong{font-size:17px}
+  .auction-empty span{font-size:16px}
+  .auction-error button{min-height:42px;padding:8px 14px;font-size:15px}
+  .auction-panel-heading h2{font-size:23px;line-height:1.35}
+  .auction-panel-kicker{font-size:14px}
+  .auction-panel-picker{font-size:16px}
+  .auction-panel-picker select{height:46px;font-size:16px}
+  .auction-panel-section-title h3,.auction-panel-rounds h3{font-size:18px}
+  .auction-panel-title h4{font-size:19px;line-height:1.45;overflow-wrap:anywhere}
+  .auction-panel-title p,.auction-panel-facts dt{font-size:16px;line-height:1.55;color:#56635a}
+  .auction-panel-facts dd{font-size:17px;line-height:1.5;overflow-wrap:anywhere}
+  .auction-panel-round{grid-template-columns:56px minmax(0,1fr) auto;gap:8px;font-size:16px;line-height:1.5}
+  .auction-panel-round b,.auction-panel-round strong{font-size:16px}
+  .auction-panel-onbid{min-height:48px;padding:7px 12px;font-size:16px;gap:10px}
+  .auction-panel-unmatched,.auction-panel-disclaimer,.auction-panel-empty{font-size:16px;line-height:1.65}
+  .auction-panel-favorite{min-height:48px;font-size:16px}
+  .auction-panel-error{font-size:16px;line-height:1.6}
+  .auction-panel-error button{min-height:44px;font-size:16px}
+  .b-auction-empty{font-size:16px;line-height:1.6}
+  .b-auction-item{font-size:16px;line-height:1.55}
+  .b-auction-item strong{font-size:17px}
+  .b-auction-kind,.b-auction-active-badge{font-size:14px}
+  .auction-panel-gallery figcaption{font-size:14px}
+}
+@media screen and (max-width:390px){
+  .auction-list-page{padding-left:10px;padding-right:10px}
+  .auction-row{grid-template-columns:72px minmax(0,1fr);column-gap:9px;padding:11px 8px}
+  .auction-photo{width:72px;min-height:92px}
+  .auction-schedule{grid-template-columns:auto minmax(0,1fr);justify-items:start}
+  .auction-prices{flex-wrap:wrap}
+  .auction-prices>span{flex:1 1 42%;align-items:flex-start;text-align:left}
+  .auction-prices>span:last-child{align-items:flex-end;text-align:right}
+  .auction-sort-row .auction-order-button{padding:0 6px;font-size:16px}
+  .auction-panel-round{grid-template-columns:48px minmax(0,1fr)}
+  .auction-panel-round strong{grid-column:2}
+}
+
+/* Keep billion-won values intact instead of wrapping in the middle of digits. */
+@media screen and (max-width:760px){
+  .auction-prices{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+  .auction-prices>span,.auction-prices>span:last-child{
+    display:grid;grid-template-columns:minmax(0,1fr) max-content;
+    align-items:center;gap:10px;width:100%;text-align:left;min-width:0
+  }
+  .auction-prices small{white-space:normal;overflow-wrap:anywhere}
+  .auction-prices b{white-space:nowrap;overflow-wrap:normal;text-align:right}
+}
