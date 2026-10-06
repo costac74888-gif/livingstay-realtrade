@@ -20230,6 +20230,16 @@ def admin_datasync_overview():
     })
 
 
+@app.get("/api/admin/datasync-board")
+@require_admin
+def admin_datasync_board():
+    """Read-only board: existing metadata only, no provider requests or jobs."""
+    from datasync_board import read_board
+    response = jsonify(read_board(get_conn))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.get("/api/admin/public-api-relay/status")
 @require_admin
 def admin_public_api_relay_status():
