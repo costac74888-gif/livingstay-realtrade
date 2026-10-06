@@ -214,6 +214,17 @@
     .ds-board-metric{white-space:nowrap;font-variant-numeric:tabular-nums}
     .ds-board-action{max-width:280px;color:#8c392f;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .ds-board-empty{padding:26px 14px!important;text-align:center;color:var(--dsb-muted)}
+    .ds-board-retry{display:flex;align-items:flex-start;gap:8px;min-width:185px}
+    .ds-board-retry-copy{min-width:115px;color:var(--dsb-muted);font-size:11px;line-height:1.4}
+    .ds-board-run{flex:none;min-height:36px;padding:7px 11px;border:1px solid #176b67;border-radius:6px;background:#176b67;color:#fff;font:700 12px inherit;cursor:pointer}
+    .ds-board-run:hover:not(:disabled){background:#105a56}.ds-board-run:focus-visible{outline:2px solid #b4863f;outline-offset:2px}
+    .ds-board-run:disabled{border-color:#d1d8d7;background:#e9eeec;color:#67736f;cursor:not-allowed}
+    .ds-board-control-note{display:block;margin-top:4px;color:var(--dsb-muted);font-size:11px;line-height:1.4}
+    .ds-board-hint{display:block;margin-top:4px;color:#805914;font-size:11px;line-height:1.4}
+    .ds-board-toast{display:none;padding:10px 14px;border-bottom:1px solid var(--dsb-line);font-size:12px;line-height:1.5;font-weight:700}
+    .ds-board-toast.is-visible{display:block}.ds-board-toast.is-success{background:#eaf5ed;color:#267044}.ds-board-toast.is-error{background:#fff1ee;color:#9b342b}
+    .ds-board-stop-note{margin:8px 14px}
+    @media(max-width:600px){.ds-board-retry{min-width:180px;flex-wrap:wrap}.ds-board-retry-copy{min-width:100%}}
     @media(max-width:600px){.ds-board-head{padding:12px;align-items:flex-start}.ds-board-title{font-size:16px}.ds-board-intro{max-width:42ch}.ds-board-meta{padding:8px 12px}.ds-board-table{min-width:1060px}.ds-board-error{padding:9px 12px}}
   </style>
 </head>
@@ -5576,16 +5587,292 @@
     let dataSyncBoardTimer = null;
     let dataSyncBoardObserver = null;
     let dataSyncBoardRequestId = 0;
+    let dataSyncBoardRevision = 0;
+    const dataSyncBoardBusy = new Map();
+    const dataSyncBoardTargetTimers = new Map();
+    const dataSyncBoardControllers = new Set();
 
     function stopDataSyncBoardUpdates() {
       if (dataSyncBoardTimer) { clearInterval(dataSyncBoardTimer); dataSyncBoardTimer = null; }
       if (dataSyncBoardObserver) { dataSyncBoardObserver.disconnect(); dataSyncBoardObserver = null; }
+      dataSyncBoardRequestId++;
+      dataSyncBoardTargetTimers.forEach((timer) => clearTimeout(timer));
+      dataSyncBoardTargetTimers.clear();
+      dataSyncBoardControllers.forEach((controller) => controller.abort());
+      dataSyncBoardControllers.clear();
+      dataSyncBoardBusy.clear();
     }
 
     function formatDataSyncBoardTime(value) {
       if (!value) return "없음";
       const date = new Date(value);
       return Number.isNaN(date.getTime()) ? "확인 불가" : date.toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) + " KST";
+    }
+
+    function dataSyncBoardIsCurrent(board) {
+      return !!board && board.isConnected && document.getElementById("dsBoard") === board;
+    }
+
+    function showDataSyncBoardToast(message, isSuccess) {
+      const board = document.getElementById("dsBoard");
+      const toast = board && board.querySelector(".ds-board-toast");
+      if (!toast || !dataSyncBoardIsCurrent(board)) return;
+      toast.textContent = message;
+      toast.className = `ds-board-toast is-visible ${isSuccess ? "is-success" : "is-error"}`;
+      toast.setAttribute("role", isSuccess ? "status" : "alert");
+    }
+
+    async function dataSyncBoardFetch(url, options, board) {
+      const controller = new AbortController();
+      dataSyncBoardControllers.add(controller);
+      let timeout;
+      try {
+        const request = fetch(url, { ...options, signal: controller.signal });
+        const deadline = new Promise((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error("timeout"));
+          }, 30000);
+        });
+        return await Promise.race([request, deadline]);
+      } finally {
+        clearTimeout(timeout);
+        dataSyncBoardControllers.delete(controller);
+        // A navigation abort is deliberately not allowed to trigger a late 401 redirect.
+        if (!dataSyncBoardIsCurrent(board)) controller.abort();
+      }
+    }
+
+    function renderDataSyncBoardRow(row) {
+      if (!row || typeof row !== "object") return null;
+      const stateClasses = {
+        "완료": "is-done", "실행 중": "is-running", "대기": "is-waiting",
+        "오래됨": "is-stale", "실패": "is-failed", "일시중단": "is-paused",
+        "확인불가": "is-unknown",
+      };
+      const tr = document.createElement("tr");
+      tr.className = "ds-board-row";
+      tr.tabIndex = 0;
+      tr.setAttribute("role", "link");
+      tr.setAttribute("aria-label", `${row.name || "데이터"} 상세 카드로 이동`);
+      const goToCard = () => {
+        const anchorId = typeof row.anchor === "string" ? row.anchor.replace(/^#/, "") : "";
+        const anchor = anchorId ? document.getElementById(anchorId) : null;
+        if (anchor && anchor.isConnected) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      tr.addEventListener("click", goToCard);
+      tr.addEventListener("keydown", (event) => {
+        if (event.target !== tr) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          goToCard();
+        }
+      });
+      const addCell = (value, className, title) => {
+        const td = document.createElement("td");
+        if (className) td.className = className;
+        td.textContent = value !== null && value !== undefined && value !== "" ? String(value) : "확인 불가";
+        if (title) td.title = String(title);
+        tr.appendChild(td);
+        return td;
+      };
+      const nameCell = addCell(row.name || "이름 미확인", "ds-board-name");
+      const nameNote = document.createElement("span");
+      nameNote.className = "ds-board-sub";
+      nameNote.textContent = row.reason == null ? "" : String(row.reason);
+      if (row.reason) nameCell.appendChild(nameNote);
+      const state = row.state == null ? "확인불가" : String(row.state);
+      const stateCell = document.createElement("td");
+      const stateBadge = document.createElement("span");
+      stateBadge.className = `ds-board-state ${stateClasses[state] || "is-unknown"}`;
+      stateBadge.textContent = state;
+      stateCell.appendChild(stateBadge);
+      if (row.last_error_summary) stateCell.title = String(row.last_error_summary);
+      tr.appendChild(stateCell);
+      addCell(formatDataSyncBoardTime(row.last_success_at), "ds-board-metric");
+      const calls = row.today_calls == null ? "확인 불가" : String(row.today_calls);
+      const limit = row.daily_limit == null ? "확인 불가" : String(row.daily_limit);
+      addCell(`${calls} / ${limit}`, "ds-board-metric", row.quota_note || "");
+      let routeLabel = "확인불가";
+      if (row.route === "중계" || row.route === "relay") routeLabel = "중계";
+      else if (row.route === "직접" || row.route === "direct") routeLabel = "직접";
+      else if (row.route === null && row.route_note) routeLabel = "해당 없음";
+      addCell(routeLabel, "", row.route_note || "");
+
+      const retryCell = document.createElement("td");
+      const retry = document.createElement("div");
+      retry.className = "ds-board-retry";
+      const retryCopy = document.createElement("span");
+      retryCopy.className = "ds-board-retry-copy";
+      retryCopy.textContent = row.next_run || "다음 실행 확인불가";
+      retry.appendChild(retryCopy);
+      const controls = row.controls && typeof row.controls === "object" ? row.controls : null;
+      const allowedStates = ["실패", "오래됨", "일시중단", "대기"];
+      if (controls && controls.run !== true) {
+        const note = document.createElement("span");
+        note.className = "ds-board-control-note";
+        note.textContent = `버튼 없음 (${String(controls.reason || "기존 실행 경로 없음")})`;
+        retry.appendChild(note);
+      } else if (state === "실행 중") {
+        const runningButton = document.createElement("button");
+        runningButton.type = "button";
+        runningButton.className = "ds-board-run";
+        runningButton.disabled = true;
+        runningButton.textContent = "실행 중";
+        retry.appendChild(runningButton);
+      } else if (allowedStates.includes(state) && controls && controls.run === true && row.key) {
+        const runButton = document.createElement("button");
+        runButton.type = "button";
+        runButton.className = "ds-board-run";
+        runButton.textContent = dataSyncBoardBusy.has(String(row.key)) ? "확인 중…" : "지금 다시 실행";
+        runButton.disabled = dataSyncBoardBusy.has(String(row.key));
+        runButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          runDataSyncBoardAction(row);
+        });
+        retry.appendChild(runButton);
+      } else if (state === "확인불가") {
+        const note = document.createElement("span");
+        note.className = "ds-board-control-note";
+        note.textContent = "상세 카드에서 확인";
+        retry.appendChild(note);
+      }
+      retryCell.appendChild(retry);
+      tr.appendChild(retryCell);
+
+      const action = ["실패", "오래됨", "일시중단"].includes(state) ? row.action : "";
+      const actionCell = addCell(action || "—", "ds-board-action");
+      if (state === "확인불가" && row.reason) actionCell.title = String(row.reason);
+      return tr;
+    }
+
+    function updateDataSyncBoardRow(row) {
+      const board = document.getElementById("dsBoard");
+      if (!dataSyncBoardIsCurrent(board) || !row || row.key == null) return;
+      const current = Array.from(board.querySelectorAll(".ds-board-row")).find((tr) => tr.dataset.key === String(row.key));
+      const replacement = renderDataSyncBoardRow(row);
+      if (current && replacement) {
+        replacement.dataset.key = String(row.key);
+        current.replaceWith(replacement);
+        const alertCount = Array.from(board.querySelectorAll(".ds-board-state"))
+          .filter((badge) => ["실패", "오래됨", "일시중단"].includes(badge.textContent)).length;
+        const summary = board.querySelector(".ds-board-summary");
+        if (summary) summary.textContent = `실패·오래됨·일시중단 ${alertCount}건`;
+      }
+    }
+
+    async function runDataSyncBoardAction(row) {
+      const board = document.getElementById("dsBoard");
+      const key = row && row.key != null ? String(row.key) : "";
+      if (!key || !dataSyncBoardIsCurrent(board)) return;
+      if (dataSyncBoardBusy.has(key)) {
+        showDataSyncBoardToast("이미 이 항목의 재실행 요청을 확인 중입니다.", false);
+        return;
+      }
+      const actionToken = {};
+      dataSyncBoardBusy.set(key, actionToken);
+      const visibleRow = Array.from(board.querySelectorAll(".ds-board-row")).find((tr) => tr.dataset.key === key);
+      const button = visibleRow && visibleRow.querySelector(".ds-board-run");
+      if (button) { button.disabled = true; button.textContent = "확인 중…"; }
+      const isCurrent = () => dataSyncBoardIsCurrent(board);
+      let shouldPoll = false;
+      try {
+        const revisionAtStart = dataSyncBoardRevision;
+        const preflight = await dataSyncBoardFetch(`/api/admin/datasync-board?key=${encodeURIComponent(key)}`, {
+          cache: "no-store", credentials: "include",
+        }, board);
+        if (!isCurrent()) return;
+        if (preflight.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!preflight.ok) throw new Error("preflight");
+        const freshData = await preflight.json();
+        if (!isCurrent()) return;
+        if (!freshData || freshData.ok !== true || !Array.isArray(freshData.rows) || !freshData.rows.length) throw new Error("preflight");
+        const fresh = freshData.rows.find((candidate) => candidate && String(candidate.key) === key) || freshData.rows[0];
+        if (String(fresh.key) !== key) throw new Error("preflight");
+        if (dataSyncBoardRevision === revisionAtStart) updateDataSyncBoardRow(fresh);
+        const allowedStates = ["실패", "오래됨", "일시중단", "대기"];
+        if (fresh.state === "실행 중") {
+          showDataSyncBoardToast("이미 실행 중입니다.", false);
+          shouldPoll = true;
+          return;
+        }
+        if (!allowedStates.includes(String(fresh.state)) || !fresh.controls || fresh.controls.run !== true) {
+          showDataSyncBoardToast("현재 상태에서는 다시 실행할 수 없습니다. 표를 새로고침해 확인해 주세요.", false);
+          return;
+        }
+        const name = String(fresh.name || "데이터");
+        let confirmText = `${name}을(를) 지금 다시 실행합니다. 외부 API 호출이 발생합니다. 진행할까요?`;
+        if (fresh.quota_paused === true) confirmText += "\n오늘 한도에 걸려 멈춘 작업입니다. 다시 눌러도 바로 멈출 수 있습니다.";
+        if (Array.isArray(fresh.shared_running)) {
+          fresh.shared_running.forEach((sharedName) => {
+            confirmText += `\n같은 API를 공유하는 ${String(sharedName)}이 실행 중입니다. 한도를 함께 씁니다.`;
+          });
+        }
+        if (!window.confirm(confirmText)) return;
+        shouldPoll = true;
+        const response = await dataSyncBoardFetch("/api/admin/datasync-board/action", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, action: "run" }),
+        }, board);
+        if (!isCurrent()) return;
+        if (response.status === 401) { window.location.href = "/admin/login"; return; }
+        if (response.status === 409) {
+          showDataSyncBoardToast("이미 실행 중입니다.", false);
+          return;
+        }
+        const result = await response.json().catch(() => ({}));
+        if (!isCurrent()) return;
+        if (!response.ok || !result || result.ok !== true) {
+          showDataSyncBoardToast("다시 실행 요청을 처리하지 못했습니다. 잠시 후 다시 확인해 주세요.", false);
+          return;
+        }
+        showDataSyncBoardToast(`${name} 재실행을 요청했습니다.`, true);
+        shouldPoll = true;
+      } catch (_) {
+        if (isCurrent()) showDataSyncBoardToast("요청을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.", false);
+      } finally {
+        if (dataSyncBoardBusy.get(key) === actionToken) dataSyncBoardBusy.delete(key);
+        if (isCurrent()) {
+          const liveRow = Array.from(board.querySelectorAll(".ds-board-row")).find((tr) => tr.dataset.key === key);
+          const liveButton = liveRow && liveRow.querySelector(".ds-board-run");
+          if (liveButton && liveButton.textContent === "확인 중…") {
+            liveButton.textContent = "지금 다시 실행";
+            liveButton.disabled = false;
+          }
+          if (shouldPoll) scheduleDataSyncBoardTargetPoll(key, 3000, Date.now() + 60000);
+        }
+      }
+    }
+
+    function scheduleDataSyncBoardTargetPoll(key, delay, deadline) {
+      const board = document.getElementById("dsBoard");
+      if (!dataSyncBoardIsCurrent(board) || Date.now() >= deadline) return;
+      const oldTimer = dataSyncBoardTargetTimers.get(key);
+      if (oldTimer) clearTimeout(oldTimer);
+      const timer = setTimeout(async () => {
+        dataSyncBoardTargetTimers.delete(key);
+        if (!dataSyncBoardIsCurrent(board) || Date.now() >= deadline) return;
+        const startingRevision = dataSyncBoardRevision;
+        try {
+          const response = await dataSyncBoardFetch(`/api/admin/datasync-board?key=${encodeURIComponent(key)}`, {
+            cache: "no-store", credentials: "include",
+          }, board);
+          if (!dataSyncBoardIsCurrent(board)) return;
+          if (response.status === 401) { window.location.href = "/admin/login"; return; }
+          if (!response.ok) throw new Error("poll");
+          const data = await response.json();
+          if (!dataSyncBoardIsCurrent(board) || Date.now() >= deadline) return;
+          if (dataSyncBoardRevision === startingRevision && data && data.ok === true && Array.isArray(data.rows)) {
+            const latest = data.rows.find((candidate) => candidate && String(candidate.key) === key);
+            if (latest) updateDataSyncBoardRow(latest);
+          }
+        } catch (_) {
+          // Polling is best-effort; keep the visible action state and retry on the next tick.
+        }
+        if (dataSyncBoardIsCurrent(board) && Date.now() < deadline) scheduleDataSyncBoardTargetPoll(key, 3000, deadline);
+      }, delay);
+      dataSyncBoardTargetTimers.set(key, timer);
     }
 
     async function loadDataSyncBoard() {
@@ -5609,6 +5896,7 @@
         const data = await response.json();
         if (!current()) return;
         if (!data || data.ok !== true || !Array.isArray(data.rows)) throw new Error("응답 형식을 확인할 수 없습니다.");
+        dataSyncBoardRevision++;
         const alertCount = data.rows.filter((row) => row && ["실패", "오래됨", "일시중단"].includes(row.state)).length;
         const summary = board.querySelector(".ds-board-summary");
         if (summary) summary.textContent = `실패·오래됨·일시중단 ${alertCount}건`;
@@ -5623,66 +5911,11 @@
           tr.appendChild(td);
           fragment.appendChild(tr);
         }
-        const stateClasses = {
-          "완료": "is-done", "실행 중": "is-running", "대기": "is-waiting",
-          "오래됨": "is-stale", "실패": "is-failed", "일시중단": "is-paused",
-          "확인불가": "is-unknown",
-        };
         data.rows.forEach((row) => {
           if (!row || typeof row !== "object") return;
-          const tr = document.createElement("tr");
-          tr.className = "ds-board-row";
-          tr.tabIndex = 0;
-          tr.setAttribute("role", "link");
-          tr.setAttribute("aria-label", `${row.name || "데이터"} 상세 카드로 이동`);
-          const goToCard = () => {
-            const anchorId = typeof row.anchor === "string" ? row.anchor.replace(/^#/, "") : "";
-            const anchor = anchorId ? document.getElementById(anchorId) : null;
-            if (anchor && anchor.isConnected) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
-          };
-          tr.addEventListener("click", goToCard);
-          tr.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              goToCard();
-            }
-          });
-          const addCell = (value, className, title) => {
-            const td = document.createElement("td");
-            if (className) td.className = className;
-            if (value !== null && value !== undefined && value !== "") td.textContent = String(value);
-            else td.textContent = "확인 불가";
-            if (title) td.title = String(title);
-            tr.appendChild(td);
-            return td;
-          };
-          const nameCell = addCell(row.name || "이름 미확인", "ds-board-name");
-          const nameNote = document.createElement("span");
-          nameNote.className = "ds-board-sub";
-          nameNote.textContent = row.reason == null ? "" : String(row.reason);
-          if (row.reason) nameCell.appendChild(nameNote);
-          const state = row.state == null ? "확인불가" : String(row.state);
-          const stateCell = document.createElement("td");
-          const stateBadge = document.createElement("span");
-          stateBadge.className = `ds-board-state ${stateClasses[state] || "is-unknown"}`;
-          stateBadge.textContent = state;
-          stateCell.appendChild(stateBadge);
-          if (row.last_error_summary) stateCell.title = String(row.last_error_summary);
-          tr.appendChild(stateCell);
-          addCell(formatDataSyncBoardTime(row.last_success_at), "ds-board-metric");
-          const calls = row.today_calls == null ? "확인 불가" : String(row.today_calls);
-          const limit = row.daily_limit == null ? "확인 불가" : String(row.daily_limit);
-          addCell(`${calls} / ${limit}`, "ds-board-metric", row.quota_note || "");
-          let routeLabel = "확인불가";
-          if (row.route === "중계" || row.route === "relay") routeLabel = "중계";
-          else if (row.route === "직접" || row.route === "direct") routeLabel = "직접";
-          else if (row.route === null && row.route_note) routeLabel = "해당 없음";
-          addCell(routeLabel, "", row.route_note || "");
-          addCell(row.next_run || "확인불가", "");
-          const action = ["실패", "오래됨", "일시중단"].includes(state) ? row.action : "";
-          const actionCell = addCell(action || "—", "ds-board-action");
-          if (state === "확인불가" && row.reason) actionCell.title = String(row.reason);
-          fragment.appendChild(tr);
+          const tr = renderDataSyncBoardRow(row);
+          if (tr && row.key != null) tr.dataset.key = String(row.key);
+          if (tr) fragment.appendChild(tr);
         });
         if (body) body.replaceChildren(fragment);
       } catch (_) {
@@ -5732,6 +5965,8 @@
               <button class="ds-board-refresh" type="button">새로고침</button>
             </div>
             <div class="ds-board-meta"><strong class="ds-board-summary" aria-live="polite">실패·오래됨·일시중단 현황을 불러오는 중</strong><span class="ds-board-time">마지막 갱신 확인 중</span></div>
+            <div class="ds-board-toast" role="status" aria-live="polite"></div>
+            <p class="ds-board-control-note ds-board-stop-note">중지 버튼 없음: 기존 중지 경로가 없어 실행 중 작업은 이 표에서 중지할 수 없습니다.</p>
             <div class="ds-board-error" role="alert"></div>
             <div class="ds-board-scroll" tabindex="0" aria-label="동기화 현황 표, 좌우로 스크롤할 수 있습니다">
               <table class="ds-board-table">

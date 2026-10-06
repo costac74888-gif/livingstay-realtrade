@@ -76,12 +76,12 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       }, {html:fullTemplate,script});
       await page.evaluate(body => window.requests.shift()({ok:true,status:200,json:async () => body}), fixture);
       await page.locator(".ds-board-row").first().waitFor();
-      assert.equal(await page.locator(".ds-board-row").count(), 23);
+      assert.equal(await page.locator(".ds-board-row").count(), fixture.rows.length);
       const count = fixture.rows.filter(r=>["실패","오래됨","일시중단"].includes(r.state)).length;
       assert.match(await page.locator(".ds-board-summary").innerText(), new RegExp(`${count}건`));
       assert.match(await page.locator(".ds-board-time").innerText(), /KST/);
       assert.match(await page.locator(".ds-board-row").first().locator("td").nth(5).innerText(), /자동/);
-      assert.match(await page.locator(".ds-board-row").nth(9).locator("td").nth(5).innerText(), /수동/);
+      assert.match(await page.locator('.ds-board-row[data-key="dsSecTxBackfill"]').locator("td").nth(5).innerText(), /수동/);
       assert.match(await page.locator(".ds-board-row").first().locator("td").nth(3).innerText(), /확인 불가/);
       for (let i=0;i<7;i++) {
         const row = page.locator(".ds-board-row").nth(i);
@@ -110,7 +110,7 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       await page.evaluate(body => window.requests.pop()({ok:true,status:200,json:async()=>body}), fixture);
       await page.evaluate(()=>window.requests.shift()({ok:false,status:500}));
       assert.equal(await page.locator(".ds-board-error.is-visible").count(), 0);
-      assert.equal(await page.locator(".ds-board-row").count(), 23);
+      assert.equal(await page.locator(".ds-board-row").count(), fixture.rows.length);
       await page.evaluate(()=>{window.loadDataSyncBoard();window.mount.replaceChildren();});
       await page.evaluate(()=>window.requests.shift()({ok:false,status:401}));
       assert.deepEqual(errors, []);
@@ -118,6 +118,6 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       assert.ok((await page.evaluate(()=>window.cleared)).length>=1, "Timer cleaned on navigation");
       await context.close();
     }
-    console.log("PASS actual new board: 23 unchanged cards, PC/mobile, seven states, null values, next-run text, actions, click/keyboard, XSS, 60s timer cleanup, failed/stale responses; zero provider calls");
+    console.log("PASS actual new board: 24 rows and 23 unchanged cards, PC/mobile, seven states, null values, next-run text, advice, click/keyboard, XSS, 60s timer cleanup, failed/stale responses; zero provider calls");
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exit(1);});

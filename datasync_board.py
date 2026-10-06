@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from data_sync_transport import SECTION_ROUTES
 from public_api_client import _enabled
 from quota_policy import PROVIDER_QUOTAS
+from datasync_controls import controls_for, shared_names
 
 UTC = timezone.utc
 KST = ZoneInfo("Asia/Seoul")
@@ -53,6 +54,9 @@ ITEMS = (
          "rtms_provider_daily_calls", 10000, days=1),
     Item("과거 실거래", "dsSecTxBackfill", ("tx_backfill_status",),
          counter="rtms_provider_daily_calls", limit=10000),
+    Item("한옥·농어촌민박 실거래", "dsSecRuralHanokTrades",
+         ("rural_hanok_trade_sync_status",), "rural_hanok_trades",
+         limit=10000, success_key="rural_hanok_trade_last_success", days=1),
     Item("중개사 원장", "dsSecBroker", ("broker_sync_status",), "brokers",
          "broker_daily_calls", PROVIDER_QUOTAS["broker"]["total"],
          success_key="broker_last_sync", days=1),
@@ -145,7 +149,7 @@ def _error_summary(value):
 
 def _counter(meta, item, now):
     if not item.counter:
-        return None, None
+        return None, item.limit
     record = meta.get(item.counter)
     if not record:
         return None, item.limit
@@ -171,6 +175,14 @@ def _counter(meta, item, now):
 
 
 def _route(item, enabled):
+    if item.anchor == "dsSecRuralHanokTrades":
+        kind = "중계" if enabled.get("rtms") else "직접"
+        return kind, (
+            f"RHTrade(연립·다세대): {kind} / SHTrade(단독·다가구): {kind} / "
+            f"LandTrade(토지): {kind}(예약 수집 제외) / NrgTrade: {kind} / "
+            "분리 서비스·스위치 없이 RTMS 설정 공유; 별도 정기 실행 서버 설정 미확인; "
+            "전용 상세 카드가 없어 기존 최근 실거래 카드로 이동"
+        )
     routes = SECTION_ROUTES[item.anchor]
     api_routes = [route for route in routes if route[2] in ("relay", "direct")]
     if not api_routes:
@@ -264,7 +276,7 @@ def _state(data, updated_at, item, now, success, calls, limit):
     cap_recorded = (
         data.get("capped") is True
         or data.get("stop_reason") in ("daily_cap", "quota", "quota_exhausted", "consecutive_errors")
-        or raw in ("paused", "capped", "cooldown")
+        or raw in ("paused", "capped", "cooldown", "waiting_quota")
         or (raw == "partial" and item.anchor == "dsSecZip")
         or (data.get("completed") is False and (
             (calls is not None and limit is not None and calls >= limit)
@@ -344,6 +356,7 @@ def build_board(meta, *, now=None, enabled=None, unavailable=False):
             if stamp and stamp <= now + timedelta(minutes=5):
                 successes.append(stamp)
         success = max(successes, default=None)
+        data = {}
         if candidates:
             data, updated = max(candidates, key=lambda entry: (
                 _time(entry[0].get("finished_at")) or _time(entry[0].get("started_at"))
@@ -371,39 +384,68 @@ def build_board(meta, *, now=None, enabled=None, unavailable=False):
             if unavailable:
                 calls, success, error = None, None, None
         rows.append({
-            "name": item.name, "state": state,
+            "key": item.anchor, "name": item.name, "state": state,
             "last_success_at": success.astimezone(KST).isoformat() if success else None,
             "last_error_summary": error, "today_calls": calls, "daily_limit": limit,
             "route": route, "route_note": route_note,
-            "next_run": _next_run(item, now), "anchor": item.anchor,
+            "next_run": _next_run(item, now),
+            "anchor": "dsSecTx" if item.anchor == "dsSecRuralHanokTrades" else item.anchor,
             "reason": reason, "action": _action(state, route, error),
-            "quota_note": ("건축HUB 서비스 전체 공유 호출" if item.counter == "building_hub_daily_calls"
+            "controls": controls_for(item.anchor),
+            # Composite rows may display a newer failed sub-job while a different
+            # sub-job still has a fresh running heartbeat. Warn about either.
+            "shared_active": not unavailable and any(
+                original.get("state") == "running"
+                and _state(original, stamp, item, now, success, calls, limit)[0] == "실행 중"
+                for original, stamp in executed),
+            "quota_paused": state == "일시중단" and (
+                error == "API 호출 한도 또는 요청 제한 오류"
+                or data.get("capped") is True
+                or data.get("state") == "waiting_quota"
+                or data.get("stop_reason") in ("daily_cap", "quota", "quota_exhausted")
+                or (data.get("completed") is False and calls is not None
+                    and limit is not None and calls >= limit)
+                or (item.stage in ("building_registry", "building_permits")
+                    and data.get("completed") is False
+                    and (_integer(data.get("calls_today")) or 0) >= 8000)),
+            "quota_note": ("실거래 API 공유 한도, 이 단계의 별도 오늘 호출 횟수 미기록"
+                          if item.anchor == "dsSecRuralHanokTrades" else
+                          "건축HUB 서비스 전체 공유 호출" if item.counter == "building_hub_daily_calls"
                            else "실거래 서비스 전체 공유 호출" if item.counter == "rtms_provider_daily_calls"
                            else "수집 배정 한도" if item.counter == "store_api_batch_requests" else ""),
         })
+    for row in rows:
+        row["shared_running"] = shared_names(rows, row["key"])
     return {"ok": True, "rows": rows, "checked_at": now.astimezone(KST).isoformat(),
             "scope": "current_database_and_runtime"}
 
 
-def read_board(get_conn):
-    """One bounded SELECT, read-only transaction, no mutations or network probes."""
+def metadata_keys():
     keys = {key for item in ITEMS for key in item.keys}
     keys.update(item.counter for item in ITEMS if item.counter)
     keys.update(item.success_key for item in ITEMS if item.success_key)
     keys.add("scheduled_sync_status")
     keys.update(f"scheduled_sync_status:{item.stage}" for item in ITEMS if item.stage)
     keys.update(f"scheduled_sync_status:{item.stage}:{item.stage}" for item in ITEMS if item.stage)
+    return sorted(keys)
+
+
+def read_board(get_conn, key=None):
+    """One bounded SELECT; optional single-row response retains peer warnings."""
+    if key is not None and key not in {i.anchor for i in ITEMS}:
+        raise ValueError("Unsupported board key")
     conn = cur = None
+    result = None
     try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("SET TRANSACTION READ ONLY")
         cur.execute("SET LOCAL statement_timeout = '3000ms'")
-        cur.execute("SELECT key, value, updated_at FROM app_meta WHERE key = ANY(%s)", (sorted(keys),))
+        cur.execute("SELECT key, value, updated_at FROM app_meta WHERE key = ANY(%s)", (metadata_keys(),))
         meta = {row["key"]: row for row in cur.fetchall()}
     except Exception:
         # Do not log or send exceptions: DB/API errors may contain credentials.
-        return build_board({}, unavailable=True)
+        result = build_board({}, unavailable=True)
     finally:
         if conn is not None:
             for cleanup in (conn.rollback, cur.close if cur is not None else None, conn.close):
@@ -413,4 +455,8 @@ def read_board(get_conn):
                     except Exception:
                         # A broken connection must not expose driver exceptions.
                         pass
-    return build_board(meta)
+    if result is None:
+        result = build_board(meta)
+    if key is not None:
+        result["rows"] = [r for r in result["rows"] if r["key"] == key]
+    return result

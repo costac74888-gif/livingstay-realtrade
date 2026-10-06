@@ -27,8 +27,8 @@ class BoardTests(unittest.TestCase):
         html = Path("static/admin.html").read_text()
         import re
         anchors = set(re.findall(r'id="(dsSec\w+)"', html))
-        self.assertEqual({item.anchor for item in ITEMS}, anchors)
-        self.assertEqual(len(ITEMS), 23)
+        self.assertEqual({item.anchor for item in ITEMS} - {"dsSecRuralHanokTrades"}, anchors)
+        self.assertEqual(len(ITEMS), 24)
         result = build_board({}, now=NOW, enabled={})
         self.assertTrue(all(r["state"] == "확인불가" and r["reason"] for r in result["rows"]))
         self.assertTrue(all(r["today_calls"] is None and r["last_success_at"] is None
@@ -184,8 +184,10 @@ class BoardTests(unittest.TestCase):
         previous = subprocess.check_output(["git", "show", "HEAD:app.py"], text=True)
         old = {n.name: ast.dump(n) for n in ast.parse(previous).body if isinstance(n, ast.FunctionDef)}
         new = {n.name: ast.dump(n) for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}
-        self.assertLessEqual(set(new) - set(old), {"admin_datasync_board"})
+        self.assertLessEqual(set(new) - set(old), {"admin_datasync_board_action"})
         for name, node in old.items():
+            if name == "admin_datasync_board":
+                continue
             self.assertEqual(new[name], node, name)
         node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)
                     and n.name == "admin_datasync_board")
@@ -227,7 +229,7 @@ class BoardTests(unittest.TestCase):
             response = client.get("/api/admin/datasync-board")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.headers["Cache-Control"], "no-store")
-            self.assertEqual(len(response.get_json()["rows"]), 23)
+            self.assertEqual(len(response.get_json()["rows"]), 24)
             read.assert_called_once()
 
 

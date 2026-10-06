@@ -20234,8 +20234,51 @@ def admin_datasync_overview():
 @require_admin
 def admin_datasync_board():
     """Read-only board: existing metadata only, no provider requests or jobs."""
-    from datasync_board import read_board
-    response = jsonify(read_board(get_conn))
+    from datasync_board import ITEMS, read_board
+    key = request.args.get("key")
+    if key is not None and key not in {item.anchor for item in ITEMS}:
+        return jsonify({"ok": False, "message": "알 수 없는 항목입니다."}), 400
+    response = jsonify(read_board(get_conn, key=key))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.post("/api/admin/datasync-board/action")
+@require_admin
+def admin_datasync_board_action():
+    """Allowlisted adapter only; preserve existing runners and rate limits."""
+    from datasync_board import ITEMS
+    from datasync_controls import ActionRejected, audit, dispatch
+    admin_id = session.get("admin_user_id")
+    if not session.get("admin") or not isinstance(admin_id, int) or isinstance(admin_id, bool):
+        return jsonify({"ok": False, "message": "관리자 계정으로 다시 로그인해 주세요."}), 401
+    from urllib.parse import urlsplit
+    origin = request.headers.get("Origin")
+    if request.headers.get("Sec-Fetch-Site") == "cross-site" or (
+            origin and urlsplit(origin).netloc != request.host):
+        audit(app.logger, admin_id, None, None, 403)
+        return jsonify({"ok": False, "message": "동일한 사이트에서 요청해 주세요."}), 403
+    body = request.get_json(silent=True)
+    try:
+        from datasync_controls import validate_action
+        key = validate_action(body)
+        item = next(item for item in ITEMS if item.anchor == key)
+        stage_lock = _scheduled_sync_activity_lock_id(item.stage) if item.stage else None
+        payload, code = dispatch(
+            body, get_conn=get_conn,
+            invoke=lambda name: app.make_response(app.view_functions[name]()),
+            stage_lock_id=stage_lock,
+        )
+    except ActionRejected as exc:
+        payload, code = {"ok": False, "message": exc.message}, exc.code
+    except Exception:
+        payload, code = {"ok": False, "message": "실행 요청을 처리하지 못했습니다."}, 503
+    raw_key = body.get("key") if isinstance(body, dict) else None
+    raw_action = body.get("action") if isinstance(body, dict) else None
+    audit(app.logger, admin_id, raw_key if isinstance(raw_key, str) else None,
+          raw_action if isinstance(raw_action, str) else None, code)
+    response = jsonify(payload)
+    response.status_code = code
     response.headers["Cache-Control"] = "no-store"
     return response
 
