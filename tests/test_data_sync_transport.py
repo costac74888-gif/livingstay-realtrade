@@ -19,6 +19,7 @@ class DataSyncTransportTest(unittest.TestCase):
         self.enterContext(patch.object(relay, "_STATUS_DIR", Path(directory.name)))
         self.enterContext(patch.dict(os.environ, {
             "RELAY_ENABLED": "1", "RELAY_USE_BLDG_HUB": "1", "RELAY_USE_RTMS": "0",
+            "RELAY_USE_ONBID": "0",
             "RELAY_TOKEN": "test-private-token",
             "RELAY_TOKEN_BATCH": "test-private-batch",
             "RELAY_BASE_URL": "https://test-private.example",
@@ -53,7 +54,10 @@ class DataSyncTransportTest(unittest.TestCase):
 
     def test_direct_is_not_relay_off_or_verified_success(self):
         data = transport.data_sync_transport_status()
-        for section_id in ("dsSecOnbid", "dsSecRealty", "dsSecStores", "dsSecZip"):
+        onbid = data["sections"]["dsSecOnbid"]["routes"][0]
+        self.assertEqual(onbid["mode"], "relay")
+        self.assertFalse(onbid["enabled"])
+        for section_id in ("dsSecRealty", "dsSecStores", "dsSecZip"):
             row = data["sections"][section_id]["routes"][0]
             self.assertEqual(row["mode"], "direct")
             self.assertEqual(set(row), {"service", "label", "mode"})

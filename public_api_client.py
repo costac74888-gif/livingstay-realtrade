@@ -20,6 +20,12 @@ SERVICE_PATHS = {
         f"/1613000/RTMSDataSvc{name}/"
         for name in ("NrgTrade", "RHTrade", "SHTrade", "LandTrade")
     ),
+    "onbid": ("/B010003/",),
+}
+SERVICE_SWITCHES = {
+    "bldg_hub": "RELAY_USE_BLDG_HUB",
+    "rtms": "RELAY_USE_RTMS",
+    "onbid": "RELAY_USE_ONBID",
 }
 ERROR_STATUS = {
     "RELAY_AUTH": 401, "RELAY_FORBIDDEN": 403, "RELAY_QUOTA": 429,
@@ -46,8 +52,8 @@ class RelayRetryableError(RelayError, ConnectTimeout):
 
 
 def _enabled(service):
-    switch = "RELAY_USE_BLDG_HUB" if service == "bldg_hub" else "RELAY_USE_RTMS"
-    return os.environ.get("RELAY_ENABLED", "") == "1" and os.environ.get(switch, "") == "1"
+    switch = SERVICE_SWITCHES.get(service)
+    return bool(switch) and os.environ.get("RELAY_ENABLED", "") == "1" and os.environ.get(switch, "") == "1"
 
 
 @contextmanager

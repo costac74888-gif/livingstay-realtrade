@@ -11,7 +11,7 @@ from public_api_client import relay_status
 
 # Mixed routes are intentional: classification/geocoding can be conditional.
 SECTION_ROUTES = {
-    "dsSecOnbid": (("onbid", "온비드", "direct"),),
+    "dsSecOnbid": (("onbid", "온비드", "relay"),),
     "dsSecWeeklyDigest": (
         ("news", "뉴스", "web"), ("email", "이메일", "direct"),
     ),

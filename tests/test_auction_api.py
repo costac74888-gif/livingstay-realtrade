@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import app as app_module
 import auction_service
-from auction_domain import CURRENT_SQL, EFFECTIVE_STATUS_SQL, ELIGIBLE_SQL
+from auction_domain import CURRENT_SQL, EFFECTIVE_STATUS_SQL, ELIGIBLE_SQL, VISIBLE_SQL
 from db import get_conn
 
 
@@ -173,7 +173,8 @@ class AuctionApiTest(unittest.TestCase):
     def test_list_only_detail_resolves_existing_building_and_photo(self):
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(f""" SELECT a.id FROM auction_items a
+                cur.execute(f""" SELECT a.id,a.master_building_id,
+                  ({VISIBLE_SQL}) AS publicly_visible FROM auction_items a
                   WHERE a.source_item_id='2026-0500-027097' AND {ELIGIBLE_SQL}
                   AND a.raw->'list'->>'thnlImgUrlAdr' IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM auction_photos p
@@ -192,12 +193,36 @@ class AuctionApiTest(unittest.TestCase):
         self.assertEqual(data["photos"][0]["url"], data["item"]["thumbnail_url"])
         self.assertEqual(data["photos"][0]["source"], "auction")
         self.assertNotIn("raw", data["item"])
-        listed = next(item for item in self.client.get("/api/auctions?page_size=100").get_json()["items"]
-                      if item["source_item_id"] == data["item"]["source_item_id"])
-        self.assertEqual(listed["master_building_id"], data["building"]["id"])
+        # This real historical fixture may now be outside public display dates.
+        # Keep testing its detail/history, and assert the current list contract
+        # rather than requiring expired property rounds to remain publicly listed.
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(CURRENT_SQL + """ SELECT a.address_jibun,a.address_road
+                  FROM current_auctions a WHERE a.source_item_id=%s""",
+                            [data["item"]["source_item_id"]])
+                current = cur.fetchone()
+        address_row = current or data["item"]
+        listing = self.client.get("/api/auctions", query_string={
+            "page_size": 100,
+            "region": address_row["address_jibun"] or address_row["address_road"],
+        }).get_json()
+        listed = [item for item in listing["items"]
+                  if item["source_item_id"] == data["item"]["source_item_id"]]
+        if current:
+            self.assertTrue(listed)
+            self.assertEqual(listed[0]["master_building_id"], data["building"]["id"])
+        else:
+            self.assertEqual(listed, [], "Expired property stays in history, not the public list")
         history = self.client.get("/api/building/" + str(data["building"]["id"]) + "/auctions").get_json()
-        self.assertIn(row["id"], [item["id"] for item in history["items"]])
-        self.assertIn(data["item"]["thumbnail_url"], [photo["url"] for photo in history["photos"]])
+        history_ids = [item["id"] for item in history["items"]]
+        if row["master_building_id"] or row["publicly_visible"]:
+            self.assertIn(row["id"], history_ids)
+            self.assertIn(data["item"]["thumbnail_url"], [photo["url"] for photo in history["photos"]])
+        else:
+            # History auto-matches only visible unlinked rows. Detail may resolve
+            # an older unlinked row without persisting that link or exposing it.
+            self.assertNotIn(row["id"], history_ids)
         survey = self.client.get("/api/auctions/" + str(row["id"]) + "/survey-info").get_json()
         self.assertIsNone(survey["item"])
         self.assertTrue(survey["membership_access"]["required"])

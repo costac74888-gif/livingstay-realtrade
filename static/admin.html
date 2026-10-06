@@ -4272,7 +4272,7 @@
         const data = await response.json();
         if (!isCurrent()) return;
         if (!data || data.ok !== true) throw new Error("중계 상태 응답 오류");
-        const labels = {bldg_hub:"건축HUB 중계",rtms:"실거래 중계"};
+        const labels = {bldg_hub:"건축HUB 중계",rtms:"실거래 중계",onbid:"온비드 중계"};
         const services = data && data.services && typeof data.services === "object" ? data.services : {};
         const summary = Object.entries(labels).map(([key,label])=>{
           const row = services[key];
@@ -4303,7 +4303,7 @@
               let text = "확인 불가";
               let stateClass = "is-unknown";
               if (route && route.mode === "relay" && typeof route.enabled === "boolean") {
-                text = route.enabled ? "중계 ON" : "중계 OFF";
+                text = route.enabled ? "중계 ON" : route.service === "onbid" ? "직접 연결" : "중계 OFF";
                 stateClass = route.enabled ? "is-on" : "is-off";
               } else if (route && route.mode === "direct") { text = "직접 연결"; stateClass = "is-off"; }
               else if (route && route.mode === "web") { text = "웹 수집"; stateClass = "is-off"; }
@@ -5749,7 +5749,7 @@
       content.appendChild(heading);
       const serviceLine = document.createElement("div");
       serviceLine.className = "ds-board-relay-services";
-      serviceLine.textContent = `${makeServiceText("건축HUB", services.bldg_hub)}　${makeServiceText("실거래", services.rtms)}`;
+      serviceLine.textContent = `${makeServiceText("건축HUB", services.bldg_hub)}　${makeServiceText("실거래", services.rtms)}　${makeServiceText("온비드", services.onbid)}`;
       content.appendChild(serviceLine);
       const scope = document.createElement("div");
       const scopeNote = typeof observation.scope_note === "string" ? observation.scope_note : "";

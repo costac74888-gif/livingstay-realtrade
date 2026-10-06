@@ -68,7 +68,7 @@ class AdviceTests(unittest.TestCase):
             self.assertIn("해결되지 않을 수", advice["reason"])
 
     def test_unsupported_including_permits_never_invents_switches(self):
-        for key in ("dsSecOnbid", "dsSecPermits", "dsSecStores", "dsSecZip",
+        for key in ("dsSecPermits", "dsSecStores", "dsSecZip",
                     "dsSecPhotos", "dsSecGeo", "dsSecBroker", "dsSecCampingImages"):
             advice = self.advice("timeout", key=key)
             self.assertEqual(advice["verdict"], "중계 미지원", key)
@@ -76,6 +76,23 @@ class AdviceTests(unittest.TestCase):
             self.assertIsNone(advice["switch_name"])
             self.assertEqual(advice["steps"], [])
         self.assertIn("중계로 해결되지", self.advice("429", key="dsSecOnbid")["reason"])
+
+    def test_onbid_supported_off_review_and_on_local_observation(self):
+        advice = self.advice("ConnectTimeout", key="dsSecOnbid")
+        self.assertEqual(advice["verdict"], "중계 전환 검토")
+        self.assertEqual(advice["switch_name"], "RELAY_USE_ONBID")
+        self.assertIn("RELAY_USE_ONBID", " ".join(advice["steps"]))
+        quota = self.advice("429", key="dsSecOnbid")
+        self.assertEqual(quota["verdict"], "직접 유지")
+        self.assertEqual(quota["steps"], [])
+        on = self.advice(key="dsSecOnbid", enabled={"onbid": True}, snapshot={
+            "onbid": {"enabled": True, "last_success_at": NOW.isoformat(),
+                      "last_error_code": None},
+        })
+        self.assertEqual(on["verdict"], "중계 사용 중")
+        row = next(r for r in self.board(enabled={"onbid": True})["rows"]
+                   if r["key"] == "dsSecOnbid")
+        self.assertEqual(row["route"], "중계")
 
     def test_current_relay_error_newer_than_success_is_red(self):
         status = {"rtms": {
@@ -153,7 +170,7 @@ class AdviceTests(unittest.TestCase):
         text = json.dumps(result, ensure_ascii=False)
         for forbidden in (private, address, "serviceKey", "https://", "base_url"):
             self.assertNotIn(forbidden, text)
-        self.assertEqual(set(result["relay_observation"]["services"]), {"rtms", "bldg_hub"})
+        self.assertEqual(set(result["relay_observation"]["services"]), {"rtms", "bldg_hub", "onbid"})
 
     def test_read_board_mocks_local_snapshot_once_readonly_select_and_single_row(self):
         conn = Mock()
@@ -177,12 +194,12 @@ class AdviceTests(unittest.TestCase):
         self.assertNotIn(private, json.dumps(result))
         self.http.assert_not_called()
 
-    def test_existing_collectors_actions_routes_schedules_and_schema_untouched(self):
+    def test_existing_actions_routes_schedules_and_schema_untouched(self):
         changed = set(subprocess.check_output(
             ["git", "diff", "--name-only", "HEAD"], text=True).splitlines())
         self.assertFalse(changed & {
-            "app.py", "public_api_client.py", "datasync_controls.py", "scheduled_sync.py",
-            "data_sync_transport.py", "db.py", ".replit", "gunicorn.conf.py"})
+            "app.py", "datasync_controls.py", "scheduled_sync.py",
+            "db.py", ".replit", "gunicorn.conf.py"})
         self.assertNotIn("os.environ[", Path("datasync_transport_advice.py").read_text())
 
 

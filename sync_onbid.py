@@ -25,6 +25,7 @@ from db import get_conn
 from auction_building_matching import build_indexes, choose_building
 from geocode_buildings import geocode_address
 from secret_redaction import redact_env_secrets, redact_exception
+from public_api_client import public_api_get, RelayError, RelayRetryableError
 
 
 class BudgetExceeded(Exception):
@@ -33,6 +34,27 @@ class BudgetExceeded(Exception):
 
 class LostOwnership(Exception):
     pass
+
+
+class OnbidRelayUnavailable(RuntimeError):
+    """Fatal for this execution, including detail loops; retain no remote payload."""
+
+    def __init__(self):
+        super().__init__("중계서버 일시 오류")
+
+
+def _onbid_get(url, params):
+    try:
+        return public_api_get(url, params, timeout=(15, 30), purpose="batch")
+    except RelayRetryableError:
+        # The surrounding existing RequestException handler owns all retries.
+        raise
+    except RelayError as exc:
+        if exc.code == "RELAY_QUOTA":
+            raise BudgetExceeded("중계서버 호출 한도 도달") from None
+        if exc.code in ("RELAY_AUTH", "RELAY_FORBIDDEN"):
+            raise PermissionError("중계서버 인증·허용 설정 확인 필요") from None
+        raise OnbidRelayUnavailable() from None
 
 
 def fingerprint(row):
@@ -126,11 +148,10 @@ class Runner:
         for attempt in range(4):
             self.reserve(service)
             try:
-                response = self.session.get(
+                response = _onbid_get(
                     "https://apis.data.go.kr/B010003/" + ENDPOINTS[service],
                     params={"serviceKey": self.key, "pageNo": 1, "numOfRows": 1000,
                             "resultType": "json", **params},
-                    timeout=(15, 30),
                 )
                 if response.status_code in (401, 403):
                     raise PermissionError(service + " 인증·활용승인 확인 필요 (HTTP " + str(response.status_code) + ")")
@@ -458,7 +479,7 @@ class Runner:
                 try:
                     self.detail_target(target, rows[(target["source_item_id"], target["pbct_cdtn_no"])])
                     self.state["detail_pending"] -= 1
-                except (BudgetExceeded, PermissionError, LostOwnership):
+                except (BudgetExceeded, PermissionError, LostOwnership, OnbidRelayUnavailable):
                     raise
                 except Exception as exc:
                     self.state["errors"] += 1
@@ -486,7 +507,7 @@ class Runner:
                         continue
                     try:
                         self.detail_target(old, old["source_row"])
-                    except (BudgetExceeded, PermissionError, LostOwnership):
+                    except (BudgetExceeded, PermissionError, LostOwnership, OnbidRelayUnavailable):
                         raise
                     except Exception as exc:
                         self.state["errors"] += 1

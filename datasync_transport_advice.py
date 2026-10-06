@@ -4,9 +4,8 @@ from datetime import timedelta
 import json
 
 from data_sync_transport import SECTION_ROUTES
-from public_api_client import ERROR_STATUS, SERVICE_PATHS
+from public_api_client import ERROR_STATUS, SERVICE_PATHS, SERVICE_SWITCHES as SWITCHES
 
-SWITCHES = {"bldg_hub": "RELAY_USE_BLDG_HUB", "rtms": "RELAY_USE_RTMS"}
 CONSECUTIVE_NOTE = "연속 횟수 미확인"
 SCOPE_NOTE = (
     "이 웹 서버의 로컬 전송 기록입니다. 정기 실행 서버 설정은 별도 확인 필요. "

@@ -22,6 +22,7 @@ def test_environment():
         "HOMENSTAY_OFFLINE_TESTS": "1", "DISABLE_EXTERNAL_NOTIFICATIONS": "1",
         "SKIP_STARTUP_SCHEMA_INIT": "1", "SKIP_APP_BOOT_TASKS": "1",
         "RELAY_ENABLED": "0", "RELAY_USE_BLDG_HUB": "0", "RELAY_USE_RTMS": "0",
+        "RELAY_USE_ONBID": "0",
         "RELAY_TOKEN": "offline-test-realtime", "RELAY_TOKEN_BATCH": "offline-test-batch",
         "BLD_SERVICE_KEY": "offline-test-bld",
         "BLD_INSPECTION_SERVICE_KEY": "offline-test-inspection",

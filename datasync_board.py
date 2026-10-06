@@ -6,7 +6,7 @@ import json
 from zoneinfo import ZoneInfo
 
 from data_sync_transport import SECTION_ROUTES
-from public_api_client import _enabled, relay_status
+from public_api_client import _enabled, relay_status, SERVICE_PATHS
 from quota_policy import PROVIDER_QUOTAS
 from datasync_controls import controls_for, shared_names
 
@@ -325,7 +325,7 @@ def build_board(meta, *, now=None, enabled=None, unavailable=False, relay_snapsh
     """Pure projection for offline tests and the one new endpoint."""
     now = _time(now) or datetime.now(UTC)
     if enabled is None:
-        enabled = {service: _enabled(service) for service in ("bldg_hub", "rtms")}
+        enabled = {service: _enabled(service) for service in SERVICE_PATHS}
     rows = []
     for item in ITEMS:
         route, route_note = _route(item, enabled)
