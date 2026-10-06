@@ -76,6 +76,11 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       }, {html:fullTemplate,script});
       await page.evaluate(body => window.requests.shift()({ok:true,status:200,json:async () => body}), fixture);
       await page.locator(".ds-board-row").first().waitFor();
+      const availableWidth = await page.locator("#mount").evaluate(n =>
+        n.clientWidth - parseFloat(getComputedStyle(n).paddingLeft)
+        - parseFloat(getComputedStyle(n).paddingRight));
+      const syncWidth = await page.locator(".ds-sync-page").evaluate(n => n.getBoundingClientRect().width);
+      assert.ok(Math.abs(syncWidth - availableWidth) <= 1, "Sync page fills available width, without the shared 900px cap");
       assert.equal(await page.locator(".ds-board-row").count(), fixture.rows.length);
       const count = fixture.rows.filter(r=>["실패","오래됨","일시중단"].includes(r.state)).length;
       assert.match(await page.locator(".ds-board-summary").innerText(), new RegExp(`${count}건`));

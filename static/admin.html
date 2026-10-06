@@ -197,6 +197,7 @@
     .ds-board-summary{font-size:13px;font-weight:800;color:#a2372d}.ds-board-time{font-size:12px;color:var(--dsb-muted);font-variant-numeric:tabular-nums}
     .ds-board-error{display:none;padding:9px 14px;background:#fff5f2;color:#9b342b;border-bottom:1px solid #f0d1cb;font-size:12px;line-height:1.5}
     .ds-board-error.is-visible{display:block}
+    .legal-admin.ds-sync-page{width:100%;max-width:none}
     .ds-board-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch}
     .ds-board-table{width:100%;min-width:1060px;border-collapse:collapse;font-size:13px}
     .ds-board-table th{padding:9px 10px;background:#edf2ef;color:#46545b;text-align:left;white-space:nowrap;border-bottom:1px solid #d5dfdc;font-size:12px;font-weight:800}
@@ -6128,7 +6129,7 @@
       destroyStatsCharts();
       stopDataSyncBoardUpdates();
       mount.innerHTML = `
-        <div class="legal-admin">
+        <div class="legal-admin ds-sync-page">
           <div class="legal-admin-head">
             <h2 class="legal-admin-title">데이터 동기화</h2>
           </div>
