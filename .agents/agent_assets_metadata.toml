@@ -780,3 +780,17 @@ mtime_ms = 1791126674560
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/74b05659-737e-484d-858a-fb740e9fdbba/4b92e9f9-3918-4268-83c3-4324ec75e41e"
 storage_version_token = "1791126702558258"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "gM6Asu1cPb6aY-tjexXqu"
+uri = "file://exports/public_api_relay_manual_v2_2026-10-06.docx"
+type = "word_document"
+title = "공공 API 중계서버 구축·운영 매뉴얼 v2"
+description = "오류를 반영한 워드 수정판입니다. 기존 구축·운영 절차를 유지하고 재게시, 재시도, 단계별 활성화, 상태 해석, SSH·권한 안내와 미확인 사항을 정리했습니다."
+logical_id = "54cb0353-c70a-43f6-8966-445e1263ec0f"
+content_hash = "sha256:5bb9262864da2912aee4e45ed1332ebd0fe94f3483c647176d84c96ffa0f67f0"
+size = 54444
+mtime_ms = 1791258260999
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/54cb0353-c70a-43f6-8966-445e1263ec0f/f6a3bd1d-0075-4e39-95fa-af7b8eb5e168"
+storage_version_token = "1791258310222478"
+content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
