@@ -96,7 +96,7 @@ class OnbidRelayTests(unittest.TestCase):
                 self.assertNotIn(SAMPLE, self.http.return_value.url)
                 self.assertNotIn("serviceKey", self.http.return_value.url)
         status = relay.relay_status()
-        self.assertEqual(set(status), {"bldg_hub", "rtms", "onbid"})
+        self.assertEqual(set(status), {"bldg_hub", "rtms", "onbid", "juso"})
         self.assertTrue(status["onbid"]["enabled"])
         self.assertTrue(status["onbid"]["last_success_at"])
         for value in (SAMPLE, ENV["RELAY_TOKEN_BATCH"], ENV["RELAY_BASE_URL"]):

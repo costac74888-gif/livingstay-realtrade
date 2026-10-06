@@ -11,7 +11,8 @@ let url;
 let body={ok:true,services:{
   bldg_hub:{enabled:false,last_success_at:null,last_error_code:null},
   rtms:{enabled:true,last_success_at:"2026-10-05T00:00:00+00:00",last_error_code:"RELAY_QUOTA"},
-  onbid:{enabled:false,last_success_at:null,last_error_code:null}
+  onbid:{enabled:false,last_success_at:null,last_error_code:null},
+  juso:{enabled:false,last_success_at:null,last_error_code:null}
 }};
 let ok=true;
 const context = vm.createContext({document:{getElementById:()=>target},Date,
@@ -23,9 +24,13 @@ vm.runInContext(source.slice(start,end),context);
   assert.match(target.textContent,/건축HUB 중계: 꺼짐 · 마지막 성공: 없음 · 최근 오류: 없음/);
   assert.match(target.textContent,/실거래 중계: 켜짐.*최근 오류: RELAY_QUOTA/);
   assert.match(target.textContent,/온비드 중계: 꺼짐 · 마지막 성공: 없음 · 최근 오류: 없음/);
+  assert.match(target.textContent,/주소\(juso\) 중계: 꺼짐 · 마지막 성공: 없음 · 최근 오류: 없음/);
   body.services.onbid = {enabled:true,last_success_at:"2026-10-06T00:00:00+00:00",last_error_code:"RELAY_AUTH"};
   await context.loadPublicApiRelayStatus();
   assert.match(target.textContent,/온비드 중계: 켜짐.*최근 오류: RELAY_AUTH/);
+  body.services.juso = {enabled:true,last_success_at:"2026-10-07T00:00:00+00:00",last_error_code:"RELAY_QUOTA"};
+  await context.loadPublicApiRelayStatus();
+  assert.match(target.textContent,/주소\(juso\) 중계: 켜짐.*최근 오류: RELAY_QUOTA/);
   assert.ok(!/token|serviceKey|https:/.test(target.textContent));
   ok=false;
   await context.loadPublicApiRelayStatus();

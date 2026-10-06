@@ -21,7 +21,7 @@ BLD = registry.BLD_TITLE_URL
 RTMS = sync_batch.RTMS_URL
 SAMPLE = "only-test+/= credential"
 ENV = {
-    "RELAY_ENABLED":"1", "RELAY_USE_BLDG_HUB":"1", "RELAY_USE_RTMS":"1", "RELAY_USE_ONBID":"0",
+    "RELAY_ENABLED":"1", "RELAY_USE_BLDG_HUB":"1", "RELAY_USE_RTMS":"1", "RELAY_USE_ONBID":"0", "RELAY_USE_JUSO":"0",
     "RELAY_BASE_URL":"https://relay.example.test",
     "RELAY_TOKEN":"only-test-realtime-token", "RELAY_TOKEN_BATCH":"only-test-batch-token",
 }
@@ -271,7 +271,7 @@ class PublicApiRelayTest(unittest.TestCase):
         with self.assertRaises(relay.RelayError):
             relay.public_api_get(BLD,{},15)
         data = relay.relay_status()
-        self.assertEqual(set(data),{"bldg_hub","rtms","onbid"})
+        self.assertEqual(set(data),{"bldg_hub","rtms","onbid","juso"})
         row = data["bldg_hub"]
         self.assertEqual(set(row),{"enabled","last_success_at","last_error_code"})
         self.assertTrue(row["enabled"])
@@ -292,7 +292,7 @@ class PublicApiRelayTest(unittest.TestCase):
         self.assertEqual(set(result.get_json()),{
             "ok","services","sections","checked_at","observation_scope",
         })
-        self.assertEqual(set(result.get_json()["services"]),{"bldg_hub","rtms","onbid"})
+        self.assertEqual(set(result.get_json()["services"]),{"bldg_hub","rtms","onbid","juso"})
         self.assertEqual(result.headers["Cache-Control"],"no-store")
 
 

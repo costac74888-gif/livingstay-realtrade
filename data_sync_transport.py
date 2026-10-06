@@ -23,7 +23,7 @@ SECTION_ROUTES = {
     "dsSecGeo": (("kakao", "카카오 주소", "direct"),),
     "dsSecPhotos": (("tourapi", "TourAPI", "direct"),),
     "dsSecTitle": (("bldg_hub", "건축HUB", "relay"),),
-    "dsSecZip": (("juso", "주소·우편번호", "direct"),),
+    "dsSecZip": (("juso", "주소·우편번호", "relay"),),
     "dsSecTx": (
         ("rtms", "실거래", "relay"),
         ("bldg_hub", "건축HUB(분류 시)", "relay"),

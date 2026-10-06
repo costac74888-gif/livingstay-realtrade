@@ -445,7 +445,7 @@ class TourismStatsImporterTests(unittest.TestCase):
         cur = Cursor()
         result = importer.enrich_latest_top100_lodging_buildings(
             cur, Bjdong(),
-            road_to_jibun_fn=lambda _road: {
+            road_to_jibun_fn=lambda _road, **_kwargs: {
                 "admCd": "2811000000", "emdNm": "운서동",
                 "lnbrMnnm": "2955", "lnbrSlno": "74", "mtYn": "0",
             },
@@ -484,7 +484,7 @@ class TourismStatsImporterTests(unittest.TestCase):
         cur = Cursor()
         result = importer.enrich_latest_top100_lodging_buildings(
             cur, Bjdong(),
-            road_to_jibun_fn=lambda _road: {
+            road_to_jibun_fn=lambda _road, **_kwargs: {
                 "admCd": "1114000000", "emdNm": "태평로1가", "lnbrMnnm": "1",
             },
             fetch_title_rows_fn=lambda *_args: rows,

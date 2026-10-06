@@ -80,7 +80,7 @@ def verify(csv_path: str, offset: int = 0, limit: int | None = None):
         road_address = row["road_address"]
         building_name = row["building_name"]
         try:
-            juso = road_to_jibun(road_address)
+            juso = road_to_jibun(road_address, purpose="batch")
             time.sleep(REQUEST_SLEEP)
             if not juso:
                 results.append({"road_address": road_address, "building_name": building_name,

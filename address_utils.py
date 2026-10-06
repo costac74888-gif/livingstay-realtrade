@@ -16,6 +16,8 @@ import os
 import re
 import zipfile
 import requests
+from public_api_client import public_api_get, RelayError, RelayRetryableError
+from secret_redaction import redact_exception
 
 JUSO_API_KEY = os.environ.get("JUSO_API_KEY", "")
 JUSO_URLS = (
@@ -26,7 +28,15 @@ JUSO_URLS = (
 JUSO_URL = JUSO_URLS[0]
 
 
-def road_to_jibun(road_address: str) -> dict | None:
+class JusoRelayConnectionError(requests.ConnectionError):
+    """Fixed-message transient error recognized by existing batch classifiers."""
+
+
+class JusoRelayConfigurationError(RuntimeError):
+    """No remote message, URL, response or credential is retained."""
+
+
+def road_to_jibun(road_address: str, purpose="realtime") -> dict | None:
     """
     도로명주소 문자열을 넣으면 지번주소 관련 정보를 반환한다.
     반환 예: {"siNm":"경기도","sggNm":"가평군","emdNm":"청평면","lnbrMnnm":"123","lnbrSlno":"4", ...}
@@ -54,14 +64,32 @@ def road_to_jibun(road_address: str) -> dict | None:
             # Replit에서 business 호스트 한쪽만 간헐적으로 연결 지연되는
             # 경우가 있어, 연결 장애일 때 동일 JUSO 서비스의 www 호스트로
             # 한 번 전환한다. 정상 응답(검색 결과 없음 포함)은 중복 호출하지 않는다.
-            resp = requests.get(url, params=params, timeout=(5, 20))
+            resp = public_api_get(url, params=params, timeout=(5, 20), purpose=purpose)
             resp.raise_for_status()
             data = resp.json()
             break
+        except RelayRetryableError:
+            # Keep business -> www failover, both through the relay. The final
+            # error's class name must match zip backfill's connection classifier.
+            last_error = JusoRelayConnectionError("중계서버 일시 오류")
+        except RelayError as error:
+            # Raising here bypasses the sibling RequestException handler and
+            # therefore does not dispatch to the other host.
+            if error.code in ("RELAY_AUTH", "RELAY_FORBIDDEN"):
+                message = ("중계 설정 확인 필요" if purpose == "batch"
+                           else "일시적으로 주소 조회를 할 수 없습니다")
+                raise JusoRelayConfigurationError(message) from None
+            message = ("중계서버 호출 한도 도달" if error.code == "RELAY_QUOTA"
+                       else "중계서버 일시 오류")
+            raise JusoRelayConnectionError(message) from None
         except requests.RequestException as error:
             last_error = error
     if data is None:
-        raise last_error
+        # Preserve the direct exception class and existing transient decisions,
+        # but never forward a confmKey-bearing exception/traceback to a caller.
+        if isinstance(last_error, requests.exceptions.JSONDecodeError):
+            raise type(last_error)(redact_exception(last_error, ["JUSO_API_KEY"]), "", 0) from None
+        raise type(last_error)(redact_exception(last_error, ["JUSO_API_KEY"])) from None
 
     juso_list = data.get("results", {}).get("juso", [])
     if not juso_list:

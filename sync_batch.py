@@ -240,7 +240,7 @@ def prepare_master_addresses(region_kw: str | None = None):
     updated = 0
     for row in targets:
         try:
-            juso = road_to_jibun(row["road_address"])
+            juso = road_to_jibun(row["road_address"], purpose="batch")
             if not juso:
                 continue
             si_do = juso.get("siNm", "")

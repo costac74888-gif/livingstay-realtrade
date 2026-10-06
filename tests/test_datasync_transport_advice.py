@@ -68,7 +68,7 @@ class AdviceTests(unittest.TestCase):
             self.assertIn("해결되지 않을 수", advice["reason"])
 
     def test_unsupported_including_permits_never_invents_switches(self):
-        for key in ("dsSecPermits", "dsSecStores", "dsSecZip",
+        for key in ("dsSecPermits", "dsSecStores",
                     "dsSecPhotos", "dsSecGeo", "dsSecBroker", "dsSecCampingImages"):
             advice = self.advice("timeout", key=key)
             self.assertEqual(advice["verdict"], "중계 미지원", key)
@@ -170,7 +170,7 @@ class AdviceTests(unittest.TestCase):
         text = json.dumps(result, ensure_ascii=False)
         for forbidden in (private, address, "serviceKey", "https://", "base_url"):
             self.assertNotIn(forbidden, text)
-        self.assertEqual(set(result["relay_observation"]["services"]), {"rtms", "bldg_hub", "onbid"})
+        self.assertEqual(set(result["relay_observation"]["services"]), {"rtms", "bldg_hub", "onbid", "juso"})
 
     def test_read_board_mocks_local_snapshot_once_readonly_select_and_single_row(self):
         conn = Mock()

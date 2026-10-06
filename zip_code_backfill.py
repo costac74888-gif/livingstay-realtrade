@@ -239,7 +239,7 @@ def _attempt_address(conn, cur, prog, row, road_to_jibun):
     road = row["road_address"]
     clean_road = re.sub(r"\([^)]*\)\s*$", "", road.split(",")[0]).strip()
     try:
-        juso = road_to_jibun(clean_road)
+        juso = road_to_jibun(clean_road, purpose="batch")
         zip_val = (juso.get("zipNo") or "").strip() if juso else ""
         if not zip_val:
             prog["last_id"] = bid

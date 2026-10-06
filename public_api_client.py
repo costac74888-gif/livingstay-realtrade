@@ -21,11 +21,19 @@ SERVICE_PATHS = {
         for name in ("NrgTrade", "RHTrade", "SHTrade", "LandTrade")
     ),
     "onbid": ("/B010003/",),
+    "juso": ("/addrlink/",),
+}
+SERVICE_HOSTS = {
+    "bldg_hub": ("apis.data.go.kr",),
+    "rtms": ("apis.data.go.kr",),
+    "onbid": ("apis.data.go.kr",),
+    "juso": ("business.juso.go.kr", "www.juso.go.kr"),
 }
 SERVICE_SWITCHES = {
     "bldg_hub": "RELAY_USE_BLDG_HUB",
     "rtms": "RELAY_USE_RTMS",
     "onbid": "RELAY_USE_ONBID",
+    "juso": "RELAY_USE_JUSO",
 }
 ERROR_STATUS = {
     "RELAY_AUTH": 401, "RELAY_FORBIDDEN": 403, "RELAY_QUOTA": 429,
@@ -126,10 +134,13 @@ def _fail(service, code, status=None):
 def _valid_target(url):
     parsed = urlsplit(url)
     return (
-        parsed.scheme == "https" and parsed.hostname == "apis.data.go.kr"
-        and parsed.netloc == "apis.data.go.kr"
+        parsed.scheme == "https" and parsed.netloc == parsed.hostname
         and not parsed.fragment and "%" not in parsed.path and ".." not in parsed.path
-        and any(parsed.path.startswith(prefix) for paths in SERVICE_PATHS.values() for prefix in paths)
+        and any(
+            parsed.hostname in SERVICE_HOSTS[service]
+            and any(parsed.path.startswith(prefix) for prefix in paths)
+            for service, paths in SERVICE_PATHS.items()
+        )
         and len(url) <= 8192
     )
 
@@ -137,13 +148,25 @@ def _valid_target(url):
 def public_api_get(url, params, timeout, purpose="realtime"):
     """One HTTP attempt; OFF/disallowed APIs retain requests.get's exact call."""
     try:
-        path = urlsplit(url).path
+        parsed = urlsplit(url)
+        path, host = parsed.path, parsed.hostname
     except ValueError:
-        path = ""
+        path, host = "", None
     service = next(
-        (name for name, prefixes in SERVICE_PATHS.items() if any(path.startswith(p) for p in prefixes)),
+        (name for name, prefixes in SERVICE_PATHS.items()
+         if host in SERVICE_HOSTS[name] and any(path.startswith(p) for p in prefixes)),
         None,
     )
+    if service is None:
+        # A supported path on a spoofed host must be rejected, never silently
+        # sent directly when its switch is ON. Preserve the old guard for HUB,
+        # RTMS and Onbid; unrelated APIs still retain their direct transport.
+        service = next(
+            (name for name, prefixes in SERVICE_PATHS.items()
+             if any(path.startswith(p) for p in prefixes)), None,
+        )
+        if service is None and host in SERVICE_HOSTS["juso"]:
+            service = "juso"
     if service is None or not _enabled(service):
         return requests.get(url, params=params, timeout=timeout)
 
@@ -190,7 +213,8 @@ def public_api_get(url, params, timeout, purpose="realtime"):
             code = None
         _fail(service, code if isinstance(code, str) and code in ERROR_STATUS else "RELAY_INTERNAL", response.status_code)
     # Existing raise_for_status() callers must not print the encoded relay URL.
-    response.url = "https://apis.data.go.kr" + urlsplit(target).path
+    parsed_target = urlsplit(target)
+    response.url = "https://" + parsed_target.hostname + parsed_target.path
     if 200 <= response.status_code < 300:
         _record_status(service)
     return response

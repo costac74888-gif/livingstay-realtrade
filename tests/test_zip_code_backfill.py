@@ -112,7 +112,7 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
         outcome, zip_code, changed = zip_backfill._attempt_address(
             Connection(), Cursor(), progress,
             {"id": 11, "road_address": "서울 테스트로 1"},
-            lambda _address: {"zipNo": "12345"},
+            lambda _address, **_kwargs: {"zipNo": "12345"},
         )
         self.assertEqual((outcome, zip_code, changed), ("ok", "12345", True))
         self.assertIsNone(progress["last_error"])
@@ -136,7 +136,7 @@ class ZipCodeBackfillProgressTests(unittest.TestCase):
 
         provider_calls = []
 
-        def provider(address):
+        def provider(address, **_kwargs):
             provider_calls.append(address)
             return {"zipNo": "12345"}
 

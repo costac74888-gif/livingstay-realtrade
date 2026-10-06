@@ -766,7 +766,7 @@ def enrich_latest_top100_lodging_buildings(
             manual_review += 1
             continue
         try:
-            parcel = road_to_jibun_fn(road_address)
+            parcel = road_to_jibun_fn(road_address, purpose="batch")
         except Exception as exc:
             _set_lodging_match_review(
                 cur, stat["id"], "road_to_jibun_failed", {"error": type(exc).__name__}
