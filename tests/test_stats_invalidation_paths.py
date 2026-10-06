@@ -375,6 +375,8 @@ class AppMutationInvalidationTests(unittest.TestCase):
             "count": 1586,
             "by_type": {"생활": 700, "관광": 200, "준공전": 16, "미분류": 670},
             "tx_count": 777,
+            "auction_building_count": 0,
+            "show_unclassified_legend": True,
         })
 
     def test_cold_stats_summary_groups_sinhuk_alias_as_living(self):

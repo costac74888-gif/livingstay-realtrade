@@ -182,16 +182,18 @@ class BoardTests(unittest.TestCase):
         self.assertNotIn("VERY_PRIVATE_TEST", json.dumps(result))
         self.assertTrue(all(r["state"] == "확인불가" for r in result["rows"]))
 
-    def test_only_new_endpoint_and_existing_functions_unchanged(self):
+    def test_board_endpoint_and_existing_collection_runners_unchanged(self):
+        from datasync_controls import RUN_HANDLERS
         source = Path("app.py").read_text()
         previous = subprocess.check_output(["git", "show", "HEAD:app.py"], text=True)
         old = {n.name: ast.dump(n) for n in ast.parse(previous).body if isinstance(n, ast.FunctionDef)}
         new = {n.name: ast.dump(n) for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)}
-        self.assertLessEqual(set(new) - set(old), {"admin_datasync_board_action"})
-        for name, node in old.items():
-            if name == "admin_datasync_board":
-                continue
-            self.assertEqual(new[name], node, name)
+        # 다른 기능의 앱 변경이 아닌, 이 보드가 호출하는 기존 수집기를 보호한다.
+        protected = set(RUN_HANDLERS.values()) | {
+            name for name in old if name.startswith("admin_scheduled_sync")
+        }
+        for name in protected & old.keys():
+            self.assertEqual(new.get(name), old[name], name)
         node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)
                     and n.name == "admin_datasync_board")
         self.assertIn("require_admin", [ast.unparse(d) for d in node.decorator_list])

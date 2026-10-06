@@ -425,6 +425,11 @@
               const value = row.type === "캠핑" ? row.camping_facility_count : row.building_count;
               return `<td style="text-align:right;padding:4px 8px;">${n(value)}</td>`;
             } },
+          { label: "공매건물", key: "auction_building_count", fmt: (row) => {
+              const value = row.auction_building_count;
+              const formatted = value == null ? "-" : Number(value).toLocaleString();
+              return `<td title="현재 공개 공매에 연결된 건물마스터 수, 동일 건물 및 회차 중복 제외" style="text-align:right;padding:4px 8px;">${formatted}</td>`;
+            } },
           { label: "호실수(사이트수)", key: "units", fmt: (row) => row.type === "캠핑"
               ? `<td title="정상영업 캠핑시설의 일반·자동차·글램핑·카라반 사이트수 합계" style="text-align:right;padding:4px 8px;">${n(row.camping_site_count)}</td>`
               : row.type === "일반"

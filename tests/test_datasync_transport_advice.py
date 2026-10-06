@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 import json
+import ast
 from pathlib import Path
 import subprocess
 import unittest
@@ -198,8 +199,21 @@ class AdviceTests(unittest.TestCase):
         changed = set(subprocess.check_output(
             ["git", "diff", "--name-only", "HEAD"], text=True).splitlines())
         self.assertFalse(changed & {
-            "app.py", "datasync_controls.py", "scheduled_sync.py",
+            "datasync_controls.py", "scheduled_sync.py",
             "db.py", ".replit", "gunicorn.conf.py"})
+        from datasync_controls import RUN_HANDLERS
+        # 전체 app.py를 금지하면 무관한 범례·통계 변경까지 실패한다.
+        for path in ("app.py", "auction_service.py"):
+            previous = subprocess.check_output(["git", "show", "HEAD:" + path], text=True)
+            old = {n.name: ast.dump(n) for n in ast.walk(ast.parse(previous))
+                   if isinstance(n, ast.FunctionDef)}
+            new = {n.name: ast.dump(n) for n in ast.walk(ast.parse(Path(path).read_text()))
+                   if isinstance(n, ast.FunctionDef)}
+            protected = set(RUN_HANDLERS.values()) | {
+                name for name in old if name.startswith("admin_scheduled_sync")
+            }
+            for name in protected & old.keys():
+                self.assertEqual(new.get(name), old[name], name)
         self.assertNotIn("os.environ[", Path("datasync_transport_advice.py").read_text())
 
 

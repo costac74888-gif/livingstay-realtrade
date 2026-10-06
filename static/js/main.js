@@ -8924,7 +8924,21 @@ async function loadBuildingCountLabel(){
   const countEl = document.getElementById("mapCount");
   try {
     const res = await fetch("/api/building-count");
+    if (!res.ok) throw new Error("건물 건수 조회 실패");
     const d = await res.json();
+    const unclassified = document.querySelector('.map-legend .lg[data-lodging-type="미분류"]');
+    if (unclassified) unclassified.hidden = d.show_unclassified_legend !== true;
+    const auctionLegend = document.querySelector(".map-legend [data-auction-layer]");
+    if (auctionLegend && typeof d.auction_building_count === "number") {
+      let label = auctionLegend.querySelector(".lg-count");
+      if (!label) {
+        label = document.createElement("span");
+        label.className = "lg-count";
+        auctionLegend.appendChild(label);
+      }
+      label.textContent = d.auction_building_count.toLocaleString("ko-KR");
+      auctionLegend.title = "현재 공개 공매에 연결된 건물마스터 수 · 같은 건물의 물건·회차 중복 제외";
+    }
 
     // 타이틀: "1,399건/실거래 10,726건"
     if (countEl && typeof d.count === "number") {

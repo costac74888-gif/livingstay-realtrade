@@ -1,0 +1,73 @@
+"""공매 건물 집계·범례 권한: 공급자 호출·DB 쓰기 없이 검사."""
+import os
+import unittest
+from unittest.mock import MagicMock, patch
+
+import app as web
+from auction_domain import CURRENT_SQL
+from auction_service import auction_building_stats
+
+
+class AuctionBuildingStatsTests(unittest.TestCase):
+    def test_shared_query_counts_distinct_existing_buildings(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = [{"t": "생활", "n": 2}, {"t": "일반", "n": 1}]
+        self.assertEqual(auction_building_stats(cur), {
+            "count": 3, "by_type": {"생활": 2, "일반": 1},
+        })
+        sql = cur.execute.call_args.args[0]
+        self.assertTrue(sql.startswith(CURRENT_SQL))
+        self.assertIn("COUNT(DISTINCT b.id)", sql)
+        self.assertIn("JOIN master_buildings b ON b.id=a.master_building_id", sql)
+        self.assertIn("b.lodging_type IN ('생활','생숙')", sql)
+        self.assertEqual(cur.execute.call_count, 1)
+
+    def test_empty_is_zero_not_unknown(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = []
+        self.assertEqual(auction_building_stats(cur), {"count": 0, "by_type": {}})
+
+    def test_preview_and_admin_only_not_query_string(self):
+        cases = [
+            ("localhost", "0", False, True),
+            ("example.replit.dev", "0", False, True),
+            ("homenstay.com", "0", False, False),
+            ("localhost", "1", False, False),
+            ("homenstay.com", "1", False, False),
+            ("homenstay.com", "1", True, True),
+        ]
+        for host, deployment, admin, expected in cases:
+            with self.subTest(host=host, deployment=deployment, admin=admin), \
+                    patch.dict(os.environ, {"REPLIT_DEPLOYMENT": deployment}), \
+                    web.app.test_request_context("/?admin=true&preview=1", base_url="https://" + host):
+                web.session["admin"] = admin
+                self.assertEqual(web._show_unclassified_legend(), expected)
+
+    def test_admin_column_does_not_change_master_totals_or_cached_rows(self):
+        source = {"ok": True, "rows": [
+            {"type": "전체", "building_count": 10},
+            {"type": "생활", "building_count": 7},
+            {"type": "일반", "building_count": 3},
+        ]}
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        client = web.app.test_client()
+        with client.session_transaction() as session:
+            session["admin"] = True
+        with patch.object(web, "get_conn", return_value=connection), \
+                patch.object(web, "_cached_master_building_count", return_value=10), \
+                patch.object(web, "_live_master_building_count", return_value=10), \
+                patch.object(web, "_lodging_full_stats_payload", side_effect=lambda: web.jsonify(source)), \
+                patch("auction_service.auction_building_stats", return_value={
+                    "count": 2, "by_type": {"생활": 2},
+                }), patch.object(web.limiter, "enabled", False):
+            response = client.get("/api/admin/buildings/full-stats")
+        self.assertEqual(response.status_code, 200)
+        rows = response.get_json()["rows"]
+        self.assertEqual([r["auction_building_count"] for r in rows], [2, 2, 0])
+        self.assertEqual([r["building_count"] for r in rows], [10, 7, 3])
+        self.assertNotIn("auction_building_count", source["rows"][0])
+
+
+if __name__ == "__main__":
+    unittest.main()

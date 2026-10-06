@@ -720,6 +720,11 @@ def _serve_app_shell(building_id=None, listing_id=None):
         _html.escape(tour_api_key, quote=True),
     )
     html = html.replace("{{KAKAO_SDK_V}}", SERVER_BOOT_V)
+    if _show_unclassified_legend():
+        html = re.sub(
+            r'(<span\b(?=[^>]*data-lodging-type="미분류")[^>]*?)\s+hidden\b',
+            r'\1', html,
+        )
     html = _inject_asset_version(html)
     html = _inject_ga4(html)
     resp = Response(html, mimetype="text/html")
@@ -5319,10 +5324,28 @@ def get_building_count():
     total = sum(by_type.values())
     cur.execute("SELECT COUNT(*) AS c FROM transactions WHERE transaction_scope = 'unit'")
     tx_count = int(cur.fetchone()["c"])
+    from auction_service import auction_building_stats
+    auction_stats = auction_building_stats(cur)
 
     cur.close()
     conn.close()
-    return jsonify({"count": total, "by_type": by_type, "tx_count": tx_count})
+    response = jsonify({
+        "count": total, "by_type": by_type, "tx_count": tx_count,
+        "auction_building_count": auction_stats["count"],
+        "show_unclassified_legend": _show_unclassified_legend(),
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _show_unclassified_legend():
+    """개발 프리뷰와 인증된 관리자만 미분류 범례를 노출한다."""
+    host = request.host.partition(":")[0].lower()
+    preview = (
+        os.environ.get("REPLIT_DEPLOYMENT") != "1"
+        and (host in {"localhost", "127.0.0.1"} or host.endswith(".replit.dev"))
+    )
+    return bool(session.get("admin")) or preview
 
 
 @app.route("/api/regions")
@@ -24196,7 +24219,20 @@ def admin_buildings_full_stats():
         and abs(live_count - cached_count) >= 50
     ):
         _MASTER_STATS_NEEDS_REFRESH.set()
-    return _lodging_full_stats_payload()
+    payload = _lodging_full_stats_payload().get_json() or {}
+    from auction_service import auction_building_stats
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            auction_stats = auction_building_stats(cur)
+    # 공매는 용도가 아니므로 기존 숙박 합계·캐시를 수정하지 않고 별도 열로 붙인다.
+    payload["rows"] = [
+        dict(row, auction_building_count=(
+            auction_stats["count"] if row["type"] == "전체"
+            else auction_stats["by_type"].get(row["type"], 0)
+        ))
+        for row in payload.get("rows", [])
+    ]
+    return jsonify(payload)
 
 
 @app.route("/api/v1/d/3f7")
