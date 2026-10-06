@@ -40,6 +40,7 @@ class ControlsTests(unittest.TestCase):
         cls.app, cls.scope = app, scope
 
     def setUp(self):
+        self.enterContext(patch("datasync_board.relay_status", return_value={}))
         self.client = self.app.test_client()
         with self.client.session_transaction() as state:
             state["admin"] = True

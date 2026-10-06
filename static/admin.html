@@ -224,6 +224,26 @@
     .ds-board-toast{display:none;padding:10px 14px;border-bottom:1px solid var(--dsb-line);font-size:12px;line-height:1.5;font-weight:700}
     .ds-board-toast.is-visible{display:block}.ds-board-toast.is-success{background:#eaf5ed;color:#267044}.ds-board-toast.is-error{background:#fff1ee;color:#9b342b}
     .ds-board-stop-note{margin:8px 14px}
+    .ds-board-advice-cell{min-width:220px;max-width:330px}
+    .ds-board-advice-badge{display:inline-flex;align-items:center;border:0;border-radius:999px;padding:4px 8px;font-family:inherit;font-size:11px;font-weight:700;line-height:1.35;text-align:left}
+    button.ds-board-advice-badge{min-height:36px;cursor:pointer}
+    .ds-board-advice-badge.is-review{background:#fff2d6;color:#805914}
+    .ds-board-advice-badge.is-error{background:#fde9e6;color:#a2372d}
+    .ds-board-advice-badge.is-neutral{background:#eef0f2;color:#65717b}
+    .ds-board-advice-badge.is-ready{background:#e6f3e9;color:#267044}
+    .ds-board-advice-badge:focus-visible{outline:2px solid #b4863f;outline-offset:2px}
+    .ds-board-advice-reason{display:block;margin-top:4px;color:var(--dsb-muted);font-size:11px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ds-board-relay-observation{padding:8px 14px;background:#f7f9f7;border-bottom:1px solid var(--dsb-line);color:#53616a;font-size:11px;line-height:1.55}
+    .ds-board-relay-observation strong{color:#34404c}
+    .ds-board-relay-service{display:inline-block;margin-right:14px}
+    .ds-board-guidance{display:none;margin:12px 14px 14px;padding:12px 14px;border:1px solid #e7d7b4;border-left:4px solid #b4863f;border-radius:7px;background:#fffaf0;color:#34404c;font-size:12px;line-height:1.55}
+    .ds-board-guidance.is-visible{display:block}
+    .ds-board-guidance h4{margin:0 0 5px;font-size:13px}
+    .ds-board-guidance p{margin:4px 0}
+    .ds-board-guidance ol{margin:7px 0 0;padding-left:20px}
+    .ds-board-guidance li{margin:3px 0}
+    .ds-board-guidance-close{float:right;border:1px solid #d8c9a8;border-radius:5px;background:#fffaf0;color:#59636a;padding:3px 7px;font:700 11px inherit;cursor:pointer}
+    .ds-board-guidance-close:focus-visible{outline:2px solid #b4863f;outline-offset:2px}
     @media(max-width:600px){.ds-board-retry{min-width:180px;flex-wrap:wrap}.ds-board-retry-copy{min-width:100%}}
     @media(max-width:600px){.ds-board-head{padding:12px;align-items:flex-start}.ds-board-title{font-size:16px}.ds-board-intro{max-width:42ch}.ds-board-meta{padding:8px 12px}.ds-board-table{min-width:1060px}.ds-board-error{padding:9px 12px}}
   </style>
@@ -5622,6 +5642,122 @@
       toast.setAttribute("role", isSuccess ? "status" : "alert");
     }
 
+    function dataSyncAdvice(row) {
+      const advice = row && row.transport_advice && typeof row.transport_advice === "object"
+        ? row.transport_advice : {};
+      const verdict = typeof advice.verdict === "string" && advice.verdict.trim()
+        ? advice.verdict : "판단불가";
+      let tone = "is-neutral";
+      if (verdict === "중계 전환 검토") tone = "is-review";
+      else if (verdict === "중계 사용 중 - 오류 있음") tone = "is-error";
+      else if (verdict === "중계 사용 중" || verdict === "중계 전환 불필요" || verdict === "정상") tone = "is-ready";
+      return { ...advice, verdict, tone,
+        reason: typeof advice.reason === "string" && advice.reason.trim()
+          ? advice.reason : "연결 판단 정보를 확인할 수 없습니다." };
+    }
+
+    function updateDataSyncBoardCounts(board) {
+      const states = Array.from(board.querySelectorAll(".ds-board-state"));
+      const alertCount = states.filter((badge) => ["실패", "오래됨", "일시중단"].includes(badge.textContent)).length;
+      const stateSummary = board.querySelector(".ds-board-summary");
+      if (stateSummary) stateSummary.textContent = `실패·오래됨·일시중단 ${alertCount}건`;
+      const adviceBadges = Array.from(board.querySelectorAll(".ds-board-advice-badge"));
+      const reviewCount = adviceBadges.filter((badge) => badge.dataset.verdict === "중계 전환 검토").length;
+      const relayErrorCount = adviceBadges.filter((badge) => badge.dataset.verdict === "중계 사용 중 - 오류 있음").length;
+      const reviewSummary = board.querySelector(".ds-board-review-count");
+      const relayErrorSummary = board.querySelector(".ds-board-relay-error-count");
+      if (reviewSummary) reviewSummary.textContent = `중계 전환 검토 ${reviewCount}건`;
+      if (relayErrorSummary) relayErrorSummary.textContent = `중계 오류 ${relayErrorCount}건`;
+    }
+
+    function openDataSyncAdvicePanel(row, shouldScroll) {
+      const board = document.getElementById("dsBoard");
+      const panel = board && board.querySelector(".ds-board-guidance");
+      if (!panel || !row) return;
+      const advice = dataSyncAdvice(row);
+      panel.dataset.rowKey = row.key == null ? "" : String(row.key);
+      panel.replaceChildren();
+      const close = document.createElement("button");
+      close.type = "button";
+      close.className = "ds-board-guidance-close";
+      close.textContent = "안내 닫기";
+      close.addEventListener("click", () => {
+        panel.classList.remove("is-visible");
+        panel.setAttribute("aria-hidden", "true");
+      });
+      panel.appendChild(close);
+      const heading = document.createElement("h4");
+      heading.textContent = `${String(row.name || "데이터")} · 연결 판단 안내`;
+      panel.appendChild(heading);
+      const verdictLine = document.createElement("p");
+      verdictLine.textContent = `판단: ${advice.verdict}`;
+      panel.appendChild(verdictLine);
+      const reasonLine = document.createElement("p");
+      reasonLine.textContent = advice.reason;
+      panel.appendChild(reasonLine);
+      const serviceLine = document.createElement("p");
+      serviceLine.textContent = `서비스: ${String(advice.service_label || advice.service || "확인 불가")}`;
+      panel.appendChild(serviceLine);
+      const failureLine = document.createElement("p");
+      failureLine.textContent = `오류 요약: ${String(advice.failure_summary || "없음")}`;
+      panel.appendChild(failureLine);
+      const consecutiveLine = document.createElement("p");
+      consecutiveLine.textContent = `연속 상태: ${String(advice.consecutive_note || "추가 안내 없음")}`;
+      panel.appendChild(consecutiveLine);
+      const list = document.createElement("ol");
+      const steps = Array.isArray(advice.steps) ? advice.steps : [];
+      steps.forEach((step) => {
+        const item = document.createElement("li");
+        item.textContent = step == null ? "안내를 확인할 수 없습니다." : String(step);
+        list.appendChild(item);
+      });
+      if (!steps.length) {
+        const item = document.createElement("li");
+        item.textContent = "서버에서 제공하는 연결 판단 안내가 없습니다.";
+        list.appendChild(item);
+      }
+      panel.appendChild(list);
+      panel.classList.add("is-visible");
+      panel.setAttribute("aria-hidden", "false");
+      if (shouldScroll !== false) {
+        panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        panel.focus({ preventScroll: true });
+      }
+    }
+
+    function updateDataSyncRelayObservation(observation) {
+      const board = document.getElementById("dsBoard");
+      const target = board && board.querySelector(".ds-board-relay-observation");
+      if (!target) return;
+      if (!observation || typeof observation !== "object") {
+        target.textContent = "현재 웹 서버 중계 관측 정보를 확인할 수 없습니다. 정기 실행 서버 설정은 별도 확인 필요";
+        return;
+      }
+      const services = observation.services && typeof observation.services === "object" ? observation.services : {};
+      const makeServiceText = (label, service) => {
+        const record = service && typeof service === "object" ? service : {};
+        const usage = record.enabled === true ? "중계 사용 중" : record.enabled === false ? "중계 미사용" : "사용 여부 확인 불가";
+        const success = formatDataSyncBoardTime(record.last_success_at);
+        const code = record.last_error_code == null || record.last_error_code === "" ? "없음" : String(record.last_error_code);
+        const errorTime = formatDataSyncBoardTime(record.last_error_at);
+        return `${label}: ${usage} · 마지막 성공 ${success} · 마지막 오류 코드 ${code} (오류 시각 ${record.last_error_at ? errorTime : "미기록"})`;
+      };
+      const content = document.createElement("div");
+      const heading = document.createElement("strong");
+      heading.textContent = "현재 웹 서버 중계 관측";
+      content.appendChild(heading);
+      const serviceLine = document.createElement("div");
+      serviceLine.className = "ds-board-relay-services";
+      serviceLine.textContent = `${makeServiceText("건축HUB", services.bldg_hub)}　${makeServiceText("실거래", services.rtms)}`;
+      content.appendChild(serviceLine);
+      const scope = document.createElement("div");
+      const scopeNote = typeof observation.scope_note === "string" ? observation.scope_note : "";
+      scope.textContent = scopeNote.includes("정기 실행 서버 설정은 별도 확인 필요")
+        ? scopeNote : `${scopeNote ? `${scopeNote} · ` : ""}정기 실행 서버 설정은 별도 확인 필요`;
+      content.appendChild(scope);
+      target.replaceChildren(content);
+    }
+
     async function dataSyncBoardFetch(url, options, board) {
       const controller = new AbortController();
       dataSyncBoardControllers.add(controller);
@@ -5660,11 +5796,16 @@
         const anchor = anchorId ? document.getElementById(anchorId) : null;
         if (anchor && anchor.isConnected) anchor.scrollIntoView({ behavior: "smooth", block: "start" });
       };
-      tr.addEventListener("click", goToCard);
+      tr.addEventListener("click", () => {
+        const advice = dataSyncAdvice(row);
+        if (advice.verdict === "중계 전환 검토") openDataSyncAdvicePanel(row, false);
+        goToCard();
+      });
       tr.addEventListener("keydown", (event) => {
         if (event.target !== tr) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
+          if (dataSyncAdvice(row).verdict === "중계 전환 검토") openDataSyncAdvicePanel(row, false);
           goToCard();
         }
       });
@@ -5698,6 +5839,29 @@
       else if (row.route === "직접" || row.route === "direct") routeLabel = "직접";
       else if (row.route === null && row.route_note) routeLabel = "해당 없음";
       addCell(routeLabel, "", row.route_note || "");
+
+      const advice = dataSyncAdvice(row);
+      const adviceCell = document.createElement("td");
+      adviceCell.className = "ds-board-advice-cell";
+      const adviceButton = document.createElement(advice.verdict === "중계 전환 검토" ? "button" : "span");
+      if (adviceButton.tagName === "BUTTON") adviceButton.type = "button";
+      adviceButton.className = `ds-board-advice-badge ${advice.tone}`;
+      adviceButton.dataset.verdict = advice.verdict;
+      adviceButton.textContent = advice.verdict;
+      if (adviceButton.tagName === "BUTTON") {
+        adviceButton.setAttribute("aria-label", `${String(row.name || "데이터")} 연결 판단 안내 열기: ${advice.verdict}`);
+        adviceButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openDataSyncAdvicePanel(row);
+        });
+      }
+      adviceCell.appendChild(adviceButton);
+      const adviceReason = document.createElement("span");
+      adviceReason.className = "ds-board-advice-reason";
+      adviceReason.textContent = advice.reason;
+      adviceReason.title = advice.reason;
+      adviceCell.appendChild(adviceReason);
+      tr.appendChild(adviceCell);
 
       const retryCell = document.createElement("td");
       const retry = document.createElement("div");
@@ -5746,7 +5910,7 @@
       return tr;
     }
 
-    function updateDataSyncBoardRow(row) {
+    function updateDataSyncBoardRow(row, observation) {
       const board = document.getElementById("dsBoard");
       if (!dataSyncBoardIsCurrent(board) || !row || row.key == null) return;
       const current = Array.from(board.querySelectorAll(".ds-board-row")).find((tr) => tr.dataset.key === String(row.key));
@@ -5754,11 +5918,13 @@
       if (current && replacement) {
         replacement.dataset.key = String(row.key);
         current.replaceWith(replacement);
-        const alertCount = Array.from(board.querySelectorAll(".ds-board-state"))
-          .filter((badge) => ["실패", "오래됨", "일시중단"].includes(badge.textContent)).length;
-        const summary = board.querySelector(".ds-board-summary");
-        if (summary) summary.textContent = `실패·오래됨·일시중단 ${alertCount}건`;
+        updateDataSyncBoardCounts(board);
+        const panel = board.querySelector(".ds-board-guidance");
+        if (panel && panel.classList.contains("is-visible") && panel.dataset.rowKey === String(row.key)) {
+          openDataSyncAdvicePanel(row, false);
+        }
       }
+      if (observation) updateDataSyncRelayObservation(observation);
     }
 
     async function runDataSyncBoardAction(row) {
@@ -5865,7 +6031,8 @@
           if (!dataSyncBoardIsCurrent(board) || Date.now() >= deadline) return;
           if (dataSyncBoardRevision === startingRevision && data && data.ok === true && Array.isArray(data.rows)) {
             const latest = data.rows.find((candidate) => candidate && String(candidate.key) === key);
-            if (latest) updateDataSyncBoardRow(latest);
+            if (latest) updateDataSyncBoardRow(latest, data.relay_observation);
+            else if (data.relay_observation) updateDataSyncRelayObservation(data.relay_observation);
           }
         } catch (_) {
           // Polling is best-effort; keep the visible action state and retry on the next tick.
@@ -5897,16 +6064,16 @@
         if (!current()) return;
         if (!data || data.ok !== true || !Array.isArray(data.rows)) throw new Error("응답 형식을 확인할 수 없습니다.");
         dataSyncBoardRevision++;
-        const alertCount = data.rows.filter((row) => row && ["실패", "오래됨", "일시중단"].includes(row.state)).length;
         const summary = board.querySelector(".ds-board-summary");
-        if (summary) summary.textContent = `실패·오래됨·일시중단 ${alertCount}건`;
+        if (summary) summary.textContent = `실패·오래됨·일시중단 ${data.rows.filter((row) => row && ["실패", "오래됨", "일시중단"].includes(row.state)).length}건`;
+        updateDataSyncRelayObservation(data.relay_observation);
         if (timeBox) timeBox.textContent = `마지막 갱신 ${formatDataSyncBoardTime(data.checked_at)}`;
         const fragment = document.createDocumentFragment();
         if (!data.rows.length) {
           const tr = document.createElement("tr");
           const td = document.createElement("td");
           td.className = "ds-board-empty";
-          td.colSpan = 7;
+          td.colSpan = 8;
           td.textContent = "표시할 동기화 데이터가 없습니다.";
           tr.appendChild(td);
           fragment.appendChild(tr);
@@ -5918,6 +6085,12 @@
           if (tr) fragment.appendChild(tr);
         });
         if (body) body.replaceChildren(fragment);
+        updateDataSyncBoardCounts(board);
+        const panel = board.querySelector(".ds-board-guidance");
+        if (panel && panel.classList.contains("is-visible") && panel.dataset.rowKey) {
+          const refreshed = data.rows.find((row) => row && String(row.key) === panel.dataset.rowKey);
+          if (refreshed) openDataSyncAdvicePanel(refreshed, false);
+        }
       } catch (_) {
         if (!current()) return;
         if (errorBox) {
@@ -5964,16 +6137,18 @@
               <div><h3 class="ds-board-title">데이터 동기화 한눈에 보기</h3><p class="ds-board-intro">현재 서버가 연결된 데이터베이스와 런타임 관측입니다. 별도 예약 서버의 중계 ON 상태를 확인하는 표시는 아닙니다.</p></div>
               <button class="ds-board-refresh" type="button">새로고침</button>
             </div>
-            <div class="ds-board-meta"><strong class="ds-board-summary" aria-live="polite">실패·오래됨·일시중단 현황을 불러오는 중</strong><span class="ds-board-time">마지막 갱신 확인 중</span></div>
+            <div class="ds-board-meta"><strong class="ds-board-summary" aria-live="polite">실패·오래됨·일시중단 현황을 불러오는 중</strong><span class="ds-board-review-count">중계 전환 검토 확인 중</span><span class="ds-board-relay-error-count">중계 오류 확인 중</span><span class="ds-board-time">마지막 갱신 확인 중</span></div>
             <div class="ds-board-toast" role="status" aria-live="polite"></div>
             <p class="ds-board-control-note ds-board-stop-note">중지 버튼 없음: 기존 중지 경로가 없어 실행 중 작업은 이 표에서 중지할 수 없습니다.</p>
             <div class="ds-board-error" role="alert"></div>
+            <div class="ds-board-relay-observation" role="status" aria-live="polite">현재 웹 서버 중계 관측을 불러오는 중 · 정기 실행 서버 설정은 별도 확인 필요</div>
             <div class="ds-board-scroll" tabindex="0" aria-label="동기화 현황 표, 좌우로 스크롤할 수 있습니다">
               <table class="ds-board-table">
-                <thead><tr><th scope="col">데이터</th><th scope="col">상태</th><th scope="col">마지막 성공</th><th scope="col">오늘 호출 / 한도</th><th scope="col">연결 방식</th><th scope="col">다시 실행</th><th scope="col">지금 할 일</th></tr></thead>
-                <tbody class="ds-board-body"><tr><td class="ds-board-empty" colspan="7">동기화 현황을 불러오는 중입니다.</td></tr></tbody>
+                <thead><tr><th scope="col">데이터</th><th scope="col">상태</th><th scope="col">마지막 성공</th><th scope="col">오늘 호출 / 한도</th><th scope="col">연결 방식</th><th scope="col">연결 판단</th><th scope="col">다시 실행</th><th scope="col">지금 할 일</th></tr></thead>
+                <tbody class="ds-board-body"><tr><td class="ds-board-empty" colspan="8">동기화 현황을 불러오는 중입니다.</td></tr></tbody>
               </table>
             </div>
+            <section class="ds-board-guidance" tabindex="-1" aria-label="연결 판단 안내" aria-hidden="true"></section>
           </section>
           <div class="ds-relay-toolbar">
             <p id="publicApiRelayStatus" class="legal-admin-hint" role="status" aria-live="polite">중계 상태 확인 중…</p>

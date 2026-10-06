@@ -80,14 +80,14 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       const count = fixture.rows.filter(r=>["실패","오래됨","일시중단"].includes(r.state)).length;
       assert.match(await page.locator(".ds-board-summary").innerText(), new RegExp(`${count}건`));
       assert.match(await page.locator(".ds-board-time").innerText(), /KST/);
-      assert.match(await page.locator(".ds-board-row").first().locator("td").nth(5).innerText(), /자동/);
-      assert.match(await page.locator('.ds-board-row[data-key="dsSecTxBackfill"]').locator("td").nth(5).innerText(), /수동/);
+      assert.match(await page.locator(".ds-board-row").first().locator("td").nth(6).innerText(), /자동/);
+      assert.match(await page.locator('.ds-board-row[data-key="dsSecTxBackfill"]').locator("td").nth(6).innerText(), /수동/);
       assert.match(await page.locator(".ds-board-row").first().locator("td").nth(3).innerText(), /확인 불가/);
       for (let i=0;i<7;i++) {
         const row = page.locator(".ds-board-row").nth(i);
         assert.equal(await row.locator("td").nth(1).innerText(), states[i]);
         const needsAction = ["오래됨","일시중단","실패"].includes(states[i]);
-        assert.equal(await row.locator("td").nth(6).innerText(), needsAction ? fixture.rows[i].action : "—");
+        assert.equal(await row.locator("td").nth(7).innerText(), needsAction ? fixture.rows[i].action : "—");
       }
       assert.equal(await page.locator("#dsBoard img, #dsBoard script").count(), 0);
       assert.equal(await page.evaluate(()=>window.BAD), undefined);

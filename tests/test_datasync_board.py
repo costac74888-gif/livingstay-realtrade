@@ -23,6 +23,9 @@ def row(meta, anchor="dsSecTx", **kwargs):
 
 
 class BoardTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch("datasync_board.relay_status", return_value={}))
+
     def test_all_real_cards_and_no_unknown_fabrication(self):
         html = Path("static/admin.html").read_text()
         import re

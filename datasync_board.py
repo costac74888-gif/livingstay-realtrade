@@ -6,7 +6,7 @@ import json
 from zoneinfo import ZoneInfo
 
 from data_sync_transport import SECTION_ROUTES
-from public_api_client import _enabled
+from public_api_client import _enabled, relay_status
 from quota_policy import PROVIDER_QUOTAS
 from datasync_controls import controls_for, shared_names
 
@@ -321,7 +321,7 @@ def _action(state, route, error):
     return ""
 
 
-def build_board(meta, *, now=None, enabled=None, unavailable=False):
+def build_board(meta, *, now=None, enabled=None, unavailable=False, relay_snapshot=None):
     """Pure projection for offline tests and the one new endpoint."""
     now = _time(now) or datetime.now(UTC)
     if enabled is None:
@@ -416,8 +416,10 @@ def build_board(meta, *, now=None, enabled=None, unavailable=False):
         })
     for row in rows:
         row["shared_running"] = shared_names(rows, row["key"])
-    return {"ok": True, "rows": rows, "checked_at": now.astimezone(KST).isoformat(),
-            "scope": "current_database_and_runtime"}
+    from datasync_transport_advice import enrich_board
+    result = {"ok": True, "rows": rows, "checked_at": now.astimezone(KST).isoformat(),
+              "scope": "current_database_and_runtime"}
+    return enrich_board(result, ITEMS, meta, now, relay_snapshot, unavailable, enabled)
 
 
 def metadata_keys():
@@ -437,6 +439,11 @@ def read_board(get_conn, key=None):
     conn = cur = None
     result = None
     try:
+        # Existing local telemetry only. Never call a provider or change switches.
+        snapshot = relay_status()
+    except Exception:
+        snapshot = {}
+    try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("SET TRANSACTION READ ONLY")
@@ -445,7 +452,7 @@ def read_board(get_conn, key=None):
         meta = {row["key"]: row for row in cur.fetchall()}
     except Exception:
         # Do not log or send exceptions: DB/API errors may contain credentials.
-        result = build_board({}, unavailable=True)
+        result = build_board({}, unavailable=True, relay_snapshot=snapshot)
     finally:
         if conn is not None:
             for cleanup in (conn.rollback, cur.close if cur is not None else None, conn.close):
@@ -456,7 +463,7 @@ def read_board(get_conn, key=None):
                         # A broken connection must not expose driver exceptions.
                         pass
     if result is None:
-        result = build_board(meta)
+        result = build_board(meta, relay_snapshot=snapshot)
     if key is not None:
         result["rows"] = [r for r in result["rows"] if r["key"] == key]
     return result
