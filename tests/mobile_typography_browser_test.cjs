@@ -109,6 +109,17 @@ async function main() {
       await fixture(page);
       await page.goto(origin + "/auctions", { waitUntil: "domcontentloaded" });
       await page.locator(".auction-row").first().waitFor();
+      const addressToggle = page.locator("[data-auction-address-toggle]").first();
+      const roadAddress = page.locator(".auction-address").first();
+      assert.equal(await roadAddress.isVisible(), false, "Road address starts collapsed");
+      const initialUrl = page.url();
+      const collapsedHeight = (await page.locator(".auction-row").first().boundingBox()).height;
+      await addressToggle.click();
+      assert.equal(page.url(), initialUrl, "Address toggle must not navigate");
+      assert.equal(await roadAddress.isVisible(), true);
+      assert.equal(await addressToggle.getAttribute("aria-expanded"), "true");
+      assert.ok((await page.locator(".auction-row").first().boundingBox()).height > collapsedHeight,
+        "Hiding the address must reduce the card height");
       if (width < 768) {
         await fontAtLeast(page, ".auction-title", 17);
         await fontAtLeast(page, ".auction-prices .auction-minimum b", 18);
@@ -133,6 +144,11 @@ async function main() {
           path: "screenshots/mobile-typography/auction-list-390.png", fullPage: true,
         });
       }
+      await addressToggle.focus();
+      await page.keyboard.press("Enter");
+      assert.equal(await roadAddress.isVisible(), false, "Keyboard can collapse the address");
+      assert.equal(await addressToggle.getAttribute("aria-expanded"), "false");
+      assert.equal(page.url(), initialUrl);
       await page.goto(origin + `/?auction=${auctionId}`, { waitUntil: "domcontentloaded" });
       await page.locator("#bTabAuctions").waitFor({ state: "visible" });
       await page.locator("#bTabAuctions").click();

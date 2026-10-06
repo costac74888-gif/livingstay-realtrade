@@ -25,6 +25,17 @@
   function initList(){
     const body=$("auctionResults"); if(!body)return;
     body.addEventListener("click",event=>{
+      const toggle=event.target.closest("[data-auction-address-toggle]");
+      if(toggle){
+        event.preventDefault();
+        const address=document.getElementById(toggle.getAttribute("aria-controls"));
+        if(!address)return;
+        const expanded=toggle.getAttribute("aria-expanded")!=="true";
+        toggle.setAttribute("aria-expanded",String(expanded));
+        toggle.textContent=expanded?"도로명주소 닫기":"도로명주소";
+        address.hidden=!expanded;
+        return;
+      }
       const row=event.target.closest("[data-auction-href]");
       if(row)rememberPosition();
       if(row&&!event.target.closest("a,button"))location.href=row.dataset.auctionHref;
@@ -101,7 +112,11 @@
       query.set("auction_list",listUrl());
       const href=`/?${query.toString()}`;
       const category=item.lodging_category||item.usage_name||"용도 미공개";
-      const address=item.address_road||item.address_jibun||"주소 미공개";
+       const roadAddress=String(item.address_road||"").trim();
+       const addressId=`auction-road-address-${item.id}`;
+       const addressHtml=roadAddress
+         ? `<button type="button" class="auction-address-toggle" data-auction-address-toggle aria-expanded="false" aria-controls="${esc(addressId)}">도로명주소</button><span class="auction-address" id="${esc(addressId)}" hidden>${esc(roadAddress)}</span>`
+         : `<span class="auction-address">${esc(item.address_jibun||"주소 미공개")}</span>`;
       const title=item.title||"물건명 미공개";
       const managementNo=item.management_no||"관리번호 미공개";
       const ratio=numeric(item.min_bid_ratio);
@@ -113,19 +128,19 @@
       const tagHtml=tags.map(([label,value])=>`<span class="auction-tag"><b>${esc(label)}</b>${esc(value)}</span>`).join("");
       const failed=numeric(item.failed_count);
       const round=item.round_no==null||item.round_no===""?"회차 미공개":`${esc(item.round_no)}회차`;
-      return `<a class="auction-row" data-auction-href="${esc(href)}" href="${esc(href)}">
-        <span class="auction-photo">${image}</span>
+      return `<article class="auction-row" data-auction-href="${esc(href)}">
+        <a class="auction-photo" href="${esc(href)}" aria-label="${esc(title)} 상세보기">${image}</a>
         <span class="auction-property">
           <span class="auction-tags">${tagHtml}${status}</span>
           <strong class="auction-management">${esc(managementNo)}</strong>
-          <span class="auction-title">${esc(title)}</span>
-          <span class="auction-address">${esc(address)}</span>
+          <a class="auction-title" href="${esc(href)}">${esc(title)}</a>
+          ${addressHtml}
           <span class="auction-area-line">유찰 ${failed===null?"—":`${failed}회`} <i></i> 대지 ${esc(area(item.land_area_m2))} <i></i> 건물 ${esc(area(item.building_area_m2))}</span>
         </span>
         <span class="auction-round">${round}</span>
         <span class="auction-schedule"><b>입찰기간</b><span>${esc(formatDate(item.bid_start_at))}</span><i>~</i><span>${esc(formatDate(item.bid_end_at))}</span></span>
         <span class="auction-prices"><span class="auction-appraisal"><small>감정가</small><b>${esc(money(item.appraisal_price))}</b></span><span class="auction-minimum"><small>최저입찰가 ${ratioText}</small><b>${esc(money(item.min_bid_price))}</b></span></span>
-      </a>`;
+      </article>`;
     }
     function formatUpdate(value){
       const date=new Date(value);if(Number.isNaN(date.getTime()))return esc(value);

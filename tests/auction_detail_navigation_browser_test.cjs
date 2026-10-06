@@ -36,7 +36,7 @@ async function main() {
       const unmatched = items.find(item => !item.master_building_id);
       assert.ok(matched, "Exercise a real linked property");
       assert.ok(unmatched, "Exercise a real unmatched property");
-      const href = await page.locator(".auction-row").first().getAttribute("href");
+      const href = await page.locator(".auction-row").first().getAttribute("data-auction-href");
       assert.ok(new URL(href, origin).searchParams.has("building"));
       await page.locator(".auction-property").first().click();
       await page.locator(".auction-panel-general").waitFor();

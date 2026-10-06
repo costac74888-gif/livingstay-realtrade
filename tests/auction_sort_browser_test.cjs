@@ -30,7 +30,7 @@ async function main() {
       assert.equal(await page.locator(".auction-row .auction-schedule").count(), 10);
       assert.equal(await page.locator(".auction-row .auction-prices").count(), 10);
       assert.ok(await page.locator(".auction-photo [hidden]").evaluateAll(nodes=>nodes.every(node=>getComputedStyle(node).display==="none")));
-      assert.ok((await page.locator(".auction-row").first().getAttribute("href")).includes("auction="));
+      assert.ok((await page.locator(".auction-row").first().getAttribute("data-auction-href")).includes("auction="));
       const request = async (action, check) => {
         const pending = page.waitForResponse(response => {
           const url = new URL(response.url());

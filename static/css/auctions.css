@@ -84,6 +84,12 @@ dialog.auction-panel-lightbox{width:100vw;height:100dvh;max-width:none;max-heigh
 .auction-management{color:#34443a;font:700 12px var(--auction-mono);letter-spacing:.01em}
 .auction-title{max-width:100%;color:#25352c;font-size:12px;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
 .auction-address{max-width:100%;color:#68756c;font-size:10px;line-height:1.45;white-space:normal;overflow-wrap:anywhere}
+.auction-address[hidden]{display:none}
+.auction-row{cursor:pointer}
+.auction-title{text-decoration:none}
+.auction-title:hover{text-decoration:underline}
+.auction-address-toggle{padding:3px 8px;border:1px solid #cbd6cd;border-radius:4px;background:#f8faf7;color:#536258;font:600 12px/1.4 "Noto Sans KR",sans-serif;cursor:pointer}
+.auction-address-toggle:focus-visible{outline:2px solid #3d5948;outline-offset:2px}
 .auction-area-line{display:flex;flex-wrap:wrap;align-items:center;gap:5px;color:#7b877e;font-size:9px;line-height:1.4}
 .auction-area-line i{width:2px;height:2px;border-radius:50%;background:#a6b0a7}
 .auction-round{color:#5e6e63;font:600 11px var(--auction-mono);text-align:center;white-space:nowrap}
@@ -160,6 +166,7 @@ dialog.auction-panel-lightbox{width:100vw;height:100dvh;max-width:none;max-heigh
   .auction-management{font-size:15px}
   .auction-title{font-size:17px;line-height:1.5;overflow-wrap:anywhere}
   .auction-address{font-size:16px;line-height:1.55}
+  .auction-address-toggle{min-height:36px;padding:5px 9px;font-size:16px}
   .auction-area-line{font-size:16px;line-height:1.5}
   .auction-tag{padding:4px 6px;font-size:14px;line-height:1.35}
   .auction-tag b{font-size:13px}

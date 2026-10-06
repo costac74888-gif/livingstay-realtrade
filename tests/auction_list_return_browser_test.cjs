@@ -26,9 +26,9 @@ async function main() {
       assert.equal(await page.locator('[data-sort-key="price"] .auction-order-arrow').textContent(), "↓");
       const target = page.locator(".auction-row").nth(8);
       await target.scrollIntoViewIfNeeded();
-      const original = { url: page.url(), href: await target.getAttribute("href"), scroll: await page.evaluate(() => scrollY) };
+      const original = { url: page.url(), href: await target.getAttribute("data-auction-href"), scroll: await page.evaluate(() => scrollY) };
       assert.ok(original.scroll > 0);
-      await target.locator(".auction-property").click();
+      await target.locator(".auction-title").click();
       await page.locator(".auction-panel-general").waitFor();
       assert.equal(new URL(page.url()).searchParams.get("auction_list"), new URL(original.url).pathname + new URL(original.url).search);
       assert.equal(await page.locator("#bTabAuctions").getAttribute("aria-selected"), "true");
@@ -65,12 +65,12 @@ async function main() {
         assert.equal(await page.locator("#auctionCategory").inputValue(), "생활숙박");
         assert.equal(await page.locator("#auctionStatus").inputValue(), "scheduled");
         assert.equal(await page.locator('[aria-current="page"]').textContent(), "2");
-        assert.equal(await page.locator(".auction-row").nth(8).getAttribute("href"), original.href);
+        assert.equal(await page.locator(".auction-row").nth(8).getAttribute("data-auction-href"), original.href);
         await page.waitForFunction(y => Math.abs(scrollY - y) < 5, original.scroll);
       };
       await page.locator("[data-auction-panel-back]").click();
       await assertRestored();
-      await page.locator(".auction-row").nth(8).click();
+      await page.locator(".auction-row").nth(8).locator(".auction-title").click();
       await page.locator(".auction-panel-general").waitFor();
       await page.goBack();
       await assertRestored();
@@ -80,7 +80,7 @@ async function main() {
       await page.waitForFunction(() => document.querySelector("#auctionSgg").value === "부산광역시 해운대구");
       await page.locator(".auction-row").first().waitFor();
       const regionalUrl = page.url();
-      await page.locator(".auction-property").first().click();
+      await page.locator(".auction-title").first().click();
       await page.locator(".auction-panel-general").waitFor();
       await page.locator("[data-auction-panel-back]").click();
       await page.locator(".auction-row").first().waitFor();
