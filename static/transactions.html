@@ -34,7 +34,7 @@
         <label>읍/면/동</label>
         <select id="selUmdNm"><option value="">전체</option></select>
       </div>
-      <div class="field">
+      <div class="field tx-field-building">
         <label>건물명 / 주소 검색</label>
         <input type="text" id="inputQ" placeholder="예) 오션마크레지던스" />
       </div>
@@ -155,9 +155,17 @@
     .tx-filter-grid{ grid-template-columns:1fr 1fr; }
     .tx-filter-grid .btn-search{ grid-column:1 / -1; }
   }
-  @media (max-width: 520px){
-    /* 좁은 폰: 필터를 한 줄에 하나씩 — 셀렉트가 눌리지 않게 */
-    .tx-filter-grid{ grid-template-columns:1fr; }
+  @media screen and (max-width: 520px){
+    /* Match the direct-listing filter: paired conditions, full-width search. */
+    .tx-filter-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .tx-filter-grid .field:nth-child(1){ order:1; }
+    .tx-filter-grid .field:nth-child(2){ order:2; }
+    .tx-filter-grid .field:nth-child(3){ order:3; }
+    .tx-filter-grid .field:nth-child(5){ order:4; }
+    .tx-filter-grid .field:nth-child(6){ order:5; }
+    .tx-filter-grid .field:nth-child(7){ order:6; }
+    .tx-filter-grid .tx-field-building{ grid-column:1 / -1; order:7; }
+    .tx-filter-grid .btn-search{ grid-column:1 / -1; order:8; }
     .tx-trend-card{ padding:14px 12px 10px; }
     .tx-trend-chart-wrap{ height:220px; }
   }
