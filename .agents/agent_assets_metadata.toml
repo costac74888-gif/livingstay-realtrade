@@ -794,3 +794,17 @@ mtime_ms = 1791258260999
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/54cb0353-c70a-43f6-8966-445e1263ec0f/f6a3bd1d-0075-4e39-95fa-af7b8eb5e168"
 storage_version_token = "1791258310222478"
 content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+[[outputs]]
+id = "NXLEzjIXIR08McdEtLP3b"
+uri = "file://exports/homenstay_api_inventory_priority_v2_2026-10-06.xlsx"
+type = "table"
+title = "홈앤스테이 API 연결현황·우선순위 v2"
+description = "원본 27개 분류를 실제 코드와 대조하여 49개 API·자료 경로로 정리했습니다. 앱 연동, 중계 구현, 운영 검증을 구분하고 우선순위·관리자 메뉴·작업 순서·오류 수정 내역을 담은 7개 시트의 엑셀입니다."
+logical_id = "0345facd-6e6a-492a-abef-1a6973c1f086"
+content_hash = "sha256:00d07eb3b6f65f1f8794559580a8e57ceaccaa7b2de3f6a03c841a187e759d9c"
+size = 45199
+mtime_ms = 1791259299646
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0345facd-6e6a-492a-abef-1a6973c1f086/9e92fffc-63a2-422a-ab70-0a42380bc4a2"
+storage_version_token = "1791259308065028"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
