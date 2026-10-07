@@ -36,7 +36,7 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
       for (const show of [false, true, false]) {
         await page.evaluate(async show => {
           window.fetch = async () => ({ok:true,json:async () => ({
-            count:85617,tx_count:19094,auction_building_count:1234,
+            count:85617,tx_count:19094,auction_building_count:36,auction_item_count:1234,
             show_unclassified_legend:show,
             by_type:{"생활":4263,"관광":1388,"일반":28691,"에어비앤비":8423,
               "농어촌민박":34505,"캠핑":4808,"한옥":2387,"복합":1193,"준공전":395,"미분류":292},
@@ -45,7 +45,8 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
         }, show);
         assert.equal(await page.locator('.lg[data-lodging-type="미분류"]').isVisible(), show);
         assert.match(await page.locator('.lg[data-lodging-type="에어비앤비"]').innerText(), /외도민업/);
-        assert.equal(await page.locator("[data-auction-layer] .lg-count").innerText(), "1,234");
+        assert.equal(await page.locator("[data-auction-layer] .lg-count").innerText(), "1,234건");
+        assert.match(await page.locator("[data-auction-layer]").getAttribute("title"), /연결 건물 36개/);
         assert.equal(await page.locator("[data-auction-layer] .lg-count").count(), 1);
         const ys = await page.locator('[data-legend-slide="legend"] > .lg:not([hidden])')
           .evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().top));
@@ -78,7 +79,7 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
         {type:"전체",building_count:10,auction_building_count:2},
         {type:"생활",building_count:7,auction_building_count:2},
         {type:"일반",building_count:3,auction_building_count:0},
-        {type:"공매",building_count:2,auction_building_count:2,reference_only:true},
+        {type:"공매",building_count:2,auction_building_count:2,auction_item_count:263,reference_only:true},
       ]})});
       await loadBldFullStats();
     });
@@ -86,8 +87,22 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
     assert.match(texts, /공매건물/);
     assert.equal(await page.locator('td[title*="현재 공개 공매"]').count(), 4);
     assert.deepEqual(await page.locator('td[title*="현재 공개 공매"]').allTextContents(), ["2","2","0","2"]);
-    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').innerText(), "공매");
-    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').locator("..").locator("td").nth(1).innerText(), "2");
+    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').innerText(), "공매 (물건)");
+    assert.equal(await page.locator('td[title*="공매는 별도 참고 집계"]').locator("..").locator("td").nth(1).innerText(), "263건");
+    await page.evaluate(async () => {
+      window.fetch = async () => ({ok:true,json:async () => ({
+        auction_item_count:0,auction_building_count:0,
+      })});
+      await loadBuildingCountLabel();
+    });
+    // This page has no legend; check zero counts with the real markup as well.
+    await page.evaluate(html => {
+      const template=document.createElement("template");
+      template.innerHTML=html;
+      document.body.append(template.content.querySelector(".map-legend"));
+    }, index);
+    await page.evaluate(async () => {await loadBuildingCountLabel();});
+    assert.equal(await page.locator("[data-auction-layer] .lg-count").innerText(), "0건");
     console.log("PASS real legend: four widths, role visibility, counts, single row, scroll access; admin counts including zero");
   } finally {
     await browser.close();

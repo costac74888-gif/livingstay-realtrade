@@ -376,6 +376,7 @@ class AppMutationInvalidationTests(unittest.TestCase):
             "by_type": {"생활": 700, "관광": 200, "준공전": 16, "미분류": 670},
             "tx_count": 777,
             "auction_building_count": 0,
+            "auction_item_count": 0,
             "show_unclassified_legend": True,
         })
 

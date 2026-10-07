@@ -8929,15 +8929,17 @@ async function loadBuildingCountLabel(){
     const unclassified = document.querySelector('.map-legend .lg[data-lodging-type="미분류"]');
     if (unclassified) unclassified.hidden = d.show_unclassified_legend !== true;
     const auctionLegend = document.querySelector(".map-legend [data-auction-layer]");
-    if (auctionLegend && typeof d.auction_building_count === "number") {
+    if (auctionLegend && typeof d.auction_item_count === "number") {
       let label = auctionLegend.querySelector(".lg-count");
       if (!label) {
         label = document.createElement("span");
         label.className = "lg-count";
         auctionLegend.appendChild(label);
       }
-      label.textContent = d.auction_building_count.toLocaleString("ko-KR");
-      auctionLegend.title = "현재 공개 공매에 연결된 건물마스터 수 · 같은 건물의 물건·회차 중복 제외";
+      label.textContent = d.auction_item_count.toLocaleString("ko-KR") + "건";
+      const linkedBuildings = typeof d.auction_building_count === "number"
+        ? ` · 연결 건물 ${d.auction_building_count.toLocaleString("ko-KR")}개(건물 중복 제외)` : "";
+      auctionLegend.title = "현재 공개 공매 물건 수 · 전체 공매 목록과 동일한 기준" + linkedBuildings;
     }
 
     // 타이틀: "1,399건/실거래 10,726건"

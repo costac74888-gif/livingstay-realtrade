@@ -16,9 +16,10 @@ STATUS_KEY = "onbid_sync_status"
 SUCCESS_KEY = "onbid_last_success_at"
 
 def auction_building_stats(cur):
-    """현재 공개 공매와 연결된 마스터 건물만 집계한다(물건·회차 중복 제외)."""
+    """목록과 같은 공개 물건 수와 연결 건물 수를 한 스냅샷에서 구분해 집계."""
     cur.execute(CURRENT_SQL + """
         SELECT CASE
+            WHEN b.id IS NULL THEN NULL
             WHEN b.building_status IN ('허가','착공')
                  AND COALESCE(b.use_apr_day,'') = '' THEN '준공전'
             WHEN b.lodging_type IN ('생활','생숙') THEN '생활'
@@ -26,12 +27,17 @@ def auction_building_stats(cur):
                 THEN b.lodging_type
             WHEN b.lodging_type = '복합' OR b.lodging_type LIKE '%·%' THEN '복합'
             ELSE '미분류'
-        END AS t, COUNT(DISTINCT b.id) AS n
-        FROM current_auctions a JOIN master_buildings b ON b.id=a.master_building_id
+        END AS t, COUNT(DISTINCT b.id) AS n, COUNT(*) AS item_count
+        FROM current_auctions a LEFT JOIN master_buildings b ON b.id=a.master_building_id
         GROUP BY t
     """)
-    by_type = {row["t"]: int(row["n"]) for row in cur.fetchall()}
-    return {"count": sum(by_type.values()), "by_type": by_type}
+    rows = cur.fetchall()
+    by_type = {row["t"]: int(row["n"]) for row in rows if row["t"] is not None}
+    return {
+        "count": sum(by_type.values()),
+        "by_type": by_type,
+        "item_count": sum(int(row["item_count"]) for row in rows),
+    }
 
 
 def auction_deep_link(item_id, building_id=None):

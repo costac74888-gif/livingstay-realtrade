@@ -11,21 +11,34 @@ from auction_service import auction_building_stats
 class AuctionBuildingStatsTests(unittest.TestCase):
     def test_shared_query_counts_distinct_existing_buildings(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [{"t": "생활", "n": 2}, {"t": "일반", "n": 1}]
+        cur.fetchall.return_value = [
+            {"t": "생활", "n": 15, "item_count": 45},
+            {"t": "일반", "n": 21, "item_count": 50},
+            {"t": None, "n": 0, "item_count": 168},
+        ]
         self.assertEqual(auction_building_stats(cur), {
-            "count": 3, "by_type": {"생활": 2, "일반": 1},
+            "count": 36, "by_type": {"생활": 15, "일반": 21}, "item_count": 263,
         })
         sql = cur.execute.call_args.args[0]
         self.assertTrue(sql.startswith(CURRENT_SQL))
         self.assertIn("COUNT(DISTINCT b.id)", sql)
-        self.assertIn("JOIN master_buildings b ON b.id=a.master_building_id", sql)
+        self.assertIn("LEFT JOIN master_buildings b ON b.id=a.master_building_id", sql)
+        self.assertIn("COUNT(*) AS item_count", sql)
+        self.assertIn("WHEN b.id IS NULL THEN NULL", sql)
         self.assertIn("b.lodging_type IN ('생활','생숙')", sql)
         self.assertEqual(cur.execute.call_count, 1)
 
     def test_empty_is_zero_not_unknown(self):
         cur = MagicMock()
         cur.fetchall.return_value = []
-        self.assertEqual(auction_building_stats(cur), {"count": 0, "by_type": {}})
+        self.assertEqual(auction_building_stats(cur), {"count": 0, "by_type": {}, "item_count": 0})
+
+    def test_all_unlinked_items_are_counted_without_inventing_buildings(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = [{"t": None, "n": 0, "item_count": 263}]
+        self.assertEqual(auction_building_stats(cur), {
+            "count": 0, "by_type": {}, "item_count": 263,
+        })
 
     def test_preview_and_admin_only_not_query_string(self):
         cases = [
@@ -62,7 +75,7 @@ class AuctionBuildingStatsTests(unittest.TestCase):
                 patch.object(web, "_live_master_building_count", return_value=10), \
                 patch.object(web, "_lodging_full_stats_payload", side_effect=lambda: web.jsonify(source)), \
                 patch("auction_service.auction_building_stats", return_value={
-                    "count": 2, "by_type": {"생활": 2},
+                    "count": 2, "by_type": {"생활": 2}, "item_count": 263,
                 }), patch.object(web.limiter, "enabled", False):
             response = client.get("/api/admin/buildings/full-stats")
         self.assertEqual(response.status_code, 200)
@@ -70,6 +83,7 @@ class AuctionBuildingStatsTests(unittest.TestCase):
         self.assertEqual([r["auction_building_count"] for r in rows], [2, 2, 0, 2])
         self.assertEqual([r["building_count"] for r in rows], [10, 7, 3, 2])
         self.assertEqual(rows[-1]["type"], "공매")
+        self.assertEqual(rows[-1]["auction_item_count"], 263)
         self.assertTrue(rows[-1]["reference_only"])
         self.assertNotIn("auction_building_count", source["rows"][0])
 
@@ -82,7 +96,7 @@ class AuctionBuildingStatsTests(unittest.TestCase):
         with patch.dict(os.environ, {"REPLIT_DEPLOYMENT": "1"}), \
                 patch.object(web, "get_conn", return_value=connection), \
                 patch("auction_service.auction_building_stats", return_value={
-                    "count": 2, "by_type": {"생활": 2},
+                    "count": 2, "by_type": {"생활": 2}, "item_count": 263,
                 }), patch.object(web.limiter, "enabled", False):
             for authenticated, query, expected in [
                 (True, "", False), (True, "?admin=1", True),
@@ -94,6 +108,7 @@ class AuctionBuildingStatsTests(unittest.TestCase):
                 self.assertEqual(result.status_code, 200)
                 self.assertEqual(result.get_json()["show_unclassified_legend"], expected)
                 self.assertEqual(result.get_json()["auction_building_count"], 2)
+                self.assertEqual(result.get_json()["auction_item_count"], 263)
                 self.assertEqual(result.headers["Cache-Control"], "no-store")
 
 

@@ -5332,6 +5332,7 @@ def get_building_count():
     response = jsonify({
         "count": total, "by_type": by_type, "tx_count": tx_count,
         "auction_building_count": auction_stats["count"],
+        "auction_item_count": auction_stats["item_count"],
         "show_unclassified_legend": _show_unclassified_legend(),
     })
     response.headers["Cache-Control"] = "no-store"
@@ -24238,6 +24239,7 @@ def admin_buildings_full_stats():
         "type": "공매",
         "building_count": auction_stats["count"],
         "auction_building_count": auction_stats["count"],
+        "auction_item_count": auction_stats["item_count"],
         "reference_only": True,
     })
     return jsonify(payload)
