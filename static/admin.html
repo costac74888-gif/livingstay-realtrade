@@ -397,13 +397,44 @@
     }
 
     // ── 용도별 세부 통계표 로더 ───────────────────────────────────────────────
-    async function loadBldFullStats() {
+    async function loadBldFullStats(attempt = 0) {
       const box = document.getElementById("bldFullStats");
       if (!box) return;
+      if (box._statsRetryTimer) clearTimeout(box._statsRetryTimer);
+      const isCurrent = () => document.getElementById("bldFullStats") === box;
+      const retryNotice = (message, automatic = false) => {
+        const notice = document.createElement("div");
+        notice.setAttribute("role", "status");
+        notice.style.cssText = "padding:8px 0;color:var(--ink-soft);font-size:12px;";
+        notice.textContent = message + " ";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "admin-btn";
+        button.textContent = "다시 불러오기";
+        button.onclick = () => { button.disabled = true; loadBldFullStats(); };
+        notice.appendChild(button);
+        box.prepend(notice);
+        if (automatic && attempt < 12) {
+          box._statsRetryTimer = setTimeout(() => {
+            if (isCurrent()) loadBldFullStats(attempt + 1);
+          }, 5000);
+        }
+      };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       try {
-        const r = await fetch("/api/admin/buildings/full-stats");
+        const r = await fetch("/api/admin/buildings/full-stats", {signal:controller.signal});
+        if (!isCurrent()) return;
+        if (r.status === 401) { window.location.href = "/admin/login"; return; }
+        if (!r.ok) throw new Error("통계 요청 실패");
         const d = await r.json();
-        if (!d || !d.ok) { box.innerHTML = ""; return; }
+        if (!isCurrent()) return;
+        if (!d || !d.ok) {
+          if (d?.status !== "warming") throw new Error("통계 응답 오류");
+          box.innerHTML = "";
+          retryNotice("상세 통계를 백그라운드에서 준비 중입니다.", true);
+          return;
+        }
         const rows = d.rows || [];
         const pct  = (v) => v == null ? "-" : v.toFixed(1) + "%";
         const n    = (v) => (v == null || v === 0) ? "-" : Number(v).toLocaleString();
@@ -644,7 +675,15 @@
         const statsTable = box.firstElementChild;
         const legalCriteria = box.querySelector("#lodgingLegalCriteriaTitle")?.closest("section");
         if (statsTable && legalCriteria) box.insertBefore(legalCriteria, statsTable);
-      } catch(e) { box.innerHTML = ""; }
+        if (d.status === "warming") {
+          retryNotice("건물 수 요약을 먼저 표시했습니다. 상세 통계는 백그라운드에서 준비 중입니다.", true);
+        }
+      } catch(e) {
+        if (isCurrent()) {
+          box.innerHTML = "";
+          retryNotice("통계를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.");
+        }
+      } finally { clearTimeout(timeout); }
     }
 
     // ── 입점부동산 목록 모달 ─────────────────────────────────────────────────
@@ -1373,33 +1412,57 @@
     async function showStats(menuKey) {
       destroyStatsCharts();
       mount.innerHTML = `<div class="stats-loading">통계를 불러오는 중…</div>`;
+      const loadingBox = mount.firstElementChild;
       let data, mapBld, actionCenter, overview;
       try {
         // /api/building-count : 지도 필터 기준 용도별 건수 (mixed_use_excluded 제외)
         // /api/admin/stats    : 대시보드 집계 (mixed_use_excluded 포함)
         // 두 숫자 차이(복합 불일치)를 화면에 명시하기 위해 병렬 로드
-        const [res, bldRes, actionRes, overviewRes] = await Promise.all([
+        const [res, bldRes] = await Promise.all([
           fetch("/api/admin/stats"),
           fetch("/api/building-count"),
-          fetch("/api/admin/action-center").catch(() => null),
-          fetch("/api/admin/stats/overview").catch(() => null),
         ]);
-        if (res.status === 401 || overviewRes?.status === 401) { window.location.href = "/admin/login"; return; }
+        if (mount.firstElementChild !== loadingBox) return;
+        if (res.status === 401) { window.location.href = "/admin/login"; return; }
         if (!res.ok) throw new Error("stats fetch failed");
         data = await res.json();
         mapBld = bldRes.ok ? await bldRes.json() : {};
-        actionCenter = actionRes && actionRes.ok ? await actionRes.json() : { ok: false };
-        overview = overviewRes && overviewRes.ok ? await overviewRes.json() : null;
+        actionCenter = {status:"loading"};
+        overview = {status:"loading"};
       } catch (e) {
-        if (["#admin-survey","#admin-membership"].includes(location.hash)) return;
+        if (mount.firstElementChild !== loadingBox) return;
         mount.innerHTML = `<div class="stats-loading">통계를 불러오지 못했습니다. 새로고침 해주세요.</div>`;
         return;
       }
       // A dashboard response started before menu navigation must not replace
       // the new survey form (including any inputs the administrator is editing).
-      if (["#admin-survey","#admin-membership"].includes(location.hash)) return;
+      if (mount.firstElementChild !== loadingBox) return;
       renderStats(data, mapBld, actionCenter, overview);
       loadPartnerBuildingCounts();
+      // 보조 패널은 기본 대시보드와 독립적으로 갱신한다. 차트·검색 조건을
+      // 다시 그리지 않고 해당 패널만 교체하며, 메뉴 이동 뒤 늦은 응답은 버린다.
+      for (const spec of [
+        {url:"/api/admin/action-center",id:"dashboardActionSlot",render:renderActionCenter,bind:bindActionCenter},
+        {url:"/api/admin/stats/overview",id:"dashboardOverviewSlot",render:renderDashboardOverview,bind:bindDashboardOverview},
+      ]) {
+        const slot = document.getElementById(spec.id);
+        if (!slot) continue;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        fetch(spec.url, {signal:controller.signal}).then(async res => {
+          if (document.getElementById(spec.id) !== slot) return;
+          if (res.status === 401) { window.location.href = "/admin/login"; return; }
+          const payload = res.ok ? await res.json() : null;
+          if (document.getElementById(spec.id) !== slot) return;
+          slot.innerHTML = spec.render(payload);
+          spec.bind();
+        }).catch(() => {
+          if (document.getElementById(spec.id) === slot) {
+            slot.innerHTML = spec.render(null);
+            spec.bind();
+          }
+        }).finally(() => clearTimeout(timeout));
+      }
     }
 
     function actionCenterHref(value) {
@@ -1413,6 +1476,9 @@
     }
 
     function renderActionCenter(payload) {
+      if (payload?.status === "loading") {
+        return `<section class="action-center" id="actionCenter" role="status">액션 센터를 불러오는 중…</section>`;
+      }
       const counts = (payload && payload.counts) || {};
       const items = Array.isArray(payload && payload.items) ? payload.items : [];
       if (!payload || payload.ok === false) {
@@ -1452,6 +1518,9 @@
     }
 
     function renderDashboardOverview(overview) {
+      if (overview?.status === "loading") {
+        return `<section class="dashboard-overview" role="status">회원·접수 현황을 불러오는 중…</section>`;
+      }
       if (!overview || !overview.members || !overview.actions) {
         return `<section class="dashboard-overview" aria-label="회원 및 접수 현황"><div class="action-center-error">상단 현황을 불러오지 못했습니다. 새로고침 후 다시 확인해주세요.</div></section>`;
       }
@@ -2467,8 +2536,8 @@
           <h2 class="stats-title">통계 대시보드</h2>
           <p class="stats-sub">이번달 매출은 매출관리 장부(수동 기록, 결제 '완료') 기준입니다.</p>
         </div>
-        ${renderDashboardOverview(overview)}
-        ${renderActionCenter(actionCenter)}
+        <div id="dashboardOverviewSlot">${renderDashboardOverview(overview)}</div>
+        <div id="dashboardActionSlot">${renderActionCenter(actionCenter)}</div>
         <div id="dsBanner" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
 
         <div class="stats-kpi-row">

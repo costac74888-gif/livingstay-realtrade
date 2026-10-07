@@ -23028,6 +23028,7 @@ _MASTER_STATS_CACHE: dict = {
     "invalidation_token": None,
 }
 _MASTER_STATS_LOCK = threading.RLock()
+_MASTER_STATS_SCHEDULE_LOCK = threading.Lock()
 _MASTER_STATS_REBUILDING = threading.local()
 _MASTER_STATS_REVALIDATION_PENDING = False
 _MASTER_STATS_NEEDS_REFRESH = threading.Event()
@@ -23265,7 +23266,9 @@ def _rebuild_master_stats(*, force=False):
 def _master_stats_schedule_revalidation():
     """이전 통계를 유지한 채 중복 없는 백그라운드 재계산을 예약한다."""
     global _MASTER_STATS_REVALIDATION_PENDING
-    with _MASTER_STATS_LOCK:
+    # 재계산 잠금은 전국 집계가 끝날 때까지 유지된다. 요청 경로의 예약은
+    # 별도의 짧은 잠금으로 보호해 진행 중인 재계산을 기다리지 않는다.
+    with _MASTER_STATS_SCHEDULE_LOCK:
         if _MASTER_STATS_REVALIDATION_PENDING:
             return False
         _MASTER_STATS_REVALIDATION_PENDING = True
@@ -23285,7 +23288,7 @@ def _master_stats_schedule_revalidation():
             # 바깥의 예외도 다음 폴링에서 재시도할 수 있도록 pending을 해제한다.
             app.logger.exception("[master-stats] stale cache revalidation failed")
         finally:
-            with _MASTER_STATS_LOCK:
+            with _MASTER_STATS_SCHEDULE_LOCK:
                 _MASTER_STATS_REVALIDATION_PENDING = False
 
     try:
@@ -23295,7 +23298,7 @@ def _master_stats_schedule_revalidation():
             name="master-stats-revalidation",
         ).start()
     except Exception:
-        with _MASTER_STATS_LOCK:
+        with _MASTER_STATS_SCHEDULE_LOCK:
             _MASTER_STATS_REVALIDATION_PENDING = False
         app.logger.exception("[master-stats] stale cache revalidation thread start failed")
         return False

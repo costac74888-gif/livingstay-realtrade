@@ -56,7 +56,7 @@
 - [Pooled DB connection ownership](pooled-db-connection-ownership.md) — Legacy conn.close() is a pool-release shim; fallback cleanup must use a unique per-lease token.
 - [Outbound notification URLs](outbound-notification-urls.md) — SMS/email links must use a validated canonical origin, never request Host or URL root.
 - [Background stats DB priority](background-stats-db-priority.md) — stats refreshes use a bounded, nonblocking DB budget that always preserves capacity for user map searches.
-- [Master stats cold starts](master-stats-coldstart-nonblocking.md) — public stats routes must return bounded warming data on an empty master cache; only worker background services may run full rebuilds.
+- [Master stats cold starts](master-stats-coldstart-nonblocking.md) — public/admin stats return warming data without waiting on rebuild locks; refresh scheduling uses independent coordination.
 - [Password reset security](password-reset-security.md) — reset links use digest-at-rest, canonical URLs, bounded async delivery, and both per-email and per-IP throttles.
 - [급매 등급·알림 규칙](urgent-listing-rules.md) — 개별호실·건물전체의 공개 직거래 ‘매매’는 판매자 체크 또는 최신 실거래가 미만이면 단일 금색 급매로 표시한다.
 - [관리자 입점부동산 기준](admin-broker-realty-source.md) — 관리자 입점부동산은 브로커 표준데이터를 우선하고, 없을 때만 상권정보 캐시를 보조로 쓴다.

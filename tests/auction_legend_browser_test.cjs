@@ -9,7 +9,7 @@ const css = fs.readFileSync("static/css/main.css", "utf8");
 const admin = fs.readFileSync("static/admin.html", "utf8");
 const loadStart = main.indexOf("async function loadBuildingCountLabel(){");
 const loadEnd = main.indexOf("\n}\n", loadStart) + 2;
-const adminStart = admin.indexOf("async function loadBldFullStats() {");
+const adminStart = admin.indexOf("async function loadBldFullStats(attempt = 0) {");
 const adminEnd = admin.indexOf("\n    }", adminStart) + 6;
 assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
 
@@ -75,7 +75,7 @@ assert.ok(loadStart > 0 && loadEnd > loadStart && adminEnd > adminStart);
     assert.equal(adminCountPath, "/api/building-count?admin=1");
     await page.evaluate(code => {window.eval(code);}, admin.slice(adminStart, adminEnd));
     await page.evaluate(async () => {
-      window.fetch = async () => ({json:async () => ({ok:true,rows:[
+      window.fetch = async () => ({ok:true,json:async () => ({ok:true,rows:[
         {type:"전체",building_count:10,auction_building_count:2},
         {type:"생활",building_count:7,auction_building_count:2},
         {type:"일반",building_count:3,auction_building_count:0},

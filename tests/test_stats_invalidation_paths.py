@@ -9,6 +9,7 @@ import sys
 import unittest
 import hashlib
 import hmac
+import threading
 from argparse import Namespace
 from unittest.mock import Mock, patch
 
@@ -337,6 +338,42 @@ class AppMutationInvalidationTests(unittest.TestCase):
             self.assertFalse(app_module._MASTER_STATS_REVALIDATION_PENDING)
         finally:
             app_module._MASTER_STATS_REVALIDATION_PENDING = original_pending
+
+    def test_cold_statistics_request_does_not_wait_for_running_rebuild_lock(self):
+        rebuild_lock = threading.RLock()
+        acquired = threading.Event()
+        release = threading.Event()
+        returned = threading.Event()
+        results = []
+
+        def rebuild():
+            with rebuild_lock:
+                acquired.set()
+                release.wait(3)
+
+        def request():
+            try:
+                results.append(app_module._master_stats_section("lodging_stats"))
+            finally:
+                returned.set()
+
+        holder = threading.Thread(target=rebuild)
+        reader = threading.Thread(target=request)
+        with (
+            patch.object(app_module, "_MASTER_STATS_LOCK", rebuild_lock),
+            patch.object(app_module, "_MASTER_STATS_CACHE", {"ts": 0, "data": {}}),
+            patch.object(app_module, "_MASTER_STATS_REVALIDATION_PENDING", True),
+        ):
+            holder.start()
+            self.assertTrue(acquired.wait(1))
+            try:
+                reader.start()
+                self.assertTrue(returned.wait(0.5), "Request waited for the nationwide rebuild lock")
+                self.assertEqual(results, [None])
+            finally:
+                release.set()
+                holder.join(2)
+                reader.join(2)
 
     def test_map_building_count_ignores_worker_local_master_cache(self):
         def responder(sql, _params):
