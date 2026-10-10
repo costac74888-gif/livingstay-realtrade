@@ -8,8 +8,7 @@ from uuid import uuid4
 import time
 
 
-def server(port=0):
-    app=create_fixture_app()
+def seed_paid(app):
     public=next(r["public_id"] for r in app.fixture_supermap.search(parse({}))["items"] if r["stay_kind"]=="lodging")
     selection=dict(check_in="2027-01-11",check_out="2027-01-13",guests=2)
     quote=app.fixture_details.quote(public,selection)["quote"]
@@ -21,4 +20,9 @@ def server(port=0):
     raw,sig=app.fixture_payment_provider.sign(dict(event_id=str(uuid4()),contract_id=contract["contract_id"],
         reference="owned-http-fixture",kind="capture",amount_krw=250000,currency="KRW",issued_at=int(time.time())))
     app.fixture_finance.receive(raw,sig)
+
+
+def server(port=0):
+    app=create_fixture_app()
+    seed_paid(app)
     return make_server("127.0.0.1",port,app,server_class=LocalServer,handler_class=WSGIRequestHandler)

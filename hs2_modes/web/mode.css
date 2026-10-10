@@ -164,6 +164,9 @@ h1 em { color: var(--teal); font-style: normal; }
 .current-business { overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
 .current-business:empty { display: none; }
 .active-tag { padding: 5px 8px; border-radius: 99px; color: var(--teal-deep); background: #e7f0e6; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.operator-workbench-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -5px 0 18px; padding: 12px 14px; border: 1px solid #c9d9cb; border-radius: 7px; color: var(--teal-deep); background: #edf5ec; font-size: 11px; font-weight: 800; text-decoration: none; }
+.operator-workbench-link[hidden] { display: none; }
+.operator-workbench-link:hover { border-color: #91afa0; background: #e4efe3; }
 .switcher { padding: 19px 0 0; border-top: 1px solid #e5eae3; }
 .switcher-heading, .business-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
 .switcher-heading h3, .business-heading h3 { margin: 5px 0 0; font-size: 15px; letter-spacing: -.04em; }

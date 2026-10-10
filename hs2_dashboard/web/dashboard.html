@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>운영 대시보드 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/consumer-assets/main.css">
+  <link rel="stylesheet" href="/hs2/dashboard/assets/dashboard.css">
+  <script src="/hs2/dashboard/assets/dashboard.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/hs2/consumer" aria-label="HOME &amp; STAY 홈">
+        <img src="/static/home_stay_share.png" alt="">
+        <span class="brand-copy"><span class="brand-name">홈앤스테이</span><span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span></span>
+      </a>
+      <nav class="head-actions" aria-label="주요 메뉴">
+        <span class="operator-chip">승인 운영자 전용</span>
+        <a href="/hs2/mode">모드 선택</a>
+      </nav>
+    </header>
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">HOME &amp; STAY <span aria-hidden="true">/</span> OPERATOR WORKBENCH</p>
+          <h1 id="page-title">운영 현황을<br>한곳에서 확인합니다.</h1>
+          <p>현재 승인된 사업장 컨텍스트의 서버 원장 요약과 최근 업무 기록입니다. 표시된 범위는 인증된 서버 세션으로 결정됩니다.</p>
+        </div>
+        <div class="hero-index"><span>PHASE 12 / ACTIVE</span><strong>기록은 확인하되,<br>실행으로 오해하지 않기</strong></div>
+      </section>
+      <div id="dashboard-feedback" class="feedback" data-state="loading" role="status" aria-live="polite" aria-atomic="true">승인된 운영 세션과 서버 요약을 확인하고 있습니다.</div>
+      <div class="layout">
+        <div class="primary">
+          <section class="panel" aria-labelledby="summary-title">
+            <div class="panel-head">
+              <div><p class="kicker">SCOPED LEDGER / COUNTS</p><h2 id="summary-title">운영 요약</h2></div>
+              <button id="refresh-dashboard" class="quiet-button" type="button">새로고침</button>
+            </div>
+            <p id="dashboard-scope" class="scope-note" hidden></p>
+            <div id="dashboard-summary" class="summary-grid" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+          <section class="panel" aria-labelledby="finance-title">
+            <div class="panel-head"><div><p class="kicker">FINANCIAL EVIDENCE / KRW</p><h2 id="finance-title">금융 기준과 검토액</h2></div></div>
+            <div id="dashboard-finance" class="finance-grid" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+          <section class="panel" aria-labelledby="applications-title">
+            <div class="panel-head"><div><p class="kicker">REGISTRATION / RECENT</p><h2 id="applications-title">최근 등록 신청</h2></div></div>
+            <div id="dashboard-applications" class="record-list" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+          <section class="panel" aria-labelledby="bookings-title">
+            <div class="panel-head"><div><p class="kicker">BOOKING / RECENT</p><h2 id="bookings-title">최근 예약</h2></div></div>
+            <div id="dashboard-bookings" class="record-list" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+          <section class="panel" aria-labelledby="contracts-title">
+            <div class="panel-head"><div><p class="kicker">FINANCIAL CONTRACT / RECENT</p><h2 id="contracts-title">최근 금융 계약</h2></div></div>
+            <div id="dashboard-contracts" class="record-list" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+        </div>
+        <aside class="aside" aria-label="업무 바로가기와 원장 안내">
+          <section class="aside-card">
+            <p class="kicker">READ THE LEDGER CAREFULLY</p><h2>증빙과 실제 자금 이동은 다릅니다.</h2>
+            <ol class="truth-list">
+              <li><b>01</b><span>샌드박스 캡처와 라이브 캡처 증빙을 별도로 표시합니다. 증빙 합계는 실제 정산액이 아닙니다.</span></li>
+              <li><b>02</b><span>활성 숙박·보증금·호스트 지급 기준은 캡처 및 미취소 계약 조건의 기준액입니다.</span></li>
+              <li><b>03</b><span>환불·보증금·지급 검토액은 검토 기록입니다. 어느 값도 실행 또는 실제 지급 완료를 뜻하지 않습니다.</span></li>
+            </ol>
+          </section>
+          <section class="links-panel" aria-labelledby="work-links-title">
+            <p class="kicker">OPERATOR WORKFLOWS</p><h2 id="work-links-title" class="sr-only">운영 업무 링크</h2>
+            <div id="dashboard-work-links" class="link-list" aria-live="polite" aria-busy="true"></div>
+          </section>
+          <section class="links-panel legacy" aria-labelledby="legacy-links-title">
+            <p class="kicker">EXISTING HOME &amp; STAY</p><h2 id="legacy-links-title" class="sr-only">기존 서비스 링크</h2>
+            <div id="dashboard-legacy-links" class="link-list" aria-live="polite" aria-busy="true"></div>
+          </section>
+        </aside>
+      </div>
+      <footer class="footer"><strong>HOME &amp; STAY <span aria-hidden="true">/</span> OPERATOR WORKBENCH</strong><span>서버가 제공한 승인 컨텍스트 기준 · 별도 결제·송금 실행 기능 없음</span></footer>
+    </main>
+  </div>
+</body>
+</html>

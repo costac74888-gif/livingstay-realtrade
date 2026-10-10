@@ -51,7 +51,10 @@
       {"id":"P11-A02","criterion":"Real PostgreSQL atomic verified evidence and original booking confirmation, concurrent replay/fresh joined state, terms-preview consent, source/late-payment preservation, immutable price/policy/history, paid cancellation/released slots/refund reviews and separate due deposit/host reviews; authority/CSRF/live gate","check":"phase11-finance-db"},
       {"id":"P11-A03","criterion":"Desktop/mobile actual SQL-backed financial preview before consent, own contract create/re-entry/fee-deposit separation, provider-evidence records, consumer paid-cancel/refund review and operator due-release review; explicit sandbox/no-execution and role gating","check":"phase11-finance-ui"}
     ]},
-    {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":null},
+    {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":[
+      {"id":"P12-A01","criterion":"Active approved server-owned business scope; repeatable scoped ledger snapshot; true public listing counts, pending/confirmed/paid-cancel states, historical signed evidence separate from active income/deposit/payout basis; late money not revenue; full totals versus limited recent records, empty and forbidden API/no-store","check":"phase12-dashboard-db"},
+      {"id":"P12-A02","criterion":"Desktop/mobile real nonempty registration,booking,contract and financial DOM; original seven work/eight asset paths retained; correct own registration/calendar deep entry, actual cancellation ledger refresh, malformed/forbidden cannot zero or show stale data","check":"phase12-dashboard-ui"}
+    ]},
     {"id":13,"title":"관심/Chat/Notification/My Booking","native_acceptance":["S15-A01","S15-A02"],"acceptance":null},
     {"id":14,"title":"FAQ/이용 Guide/Policy","native_acceptance":[],"acceptance":null},
     {"id":15,"title":"Admin 확장","native_acceptance":["S16-A01","S16-A02"],"acceptance":null},

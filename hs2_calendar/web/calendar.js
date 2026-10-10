@@ -7,6 +7,7 @@
     csrf: "", today: "", items: [], currentId: "", item: null, month: null,
     dirty: false, busy: false, quoteToken: 0
   };
+  let entryId = new URLSearchParams(location.search).get("application_id");
   const weekdayNames = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"];
   const statusLabels = {
     draft: "작성 중",
@@ -193,7 +194,10 @@
       state.today = result.today;
       state.items = result.items;
       const select = $("#listing-select");
-      const keep = state.currentId && state.items.some((row) => row.id === state.currentId) ? state.currentId : "";
+      const desired = state.currentId || entryId;
+      const keep = desired && state.items.some((row) => row.id === desired) ? desired : "";
+      const unavailableEntry = entryId && !keep;
+      entryId = null;
       select.innerHTML = '<option value="">등록 건을 선택하세요</option>' + state.items.map((row) =>
         `<option value="${escapeText(row.id)}">${escapeText(row.title)} · ${escapeText(statusLabels[row.status] || "기타 상태")}</option>`
       ).join("");
@@ -202,6 +206,7 @@
       $("#global-loading").hidden = true;
       $("#workspace").hidden = false;
       updateSaveAvailability();
+      if (unavailableEntry) showFeedback("선택한 등록은 현재 승인 사업장에서 조회할 수 없습니다. 다른 등록을 임의로 선택하지 않았습니다.", "error");
       if (keep && !state.item) await loadItem(keep);
       else if (!keep) updateEditorState();
     } catch (error) {

@@ -41,5 +41,7 @@
   "phase10-booking-ui": {"file":"tests/hs2_phase10_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"ef5b776908bd6e53e0c64083610ffc46a7ecbcdc7c27de572ee0bcd0f0425126"},
   "phase11-finance-contracts": {"file":"tests/test_hs2_phase11_contracts.py","kind":"python","role":"acceptance","reviewed_sha256":"0cae6aa6e90ecf3e8c74e68813dd16f0a28124782614d8f068b4892fc403d59c"},
   "phase11-finance-db": {"file":"tests/test_hs2_phase11_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"00fd503fd84a2b6223d092e66f74ef296cb1582caf2ab591c1576bd3a9524f69"},
-  "phase11-finance-ui": {"file":"tests/hs2_phase11_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"8099f8cb0e1f7382e4c9d89c4816ab053b1d883d2134abfc4a5537147698295d"}
+  "phase11-finance-ui": {"file":"tests/hs2_phase11_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"8099f8cb0e1f7382e4c9d89c4816ab053b1d883d2134abfc4a5537147698295d"},
+  "phase12-dashboard-db": {"file":"tests/test_hs2_phase12_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"b2479c11937b3da5f2a97749704bdc89df1cad70456facc3b4aa1be32ff74077"},
+  "phase12-dashboard-ui": {"file":"tests/hs2_phase12_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"e124e6b03bd0934b55ca4f886df50b1ccf80a3e31c2e5454e7bdb08de7d9c77a"}
 }

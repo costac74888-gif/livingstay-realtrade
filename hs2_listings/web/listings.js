@@ -311,7 +311,17 @@
         $("#referenceHint").textContent = "확인된 주소 기록이 없습니다. 주소 확인을 완료한 뒤 이 화면으로 돌아오세요.";
       }
       await refreshItems();
-      if (items.length) loadItem(items[0]);
+      const entryId = new URLSearchParams(location.search).get("application_id");
+      if (entryId) {
+        const selected = items.find(item => item.id === entryId);
+        if (selected) loadItem(selected);
+        else {
+          const result = await request(`/applications/${encodeURIComponent(entryId)}`);
+          if (!result.item || result.item.id !== entryId) throw new Error("등록 연결을 확인할 수 없습니다.");
+          loadItem(result.item);
+        }
+      } else if (new URLSearchParams(location.search).get("new") === "1") startNew();
+      else if (items.length) loadItem(items[0]);
       else renderState();
     } catch (error) {
       select.replaceChildren(node("option", "", "주소 정보를 불러오지 못했습니다"));

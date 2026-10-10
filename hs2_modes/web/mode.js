@@ -30,6 +30,7 @@
     currentModeMark: document.getElementById("currentModeMark"),
     currentModeName: document.getElementById("currentModeName"),
     currentBusiness: document.getElementById("currentBusinessName"),
+    workbenchLink: document.getElementById("operator-workbench-link"),
     consumerButton: document.getElementById("consumerModeButton"),
     operatorButton: document.getElementById("operatorModeButton"),
     businessSection: document.getElementById("businessSection"),
@@ -156,6 +157,7 @@
     el.memberName.textContent = data.name || "회원";
     var business = activeBusiness();
     var isOperator = data.mode === "operator";
+    el.workbenchLink.hidden = !isOperator;
     el.currentModeMark.dataset.mode = isOperator ? "operator" : "consumer";
     el.currentModeName.textContent = isOperator ? "사업자 이용" : "일반회원 이용";
     el.currentBusiness.textContent = isOperator && business ? business.business_name || roleLabel(business.role) : "";
