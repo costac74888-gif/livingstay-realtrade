@@ -1658,6 +1658,14 @@
       "phase": 5,
       "status": "PASS",
       "fingerprint": "8bfc16f380f1fb9ea715a60c1772fe9d84f0545d18dc248b90f8a53c16f42492"
+    },
+    {
+      "at": "2026-10-10T14:35:39.431421+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 5,
+      "status": "COMPLETE",
+      "head": "e8857c77632ad0ce80efdb6ed9df618b568176fb",
+      "tag": "hs2/phase-05/complete"
     }
   ],
   "current_user_phase": 5,
@@ -3176,11 +3184,11 @@
       }
     },
     "5": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase5/WORK_INSTRUCTION.md",
       "at": "2026-10-10T13:54:00.669825+00:00",
       "source_head": "342cf46127645ddd87597a1324e1c0abb4f06466",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "policy_decisions": {
         "P05-PRICE-FILTER": {
           "status": "APPROVED",
@@ -3696,6 +3704,15 @@
           "Existing smoke/api workflows outside this isolated registry not certified",
           "No production/app.py/main/live provider mutations"
         ]
+      },
+      "start": {
+        "head": "342cf46127645ddd87597a1324e1c0abb4f06466",
+        "tag": "hs2/phase-05/start"
+      },
+      "end": {
+        "head": "e8857c77632ad0ce80efdb6ed9df618b568176fb",
+        "tag": "hs2/phase-05/complete",
+        "at": "2026-10-10T14:35:39.431371+00:00"
       }
     }
   }
