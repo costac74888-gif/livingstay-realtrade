@@ -1,9 +1,9 @@
 # 0.5단계 자체점검 기록
 
 - 결과: **PASS**
-- 검사 시각: 2026-10-10T08:51:29.624624+00:00
-- Git HEAD: `c326ef8cb733b5a0d6eecb1889c8eb6020d6f28b`
-- 검증 파일 지문: `ef8d849431414a6e1116899fa22e5710690fb30d14555d254a5e425a6b8bd1f3`
+- 검사 시각: 2026-10-10T09:16:40.457965+00:00
+- Git HEAD: `c41e0988d2c622369a5748793cbb8a2c90140dc0`
+- 검증 파일 지문: `b322b0040eac6c54fe275969170143487a2a64cafa0738635bd944bc8d3985ea`
 - 제품 1~18단계 구현 PASS를 의미하지 않음. 미구현 acceptance는 BLOCKED.
 - 원본 코드/DB/API/Relay를 수정하거나 실제 운영 작업을 수행하지 않음.
 - 앱/운영 UI/DB 연결/실제 provider 발송은 검사 범위에서 제외.
@@ -12,15 +12,15 @@
 
 | 검사 | 결과 | 소요(초) | 로그 SHA-256 |
 | --- | --- | --- | --- |
-| harness-unit | PASS | 2.092 | 241f6cbe65a43d1b416d5c109ca4de393c53287ca5959de47ac97cac0a920049 |
-| harness-contracts | PASS | 4.786 | 7bccdbb58575423c60584cdd62d4f309efe02a1ec5ee00047f658894e58300da |
-| lodging-status | PASS | 0.53 | a9e4910b2ea939a2717c6d1c35a344db0dfb8bed57fd85b827c41a9430170376 |
-| lodging-types | PASS | 2.154 | 9cc10e31d226a7b3a1caf42664cde34df4ed8617d19ca5aca4b5e079f0fd3e1d |
-| auction-domain | PASS | 1.799 | 0cf36388f4ca774188aa65f10e225aa619aef4b1822965951c9c21121b6332be |
-| relay | PASS | 2.769 | b7a0a9a8d9afbc9901d52a0ff3fe8f14821bbb79cb166a6bfb3d8a318817c245 |
-| map-legacy | PASS | 0.301 | 01b5d56ff22716d32f5ba9e409059f64b3c85be2a5ca27488b9c29eb4ebcc2cf |
-| admin-scope | PASS | 0.177 | fb569d1a9d5876c9d7fdf04e09afc259d34e276923769b949ffcf5707568b686 |
-| privacy-ui | PASS | 0.177 | 2c7f317312bdb319bba8d72a163c91d214c9cda4bb59fac2fb6d20ff7c66b353 |
+| harness-unit | PASS | 3.449 | af5c253e90952c1ab45d2ec4235e34bd5812b5b9d1f93f92f68bb3c391b134af |
+| harness-contracts | PASS | 25.791 | f03530e8b848d846cd3a685732b51cd374c29649ee961b0af6f02117bf3223f5 |
+| lodging-status | PASS | 0.959 | c5c6a72050b9210b4deda6a76ceb30255a2331cd11853abcb6f97a29c947f9a6 |
+| lodging-types | PASS | 13.406 | c5c02fef0b37f088405bc0a4176171745b838feb928d23d9e1a5ad6105c469bd |
+| auction-domain | PASS | 12.424 | 058a0571e5b76bc815d2e1d4012e01ec9fa98b4f02cbe7a7b92af26ce982bb37 |
+| relay | PASS | 18.549 | 4432e4113729ca85118a6f203f4f82356f0858c2d1c2a47903b4625a6b5471e8 |
+| map-legacy | PASS | 0.561 | 01b5d56ff22716d32f5ba9e409059f64b3c85be2a5ca27488b9c29eb4ebcc2cf |
+| admin-scope | PASS | 0.207 | fb569d1a9d5876c9d7fdf04e09afc259d34e276923769b949ffcf5707568b686 |
+| privacy-ui | PASS | 0.193 | 2c7f317312bdb319bba8d72a163c91d214c9cda4bb59fac2fb6d20ff7c66b353 |
 
 ## 보존 검사
 {"frozen_files": 13, "preserved_routes": 616, "must_exist": 10}
