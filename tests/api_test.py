@@ -36,6 +36,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # 보내지 않는다. 발송 내용 검사는 각 테스트의 mock으로만 수행한다.
 os.environ["DISABLE_EXTERNAL_NOTIFICATIONS"] = "1"
 
+if __name__ == "__main__" and not os.environ.get("HOMENSTAY_LEGACY_SOCKET"):
+    # Preserve the registered command while making its default DB capability
+    # owned and ephemeral. Never silently fall back to DATABASE_URL.
+    raise SystemExit(subprocess.call(
+        [sys.executable, os.path.join(os.path.dirname(__file__), "run_legacy_owned.py"), "api"]))
+
 # app.py를 import할 수 있도록 프로젝트 루트를 경로에 추가
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -1094,6 +1100,30 @@ CHECKS = [
 def run():
     failures = []
     client = app.test_client()
+    # Readiness and cold-start are separate contracts. Do not mistake the
+    # intentionally nonblocking warming response for a failed data endpoint.
+    cold_paths = [path for path, _ in CHECKS if path.startswith("/api/stats/")
+                  and not path.startswith("/api/stats/platform-summary")]
+    original_cache = copy.deepcopy(app_module._MASTER_STATS_CACHE)
+    try:
+        app_module._MASTER_STATS_CACHE.update(
+            ts=0.0, data={}, sections={}, invalidation_token=None)
+        with patch.object(app_module, "_master_stats_schedule_revalidation") as schedule:
+            for path in cold_paths:
+                response = client.get(path)
+                payload = response.get_json() or {}
+                if (response.status_code != 200 or payload.get("ok") is not False
+                        or payload.get("status") != "warming"
+                        or payload.get("items") != []):
+                    failures.append(f"{path}: cold-start warming contract failed")
+            if not schedule.called:
+                failures.append("Statistics cold-start did not schedule revalidation")
+    finally:
+        app_module._MASTER_STATS_CACHE.clear()
+        app_module._MASTER_STATS_CACHE.update(original_cache)
+    # This is test setup only; public requests must not perform a synchronous
+    # rebuild. The original success/shape assertions below remain unchanged.
+    app_module._rebuild_master_stats(force=True)
     for path, validate in CHECKS:
         resp = client.get(path)
         content_type = resp.headers.get("Content-Type", "")
@@ -1666,7 +1696,11 @@ def _check_lead_short_links(client):
 
             login_page = client.get(login_location)
             login_html = login_page.get_data(as_text=True)
-            if "nextTarget" not in login_html or "window.location.href = nextTarget" not in login_html:
+            if (
+                'window.location.href = safeRedirect(data.redirect, "/agent/dashboard")' not in login_html
+                or 'window.location.href = safeRedirect(result.redirect, "/agent/dashboard")' not in login_html
+                or "parsed.origin === window.location.origin" not in login_html
+            ):
                 failures.append("의뢰 알림: 중개사 로그인 후 대시보드 복귀 처리가 누락됨")
 
             run_id = str(int(time.time() * 1000))
@@ -6343,6 +6377,7 @@ def _check_platform_summary(client):
 
 
 def _check_datalab_stats(client):
+    import app as app_module
     """데이터랩 ②~⑥의 정렬·토글·표본 제외·공통 집계 기준을 점검한다."""
     failures = []
     try:
@@ -6451,6 +6486,7 @@ def _check_datalab_stats(client):
         ):
             failures.append("데이터랩 영업신고현황: 전국 합계 신고율 계산이 잘못됨")
 
+        app_module._rebuild_master_stats(force=True)
         public_stats = client.get("/api/v1/d/3f7").get_json() or {}
         living_row = next(
             (row for row in public_stats.get("rows") or [] if row.get("type") == "생활"),
@@ -6620,6 +6656,7 @@ def _check_datalab_stats(client):
         finally:
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(saved_master_cache)
+        app_module._rebuild_master_stats(force=True)
         admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
         total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
         admin_rows = admin_stats.get("rows") or []

@@ -370,17 +370,48 @@ def run(status_key, run_id, sleep_seconds=0.2):
         conn.close()
 
 
+def claim_standalone_run(status_key, run_id):
+    """An explicit CLI launch claims only an absent or non-running job atomically."""
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        initial = {
+            "state": "running", "run_id": run_id,
+            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "tourapi_images", "processed": 0, "err": 0,
+        }
+        cur.execute("""
+            INSERT INTO app_meta(key,value,updated_at) VALUES(%s,%s,NOW())
+            ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()
+            WHERE app_meta.value::jsonb->>'state' IS DISTINCT FROM 'running'
+            RETURNING key
+        """, [status_key, json.dumps(initial)])
+        claimed = bool(cur.fetchone())
+        conn.commit()
+        return claimed
+    finally:
+        cur.close()
+        conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--status-key", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--sleep", type=float, default=0.2)
+    parser.add_argument("--claim-run", action="store_true",
+                        help="Explicit standalone lease claim; never replaces a running owner")
     args = parser.parse_args()
+    if args.claim_run and not claim_standalone_run(args.status_key, args.run_id):
+        print("[TourAPI 사진] 실행 중인 소유자가 있어 새 실행을 시작하지 않습니다.", flush=True)
+        raise SystemExit(75)
     status = _read_status(args.status_key) or {}
     if (
         status.get("run_id") != args.run_id
         or status.get("state") != "running"
     ):
+        print("[TourAPI 사진] 실행 ID와 사전 등록된 running 상태가 일치하지 않습니다. "
+              "관리자 실행 경로 또는 승인된 standalone --claim-run을 사용하세요.", flush=True)
         raise SystemExit(75)
     error = None
     stats = None

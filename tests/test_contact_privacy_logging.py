@@ -70,7 +70,7 @@ class ContactPrivacyTests(unittest.TestCase):
         master = [("서울특별시 강남구", 3), ("미확인 지역", 1)]
         safe, full = io.StringIO(), io.StringIO()
         with redirect_stdout(safe):report.render_report(contacts, master)
-        with redirect_stdout(full):report.render_report(contacts, master, include_contacts=True)
+        report.render_report(contacts, master, contact_output=full)
         self.assertIn(PHONE, full.getvalue())
         self.assertNotIn(PHONE, safe.getvalue())
         self.assertIn("가상 담당부서", safe.getvalue())

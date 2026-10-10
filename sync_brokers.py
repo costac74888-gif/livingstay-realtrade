@@ -400,8 +400,8 @@ def sync_brokers(num_rows=NUM_ROWS_DEFAULT, sleep_sec=SLEEP_DEFAULT,
                         for key_name in status_fields
                         if item.get(key_name) not in (None, "")
                     })
-                    from privacy_logging import diagnostic_sample
-                    print(f"[brokers] 영업상태 필드: {status_fields} / 값: {diagnostic_sample(status_values) or ['(빈 값)']}")
+                    from privacy_logging import redact_contact_data
+                    print(redact_contact_data(f"[brokers] 영업상태 필드: {status_fields} / 값: {status_values or ['(빈 값)']}"))
                 else:
                     print("[brokers] 영업상태 필드: 없음 — 상태를 추정하지 않고 NULL로 저장합니다")
                 first_item_logged = True

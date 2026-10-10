@@ -13,8 +13,7 @@ lodging_authority_contacts(엑셀 적재본) ↔ master_buildings.sgg_text 매�
 """
 
 from collections import defaultdict
-from privacy_logging import private_contact_report
-from contextlib import redirect_stdout
+from privacy_logging import private_contact_report, redact_contact_data
 
 from db import get_conn
 from address_utils import (
@@ -39,13 +38,18 @@ def main(contact_report=None):
     conn.close()
 
     if contact_report:
-        with private_contact_report(contact_report) as output, redirect_stdout(output):
-            render_report(contacts, master, include_contacts=True)
+        with private_contact_report(contact_report) as output:
+            render_report(contacts, master, contact_output=output)
         print("연락처 포함 보고서는 비공개 폴더에 저장했습니다.")
     render_report(contacts, master)
 
 
-def render_report(contacts, master, include_contacts=False):
+def render_report(contacts, master, contact_output=None):
+    def emit(text=""):
+        if contact_output is None:
+            print(redact_contact_data(text))
+        else:
+            contact_output.write(str(text) + "\n")
     total_buildings = sum(c for _, c in master)
     index = build_authority_index(contacts)
 
@@ -79,50 +83,50 @@ def render_report(contacts, master, include_contacts=False):
             unused_contacts.append(c["region_name_raw"])
 
     # ── 출력 ──────────────────────────────────────────────────
-    print("=" * 70)
-    print("지자체 담당부서 매칭 검증 리포트 (DB 반영 전, 시뮬레이션)")
-    print("=" * 70)
-    print(f"엑셀 지자체 행: {len(contacts)}개")
-    print(f"master 고유 sgg_text: {len(master)}개 / 건물 총 {total_buildings}건")
-    print(f"매칭 성공 sgg_text: {len(matched_sgg)}개 / 건물 {matched_buildings}건")
-    print(f"매칭 실패 sgg_text: {len(unmatched_sgg)}개 / 건물 {total_buildings - matched_buildings}건")
-    print()
+    emit("=" * 70)
+    emit("지자체 담당부서 매칭 검증 리포트 (DB 반영 전, 시뮬레이션)")
+    emit("=" * 70)
+    emit(f"엑셀 지자체 행: {len(contacts)}개")
+    emit(f"master 고유 sgg_text: {len(master)}개 / 건물 총 {total_buildings}건")
+    emit(f"매칭 성공 sgg_text: {len(matched_sgg)}개 / 건물 {matched_buildings}건")
+    emit(f"매칭 실패 sgg_text: {len(unmatched_sgg)}개 / 건물 {total_buildings - matched_buildings}건")
+    emit()
 
-    print("── [광주 특수처리 검증] ──")
-    print(f"  경기도 광주시  : {gwangju['경기광주시']}건")
-    print(f"  광주광역시     : {gwangju['광주광역시']}건  (섞이면 안 됨)")
+    emit("── [광주 특수처리 검증] ──")
+    emit(f"  경기도 광주시  : {gwangju['경기광주시']}건")
+    emit(f"  광주광역시     : {gwangju['광주광역시']}건  (섞이면 안 됨)")
     for sgg, cnt, dept, phone, how in matched_sgg:
         if "광주" in sgg:
-            displayed = phone if include_contacts else "[연락처 숨김]"
-            print(f"    · {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
+            displayed = phone if contact_output is not None else "[연락처 숨김]"
+            emit(f"    · {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
     for sgg, cnt, how in unmatched_sgg:
         if "광주" in sgg:
-            print(f"    · {sgg!r} ({cnt}건) → 확인중 [{how}]")
-    print()
+            emit(f"    · {sgg!r} ({cnt}건) → 확인중 [{how}]")
+    emit()
 
-    print("── [매칭 실패 = '확인중' 처리될 sgg_text] ──")
+    emit("── [매칭 실패 = '확인중' 처리될 sgg_text] ──")
     for sgg, cnt, how in sorted(unmatched_sgg, key=lambda x: -x[1]):
-        print(f"  {sgg!r} ({cnt}건)  [{how}]")
-    print()
+        emit(f"  {sgg!r} ({cnt}건)  [{how}]")
+    emit()
 
-    print("── [폴백(시도 대표행)으로 매칭된 sgg_text] ──")
+    emit("── [폴백(시도 대표행)으로 매칭된 sgg_text] ──")
     for sgg, cnt, dept, phone, how in matched_sgg:
         if how.startswith("fallback"):
-            displayed = phone if include_contacts else "[연락처 숨김]"
-            print(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
-    print()
+            displayed = phone if contact_output is not None else "[연락처 숨김]"
+            emit(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
+    emit()
 
-    print(f"── [엑셀에 있으나 매칭에 안 쓰인 지자체명: {len(unused_contacts)}개] ──")
-    print("  (해당 지역에 등록된 생숙 건물이 없거나, 이름이 안 맞은 경우)")
+    emit(f"── [엑셀에 있으나 매칭에 안 쓰인 지자체명: {len(unused_contacts)}개] ──")
+    emit("  (해당 지역에 등록된 생숙 건물이 없거나, 이름이 안 맞은 경우)")
     for name in unused_contacts:
         s, l = parse_authority_region(name)
-        print(f"  {name!r}  → 파싱(시도={s}, 로컬={l!r})")
-    print()
+        emit(f"  {name!r}  → 파싱(시도={s}, 로컬={l!r})")
+    emit()
 
-    print("── [매칭 성공 전체 목록] ──")
+    emit("── [매칭 성공 전체 목록] ──")
     for sgg, cnt, dept, phone, how in matched_sgg:
-        displayed = phone if include_contacts else "[연락처 숨김]"
-        print(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
+        displayed = phone if contact_output is not None else "[연락처 숨김]"
+        emit(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
 
 
 if __name__ == "__main__":

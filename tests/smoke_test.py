@@ -36,6 +36,12 @@ import subprocess
 # 로컬 스모크 체크가 미처리 알림 outbox를 만나도 실제 이메일·문자를 보내지 않는다.
 os.environ["DISABLE_EXTERNAL_NOTIFICATIONS"] = "1"
 
+if (__name__ == "__main__" and not os.environ.get("HOMENSTAY_LEGACY_SOCKET")
+        and not os.environ.get("SMOKE_BASE_URL")
+        and os.environ.get("SMOKE_LIVE") != "1"):
+    raise SystemExit(subprocess.call(
+        [sys.executable, os.path.join(os.path.dirname(__file__), "run_legacy_owned.py"), "smoke"]))
+
 # (경로, 기대하는 content-type 부분문자열)
 CHECKS = [
     ("/", "text/html"),
@@ -163,7 +169,7 @@ def _run_local_checks(root, app):
         print("OK  카카오 복사 버튼에 복사 횟수 표시")
 
     action_center_contract = (
-        'fetch("/api/admin/action-center")',
+        '{url:"/api/admin/action-center",id:"dashboardActionSlot"',
         "Array.isArray(item.categories) ? item.categories : []",
         "row.dataset.categories",
         'data-action-filter="urgent"',

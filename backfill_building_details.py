@@ -20,6 +20,20 @@ from sync_lodgings import _read_status, _write_status, _still_owner, _touch, HEA
 STATUS_KEY = "title_info_sync_status"
 
 
+def provider_cooldown(status_key, run_id, state, counts, failures):
+    """Continuous jobs keep their heartbeat but do not hammer failed providers."""
+    state.update(counts, provider_state="provider_cooldown")
+    _write_status(status_key, state, run_id)
+    for _ in range(5):
+        if not still_owner(status_key, run_id):
+            return False
+        time.sleep(60)
+    if not still_owner(status_key, run_id):
+        return False
+    failures.update(dict.fromkeys(STAGES, 0))
+    return True
+
+
 def claim_run(key, run_id):
     conn = get_conn()
     cur = conn.cursor()
@@ -173,6 +187,13 @@ def run(args):
                 _write_status(args.status_key, state, run_id)
                 print(json.dumps({"id": row["id"], **result}, ensure_ascii=False), flush=True)
                 if all(failures[s] >= 3 for s in STAGES):
+                    if args.continuous:
+                        if not provider_cooldown(args.status_key, run_id, state, counts, failures):
+                            return
+                        # Failed stages retain their retry_at. Reset the cursor
+                        # so other eligible rows can proceed without erasing errors.
+                        after = 0
+                        break
                     raise RuntimeError("세 API 모두 연속 실패: 전체 수집 중단, 연결 점검 필요")
                 if args.limit and counts["processed"] >= args.limit:
                     return

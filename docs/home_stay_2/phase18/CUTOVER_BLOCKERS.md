@@ -1,5 +1,8 @@
 # Phase18 — BLOCKED / 사용자 승인 필요
 
+2026-10-10 추가 재검증은 [승인 전 readiness](PREAPPROVAL_READINESS.md)를 참조한다.
+아래 이전 source 근거는 과거 기록이며 현재 전체 운영 통과를 의미하지 않는다.
+
 ## 확인된 개발 근거
 - Phase17 source checkpoint: 32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1.
 - 최종 개발55그룹0실패. fingerprint:

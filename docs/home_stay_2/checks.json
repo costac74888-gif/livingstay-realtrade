@@ -54,6 +54,7 @@
   "phase16-mobile-ui": {"file":"tests/hs2_phase16_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"97574bc0885da5be722638425ada54a503464d2142f8ef544e7cba84d992266e"},
   "phase17-integration-db": {"file":"tests/test_hs2_phase17_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"552b4521f92742f7050f4c72dcd8e98096c02751f09b19f5b2a84b28729fc143"},
   "phase17-security": {"file":"tests/test_hs2_phase17_security.py","kind":"python","role":"acceptance","reviewed_sha256":"78f76fb0c5eb32efed687b82ccd361456d79644645c61ecf7f56f3e0d8c13c75"},
-  "contact-logging-contracts": {"file":"tests/test_contact_privacy_logging.py","kind":"python","role":"acceptance","reviewed_sha256":"a63ceb3ebf905a92fab56f65c03dbe08feacdac3244241bc742d3165d3d57afc"},
+  "contact-logging-contracts": {"file":"tests/test_contact_privacy_logging.py","kind":"python","role":"acceptance","reviewed_sha256":"ff4402a95c3f60e1845a963c35971c9906939bef9baa6161a38180502b3419a7"},
+  "readiness-batch-controls": {"file":"tests/test_readiness_batch_controls.py","kind":"python","role":"regression","reviewed_sha256":"94ef359713b1728495ab60a5a9c9daedb6d91041747c8f2296e68362eec1ddb0"},
   "contact-log-preservation": {"file":"tests/test_contact_log_preservation.py","kind":"python","role":"acceptance","reviewed_sha256":"c2e2183ef270085fc5c353a1175986522f90a0e74fd3bc7c5ab2239547d0a4be"}
 }

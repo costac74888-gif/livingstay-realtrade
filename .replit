@@ -82,7 +82,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u backfill_tourapi_images.py --status-key admin:tourapi_image_backfill:status --run-id \"workflow-$(date +%s)\" --sleep 0.2"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u backfill_tourapi_images.py --status-key admin:tourapi_image_backfill:status --run-id \"workflow-$(date +%s)\" --claim-run --sleep 0.2"
 
 [[workflows.workflow]]
 name = "Fast Sync"
