@@ -144,6 +144,8 @@ def configuration():
             ("phase6-listing-ui","tests/hs2_phase6_ui_test.cjs"):("node","private-browser-fixture"),
             ("phase7-calendar-db","tests/test_hs2_phase7_db.py"):("python","temporary-postgres"),
             ("phase7-calendar-ui","tests/hs2_phase7_ui_test.cjs"):("node","private-browser-fixture"),
+            ("phase8-supermap-db","tests/test_hs2_phase8_db.py"):("python","temporary-postgres"),
+            ("phase8-supermap-ui","tests/hs2_phase8_ui_test.cjs"):("node","private-browser-fixture"),
         }
         if check.get("isolation") is not None and reviewed_isolation.get(
                 (name,check["file"])) != (check["kind"],check["isolation"]):

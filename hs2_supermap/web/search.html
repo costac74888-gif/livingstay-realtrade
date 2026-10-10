@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>지도에서 찾기 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/search/assets/search.css">
+  <script src="/hs2/search/assets/controller.js" defer></script>
+  <script src="/hs2/search/assets/search.js" defer></script>
+</head>
+<body class="supermap-page">
+  <div class="app-shell supermap-shell">
+    <header class="topbar">
+      <a class="brand" href="/hs2/consumer" aria-label="HOME &amp; STAY 검색 홈">
+        <img class="brand-logo" src="/static/home_stay_share.png" alt="">
+        <span class="brand-copy">
+          <span class="brand-name">홈앤스테이</span>
+          <span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span>
+        </span>
+      </a>
+      <nav class="header-right" aria-label="주요 메뉴">
+        <span class="private-label"><span class="private-dot" aria-hidden="true"></span>공개 범위 내 검색</span>
+        <a class="account-link" href="/hs2/listings/">매물 등록 <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <main class="supermap-main">
+      <section class="search-section supermap-search" aria-labelledby="pageTitle">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">HOME &amp; STAY / SUPER MAP</p>
+            <h1 id="pageTitle">머물 곳과 <em>기회를 한 지도에서.</em></h1>
+          </div>
+          <p class="heading-note">숙박부터 매매·영업권·공매까지<br>공개 가능한 정보만 모아 보여드립니다.</p>
+        </div>
+
+        <form id="searchForm" novalidate>
+          <div class="search-row">
+            <div class="field location-field">
+              <label for="q">지역 검색</label>
+              <div class="input-wrap location-wrap">
+                <span class="field-mark location-mark" aria-hidden="true"></span>
+                <input id="q" name="q" type="search" maxlength="100" autocomplete="off" placeholder="동네, 지역, 역 이름">
+              </div>
+            </div>
+            <div class="field date-field">
+              <label for="check_in">입실일</label>
+              <input id="check_in" name="check_in" type="date">
+            </div>
+            <div class="date-connector" aria-hidden="true">—</div>
+            <div class="field date-field">
+              <label for="check_out">퇴실일</label>
+              <input id="check_out" name="check_out" type="date">
+            </div>
+            <button class="search-button" type="submit"><span class="search-icon" aria-hidden="true"></span>검색</button>
+          </div>
+
+          <div class="filter-row" aria-label="상세 검색 조건">
+            <fieldset class="filter-group price-group">
+              <legend>기간 총액 <span class="unit-hint">선택 기간 합계</span></legend>
+              <div class="range-inputs">
+                <label class="visually-hidden" for="min_total">최소 기간 총액 (원)</label>
+                <input id="min_total" name="min_total" type="number" min="0" step="10000" inputmode="numeric" placeholder="최소" disabled>
+                <span aria-hidden="true">~</span>
+                <label class="visually-hidden" for="max_total">최대 기간 총액 (원)</label>
+                <input id="max_total" name="max_total" type="number" min="0" step="10000" inputmode="numeric" placeholder="최대" disabled>
+                <span class="currency">원</span>
+              </div>
+              <span id="priceHint" class="field-hint">입실일과 퇴실일을 모두 선택해 주세요.</span>
+            </fieldset>
+            <div class="field compact-field rooms-field">
+              <label for="rooms">방 수</label>
+              <select id="rooms" name="rooms" aria-describedby="limitedDataNote">
+                <option value="">전체</option><option value="0">원룸·스튜디오</option><option value="1">1개</option><option value="2">2개</option><option value="3">3개</option>
+              </select>
+            </div>
+            <div class="field compact-field">
+              <label for="kind">공간 유형</label>
+              <select id="kind" name="kind">
+                <option value="all">전체</option><option value="lodging">숙박</option><option value="non_lodging">비숙박</option>
+              </select>
+            </div>
+            <div class="field compact-field area-field">
+              <label for="min_area">최소 면적</label>
+              <div class="unit-input"><input id="min_area" name="min_area" type="number" min="0" step="1" inputmode="numeric" placeholder="전체" aria-describedby="limitedDataNote"><span>㎡</span></div>
+            </div>
+            <div class="field compact-field guests-field">
+              <label for="guests">인원</label>
+              <select id="guests" name="guests" aria-describedby="limitedDataNote">
+                <option value="">전체</option><option value="1">1명 이상</option><option value="2">2명 이상</option><option value="4">4명 이상</option><option value="6">6명 이상</option>
+              </select>
+            </div>
+            <fieldset class="filter-group options-group">
+              <legend>편의 옵션</legend>
+              <div class="check-list">
+                <label><input type="checkbox" name="options" value="wifi"><span>와이파이</span></label>
+                <label><input type="checkbox" name="options" value="kitchen"><span>주방</span></label>
+                <label><input type="checkbox" name="options" value="parking"><span>주차</span></label>
+                <label><input type="checkbox" name="options" value="washer"><span>세탁기</span></label>
+              </div>
+            </fieldset>
+            <label class="switch-filter"><input id="instant" name="instant" type="checkbox" value="1"><span class="switch-ui" aria-hidden="true"></span><span>즉시입주</span></label>
+            <label class="switch-filter"><input id="discount" name="discount" type="checkbox" value="1"><span class="switch-ui" aria-hidden="true"></span><span>할인</span></label>
+            <div class="field compact-field sort-field">
+              <label for="sort">정렬</label>
+              <select id="sort" name="sort"><option value="id">기본순</option><option value="total_asc">기간 총액 낮은순</option></select>
+            </div>
+          </div>
+        </form>
+        <p id="limitedDataNote" class="limited-data-note"><span class="note-mark" aria-hidden="true">i</span><span><strong>위치와 상세 정보는 공개 범위에 따라 제한됩니다.</strong> 등록자가 공개에 동의한 요약만 필터에 사용하며, 보호된 정보는 표시하지 않습니다.</span></p>
+      </section>
+
+      <section class="supermap-workspace" aria-label="검색 결과 및 슈퍼맵">
+        <section class="results-pane" aria-labelledby="resultsTitle">
+          <div class="results-heading">
+            <div>
+              <p class="section-kicker">DISCOVER</p>
+              <h2 id="resultsTitle">검색 결과</h2>
+            </div>
+            <span id="resultCount" class="result-count" aria-live="polite">검색 전</span>
+          </div>
+          <div id="statusMessage" class="status-message" role="status" aria-live="polite" aria-atomic="true">
+            <span class="status-mark" aria-hidden="true"></span><span>조건을 선택하고 검색해 주세요.</span>
+          </div>
+          <div id="errorPanel" class="error-panel" role="alert" hidden>
+            <div class="error-symbol" aria-hidden="true">!</div>
+            <div class="error-copy"><strong id="errorTitle">검색을 완료하지 못했습니다.</strong><p id="errorCopy">연결을 확인한 뒤 다시 시도해 주세요.</p><button id="retryButton" class="retry-button" type="button">다시 시도</button></div>
+          </div>
+          <div id="selectedSummary" class="selected-summary" aria-live="polite" hidden></div>
+          <div id="listingList" class="listing-list" aria-label="검색된 공개 항목"></div>
+          <div id="emptyPanel" class="empty-panel" hidden>
+            <span class="empty-index" aria-hidden="true">—</span><h3>조건에 맞는 결과가 없습니다.</h3><p>지역이나 필터를 바꿔 다시 찾아보세요.</p>
+          </div>
+        </section>
+
+        <aside class="map-pane" aria-label="지도 및 유형 필터">
+          <div class="map-topline">
+            <div><p class="section-kicker">SUPER MAP</p><h2>한눈에 둘러보기</h2></div>
+            <span class="map-privacy">위치 보호 적용</span>
+          </div>
+          <div class="map-layout">
+            <div id="layerControls" class="layer-controls" aria-label="지도 유형 표시">
+              <p class="layer-heading">지도 레이어</p>
+              <label class="layer-toggle layer-stay"><input type="checkbox" name="layer" value="stay" checked><span class="layer-symbol" aria-hidden="true"></span><span class="layer-label">숙박</span><span class="layer-count" data-count-layer="stay">—</span></label>
+              <label class="layer-toggle layer-sale"><input type="checkbox" name="layer" value="sale"><span class="layer-symbol" aria-hidden="true"></span><span class="layer-label">매매</span><span class="layer-count" data-count-layer="sale">—</span></label>
+              <label class="layer-toggle layer-business"><input type="checkbox" name="layer" value="business"><span class="layer-symbol" aria-hidden="true"></span><span class="layer-label">영업권</span><span class="layer-count" data-count-layer="business">—</span></label>
+              <label class="layer-toggle layer-auction"><input type="checkbox" name="layer" value="auction"><span class="layer-symbol" aria-hidden="true"></span><span class="layer-label">공매</span><span class="layer-count" data-count-layer="auction">—</span></label>
+              <p class="layer-footnote">유형별 수는 검색 결과 수입니다.</p>
+            </div>
+            <div id="mapCanvas" class="map-canvas" aria-label="검색 결과 지도">
+              <div class="map-placeholder" id="mapPlaceholder">
+                <span class="map-emblem" aria-hidden="true"></span>
+                <strong id="mapMessage">지도를 불러올 준비 중입니다.</strong>
+                <p id="mapDetail">검색 응답의 지도 연결 정보를 확인합니다.</p>
+              </div>
+            </div>
+          </div>
+          <div class="map-footer" id="mapFooter"><span class="map-status-dot" aria-hidden="true"></span><span id="mapStatus">지도 연결 정보 대기 중</span></div>
+        </aside>
+      </section>
+      <footer class="page-footer">
+        <span>HOME &amp; STAY <i aria-hidden="true">/</i> SUPER MAP</span>
+        <span>기간 총액은 유효한 견적이 있을 때만 표시됩니다. 예약 또는 거래 확정 기능은 제공하지 않습니다.</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -20,6 +20,7 @@ FIXTURE_CHECKS = {
     "phase5-consumer-db": "tests/test_hs2_phase5_db.py",
     "phase6-listing-db": "tests/test_hs2_phase6_db.py",
     "phase7-calendar-db": "tests/test_hs2_phase7_db.py",
+    "phase8-supermap-db": "tests/test_hs2_phase8_db.py",
 }
 
 

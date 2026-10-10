@@ -30,7 +30,12 @@
       {"id":"P07-A02","criterion":"Actual owned PostgreSQL append-only calendar/source revisions, scope/CSRF/inventory/publication revalidation, original immutable FK-bound snapshots and actual consumer selected-stay total adapter","check":"phase7-calendar-db"},
       {"id":"P07-A03","criterion":"Actual desktop/mobile PostgreSQL-backed browser bulk/date/week/month changes, reload persistence, closed/open dates, total DOM and rejected stale writes; quote is not confirmed booking","check":"phase7-calendar-ui"}
     ]},
-    {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":null},
+    {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":[
+      {"id":"P08-A01","criterion":"Exact period-total and opt-in operator summary filters; original restricted metadata and geometry thresholds; native public GET adapters with no private-building-name inference","check":"phase8-supermap-contracts"},
+      {"id":"P08-A02","criterion":"Actual approved SQL-backed search, original privacy SQL/redactor, native layer identity/counts, bounds/expiry/revocation/fresh publication, no original statistics or private metadata writes","check":"phase8-supermap-db"},
+      {"id":"P08-A03","criterion":"Independent four-layer state and canonical layer+ID, stable pixel slots and no coordinate mutation; stale search/bounds/detail, OFF and restore generation/abort fences","check":"phase8-supermap-controller"},
+      {"id":"P08-A04","criterion":"Actual Chromium desktop/mobile nonempty SQL results and SDK-interface co-location hit tests, marker cluster choice, rapid typed detail selection, full filters/URL/allOFF/retry and no price leakage","check":"phase8-supermap-ui"}
+    ]},
     {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":null},
     {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":null},
     {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":null},
