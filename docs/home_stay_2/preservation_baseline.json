@@ -1,0 +1,21 @@
+{
+  "source_git_head": "c326ef8cb733b5a0d6eecb1889c8eb6020d6f28b",
+  "frozen_files": {
+    "db.py": "6da7d32c3de9a906e44bd974b877292569f0a75cb6bbc8a4b4216bad16c5665c",
+    "auction_schema.py": "93dc645e7993c262a3bec89ea166c2a973c6e92be374e854e46e08675e054564",
+    "lodging_classification.py": "4a6db99b881e3abab795b3eb829968b364d7b4a108d8d4cce0bfee926dda1437",
+    "lodging_categories.py": "bfad052ab5951813ef705bcae5c12ab9a6f6a391f0cf643ae2cdcdf44477aec5",
+    "lodging_report_status.py": "1fd1de0fadaa9a63e1c81cc6b49552cae5977d5c2f9af565a0cde8cbe9f69e22",
+    "lodging_data_contract.py": "c79ee75981f0a4453955c5871d4f71f2c03dee3c11a016ac69016c33b51b8406",
+    "sync_brhub.py": "1d6621a7091adb296db6cb92c68b27e3075b40e3bea2d8aa5d31e585a0f618c3",
+    "sync_lodgings.py": "ad36f35d437f592737428776c639fc6344a9b0860db5622db59b949c75f15a58",
+    "sync_batch.py": "aebebd5e0995b67894ca9a1f2c259e3981e96a69cd5ec89d6535c5b341f5b495",
+    "sync_onbid.py": "22bd3395467ba2b6496a46fd4af3c6fded29ab5d43f3e1b67d0c8d04dd55ff9a",
+    "public_api_client.py": "eeb2debc529428edb1b4bd4a2a79d3349d7e361f1a8b86d26498c4f98968b8e2",
+    "data_sync_transport.py": "e8109d8d849581c8a0327f96e310c019a0eb75302770e204a1c379537d275d6f",
+    "quota_policy.py": "927e80d963e168d0002a8257392e4f173693ca9f1f1e3b54aa846d642635d7cd"
+  },
+  "route_inventory": "home_stay_audit_2026_10/routes.csv",
+  "route_inventory_sha256": "4c75ed2d7cfcb8ac94a86b363b7922583db17e57071fa6056f3faa4059bbf96a",
+  "must_exist": ["app.py","static/index.html","static/js/main.js","static/admin.html","static/js/auth.js","static/js/header.js","auction_service.py","survey_service.py","membership_service.py","listing_extensions.py"]
+}

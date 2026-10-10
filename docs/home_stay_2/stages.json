@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "master_spec": "docs/home_stay_2/MASTER_SPEC.md",
+  "manual_gates": {
+    "production_migration": {"automatic_execution": false, "requires": "owner approval, schema diff, fingerprint, backup/recovery evidence"},
+    "live_pg_settlement": {"automatic_execution": false, "requires": "owner approval, provider/legal/refund/reconciliation review"},
+    "production_publish": {"automatic_execution": false, "requires": "owner approval, all gates PASS, release and recovery review"}
+  },
+  "stages": [
+    {"id":1,"title":"도메인 계약·보존 경계 확정","requirements":["PRESERVE-01","PRESERVE-02","HARNESS-01"],"regression":["lodging-status","lodging-types","auction-domain","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S01-A01","criterion":"숙박/비숙박 판정 계약에 영업분류·건축용도·채널 구분 및 Airbnb/농어촌/캠핑 숙박 후보 포함","check":null},
+      {"id":"S01-A02","criterion":"신규 등록 후보와 기존 숙박 master ID/원장을 분리한 도메인 계약·변경 영향 검증","check":null}]},
+    {"id":2,"title":"계정·로그인·복수 역할","requirements":["AUTH-01"],"regression":["lodging-status","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S02-A01","criterion":"이용자 카카오/운영자 이메일 진입·실패·로그아웃 및 비승인 역할 접근 거절","check":null},
+      {"id":"S02-A02","criterion":"기존 회원 이력·복수 사업장 전환 보존, 이메일만으로 계정 자동 병합 금지","check":null}]},
+    {"id":3,"title":"주소·건물 등록 후보·대장 확인","requirements":["BUILDING-01","BUILDING-02","PRESERVE-01"],"regression":["lodging-types","relay","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S03-A01","criterion":"아파트/원룸/상가/창고/숙박 등 모든 용도 후보 선택, 용도만으로 등록 차단 안 함","check":null},
+      {"id":"S03-A02","criterion":"주소→대장→좌표 증거 기록, 모호/실패 명시 및 기존 master 강제 병합·재번호 금지","check":null}]},
+    {"id":4,"title":"단기임대 등록·소유권·임시저장","requirements":["PRODUCT-01","BUILDING-02"],"regression":["lodging-types","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S04-A01","criterion":"임대인 생성/편집/초안/삭제 상태와 타인 매물 수정 거절","check":null},
+      {"id":"S04-A02","criterion":"필수조건·운영가능 근거 검증, 기존 직거래/중개/영업권 데이터 무변경","check":null}]},
+    {"id":5,"title":"사진·편의시설·공개범위","requirements":["PRESERVE-04"],"regression":["privacy-ui","admin-scope","map-legacy"],"acceptance":[
+      {"id":"S05-A01","criterion":"이미지 형식/크기/소유권 및 사진 등록/삭제/대표 설정 검증","check":null},
+      {"id":"S05-A02","criterion":"제한공개 API·지도·사진 메타데이터·건물 join으로 정확한 위치 유출 안 됨","check":null}]},
+    {"id":6,"title":"최소 체류·날짜 입력","requirements":["STAY-01","STAY-02"],"regression":["lodging-status","lodging-types","privacy-ui"],"acceptance":[
+      {"id":"S06-A01","criterion":"숙박분류 1박 허용(도시민박/Airbnb 채널/농어촌/캠핑 포함), 0박 거절","check":null},
+      {"id":"S06-A02","criterion":"비숙박 6일 거절/7일 허용, 체크인·체크아웃·사업장 시간대 및 경계일 검증","check":null}]},
+    {"id":7,"title":"숙박 날짜별 요금·연휴","requirements":["PRICE-01"],"regression":["lodging-types","privacy-ui"],"acceptance":[
+      {"id":"S07-A01","criterion":"날짜별 주중/주말/연휴 요금 override와 체크아웃 제외 합계 검증","check":null},
+      {"id":"S07-A02","criterion":"누락/음수/중복 적용일·시간대·요금 변경 권한 검증; 확정예약 소급 영향 없음","check":null}]},
+    {"id":8,"title":"비숙박 주·월 가격표","requirements":["PRICE-02"],"regression":["privacy-ui","lodging-types"],"acceptance":[
+      {"id":"S08-A01","criterion":"주·월 단위 기간별 가격 변경, 7일 최소 체류와 요금 합계 검증","check":null},
+      {"id":"S08-A02","criterion":"부분 주/월·월 길이·보증금/관리비/세금의 승인된 계산 정책 및 부동소수점 오차 방지","check":null}]},
+    {"id":9,"title":"예약 가능일·재고·동시성","requirements":["BOOKING-01"],"regression":["privacy-ui","admin-scope"],"acceptance":[
+      {"id":"S09-A01","criterion":"날짜 범위 가용성·운영자 blocked day·겹치는 예약 거절","check":null},
+      {"id":"S09-A02","criterion":"동시 예약·재시도·만료/취소 시 재고 복구를 격리 fixture에서 검증","check":null}]},
+    {"id":10,"title":"예약 확인·가격 스냅샷","requirements":["BOOKING-01"],"regression":["privacy-ui","lodging-status"],"acceptance":[
+      {"id":"S10-A01","criterion":"확정 시 일/주/월 구성·통화·부대비용·합계·가격/정책 버전 스냅샷 불변","check":null},
+      {"id":"S10-A02","criterion":"가격표 변경 후 기존 확정가격 유지; 미확정 재견적·중복 확정·권한 검증","check":null}]},
+    {"id":11,"title":"검색·목록·소비자 상세","requirements":["PRODUCT-01","PRESERVE-04"],"regression":["privacy-ui","lodging-types","map-legacy"],"acceptance":[
+      {"id":"S11-A01","criterion":"위치/일자/인원/가격/숙박유형 검색·빈/오류/페이지 재진입 검증","check":null},
+      {"id":"S11-A02","criterion":"날짜별/주월 견적·최소 체류·공개범위를 목록과 상세에서 일치 표시","check":null}]},
+    {"id":12,"title":"Super Map 독립 레이어","requirements":["MAP-01"],"regression":["map-legacy","privacy-ui","lodging-types","auction-domain"],"acceptance":[
+      {"id":"S12-A01","criterion":"단기임대 기본 ON; 매매/영업권양도/공매 독립 토글·조회·총계","check":null},
+      {"id":"S12-A02","criterion":"기존 숙박·관광·공매 통계 분리, 지도 bounds/줌 전환·오래된 요청 경쟁 검증","check":null}]},
+    {"id":13,"title":"마커 형태·동일좌표 겹침 방지","requirements":["MAP-02","MAP-04","PRESERVE-05"],"regression":["map-legacy","privacy-ui","auction-domain"],"acceptance":[
+      {"id":"S13-A01","criterion":"레이어별 형태 구분·동일좌표 여러 종류 선택 가능·원본 좌표 미변경","check":null},
+      {"id":"S13-A02","criterion":"기존 공매 네모형 최대한 유지, 모바일/데스크톱·키보드·다수 좌표 겹침 검증","check":null}]},
+    {"id":14,"title":"마커별 좌측 상세패널","requirements":["MAP-03"],"regression":["map-legacy","privacy-ui","auction-domain"],"acceptance":[
+      {"id":"S14-A01","criterion":"단기임대/매매/영업권/공매 클릭 종류별 올바른 좌측 정보와 ID 표시","check":null},
+      {"id":"S14-A02","criterion":"빠른 연속 클릭·늦은 응답·레이어 OFF·뒤로가기에서 선택/패널이 섞이지 않음","check":null}]},
+    {"id":15,"title":"문의·채팅·관심·예약 알림","requirements":["PRESERVE-02"],"regression":["privacy-ui","admin-scope","relay"],"acceptance":[
+      {"id":"S15-A01","criterion":"매물/예약 상대방만 문의·채팅 접근, 관심 중복/해제 및 기존 이력 보존","check":null},
+      {"id":"S15-A02","criterion":"알림 동의/멱등/실패 재시도; 검사에서는 실제 이메일/SMS 발송 0회","check":null}]},
+    {"id":16,"title":"운영자·관리자·신고/검수","requirements":["PRESERVE-02","PRESERVE-03"],"regression":["admin-scope","lodging-status","lodging-types","relay","auction-domain","privacy-ui"],"acceptance":[
+      {"id":"S16-A01","criterion":"단기매물/가격표/예약·신고 검수 역할 분리, 기존 관리자 메뉴/수집 버튼 계약 보존","check":null},
+      {"id":"S16-A02","criterion":"상태 전환·삭제/철회 이력·감사 기록·원장 불변; 자동 수집/승격 실행 없음","check":null}]},
+    {"id":17,"title":"취소·결제·정산 모의 계약","requirements":["GATE-02","BOOKING-01"],"manual_gate":"live_pg_settlement","regression":["privacy-ui","admin-scope","relay"],"acceptance":[
+      {"id":"S17-A01","criterion":"PG test double로 결제/실패/webhook 멱등·확정 스냅샷·취소 환불 정책 검증","check":null},
+      {"id":"S17-A02","criterion":"모의 정산 대사·환불·동시성·권한 검증, 실제 PG/정산 실행 불가 및 승인 요청 기록","check":null}]},
+    {"id":18,"title":"전체 회귀·접근성·릴리스 준비","requirements":["GATE-01","GATE-02","GATE-03","HARNESS-01","BRAND-01"],"manual_gates":["production_migration","live_pg_settlement","production_publish"],"regression":["lodging-status","lodging-types","auction-domain","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S18-A01","criterion":"18단계 근거·이전 acceptance·전체 회귀·모바일/접근성/제한공개 및 복구계획 재검증","check":null},
+      {"id":"S18-A02","criterion":"schema/실제PG/배포 각각 별도 승인 대기 표시, 자동 실행 0회; 문구 후보 강제 적용 안 함","check":null}]}
+  ]
+}

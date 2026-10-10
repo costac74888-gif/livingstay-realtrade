@@ -1,0 +1,11 @@
+{
+  "harness-unit": {"file":"tests/test_hs2_harness.py","kind":"python","role":"harness","reviewed_sha256":"5eabe2170480d1a6cf335aa2cc2fa055d2678c0ea362b5b1fb1f2166d0f8c2fa"},
+  "harness-contracts": {"file":"tests/test_hs2_contracts.py","kind":"python","role":"harness","reviewed_sha256":"6c6d6ac90067774f8208445c49ba1461122617697945df89ffde36b2c258be2d"},
+  "lodging-status": {"file":"tests/test_lodging_report_status.py","kind":"python","role":"regression","reviewed_sha256":"8d5f95e3b9455beed4ca6e7dfff974e45434bd1fdefba7c7c5ce833590dcbd3c"},
+  "lodging-types": {"file":"tests/test_lodging_categories.py","kind":"python","role":"regression","reviewed_sha256":"6ebfb7570116de9ca0e32724f381690805044c189a04c53ea1ed120d118b8e29"},
+  "auction-domain": {"file":"tests/test_auction_domain.py","kind":"python","role":"regression","reviewed_sha256":"d0151d9807ce904af7d919d3b9e37f02da16a4d81b1adec7176b51d24f428eb9"},
+  "relay": {"file":"tests/test_hs2_relay_contract.py","kind":"python","role":"regression","reviewed_sha256":"a50c384345d3d93d72b143bb3145457bb9e5f29d64db67119012488d8bf10606"},
+  "map-legacy": {"file":"tests/auction_map_exclusive_test.cjs","kind":"node","role":"regression","reviewed_sha256":"3fc9217bb2ba64dab9dbe68be6144c6be254b87a882a01ebb49f590e0d18e6d0"},
+  "admin-scope": {"file":"tests/admin_data_sync_scope_test.js","kind":"node","role":"regression","reviewed_sha256":"cc775704f4b22fa44f7addb0e6e35a74cb2cb38b7cb1806a7d70b52ed86a795c"},
+  "privacy-ui": {"file":"tests/listings_card_layout_test.js","kind":"node","role":"regression","reviewed_sha256":"1aa2c0f0d8f412e07f6765831af1627dc989ed24e4513b107febc8aa4e1068dd"}
+}

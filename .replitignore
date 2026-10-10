@@ -3,3 +3,6 @@ node_modules/
 __pycache__/
 .pytest_cache/
 *.pyc
+
+# Offline development harness generated logs are never deployment assets
+.local/hs2-harness/
