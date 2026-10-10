@@ -53,10 +53,18 @@ socket과 정해진 owned 웹 origin으로 제한한다.
 - `.local/suite-audit/owned-current/`: 범용 체크별 결과·pytest 로그.
 - `.local/hs2-harness/step1-registered-final.json`: 등록된 검사 실행 기록.
   source_unchanged가 false인 실행은 최종 소스 지문 통과가 아니다.
+- `.local/hs2-harness/step1-registered-stable.json`: 후속 등록 검사 58개도
+  모두 PASS였지만, 임시 화면 확인 서버의 8000번 포트가 `.replit`에
+  자동 등록되어 source_unchanged는 false다. 최종 검증으로 인정하지 않는다.
+  해당 임시 서버를 종료하고 추가된 포트 설정을 제거했다.
 - `/tmp/hs2-step1-api-baseline.log`: 최초 API 실패 재현.
 
 기존 Harness baseline을 다시 생성하지 않았으며 frozen 13개,
 기존 route 616개 및 필수 항목 10개 보존 검사를 유지한다.
+
+익명 화면 캡처에서는 격리 서버의 관리자 로그인 화면만 확인했다.
+로그인 후 사진 관리 UI는 API 및 소스 검사만 수행했으며,
+해당 signed-in UI의 렌더링을 확인했다고 주장하지 않는다.
 
 ## 다음 두 단계
 

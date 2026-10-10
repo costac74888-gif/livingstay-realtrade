@@ -18,3 +18,11 @@ Git 전송 인증 실패를 기존 GitHub 연결의 인증 실패와 동일시�
 **How to apply:** 원문 바이트가 UTF-8로 정확히 왕복하는지 확인한 경우에만 묶는다.
 바이너리는 원래 바이트로 전송한다. tree/commit SHA 일치를 계속 검사하고, 429에는
 제한된 대기·재시도를 적용한다. 실패 시 원격 ref를 바꾸거나 force로 우회하지 않는다.
+
+Git Data API에 원본 commit message의 마지막 줄바꿈도 그대로 전달한다.
+
+**Why:** tree·부모·작성자·시각이 같아도 message의 마지막 LF를 제거하자
+다른 커밋 SHA가 생성됐다. 마지막 LF를 포함해 전송하면 원본 SHA와 일치했다.
+
+**How to apply:** git cat-file의 message 바이트를 보존하고 rstrip으로
+정규화하지 않는다. 해시 불일치가 나면 원격 ref는 변경하지 않는다.
