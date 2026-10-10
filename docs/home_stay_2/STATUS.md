@@ -6,7 +6,7 @@
 
 | 단계 | 상태 | 시작 Git | 완료 Git |
 | --- | --- | --- | --- |
-| 1 | PASS | 2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88 | - |
+| 1 | COMPLETE | 2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88 | 0eeae945ed074aca7b4e26f0b7008b397105108b |
 | 2 | PENDING | - | - |
 | 3 | PENDING | - | - |
 | 4 | PENDING | - | - |

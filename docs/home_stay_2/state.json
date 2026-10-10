@@ -211,7 +211,7 @@
   },
   "stages": {
     "1": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "start": {
         "head": "2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88",
         "tag": "hs2/stage-01/start",
@@ -442,6 +442,11 @@
           "tests/test_hs2_phase1_use_contracts.py"
         ],
         "commit_status": ""
+      },
+      "end": {
+        "head": "0eeae945ed074aca7b4e26f0b7008b397105108b",
+        "tag": "hs2/stage-01/complete",
+        "at": "2026-10-10T10:37:14.706090+00:00"
       }
     },
     "2": {
@@ -1270,6 +1275,13 @@
         ],
         "commit_status": ""
       }
+    },
+    {
+      "at": "2026-10-10T10:37:14.706110+00:00",
+      "event": "STAGE_COMPLETE",
+      "stage": 1,
+      "head": "0eeae945ed074aca7b4e26f0b7008b397105108b",
+      "tag": "hs2/stage-01/complete"
     }
   ]
 }
