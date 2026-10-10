@@ -1,6 +1,20 @@
 {
   "version": 1,
   "current_stage": 0,
+  "handoff": {
+    "phase": "0.5",
+    "status": "PENDING_SELF_CHECK",
+    "next_stage": 1,
+    "source_commit": "a424b3b1f13efbee73b96a093a43c20a412c1358",
+    "remote_main_at_start": "a424b3b1f13efbee73b96a093a43c20a412c1358",
+    "branch": "handoff/home-stay-2-phase-0-5",
+    "start_checkpoint": "hs2/phase-0-5/handoff-start",
+    "final_checkpoint": "hs2/phase-0-5/handoff",
+    "scope_check": "PASS",
+    "operating_changes": false,
+    "stage_1_started": false,
+    "publish_policy": "non-force branch/checkpoint only; never push main; require remote branch/tag commit equality"
+  },
   "bootstrap": {
     "phase": "0.5",
     "status": "PASS",

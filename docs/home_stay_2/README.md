@@ -1,5 +1,10 @@
 # 0.5단계 자동 개발·검증 Harness
 
+**Work 인계 진입점:** [WORK_HANDOFF.md](WORK_HANDOFF.md).
+0.5 완료 이후 다음은 제품 1단계이며, 기계 상태 `current_stage=0`은 아직 제품
+단계를 시작하지 않았다는 뜻이다. 원격 인계 브랜치·체크포인트·초기 검사·승인
+경계는 인계 문서를 먼저 확인한다.
+
 이 하네스는 제품 기능 개발이나 운영 실행기를 대신하지 않는다.
 `MASTER_SPEC.md`(고정 요구사항), `stages.json`(18단계 및 acceptance 기준),
 `checks.json`(검토한 실행 검사), `preservation_baseline.json`(보존 기준),
