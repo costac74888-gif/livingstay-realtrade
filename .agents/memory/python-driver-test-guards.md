@@ -14,3 +14,13 @@ sitecustomize에서 일반 Exception을 던지는 것은 실행 중단 보장이
 **Why:** 격리 capability가 없을 때 가드가 무시되면 검사 코드가 정상 환경의 DB 설정으로 진입할 위험이 있다.
 
 **How to apply:** capability 검증 실패는 interpreter를 즉시 종료시키고, 후속 코드가 실행되지 않는 별도 subprocess 검사를 유지한다.
+
+UNIX socket로 연결하는 개발·운영 비교 fixture는 서로 다른 DB 이름을
+사용해야 한다. 현재 실제 연결 지문에서 UNIX 연결의 서버 주소·포트는
+NULL이므로 별도 클러스터라도 같은 DB 이름이면 같은 대상으로 보인다.
+
+**Why:** 서로 다른 owned PostgreSQL 클러스터 두 개를 만들었지만 둘 다
+postgres DB로 연결하자 운영 쓰기 금지 게이트가 정상적으로 차단했다.
+
+**How to apply:** 비교용 DB도 owned 임시 클러스터에 만들고 다른 DB명을
+명시한다. 실제 운영 URL을 주입하거나 안전 게이트를 해제하지 않는다.

@@ -191,8 +191,8 @@ expect(
   "홈 순서가 검색영역 최근검색 → 실거래추세 → 실거래목록 → 데이터랩이 아닙니다."
 );
 expect(
-  main.includes('const HS_RECENT_MAX = 5') &&
-  main.includes(".slice(0, HS_RECENT_MAX)"),
+  main.includes('const HS_RECENT_VISIBLE_MAX = 5') &&
+  main.includes(".slice(0, HS_RECENT_VISIBLE_MAX)"),
   "최근검색 화면 표시 개수가 5개로 제한되지 않았습니다."
 );
 expect(
@@ -286,7 +286,7 @@ expect(main.includes('class="datalab-head-stack">건물수<small>(시설수)</sm
   main.includes('const buildingCoverageTypes = new Set(["관광", "에어비앤비", "농어촌민박", "캠핑", "한옥", "복합"])') &&
   !main.includes("영업신고업체</th>") &&
   !main.includes("영업신고호실</th>") &&
-  !main.includes("영업신고율</th>"),
+  !main.includes("영업신고율</th>") &&
   main.includes('class="datalab-head-stack">신고객실수<small>(사이트수)</small>'),
   "전국숙박업통계의 건물수(시설수)·호실수(사이트수)·신고업체(정상)·신고객실수(사이트수) 구분이 누락됐습니다.");
 expect(!main.includes("datalab-note") && !css.includes(".datalab-note") &&

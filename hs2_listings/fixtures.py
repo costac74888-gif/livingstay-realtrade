@@ -15,6 +15,14 @@ PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 
 def seed():
     with connect_fixture() as conn, conn.cursor() as c:
+        from hs2_data.repository import require_fixture
+        require_fixture(conn)
+        # Each initialized fixture is a fresh product state, including when
+        # pytest runs several phase classes against the same owned cluster.
+        c.execute("""DROP SCHEMA IF EXISTS hs2_dev CASCADE;
+            DROP SCHEMA IF EXISTS hs2_fixture_legacy CASCADE;
+            DROP ROLE IF EXISTS hs2_fixture_writer;
+            DROP ROLE IF EXISTS hs2_fixture_public;""")
         c.execute("""CREATE SCHEMA hs2_fixture_legacy;
             CREATE TABLE hs2_fixture_legacy.master_buildings(id bigint PRIMARY KEY,identity_key text);
             CREATE TABLE hs2_fixture_legacy.users(id bigint PRIMARY KEY,active boolean);

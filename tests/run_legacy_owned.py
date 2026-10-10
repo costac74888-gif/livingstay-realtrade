@@ -53,6 +53,8 @@ def fixture():
                     HOMENSTAY_OFFLINE_TESTS="1",
                     PYTHONPATH=str(ROOT / "tests" / "owned_legacy_guard") + ":" + str(ROOT),
                     NODE_OPTIONS="--require=" + str(ROOT / "tests" / "offline_support" / "browser_guard.cjs"))
+                env["PYTHONPATH"] += "".join(
+                    ":" + p for p in sys.path if p and "site-packages" in p and Path(p).is_dir())
                 work = root / "workspace"
                 work.mkdir()
                 for entry in ROOT.iterdir():
@@ -125,9 +127,13 @@ q.executemany(
       '41150','의정부동',str(9000+i),20,'생활',
       37.5 if i<35 else 35.16,127.05 if i<35 else 129.05) for i in range(40)])
 c.commit()
+import sys
+sys.path.insert(0, TEST_HELPERS)
+from legacy_sample_fixture import seed
+seed(c)
 c.close()
-print('Forty synthetic master buildings seeded; no real property rows copied.')
-""".replace("remaining=DDL", f"remaining={prerequisite!r}")
+print('Synthetic regions/specimens seeded; no real property rows copied.')
+""".replace("remaining=DDL", f"remaining={prerequisite!r}").replace("TEST_HELPERS", repr(str(ROOT / "tests")))
             prepared = subprocess.run([sys.executable, "-c", setup], cwd=ROOT, env=env,
                                       timeout=60)
             if prepared.returncode:
