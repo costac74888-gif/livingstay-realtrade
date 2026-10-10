@@ -1792,6 +1792,14 @@
       "event": "WORK_IMPLEMENTATION_REVIEW",
       "phase": 8,
       "status": "PASS"
+    },
+    {
+      "at": "2026-10-10T16:17:54.792807+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 8,
+      "status": "COMPLETE",
+      "head": "8719a8bb7012b7cb5febe3e78c9bafd97212ab27",
+      "tag": "hs2/phase-08/complete"
     }
   ],
   "current_user_phase": 8,
@@ -5070,11 +5078,11 @@
       }
     },
     "8": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase8/WORK_INSTRUCTION.md",
       "at": "2026-10-10T15:51:55.717296+00:00",
       "source_head": "d966ca08070eff5b82818af783c4e842790f436e",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "verification": {
         "at": "2026-10-10T16:16:44.478764+00:00",
         "head": "d966ca08070eff5b82818af783c4e842790f436e",
@@ -5754,6 +5762,15 @@
         "review_file": "docs/home_stay_2/phase8/IMPLEMENTATION_REVIEW.md",
         "reviewer": "internal Work; not external independent reviewer",
         "screenshot": ".local/hs2-harness/phase8-supermap.jpg"
+      },
+      "start": {
+        "head": "d966ca08070eff5b82818af783c4e842790f436e",
+        "tag": "hs2/phase-08/start"
+      },
+      "end": {
+        "head": "8719a8bb7012b7cb5febe3e78c9bafd97212ab27",
+        "tag": "hs2/phase-08/complete",
+        "at": "2026-10-10T16:17:54.792773+00:00"
       }
     }
   }
