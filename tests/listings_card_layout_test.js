@@ -168,7 +168,7 @@ expect(
 );
 expect(
   modal.includes("data-listing-detail-map") &&
-  modal.includes("var buildingName = isLimitedLocation ?") &&
+  modal.includes("var buildingName = isLimitedLocation || businessRightsPrivate ?") &&
   modal.includes("listing.building_name") &&
   main.includes("building_name: lr.building_name || bName") &&
   modal.includes('listing.urgent_tier === "urgent"') &&

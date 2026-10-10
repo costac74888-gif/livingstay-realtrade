@@ -128,6 +128,13 @@ def public_cache(fn):
 
 def filters():
     where, params = ["TRUE"], []
+    keyword = request.args.get("q", "").strip()[:100]
+    if "\0" in keyword:
+        raise ValueError("검색어를 확인해 주세요.")
+    if keyword:
+        pattern = "%" + keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        where.append("(a.title ILIKE %s OR a.address_road ILIKE %s OR a.address_jibun ILIKE %s)")
+        params.extend([pattern, pattern, pattern])
     region = request.args.get("region", "").strip()[:100]
     if "\0" in region:
         raise ValueError("지역 입력을 확인해 주세요.")

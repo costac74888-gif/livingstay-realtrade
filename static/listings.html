@@ -23,6 +23,14 @@
   .listings-page { max-width: 960px; margin: 0 auto; padding: 20px 16px 60px; }
   .listings-title { font-size: 22px; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
   .listings-sub   { font-size: 13px; color: var(--ink-soft); margin-bottom: 20px; }
+  .ls-channel-tabs { display:flex; gap:8px; padding:5px; margin:0 0 16px; border:1px solid var(--line); border-radius:12px; background:#f7f5f0; }
+  .ls-channel-tabs button { flex:1; min-height:42px; border:0; border-radius:8px; background:transparent; color:var(--ink-soft); font:700 14px inherit; cursor:pointer; }
+  .ls-channel-tabs button.active { background:#214b82; color:#fff; box-shadow:0 2px 7px rgba(25,54,94,.16); }
+  .ls-target-filter { display:flex; flex-wrap:wrap; gap:7px; margin:0 0 12px; }
+  .ls-target-filter button { border:1px solid var(--line); border-radius:18px; background:#fff; padding:7px 13px; color:var(--ink-soft); font:700 12px inherit; cursor:pointer; }
+  .ls-target-filter button.active { border-color:var(--brass); background:var(--brass-tint); color:var(--brass-dark); }
+  .ls-channel-badge { display:inline-flex; vertical-align:middle; margin-right:5px; padding:2px 6px; border-radius:4px; background:#e8eef7; color:#214b82; font-size:10px; font-weight:800; }
+  .ls-broker-panel { margin-top:10px; padding:12px; border:1px solid #d7e1ed; border-radius:9px; background:#f6f9fc; font-size:12px; line-height:1.65; }
 
   /* ── 필터 박스 ── */
   .tx-filter { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 18px; }
@@ -45,6 +53,12 @@
     font-family: inherit; white-space: nowrap;
   }
   .ls-filter-grid .btn-search:hover { background: var(--brass-dark); }
+  .ls-auction-advanced { display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;align-items:end;margin-top:12px;padding-top:12px;border-top:1px solid var(--line); }
+  .ls-auction-advanced .field { display:flex;flex-direction:column;gap:5px;min-width:0; }
+  .ls-auction-advanced label { font-size:11.5px;color:var(--ink-soft);font-weight:600; }
+  .ls-auction-advanced select,.ls-auction-advanced input { width:100%;min-width:0;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font:12px inherit; }
+  .ls-auction-range { display:flex;gap:6px; }
+  .ls-auction-legacy-link { align-self:end;padding:9px 0;color:var(--brass-dark);font-size:12px;font-weight:700;text-decoration:underline;white-space:nowrap; }
 
   /* ── 채팅중 칩 바 ── */
   .tx-favbar {
@@ -307,8 +321,19 @@
 <header id="siteHeader"></header>
 
 <div class="listings-page">
-  <div class="listings-title">직거래 매물</div>
-  <div class="listings-sub">개인이 직접 내놓은 숙박시설 공개 매물입니다.</div>
+  <div class="listings-title" id="listingsTitle">숙박 매물</div>
+  <div class="listings-sub" id="listingsSubtitle">직거래·중개 매물을 한곳에서 비교해 보세요.</div>
+  <div class="ls-channel-tabs" id="lsChannelTabs" role="tablist" aria-label="매물 게시 방식">
+    <button type="button" data-channel="direct" role="tab">직거래</button>
+    <button type="button" data-channel="broker" role="tab">중개</button>
+    <button type="button" data-channel="auction" role="tab">공매</button>
+  </div>
+  <div class="ls-target-filter" id="lsTargetFilter" role="group" aria-label="거래 대상">
+    <button type="button" data-target="">전체</button>
+    <button type="button" data-target="unit">개별 호실</button>
+    <button type="button" data-target="whole">건물 전체</button>
+    <button type="button" data-target="business_rights">영업권 양도</button>
+  </div>
 
   <!-- ── 필터 박스 ── -->
   <div class="tx-filter">
@@ -356,6 +381,16 @@
           <option value="단기임대">단기임대</option>
         </select>
       </div>
+      <div class="field" id="lsAuctionSortField" style="display:none">
+        <label>공매 정렬</label>
+        <select id="lsAuctionSort">
+          <option value="deadline">입찰 마감순</option><option value="deadline_desc">입찰 마감 역순</option>
+          <option value="discount">최저가율 낮은순</option><option value="ratio_desc">최저가율 높은순</option>
+          <option value="appraisal_asc">감정가 낮은순</option><option value="appraisal_desc">감정가 높은순</option>
+          <option value="price_asc">최저입찰가 낮은순</option><option value="price_desc">최저입찰가 높은순</option>
+          <option value="failed_desc">유찰 많은순</option><option value="new">최신 등록순</option>
+        </select>
+      </div>
       <div class="field">
         <label>검색기간 (최근 수정일)</label>
         <select id="lsDateRange">
@@ -365,6 +400,26 @@
         </select>
       </div>
       <button type="button" class="btn-search" id="lsBtnSearch">검색</button>
+    </div>
+    <div id="lsAuctionAdvanced" class="ls-auction-advanced" style="display:none" aria-label="공매 상세 검색">
+      <div class="field"><label for="lsAuctionCategory">공매 숙박 분류</label><select id="lsAuctionCategory">
+        <option value="">전체</option><option value="생활숙박">생활숙박</option><option value="호텔">호텔</option>
+        <option value="콘도">콘도</option><option value="모텔">모텔</option><option value="펜션">펜션</option><option value="기타">기타</option>
+      </select></div>
+      <div class="field"><label for="lsAuctionKind">공매 종류</label><select id="lsAuctionKind">
+        <option value="">전체</option><option value="압류">압류</option><option value="국유">국유</option>
+        <option value="이용기관">이용기관</option><option value="신탁">신탁</option><option value="기타">기타</option>
+      </select></div>
+      <div class="field"><label for="lsAuctionStatus">진행 상태</label><select id="lsAuctionStatus">
+        <option value="">전체</option><option value="scheduled">입찰 예정</option><option value="bidding">입찰 진행</option>
+        <option value="failed">유찰</option><option value="sold">낙찰</option><option value="canceled">취소</option><option value="closed">종료</option>
+      </select></div>
+      <div class="field"><label for="lsAuctionRatioMin">최저가율 범위 (%)</label><div class="ls-auction-range">
+        <input id="lsAuctionRatioMin" type="number" min="0" max="1000" step="0.1" placeholder="최저">
+        <input id="lsAuctionRatioMax" type="number" min="0" max="1000" step="0.1" placeholder="최고">
+      </div></div>
+      <div class="field"><label for="lsAuctionFailedMin">최소 유찰 횟수</label><input id="lsAuctionFailedMin" type="number" min="0" max="1000" step="1" placeholder="전체"></div>
+      <a class="ls-auction-legacy-link" href="/auctions">고급 정렬·표 보기</a>
     </div>
 
     <!-- 채팅중 칩 바 (로그인 시만 노출) -->
@@ -441,6 +496,7 @@
   function esc(s){ const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
   function fmtN(v){ return v != null ? Number(v).toLocaleString() : "-"; }
   function formatKrw(v){ return v != null && Number.isFinite(Number(v)) ? fmtN(Math.round(Number(v))) + "만원" : "-"; }
+  function formatAuctionWon(v){ return v != null && Number.isFinite(Number(v)) ? Math.round(Number(v)).toLocaleString("ko-KR") + "원" : "가격 정보 없음"; }
   function fmtPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max){
     if (typeof window.formatLrPrice === "function")
       return window.formatLrPrice(deal_type, price_krw, monthly_rent_krw, price_krw_max);
@@ -459,6 +515,14 @@
     return "현재 문의 가능 여부는 채팅으로 확인해주세요";
   }
   function listingPriceText(item){
+    if (item.transaction_target === "business_rights") {
+      const visible=!!item.financial_details_visible;
+      const terms=[];
+      if(visible&&item.key_money_krw!=null)terms.push("권리금 "+formatKrw(item.key_money_krw));
+      if(visible&&item.price_krw!=null)terms.push("보증금 "+formatKrw(item.price_krw));
+      if(visible&&item.monthly_rent_krw!=null)terms.push("월 임대료 "+formatKrw(item.monthly_rent_krw));
+      return terms.join(" · ")||"양도 조건 문의";
+    }
     if (item.transaction_target === "whole" || item.is_whole_listing) {
       if (item.deal_type === "매매") return item.price_krw != null ? "매매가 " + fmtN(item.price_krw) + "만원" : "매매 조건 협의";
       var lease = item.price_krw != null ? "보증금 " + fmtN(item.price_krw) + "만원" : "조건 협의";
@@ -512,16 +576,20 @@
   }
    const DEAL_TYPE_COLORS = { "매매":"#C85A36", "전세":"#378ADD", "월세":"#639922", "단기임대":"#8B6BB1" };
    function dealTypeBadgeHtml(raw){
-     const label = raw || "-";
+      const label = raw === "운영권양도" ? "영업권양도" : (raw || "-");
      const col = DEAL_TYPE_COLORS[label] || "#7B8794";
      return `<span class="ls-deal-type-badge" style="background:${col};">${esc(label)}</span>`;
    }
 
   const requestedDisclosureScope = new URLSearchParams(location.search).get("disclosure_scope");
+  const requestedChannel = new URLSearchParams(location.search).get("channel");
+  const requestedTarget = new URLSearchParams(location.search).get("transaction_target");
   const state = {
     sido:"", sgg_nm:"", umd_nm:"", q:"", deal_type:"", date_range:"", lodging_type:"",
     disclosure_scope: requestedDisclosureScope === "limited" ? "limited" : "public",
-    urgent_only: false
+    urgent_only: false, channel:["broker","auction"].includes(requestedChannel) ? requestedChannel : "direct",
+    transaction_target:["unit","whole","business_rights"].includes(requestedTarget) ? requestedTarget : "",
+    auction_category:"",auction_kind:"",auction_status:"",auction_ratio_min:"",auction_ratio_max:"",auction_failed_min:""
   };
   let offset = 0;
   const PAGE = 20;
@@ -532,7 +600,61 @@
   let chatFilterId  = null;
   let boardSortKey = null;
   let boardSortDirection = "asc";
+  let auctionSort = "deadline";
+  let auctionPages = 1;
+  let nonAuctionView = "card";
 
+  function setChannel(channel, reload){
+    const wasAuction = state.channel === "auction";
+    if (!wasAuction && channel === "auction") nonAuctionView = currentView;
+    state.channel = channel;
+    document.querySelectorAll("#lsChannelTabs [data-channel]").forEach(btn => {
+      const active = btn.dataset.channel === channel;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    const auction = channel === "auction";
+    document.getElementById("lsAuctionAdvanced").style.display=auction?"grid":"none";
+    document.getElementById("lsLodgingType").closest(".field").style.display=auction?"none":"";
+    document.getElementById("lsTargetFilter").style.display = auction ? "none" : "";
+    document.getElementById("lsAuctionSortField").style.display = auction ? "" : "none";
+    document.getElementById("lsUrgentToggle").style.display = auction ? "none" : "";
+    document.getElementById("lsDealType").closest(".field").style.display = auction ? "none" : "";
+    document.getElementById("lsDateRange").closest(".field").style.display = auction ? "none" : "";
+    document.getElementById("lsQ").placeholder = auction ? "주소·물건명 검색" : "예) 오션마크레지던스";
+    document.querySelector(".ls-disclosure-tabs").style.display = auction ? "none" : "";
+    const boardViewButton=document.querySelector('.ls-view-tabs button[data-view="board"]');
+    boardViewButton.style.display=auction?"none":"";
+    if(auction){
+      document.body.classList.remove("view-board","view-card");
+      document.body.classList.add("view-card");
+      cardGrid.style.display="grid";
+    }else if(wasAuction){
+      setView(nonAuctionView);
+    }
+    document.querySelector("#listingsTitle").textContent = auction ? "숙박 매물 · 공매" : (channel === "broker" ? "숙박 매물 · 중개" : "숙박 매물 · 직거래");
+    document.querySelector("#listingsSubtitle").textContent = auction
+      ? "현재 진행 중인 공매 정보를 같은 목록에서 확인하세요."
+      : (channel === "broker" ? "개업공인중개사가 등록한 확인 가능한 매물입니다." : "개인·소유자가 직접 등록한 숙박시설 매물입니다.");
+    if (reload) loadListings(true);
+  }
+  document.querySelectorAll("#lsChannelTabs [data-channel]").forEach(btn => btn.addEventListener("click", () => {
+    const url = new URL(location.href); url.searchParams.set("channel", btn.dataset.channel); history.replaceState(null, "", url);
+    setChannel(btn.dataset.channel, true);
+  }));
+  document.querySelectorAll("#lsTargetFilter [data-target]").forEach(btn => btn.addEventListener("click", () => {
+    state.transaction_target = btn.dataset.target;
+    const url=new URL(location.href);
+    if(state.transaction_target)url.searchParams.set("transaction_target",state.transaction_target);else url.searchParams.delete("transaction_target");
+    history.replaceState(null,"",url);
+    document.querySelectorAll("#lsTargetFilter [data-target]").forEach(other => other.classList.toggle("active", other === btn));
+    loadListings(true);
+  }));
+  document.querySelectorAll("#lsTargetFilter [data-target]").forEach(btn=>btn.classList.toggle("active",btn.dataset.target===state.transaction_target));
+  document.getElementById("lsAuctionSort").addEventListener("change", event => { auctionSort = event.target.value; loadListings(true); });
+  ["lsAuctionCategory","lsAuctionKind","lsAuctionStatus","lsAuctionRatioMin","lsAuctionRatioMax","lsAuctionFailedMin"].forEach(id=>{
+    document.getElementById(id).addEventListener("change",()=>document.getElementById("lsBtnSearch").click());
+  });
   // ── 뷰 전환 ────────────────────────────────────────────────────────────
   const STORAGE_KEY = "listingsViewMode";
   const isMobile = window.matchMedia("(max-width: 520px)").matches;
@@ -540,6 +662,7 @@
     || (isMobile ? "card" : "board");
 
   function setView(mode){
+    if(state.channel==="auction") mode="card";
     currentView = mode;
     localStorage.setItem(STORAGE_KEY, mode);
     document.body.classList.remove("view-board", "view-card");
@@ -622,6 +745,7 @@
 
   // 초기 뷰 적용
   setView(currentView);
+  setChannel(state.channel, false);
 
   // ── 공유 ────────────────────────────────────────────────────────────────
   let _toastTimer = null;
@@ -640,6 +764,14 @@
         () => window.prompt("아래 매물 링크를 복사하세요:", url)
       );
     }
+   function listingChannelBadgeHtml(item){
+     const broker=(item.listing_channel||item.deal_mode)==="broker";
+     return `<span class="ls-channel-badge" style="${broker?"":"background:#edf2e9;color:#42613a"}">${broker?"중개":"직거래"}</span>`;
+   }
+   function listingTargetBadgeHtml(item){
+     const labels={unit:"개별 호실",whole:"건물 전체",business_rights:"영업권 양도"};
+     return labels[item.transaction_target]?`<span class="ls-channel-badge" style="background:#f5eadb;color:#805724">${labels[item.transaction_target]}</span>`:"";
+   }
     window.prompt("아래 매물 링크를 복사하세요:", url);
     return Promise.resolve();
   }
@@ -649,11 +781,12 @@
     try {
       const configuredOrigin = String(window.LIVINGSTAY_PUBLIC_BASE_URL || "").trim();
       const shareOrigin = (/^https?:\/\//i.test(configuredOrigin) ? configuredOrigin : location.origin).replace(/\/+$/, "");
-      const shareUrl = item.is_limited_listing
+      const limited = item.is_limited_listing || item.disclosure_scope === "limited";
+      const shareUrl = limited
         ? new URL("/listings", shareOrigin)
         : new URL(`/building/${encodeURIComponent(item.building_id)}`, shareOrigin);
       shareUrl.searchParams.set("listing", String(item.id));
-      if (item.is_limited_listing) shareUrl.searchParams.set("disclosure_scope", "limited");
+      if (limited) shareUrl.searchParams.set("disclosure_scope", "limited");
       url = shareUrl.toString();
     } catch (error) {
       showToast("공유 링크를 만들지 못했습니다");
@@ -787,6 +920,10 @@
   }
 
   function openListingDetail(item){
+    if (item && item.auction_item) {
+      window.location.href = "/auctions/" + encodeURIComponent(item.id);
+      return;
+    }
     if (typeof window.openListingDetailModal !== "function") return;
     window.openListingDetailModal(item, {
       onChat: () => openChat(item.id),
@@ -918,6 +1055,7 @@
 
   // ── 게시판형 행 ─────────────────────────────────────────────────────
   function renderBoardRow(item){
+    if (item.auction_item) return renderAuctionCard(item);
     const tr = document.createElement("tr");
     tr.dataset.listingId = item.id;
     tr.dataset.sortLodging = lodgingLabel(item.lodging_type);
@@ -938,17 +1076,19 @@
     const rooms = !item.is_whole_listing && !item.is_business_listing && item.room_count != null && Number(item.room_count) > 0
       ? " · 총 " + Number(item.room_count).toLocaleString() + "실" : "";
     const desc = item.description ? (item.description.slice(0, 20) + (item.description.length > 20 ? "…" : "")) : "";
-    const bName = esc(item.building_name || "(건물명 없음)");
-    const buildingLabel = item.is_limited_listing
+    const rightsPrivate=item.transaction_target==="business_rights"&&(item.is_limited_listing||item.disclosure_scope==="limited");
+    const bName = esc(rightsPrivate ? "영업장 정보 비공개" : (item.building_name || "(건물명 없음)"));
+    const buildingLabel = (item.is_limited_listing || rightsPrivate)
       ? `<span class="ls-bldg-private" style="cursor:default;">${bName}</span>`
       : `<span class="ls-bldg-link" data-bid="${item.building_id || ""}" style="cursor:pointer;">${bName}${newBadge(item.listing_date)}</span>`;
 
     const photoCount = Array.isArray(item.photos) ? item.photos.length : 0;
+    const safePhotoUrl=rightsPrivate?null:item.photo_url;
     tr.innerHTML = `
-      <td class="td-photo">${thumbHtml(item.photo_url, false, photoCount, item.photo_source)}</td>
+      <td class="td-photo">${thumbHtml(safePhotoUrl, false, rightsPrivate?0:photoCount, rightsPrivate?null:item.photo_source)}</td>
       <td class="td-lodging ls-hide-mobile">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}</td>
       <td class="td-bldg" title="${bName}">
-          ${buildingLabel}${urgentBadgeHtml(item)}${permitBadgeHtml(item)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}
+          ${listingChannelBadgeHtml(item)}${listingTargetBadgeHtml(item)}${buildingLabel}${urgentBadgeHtml(item)}${permitBadgeHtml(item)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}
       </td>
       <td class="td-type">${dealTypeBadgeHtml(item.deal_type)}</td>
       <td class="td-price">${esc(listingPriceText(item) + rooms)}</td>
@@ -1101,7 +1241,7 @@
     div.innerHTML = `
       ${isLimitedListing ? cardPhotoHtml : ""}
       <div class="ls-card-info">
-        <div class="ls-card-l1">${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
+        <div class="ls-card-l1">${listingChannelBadgeHtml(item)}${listingTargetBadgeHtml(item)}${buildingLabel}${permitBadgeHtml(item)}${operationStatusHtml(item)}</div>
         <div class="ls-card-l2">${esc(listingPriceText(item))}</div>
         <div class="whole-info-groups">
           ${groupHtml("거래 조건", [listingPriceText(item)])}
@@ -1203,6 +1343,8 @@
   }
 
   function renderCardItem(item){
+    if (item.auction_item) return renderAuctionCard(item);
+    if (item.transaction_target === "business_rights") return renderBusinessRightsCard(item);
     if (item.is_whole_listing || item.transaction_target === "whole") {
       return renderWholeListingCard(item);
     }
@@ -1210,6 +1352,7 @@
     div.className = "ls-card-item";
     div.dataset.listingId = item.id;
     const isWholeListing = item.is_whole_listing || item.transaction_target === "whole";
+    const rightsPrivate=item.transaction_target==="business_rights"&&(item.is_limited_listing||item.disclosure_scope==="limited");
     const sqm     = !isWholeListing && item.area_sqm ? parseFloat(item.area_sqm).toFixed(1) + "㎡" : "";
     const priceStr = listingPriceText(item);
     const floorValue = item.floor ?? item.floor_no ?? item.floor_number;
@@ -1226,7 +1369,7 @@
     div.innerHTML = `
       <div class="ls-card-info">
         <div class="ls-card-l1">
-           <span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>${urgentBadgeHtml(item)}${permitBadgeHtml(item)}
+           ${listingChannelBadgeHtml(item)}${listingTargetBadgeHtml(item)}${rightsPrivate?`<span class="ls-bldg-private">${lodgeBadgeHtml(item.lodging_type,item.lodging_subtype)}영업장 정보 비공개</span>`:`<span class="ls-card-bldg ls-bldg-link" data-bid="${item.building_id || ""}">${lodgeBadgeHtml(item.lodging_type, item.lodging_subtype)}${isWholeListing ? '<span style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;background:var(--brass,#B4863F);color:#fff;font-size:10px;font-weight:800;">건물 전체</span>' : ""}${esc(item.building_name || "(건물명 없음)")}${newBadge(item.listing_date)}</span>`}${urgentBadgeHtml(item)}${permitBadgeHtml(item)}
         </div>
         <div class="ls-card-l2">${dealTypeBadgeHtml(item.deal_type)}${esc(priceStr)}</div>
         <div class="ls-card-l3" title="${esc(detailText)}">${esc(detailText)}${operationStatusHtml(item)}${operationRatioBadgesHtml(item)}</div>
@@ -1240,7 +1383,7 @@
           </span>
         </div>
       </div>
-      <div class="ls-card-photo-right" title="매물 상세 보기">${thumbHtml(item.photo_url, true, photoCount, item.photo_source)}</div>`;
+          <div class="ls-card-photo-right" title="매물 상세 보기">${thumbHtml(rightsPrivate?null:item.photo_url, true, rightsPrivate?0:photoCount, rightsPrivate?null:item.photo_source)}</div>`;
 
     // 카드 전체와 사진에서 공용 상세 팝업을 연다.
     div.addEventListener("click", (e) => {
@@ -1282,6 +1425,52 @@
     return div;
   }
 
+  function renderBusinessRightsCard(item){
+    const div=document.createElement("article");
+    div.className="ls-card-item whole-listing-card";
+    div.dataset.listingId=item.id;
+    const info=item.business_rights_info||{};
+    const hasFinance=!!item.financial_details_visible;
+    const terms=[
+      hasFinance&&item.key_money_krw!=null?"희망 권리금 "+formatKrw(item.key_money_krw):"",
+      hasFinance&&item.price_krw!=null?"보증금 "+formatKrw(item.price_krw):"",
+      hasFinance&&item.monthly_rent_krw!=null?"월 임대료 "+formatKrw(item.monthly_rent_krw):"",
+      item.room_count!=null?"객실 "+Number(item.room_count).toLocaleString()+"실":"",
+      hasFinance&&item.monthly_revenue_krw!=null?"월평균 매출 "+formatKrw(item.monthly_revenue_krw):""
+    ].filter(Boolean);
+    const channel=item.listing_channel||item.deal_mode||"direct";
+    const channelLabel=channel==="broker"?"중개":"직거래";
+    const privateRights=!!(item.is_limited_listing||item.disclosure_scope==="limited");
+    const title=privateRights?"영업장 정보 비공개":(info.facility_name||item.building_name||"숙박 영업장");
+    div.innerHTML=`<div class="ls-card-info">
+      <div class="ls-card-l1"><span class="ls-channel-badge">${channelLabel}</span><span class="ls-channel-badge" style="background:#f5eadb;color:#805724">영업권 양도</span>${esc(title)}</div>
+      <div class="ls-card-l2">${terms.length?esc(terms.join(" · ")):"조건은 문의로 확인"}</div>
+      <div class="ls-card-l3">${esc([item.lodging_type,item.operation_status,privateRights?"":item.description].filter(Boolean).join(" · "))}</div>
+      <div class="ls-card-l4"><span class="ls-card-date">${esc(item.listing_date||"")}</span><span class="ls-card-actions"><button type="button" class="listing-chat-btn" title="양도 문의">양도 문의</button></span></div>
+      ${channel==="broker"&&item.broker?`<div class="ls-broker-panel"><b>중개사무소</b> ${esc(item.broker.office_name||"")} · ${esc(item.broker.owner_name||"")}</div>`:""}
+    </div>`;
+    div.addEventListener("click",()=>openListingDetail(item));
+    div.querySelector(".listing-chat-btn").addEventListener("click",e=>{e.stopPropagation();openChat(item.id);});
+    return div;
+  }
+
+  function renderAuctionCard(item){
+    const div=document.createElement("article");
+    div.className="ls-card-item";
+    div.dataset.listingId=item.id;
+    const rows=[
+      item.appraisal_price!=null?"감정가 "+formatAuctionWon(item.appraisal_price):"",
+      item.min_bid_price!=null?"최저입찰가 "+formatAuctionWon(item.min_bid_price):"",
+      item.min_bid_ratio!=null?"감정가 대비 "+Number(item.min_bid_ratio).toLocaleString()+"%":"",
+      item.bid_end_at?"마감 "+String(item.bid_end_at).slice(0,16):""
+    ].filter(Boolean);
+    div.innerHTML=`<div class="ls-card-info"><div class="ls-card-l1"><span class="ls-channel-badge" style="background:#e9edf3;color:#394b61">공매</span>${esc(item.lodging_category||item.lodging_type||"숙박시설")} · ${esc(item.address_road||item.address_jibun||"소재지 정보 없음")}</div>
+      <div class="ls-card-l2">${esc(item.title||item.building_name||"숙박시설 공매")}</div><div class="ls-card-l3">${esc(rows.join(" · ")||"공매 상세 정보 확인")}</div>
+      <div class="ls-card-l4"><span class="ls-card-date">${esc(item.status||"입찰 진행")}</span></div></div>`;
+    div.addEventListener("click",()=>{window.location.href="/auctions/"+encodeURIComponent(item.id);});
+    return div;
+  }
+
   // ── 목록 로드 ────────────────────────────────────────────────────────
   async function loadListings(reset){
     if (loading) return;
@@ -1296,6 +1485,38 @@
     }
 
     try {
+      if (state.channel === "auction") {
+        document.querySelector(".ls-board-wrap").style.display = "none";
+        cardGrid.style.display = "grid";
+        const page = reset ? 1 : (Math.floor(offset / PAGE) + 1);
+        const params = new URLSearchParams({page:String(page),page_size:String(PAGE),sort:auctionSort});
+        const region=state.sgg_nm||state.sido;
+        if(region)params.set("region",region);
+        if(state.q)params.set("q",state.q);
+        const auctionFilters={
+          category:state.auction_category,kind:state.auction_kind,status:state.auction_status,
+          ratio_min:state.auction_ratio_min,ratio_max:state.auction_ratio_max,failed_min:state.auction_failed_min
+        };
+        Object.keys(auctionFilters).forEach(key=>{if(auctionFilters[key]!==""&&auctionFilters[key]!=null)params.set(key,auctionFilters[key]);});
+        const res=await fetch("/api/auctions?"+params,{credentials:"same-origin"});
+        const data=await res.json().catch(()=>({}));
+        if(!res.ok||!data.ok) throw new Error(data.message||"공매 정보를 불러오지 못했습니다.");
+        const auctions=data.items||[];
+        if(reset){boardBody.innerHTML="";cardGrid.innerHTML="";offset=0;totalLoaded=0;}
+        if(!auctions.length&&reset) cardGrid.innerHTML='<div class="listings-empty" style="grid-column:1/-1;">조건에 맞는 공매 정보가 없습니다.</div>';
+        auctions.forEach(item=>{
+          item.auction_item=true;
+          cardGrid.appendChild(renderAuctionCard(item));
+        });
+        const pageSize=Number(data.page_size||PAGE);
+        auctionPages=Math.ceil(Number(data.total||0)/pageSize);
+        offset=page*pageSize; totalLoaded+=auctions.length;
+        countEl.textContent=`총 ${Number(data.total||0).toLocaleString()}건`;
+        moreBtn.style.display=page<auctionPages?"":"none";
+        return;
+      }
+      document.querySelector(".ls-board-wrap").style.display = "";
+      cardGrid.style.display = currentView === "card" ? "" : "none";
       if (chatFilterId != null){
         const urgentParam = state.urgent_only ? "&urgent_only=1" : "";
         const res = await fetch(`/api/listings?limit=50&offset=0&disclosure_scope=${encodeURIComponent(state.disclosure_scope)}${urgentParam}`, { credentials: "same-origin" });
@@ -1316,6 +1537,8 @@
 
       const params = new URLSearchParams({ limit: PAGE, offset });
       params.set("disclosure_scope", state.disclosure_scope);
+      params.set("channel", state.channel);
+      if (state.transaction_target) params.set("transaction_target",state.transaction_target);
       if (state.urgent_only) params.set("urgent_only", "1");
       if (state.sido)       params.set("sido",       state.sido);
       if (state.sgg_nm)     params.set("sgg_nm",     state.sgg_nm);
@@ -1336,29 +1559,31 @@
 
       if (reset){ boardBody.innerHTML = ""; cardGrid.innerHTML = ""; }
 
-      if (!d.items || d.items.length === 0){
+      const listingItems=(d.items||[]).filter(it=>!state.transaction_target||it.transaction_target===state.transaction_target);
+      if (!listingItems.length){
         if (reset){
-           boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">현재 공개된 직거래 매물이 없습니다.</td></tr>`;
-          cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">현재 공개된 직거래 매물이 없습니다.</div>`;
+           boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">현재 공개된 ${state.channel==="broker"?"중개":"직거래"} 매물이 없습니다.</td></tr>`;
+          cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">현재 공개된 ${state.channel==="broker"?"중개":"직거래"} 매물이 없습니다.</div>`;
         }
         moreBtn.style.display = "none";
       } else {
-        d.items.forEach(item => {
+        listingItems.forEach(item => {
           boardBody.appendChild(renderBoardRow(item));
           cardGrid.appendChild(renderCardItem(item));
         });
-        recordWholeListingViews(d.items);
-        loadWholeLocationHints(d.items);
+        recordWholeListingViews(listingItems.filter(it=>it.transaction_target==="whole"));
+        loadWholeLocationHints(listingItems.filter(it=>it.transaction_target==="whole"));
          sortBoardRows();
         offset      += d.items.length;
-        totalLoaded += d.items.length;
+        totalLoaded += listingItems.length;
         countEl.textContent = `총 ${totalLoaded}건${d.has_more ? "+" : ""}`;
         moreBtn.style.display = d.has_more ? "" : "none";
       }
     } catch(e){
       if (reset){
          boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">오류가 발생했습니다.</td></tr>`;
-        cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">오류가 발생했습니다.</div>`;
+        cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">${state.channel==="auction"?"공매 정보를 불러오지 못했습니다. 다시 시도해 주세요.":"오류가 발생했습니다."}<br><button type="button" id="lsRetryLoad" style="margin-top:10px">다시 시도</button></div>`;
+        document.getElementById("lsRetryLoad")?.addEventListener("click",()=>loadListings(true));
       }
     } finally {
       loading = false;
@@ -1378,6 +1603,13 @@
     state.deal_type    = document.getElementById("lsDealType").value;
     state.date_range   = document.getElementById("lsDateRange").value;
     state.lodging_type = document.getElementById("lsLodgingType").value;
+    state.auction_category=document.getElementById("lsAuctionCategory").value;
+    state.auction_kind=document.getElementById("lsAuctionKind").value;
+    state.auction_status=document.getElementById("lsAuctionStatus").value;
+    state.auction_ratio_min=document.getElementById("lsAuctionRatioMin").value;
+    state.auction_ratio_max=document.getElementById("lsAuctionRatioMax").value;
+    state.auction_failed_min=document.getElementById("lsAuctionFailedMin").value;
+    state.q=document.getElementById("lsQ").value.trim();
     loadListings(true);
   });
 

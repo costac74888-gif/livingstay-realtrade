@@ -336,7 +336,7 @@ def _building_share_meta(building_id, listing_id=None):
                   AND master_building_id = %s
                   AND deal_mode = 'direct'
                   AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')
-                  AND COALESCE(transaction_target, 'unit') = 'whole'
+                  AND COALESCE(transaction_target, 'unit') IN ('whole','business_rights')
                   AND COALESCE(disclosure_scope, 'limited') = 'limited'
             """, [listing_id, building_id])
             if cur.fetchone():
@@ -1591,7 +1591,7 @@ def _public_building_photo_rows(cur, building_id):
                    AND lr.deal_mode = 'direct'
                    AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
                    AND NOT (
-                       lr.transaction_target = 'whole'
+                       lr.transaction_target IN ('whole','business_rights')
                        AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
                    )
             )
@@ -1610,7 +1610,7 @@ def _public_building_photo_rows(cur, building_id):
                            AND lr.deal_mode = 'direct'
                            AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
                            AND NOT (
-                               lr.transaction_target = 'whole'
+                               lr.transaction_target IN ('whole','business_rights')
                                AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
                            )
                     )
@@ -1924,7 +1924,7 @@ def _building_photo_upload_actor(cur, building_id):
            AND deal_mode='direct'
            AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')
            AND NOT (
-               transaction_target='whole'
+               transaction_target IN ('whole','business_rights')
                AND COALESCE(disclosure_scope, 'limited')='limited'
            )
          ORDER BY created_at DESC, id DESC
@@ -2133,7 +2133,7 @@ def building_photo_upload_proxy(key):
                         WHERE lr.id=p.listing_request_id AND lr.deal_mode='direct'
                           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
                           AND NOT (
-                              lr.transaction_target='whole'
+                              lr.transaction_target IN ('whole','business_rights')
                               AND COALESCE(lr.disclosure_scope, 'limited')='limited'
                           )
                    )
@@ -2665,7 +2665,7 @@ def get_building(building_id):
           AND lr.deal_mode = 'direct'
           AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
           AND NOT (
-              COALESCE(lr.transaction_target, 'unit') = 'whole'
+              COALESCE(lr.transaction_target, 'unit') IN ('whole','business_rights')
               AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
           )
         ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
@@ -4977,7 +4977,7 @@ def get_buildings_geo():
               AND lr.deal_mode = 'direct'
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               AND NOT (
-                  COALESCE(lr.transaction_target, 'unit') = 'whole'
+                  COALESCE(lr.transaction_target, 'unit') IN ('whole','business_rights')
                   AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
               )
         ) listing_counts ON TRUE
@@ -12932,8 +12932,8 @@ def admin_preview_agent_buy_requests(agent_id):
 # ------------------------------------------------------------
 
 _LISTING_DEAL_TYPES = {"매매", "전세", "월세", "단기임대"}
-_WHOLE_LISTING_DEAL_TYPES = {"매매", "통임대", "운영권양도", "위탁운영"}
-_LISTING_TARGETS = {"unit", "whole"}
+_WHOLE_LISTING_DEAL_TYPES = {"매매", "통임대", "운영권양도", "영업권양도", "위탁운영"}
+_LISTING_TARGETS = {"unit", "whole", "business_rights"}
 _WHOLE_OPERATION_STATUSES = {"영업중", "휴업", "폐업"}
 _WHOLE_DISCLOSURE_SCOPES = {"limited", "public"}
 _WHOLE_BUILDING_INFO_KEYS = {
@@ -12972,7 +12972,7 @@ _PHONE_RE = re.compile(r"^0\d{1,2}-?\d{3,4}-?\d{4}$")
 _HOUSE_OFFICE_NAME = "홈스퀘어부동산중개법인"
 
 
-def _parse_listing_krw(value, field_label="금액", maximum=1_000_000):
+def _parse_listing_krw(value, field_label="금액", maximum=1_000_000, minimum=1):
     """건물전체 금액을 만원 단위 양의 정수로 정규화한다."""
     if value is None or value == "":
         return None, None
@@ -12980,8 +12980,8 @@ def _parse_listing_krw(value, field_label="금액", maximum=1_000_000):
         number = int(value)
     except (TypeError, ValueError):
         return None, f"{field_label}은(는) 만원 단위 숫자로 입력해주세요."
-    if not 0 < number <= maximum:
-        return None, f"{field_label}은(는) 1~{maximum:,}만원 사이로 입력해주세요."
+    if not minimum <= number <= maximum:
+        return None, f"{field_label}은(는) {minimum}~{maximum:,}만원 사이로 입력해주세요."
     return number, None
 
 
@@ -13040,17 +13040,19 @@ def _whole_listing_values(data, *, existing=None):
     transaction_target = (data.get("transaction_target") or data.get("listing_target") or
                           (existing or {}).get("transaction_target") or "unit").strip()
     if transaction_target not in _LISTING_TARGETS:
-        return None, "거래대상은 개별호실 또는 건물전체 중 하나여야 합니다."
+        return None, "거래대상은 개별호실/건물전체/영업권 양도 중 하나여야 합니다."
 
     raw_deal_type = data.get("deal_type") or data.get("whole_deal_type")
     if raw_deal_type in (None, "") and existing:
         raw_deal_type = existing.get("deal_type")
     deal_type = (raw_deal_type or "").strip()
-    allowed_types = _WHOLE_LISTING_DEAL_TYPES if transaction_target == "whole" else _LISTING_DEAL_TYPES
+    if transaction_target == "business_rights":
+        deal_type = "영업권양도"
+    allowed_types = _WHOLE_LISTING_DEAL_TYPES if transaction_target != "unit" else _LISTING_DEAL_TYPES
     if deal_type not in allowed_types:
         return None, (
             "건물전체 거래방식은 매매/통임대/운영권양도/위탁운영 중 하나여야 합니다."
-            if transaction_target == "whole" else
+            if transaction_target != "unit" else
             "거래유형은 매매/전세/월세/단기임대 중 하나여야 합니다."
         )
 
@@ -13065,22 +13067,28 @@ def _whole_listing_values(data, *, existing=None):
             "disclosure_scope": None,
         }, None
 
-    price_krw, error = _parse_listing_krw(data.get("price_krw"), "매매가" if deal_type == "매매" else "보증금")
+    from listing_extensions import validate_business_info
+    try:
+        business_rights_info = validate_business_info(data.get("business_rights_info"))
+    except ValueError as exc:
+        return None, str(exc)
+    minimum = 0 if transaction_target == "business_rights" else 1
+    price_krw, error = _parse_listing_krw(data.get("price_krw"), "매매가" if deal_type == "매매" else "보증금", minimum=minimum)
     if error:
         return None, error
-    monthly_rent_krw, error = _parse_listing_krw(data.get("monthly_rent_krw"), "월세")
+    monthly_rent_krw, error = _parse_listing_krw(data.get("monthly_rent_krw"), "월세", minimum=minimum)
     if error:
         return None, error
     succession_loan_krw, error = _parse_listing_krw(data.get("succession_loan_krw"), "승계융자")
     if error:
         return None, error
-    key_money_krw, error = _parse_listing_krw(data.get("key_money_krw"), "권리금")
+    key_money_krw, error = _parse_listing_krw(data.get("key_money_krw"), "권리금", minimum=minimum)
     if error:
         return None, error
-    monthly_revenue_krw, error = _parse_listing_krw(data.get("monthly_revenue_krw"), "월평균매출")
+    monthly_revenue_krw, error = _parse_listing_krw(data.get("monthly_revenue_krw"), "월평균매출", minimum=minimum)
     if error:
         return None, error
-    annual_revenue_krw, error = _parse_listing_krw(data.get("annual_revenue_krw"), "연매출")
+    annual_revenue_krw, error = _parse_listing_krw(data.get("annual_revenue_krw"), "연매출", minimum=minimum)
     if error:
         return None, error
     short_stay_ratio, error = _parse_listing_ratio(data.get("short_stay_ratio"), "대실 비율")
@@ -13109,7 +13117,8 @@ def _whole_listing_values(data, *, existing=None):
     if raw_is_urgent is not None and raw_is_urgent != "" and not isinstance(raw_is_urgent, bool):
         return None, "급매 여부는 선택값으로만 입력해주세요."
     return {
-        "transaction_target": "whole",
+        "transaction_target": transaction_target,
+        "business_rights_info": business_rights_info,
         "deal_type": deal_type,
         "price_krw": price_krw,
         "price_krw_max": None,
@@ -13553,10 +13562,11 @@ def _apply_public_business_listing_summary(listing, financial_details_visible=Fa
     if permit_masked:
         listing["permit_number_masked"] = permit_masked
     transaction_target = listing.pop("transaction_target", None) or "unit"
-    if transaction_target == "whole":
-        listing["transaction_target"] = "whole"
-        listing["listing_target"] = "whole"
+    if transaction_target in ("whole", "business_rights"):
+        listing["transaction_target"] = transaction_target
+        listing["listing_target"] = transaction_target
         listing["is_whole_listing"] = True
+        listing["business_rights_info"] = listing.get("business_rights_info") or {}
         disclosure_scope = listing.get("disclosure_scope") or "limited"
         listing["disclosure_scope"] = disclosure_scope
         listing["financial_details_visible"] = bool(financial_details_visible)
@@ -13980,6 +13990,11 @@ def _apply_limited_whole_listing_privacy(listing, approx_location=None):
     listing["building_name"] = location_label
     listing["is_limited_listing"] = True
     listing["location_precision"] = "approximate"
+    if listing.get("business_rights_info"):
+        listing["business_rights_info"] = {
+            k: v for k, v in listing["business_rights_info"].items()
+            if k != "facility_name"
+        }
     if approx_location:
         listing.update(approx_location)
     return listing
@@ -14252,11 +14267,26 @@ def create_listing_request():
     if listing_error:
         return jsonify({"ok": False, "message": listing_error}), 400
     deal_type = listing_values["deal_type"]
-    whole_values = listing_values if transaction_target == "whole" else None
+    whole_values = listing_values if transaction_target != "unit" else None
     is_urgent = listing_values["is_urgent"]
     deal_mode = (data.get("deal_mode") or "broker").strip()
     if deal_mode not in ("direct", "broker"):
         deal_mode = "broker"
+    publish_as_broker = data.get("publish_as_broker") is True
+    publishing_broker = None
+    if publish_as_broker:
+        if deal_mode != "broker":
+            return jsonify(ok=False, message="중개 게시 방식이 올바르지 않습니다."), 400
+        from listing_extensions import broker_context
+        broker_conn = get_conn()
+        broker_cur = broker_conn.cursor()
+        try:
+            publishing_broker = broker_context(broker_cur, user)
+        finally:
+            broker_cur.close()
+            broker_conn.close()
+        if not publishing_broker:
+            return jsonify(ok=False, message="승인된 중개사 사업장으로 역할을 전환한 후 등록해주세요."), 403
     desired_price = (data.get("desired_price") or "").strip()[:100]
 
     # 전용면적(㎡) — 선택, 양수 숫자만 허용
@@ -14287,7 +14317,7 @@ def create_listing_request():
         if not (0 < n <= 1_000_000):
             return None, "입력 가능한 최대 금액을 초과했습니다 (최대 100억 만원)."
         return n, None
-    if transaction_target == "whole":
+    if transaction_target != "unit":
         price_krw = whole_values["price_krw"]
         price_krw_max = None
         monthly_rent_krw = whole_values["monthly_rent_krw"]
@@ -14313,7 +14343,7 @@ def create_listing_request():
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"ok": False, "message": "총 호실수는 1~100,000 사이의 숫자로 입력해주세요."}), 400
-    if registrant_type != "business" and transaction_target != "whole":
+    if registrant_type != "business" and transaction_target == "unit":
         room_count = None
     if err1 or err2 or err3 or err4 or err5:
         return jsonify({"ok": False, "message": err1 or err2 or err3 or err4 or err5}), 400
@@ -14329,7 +14359,7 @@ def create_listing_request():
         round((yield_base_rent * 12) / max(yield_base_price - (deposit_krw or 0), 1) * 100, 1)
         if yield_base_price and yield_base_rent else None
     )
-    if transaction_target == "whole":
+    if transaction_target != "unit":
         desired_price = (str(data.get("desired_price") or "").strip()[:100] or
                          f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)
         area_sqm = None
@@ -14390,7 +14420,10 @@ def create_listing_request():
                 matched_permit_number = current_permit
 
         # 직거래는 중개사 라우팅 없이 공개 등록만
-        if deal_mode == "broker":
+        if publishing_broker:
+            # A broker's own publication is not an owner lead routed to others.
+            routed_agent_id, routed_reason, notify_agents = publishing_broker["id"], "broker_publication", []
+        elif deal_mode == "broker":
             routed_agent_id, routed_reason, notify_agents = _route_lead(cur, mb_id)
         else:
             routed_agent_id, routed_reason, notify_agents = None, "direct", []
@@ -14429,6 +14462,13 @@ def create_listing_request():
                whole_values["disclosure_scope"] if whole_values else None,
                json.dumps(whole_values["building_info_overrides"]) if whole_values else "{}"])
         req_id = cur.fetchone()["id"]
+        if whole_values or publishing_broker:
+            cur.execute("""
+                UPDATE listing_requests SET business_rights_info=%s,
+                       broker_agent_id=%s, publication_status=%s WHERE id=%s
+            """, [json.dumps((whole_values or {}).get("business_rights_info") or {}),
+                  publishing_broker["id"] if publishing_broker else None,
+                  "pending" if publishing_broker else None, req_id])
         # 이력 기록 — 최초 접수
         cur.execute(
             "INSERT INTO listing_request_history (listing_request_id, action, after_data) "
@@ -14550,6 +14590,8 @@ def create_listing_request():
 
     return jsonify({
         "ok": True, "id": req_id,
+        "publication_status": "pending" if publishing_broker else None,
+        "listing_channel": deal_mode,
         "routed_reason": routed_reason, "routed_agent_id": routed_agent_id,
         "notified": len([r for r in sms_results if r["sent"]]),
     })
@@ -14721,6 +14763,7 @@ def my_listing_requests():
                    lr.contact_phone, lr.deal_mode, lr.area_sqm, lr.dong, lr.ho, lr.registrant_type,
                     lr.description, lr.deposit_krw, lr.yield_rent_krw, lr.yield_rate,
                     COALESCE(lr.transaction_target, 'unit') AS transaction_target,
+                    lr.business_rights_info, lr.publication_status, lr.publication_reason,
                     lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
                      lr.annual_revenue_krw, lr.short_stay_ratio, lr.ota_revenue_ratio,
                      lr.matched_permit_number, lr.operation_status,
@@ -14815,7 +14858,7 @@ def _parse_room_channel(value, *, default=None):
 def _owned_listing_request(cur, listing_request_id, user_id):
     """매물의뢰가 존재하는지와 현재 사용자의 소유 여부를 분리해 확인한다."""
     cur.execute(
-        "SELECT id, user_id FROM listing_requests WHERE id = %s",
+        "SELECT id, user_id, broker_agent_id FROM listing_requests WHERE id = %s",
         [listing_request_id],
     )
     row = cur.fetchone()
@@ -14823,6 +14866,9 @@ def _owned_listing_request(cur, listing_request_id, user_id):
         return None, (jsonify({"ok": False, "message": "매물의뢰를 찾을 수 없습니다."}), 404)
     if row["user_id"] != user_id:
         return None, (jsonify({"ok": False, "message": "권한이 없습니다."}), 403)
+    from listing_extensions import business_context_allowed
+    if not business_context_allowed(cur, row, user_id):
+        return None, (jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403)
     return row, None
 
 
@@ -15156,25 +15202,34 @@ def public_listings():
     if disclosure_scope_filter not in ("public", "limited"):
         disclosure_scope_filter = "public"
     viewer_user = current_user()
+    channel = (request.args.get("channel") or "direct").strip()
+    if channel not in ("direct", "broker"):
+        return jsonify(ok=False, message="게시 방식이 올바르지 않습니다."), 400
+    target_filter = (request.args.get("transaction_target") or "").strip()
+    if target_filter and target_filter not in _LISTING_TARGETS:
+        return jsonify(ok=False, message="거래대상 필터가 올바르지 않습니다."), 400
 
     conn = get_conn(); cur = conn.cursor()
     try:
         params = []
         clauses = []
+        if target_filter:
+            clauses.append("COALESCE(lr.transaction_target,'unit')=%s")
+            params.append(target_filter)
 
         if disclosure_scope_filter == "limited":
             clauses.append(
-                "COALESCE(lr.transaction_target, 'unit') = 'whole' "
+                "COALESCE(lr.transaction_target, 'unit') IN ('whole','business_rights') "
                 "AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'"
             )
         else:
             # 개별호실은 공개범위 개념 없이 기존처럼 전체공개 탭에 포함한다.
             clauses.append(
-                "NOT (COALESCE(lr.transaction_target, 'unit') = 'whole' "
+                "NOT (COALESCE(lr.transaction_target, 'unit') IN ('whole','business_rights') "
                 "AND COALESCE(lr.disclosure_scope, 'limited') = 'limited')"
             )
 
-        if deal_type_filter and deal_type_filter in _LISTING_DEAL_TYPES:
+        if deal_type_filter and deal_type_filter in (_LISTING_DEAL_TYPES | _WHOLE_LISTING_DEAL_TYPES):
             clauses.append("lr.deal_type = %s")
             params.append(deal_type_filter)
 
@@ -15228,6 +15283,14 @@ def public_listings():
                    lr.monthly_rent_krw, lr.room_count, lr.area_sqm, lr.verified_phone,
                    lr.description, lr.yield_rate,
                     lr.deal_mode, lr.display_seq, lr.registrant_type, lr.transaction_target,
+                    lr.business_rights_info, lr.publication_status,
+                    CASE WHEN lr.broker_agent_id IS NOT NULL THEN jsonb_build_object(
+                        'office_name',broker.office_name,'owner_name',broker.owner_name,
+                        'reg_number',broker.reg_number,'office_address',broker.office_address,
+                        'phone',broker.phone,'office_phone',broker.office_phone,
+                        'registered_by',registrant.name,'created_at',lr.created_at,
+                        'verified_at',lr.publication_verified_at
+                    ) END AS broker,
                     lr.succession_loan_krw, lr.key_money_krw, lr.monthly_revenue_krw,
                      lr.annual_revenue_krw, lr.short_stay_ratio, lr.ota_revenue_ratio,
                      lr.matched_permit_number, lr.operation_status, lr.closed_at,
@@ -15268,6 +15331,8 @@ def public_listings():
                      recent_tx.price AS latest_transaction_price
             FROM listing_requests lr
             JOIN master_buildings mb ON mb.id = lr.master_building_id
+            LEFT JOIN agents broker ON broker.id=lr.broker_agent_id
+            LEFT JOIN users registrant ON registrant.id=lr.user_id
             LEFT JOIN LATERAL (
                 SELECT TRUE AS has_room
                 FROM business_room_inventory bri
@@ -15347,12 +15412,20 @@ def public_listings():
                            )
                       THEN 'streetview' END AS source
              ) fallback_photo ON true
-            WHERE lr.deal_mode = 'direct'
+            WHERE COALESCE(lr.deal_mode,'direct') = %s
+              AND (%s='direct' OR (
+                  lr.broker_agent_id IS NOT NULL AND lr.publication_status='approved'
+                  AND broker.status='approved'
+                  AND EXISTS(SELECT 1 FROM account_business_memberships bm
+                             WHERE bm.business_table='agents' AND bm.business_id=broker.id
+                               AND bm.user_id=lr.user_id AND bm.status='active')
+                  AND registrant.status<>'withdrawn'
+              ))
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               {where_extra}
             ORDER BY COALESCE(lr.updated_at, lr.created_at) DESC
             LIMIT %s OFFSET %s
-        """, params + [limit + 1, offset])
+        """, [channel, channel] + params + [limit + 1, offset])
         rows = cur.fetchall()
         has_more = len(rows) > limit
         items = []
@@ -15360,6 +15433,8 @@ def public_listings():
             d = _apply_urgent_tier(_apply_public_business_listing_summary(
                 dict(r), financial_details_visible=_listing_financial_details_visible()
             ))
+            d["listing_channel"] = channel
+            d["deal_mode"] = channel
             if disclosure_scope_filter == "limited":
                 d = _apply_limited_whole_listing_privacy(
                     d, _limited_whole_listing_approx_location(cur, d)
@@ -15369,7 +15444,7 @@ def public_listings():
             ph = d.pop("verified_phone", "") or ""
             if disclosure_scope_filter != "limited":
                 d["phone_tail"] = ph[-4:] if len(ph) >= 4 else ""
-            d["listing_number"] = format_listing_number(d.pop("deal_mode", "direct"), d.pop("display_seq", None))
+            d["listing_number"] = format_listing_number(channel, d.pop("display_seq", None))
             d["liked"] = False
             items.append(d)
         viewer = viewer_user or {}
@@ -15391,6 +15466,7 @@ def public_listings():
 @app.route("/api/listings/views", methods=["GET", "POST"])
 @limiter.limit("60 per minute")
 def record_listing_views():
+    from listing_extensions import public_channel_sql
     """목록에서 실제로 표시된 건물전체 매물을 최근 열람자로 기록한다.
 
     제한공개 카드도 건물 식별자를 넘기지 않고 이 API의 매물 ID만 사용한다.
@@ -15417,13 +15493,13 @@ def record_listing_views():
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
+        cur.execute(f"""
             SELECT id
             FROM listing_requests
             WHERE id = ANY(%s)
-              AND deal_mode = 'direct'
+              AND {public_channel_sql("listing_requests")}
               AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨')
-              AND COALESCE(transaction_target, 'unit') = 'whole'
+              AND COALESCE(transaction_target, 'unit') IN ('whole','business_rights')
         """, [listing_ids])
         visible_ids = [row["id"] for row in cur.fetchall()]
         if not visible_ids:
@@ -15615,7 +15691,7 @@ def upload_listing_photo(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT lr.user_id, lr.transaction_target, lr.disclosure_scope,
+            SELECT lr.user_id, lr.transaction_target, lr.disclosure_scope, lr.broker_agent_id,
                    lr.registrant_type, lr.master_building_id, lr.deal_mode,
                    mb.lat AS building_lat, mb.lng AS building_lng
               FROM listing_requests lr
@@ -15627,6 +15703,9 @@ def upload_listing_photo(lr_id):
         lr = cur.fetchone()
         if not lr:
             return jsonify({"ok": False, "message": "매물을 찾을 수 없거나 접근 권한이 없습니다."}), 404
+        from listing_extensions import business_context_allowed
+        if not is_admin and not business_context_allowed(cur, lr, user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         cur.execute(
             "SELECT COUNT(*) AS cnt FROM listing_photos WHERE listing_request_id=%s", [lr_id]
         )
@@ -15635,7 +15714,7 @@ def upload_listing_photo(lr_id):
         raw_public = request.form.get("is_public")
         if raw_public in (None, ""):
             is_public = not (
-                lr.get("transaction_target") == "whole"
+                lr.get("transaction_target") in ("whole", "business_rights")
                 and (lr.get("disclosure_scope") or "limited") == "limited"
             )
         elif str(raw_public).strip().lower() in ("1", "true", "yes", "on"):
@@ -15645,7 +15724,7 @@ def upload_listing_photo(lr_id):
         else:
             return jsonify({"ok": False, "message": "사진 공개 설정이 올바르지 않습니다."}), 400
         if (
-            lr.get("transaction_target") == "whole"
+            lr.get("transaction_target") in ("whole", "business_rights")
             and (lr.get("disclosure_scope") or "limited") == "limited"
         ):
             is_public = False
@@ -15687,6 +15766,8 @@ def upload_listing_photo(lr_id):
                     user["id"] if user else None, original_name,
                 )
             cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
+            from listing_extensions import invalidate_publication
+            invalidate_publication(cur, lr_id)
             conn.commit()
         except Exception:
             conn.rollback()
@@ -15729,7 +15810,7 @@ def reorder_listing_photos(lr_id):
         cur.execute("""
             SELECT lp.id, lp.image_key, COALESCE(lp.is_public, TRUE) AS is_public,
                    lr.registrant_type, lr.master_building_id, lr.deal_mode,
-                   lr.transaction_target, lr.disclosure_scope,
+                   lr.transaction_target, lr.disclosure_scope, lr.broker_agent_id,
                    mb.lat AS building_lat, mb.lng AS building_lng
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
@@ -15739,6 +15820,9 @@ def reorder_listing_photos(lr_id):
             ORDER BY lp.sort_order, lp.id
         """, [lr_id, user["id"]])
         current_rows = cur.fetchall()
+        from listing_extensions import business_context_allowed, invalidate_publication
+        if current_rows and not business_context_allowed(cur, current_rows[0], user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         current_ids = [row["id"] for row in current_rows]
         if set(photo_ids) != set(current_ids):
             return jsonify({"ok": False, "message": "사진 목록이 변경되었습니다. 새로고침 후 다시 시도해주세요."}), 409
@@ -15761,7 +15845,7 @@ def reorder_listing_photos(lr_id):
                     is_public = proposed
                 row = rows_by_id[photo_id]
                 if (
-                    row.get("transaction_target") == "whole"
+                    row.get("transaction_target") in ("whole", "business_rights")
                     and (row.get("disclosure_scope") or "limited") == "limited"
                 ):
                     is_public = False
@@ -15794,6 +15878,7 @@ def reorder_listing_photos(lr_id):
                 WHERE lp.id = ordered.id AND lp.listing_request_id = %s
             """, params + [lr_id])
             cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
+            invalidate_publication(cur, lr_id)
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -15811,7 +15896,7 @@ def delete_listing_photo(lr_id, photo_id):
     key = None
     try:
         cur.execute("""
-            SELECT lp.image_key
+            SELECT lp.image_key, lr.broker_agent_id
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.id=%s AND lp.listing_request_id=%s AND lr.user_id=%s
@@ -15820,10 +15905,14 @@ def delete_listing_photo(lr_id, photo_id):
         photo = cur.fetchone()
         if not photo:
             return jsonify({"ok": False, "message": "사진을 찾을 수 없거나 권한이 없습니다."}), 404
+        from listing_extensions import business_context_allowed, invalidate_publication
+        if not business_context_allowed(cur, photo, user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         key = photo["image_key"]
         _unlink_listing_photo_from_building(cur, key)
         cur.execute("DELETE FROM listing_photos WHERE id=%s AND listing_request_id=%s", [photo_id, lr_id])
         cur.execute("UPDATE listing_requests SET updated_at=NOW() WHERE id=%s", [lr_id])
+        invalidate_publication(cur, lr_id)
         conn.commit()
     finally:
         cur.close(); conn.close()
@@ -15836,29 +15925,31 @@ def delete_listing_photo(lr_id, photo_id):
 
 @app.route("/api/listing-photos/img/<path:key>")
 def listing_photo_proxy(key):
+    from listing_extensions import public_channel_sql
     """직거래 매물 사진 프록시 — 공개 상태가 바뀔 수 있어 공유 캐시를 금지한다."""
     if not storage_util.is_valid_listing_photo_ref(key):
         return jsonify({"ok": False, "message": "잘못된 경로입니다."}), 404
     conn = get_conn(); cur = conn.cursor()
     try:
-        cur.execute("""
+        cur.execute(f"""
             SELECT COALESCE(lp.is_public, TRUE) AS is_public
             FROM listing_photos lp
             JOIN listing_requests lr ON lr.id = lp.listing_request_id
             WHERE lp.image_key = %s
-              AND lr.deal_mode = 'direct'
+              AND (lr.user_id=%s OR %s OR {public_channel_sql()})
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
               AND (
-                    lr.user_id = %s
+                    lr.user_id = %s OR %s
                     OR (
                         COALESCE(lp.is_public, TRUE)
                         AND NOT (
-                            lr.transaction_target = 'whole'
+                            lr.transaction_target IN ('whole','business_rights')
                             AND COALESCE(lr.disclosure_scope, 'limited') = 'limited'
                         )
                     )
               )
-        """, [key, (current_user() or {}).get("id", -1)])
+        """, [key, (current_user() or {}).get("id", -1), bool(session.get("admin")),
+              (current_user() or {}).get("id", -1), bool(session.get("admin"))])
         photo = cur.fetchone()
         if not photo:
             return jsonify({"ok": False, "message": "파일을 찾을 수 없습니다."}), 404
@@ -15880,6 +15971,7 @@ def listing_photo_proxy(key):
 @app.route("/api/listing-requests/<int:lr_id>/like", methods=["POST"])
 @limiter.limit("60 per minute")
 def toggle_listing_like(lr_id):
+    from listing_extensions import public_channel_sql
     """직거래 매물 찜 토글 — 로그인 필수. liked:true/false + like_count 반환."""
     user = current_user()
     if not user:
@@ -15887,8 +15979,8 @@ def toggle_listing_like(lr_id):
     conn = get_conn(); cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id FROM listing_requests WHERE id=%s AND deal_mode='direct' "
-            "AND COALESCE(status, '') NOT IN ('withdrawn', '철회됨', '보류')",
+            f"SELECT id FROM listing_requests lr WHERE id=%s AND {public_channel_sql()} "
+            "AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')",
             [lr_id]
         )
         if not cur.fetchone():
@@ -15922,6 +16014,7 @@ def toggle_listing_like(lr_id):
 @app.route("/api/chat/rooms", methods=["POST"])
 @limiter.limit("20 per hour")
 def create_chat_room():
+    from listing_extensions import public_channel_sql
     """직거래 매물 채팅방 생성 또는 기존 방 반환 — 로그인·휴대폰 인증 필요."""
     user = current_user()
     if not user:
@@ -15950,10 +16043,10 @@ def create_chat_room():
                 "message": "안전한 직거래를 위해 휴대폰 인증 후 채팅을 시작해주세요.",
             }), 403
         # 매물 존재 확인 + 판매자 ID
-        cur.execute("""
+        cur.execute(f"""
             SELECT lr.id, lr.user_id AS seller_user_id
             FROM listing_requests lr
-            WHERE lr.id = %s AND lr.deal_mode = 'direct'
+            WHERE lr.id = %s AND {public_channel_sql()}
               AND COALESCE(lr.status, '') NOT IN ('withdrawn', '철회됨', '보류')
         """, [lr_id])
         lr = cur.fetchone()
@@ -16304,7 +16397,7 @@ def update_listing_request(req_id):
     if listing_error:
         return jsonify({"ok": False, "message": listing_error}), 400
     deal_type = listing_values["deal_type"]
-    whole_values = listing_values if transaction_target == "whole" else None
+    whole_values = listing_values if transaction_target != "unit" else None
     is_urgent = listing_values["is_urgent"]
 
     if transaction_target == "unit" and deal_type not in _LISTING_DEAL_TYPES:
@@ -16335,7 +16428,7 @@ def update_listing_request(req_id):
     registrant_type = registrant_type_raw if registrant_type_raw in (
         "owner", "building_owner", "business", "agent", "other"
     ) else "owner"
-    if transaction_target == "whole":
+    if transaction_target != "unit":
         price_krw = whole_values["price_krw"]
         price_krw_max = None
         monthly_rent_krw = whole_values["monthly_rent_krw"]
@@ -16361,7 +16454,7 @@ def update_listing_request(req_id):
             raise ValueError
     except (TypeError, ValueError):
         return jsonify({"ok": False, "message": "총 호실수는 1~100,000 사이의 숫자로 입력해주세요."}), 400
-    if registrant_type != "business" and transaction_target != "whole":
+    if registrant_type != "business" and transaction_target == "unit":
         room_count = None
     if err1 or err2 or err3 or err4 or err5:
         return jsonify({"ok": False, "message": err1 or err2 or err3 or err4 or err5}), 400
@@ -16375,7 +16468,7 @@ def update_listing_request(req_id):
         round((yield_base_rent * 12) / max(price_krw - (deposit_krw or 0), 1) * 100, 1)
         if deal_type == "매매" and price_krw and yield_base_rent else None
     )
-    if transaction_target == "whole":
+    if transaction_target != "unit":
         desired_price = ((str(data.get("desired_price") or "").strip()[:100] or
                           (f"{deal_type} {price_krw:,}만원" if price_krw else deal_type)))
         area_sqm = None
@@ -16392,14 +16485,19 @@ def update_listing_request(req_id):
                        succession_loan_krw, key_money_krw, monthly_revenue_krw, annual_revenue_krw,
                         short_stay_ratio, ota_revenue_ratio, matched_permit_number,
                         operation_status, closed_at, remodeling_info, is_urgent, disclosure_scope,
-                       building_info_overrides
-               FROM listing_requests WHERE id = %s""", [req_id]
+                       building_info_overrides, broker_agent_id, business_rights_info, publication_status
+               FROM listing_requests WHERE id = %s FOR UPDATE""", [req_id]
         )
         row = cur.fetchone()
         if not row:
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        if row.get("broker_agent_id"):
+            from listing_extensions import broker_context
+            active_broker = broker_context(cur, user)
+            if not active_broker or active_broker["id"] != row["broker_agent_id"]:
+                return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         if row["status"] not in ("submitted", "보류"):
             return jsonify({"ok": False, "message": "접수됨 또는 보류 상태에서만 수정할 수 있습니다."}), 400
         matched_permit_number = None if registrant_type != "business" else row["matched_permit_number"]
@@ -16491,8 +16589,19 @@ def update_listing_request(req_id):
               after["remodeling_info"], after["is_urgent"], after["disclosure_scope"],
               json.dumps(after["building_info_overrides"] or {}), req_id]
         )
+        if row.get("broker_agent_id") or whole_values:
+            info = ((whole_values or {}).get("business_rights_info") or {}
+                    if "business_rights_info" in data else row.get("business_rights_info") or {})
+            cur.execute("""
+                UPDATE listing_requests SET business_rights_info=%s,
+                       publication_status=CASE WHEN broker_agent_id IS NOT NULL
+                                               THEN 'pending' ELSE publication_status END,
+                       publication_verified_at=CASE WHEN broker_agent_id IS NOT NULL
+                                                    THEN NULL ELSE publication_verified_at END,
+                       publication_reason=NULL WHERE id=%s
+            """, [json.dumps(info), req_id])
         if (
-            after["transaction_target"] == "whole"
+            after["transaction_target"] in ("whole", "business_rights")
             and (after["disclosure_scope"] or "limited") == "limited"
         ):
             cur.execute(
@@ -16558,7 +16667,7 @@ def withdraw_listing_request(req_id):
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, user_id, status FROM listing_requests WHERE id = %s FOR UPDATE",
+            "SELECT id, user_id, status, broker_agent_id FROM listing_requests WHERE id = %s FOR UPDATE",
             [req_id],
         )
         row = cur.fetchone()
@@ -16566,6 +16675,9 @@ def withdraw_listing_request(req_id):
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        from listing_extensions import business_context_allowed
+        if not business_context_allowed(cur, row, user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         if row["status"] not in ("submitted", "보류"):
             return jsonify({"ok": False, "message": "접수됨 또는 보류 상태에서만 철회할 수 있습니다."}), 400
         before = {"status": row["status"]}
@@ -16599,7 +16711,7 @@ def _set_listing_hold_state(req_id, *, held):
     cur = conn.cursor()
     try:
         cur.execute(
-            "SELECT id, user_id, status FROM listing_requests WHERE id = %s",
+            "SELECT id, user_id, status, broker_agent_id FROM listing_requests WHERE id = %s",
             [req_id],
         )
         row = cur.fetchone()
@@ -16607,6 +16719,9 @@ def _set_listing_hold_state(req_id, *, held):
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
+        from listing_extensions import business_context_allowed
+        if not business_context_allowed(cur, row, user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
         if row["status"] != expected_status:
             label = "접수됨" if held else "보류중"
             return jsonify({"ok": False, "message": f"{label} 상태에서만 변경할 수 있습니다."}), 400
@@ -16655,7 +16770,7 @@ def update_listing_disclosure_scope(req_id):
     try:
         cur.execute(
             """SELECT id, user_id, transaction_target, master_building_id, deal_mode, status,
-                      deal_type, price_krw, is_urgent, disclosure_scope
+                      deal_type, price_krw, is_urgent, disclosure_scope, broker_agent_id
                  FROM listing_requests WHERE id=%s""",
             [req_id],
         )
@@ -16664,7 +16779,10 @@ def update_listing_disclosure_scope(req_id):
             return jsonify({"ok": False, "message": "의뢰를 찾을 수 없습니다."}), 404
         if row["user_id"] != user["id"]:
             return jsonify({"ok": False, "message": "권한이 없습니다."}), 403
-        if row["transaction_target"] != "whole":
+        from listing_extensions import business_context_allowed
+        if not business_context_allowed(cur, row, user["id"]):
+            return jsonify(ok=False, message="등록한 중개사 사업장으로 역할을 전환해주세요."), 403
+        if row["transaction_target"] not in ("whole", "business_rights"):
             return jsonify({"ok": False, "message": "공개범위는 건물전체 매물에서만 변경할 수 있습니다."}), 400
         before_urgent_tier = _urgent_tier_for_listing(cur, row)
         cur.execute(
@@ -16713,6 +16831,8 @@ def update_listing_disclosure_scope(req_id):
                 cur.execute("RELEASE SAVEPOINT urgent_listing_alerts")
                 urgent_email_jobs = []
                 app.logger.exception("공개전환 급매 알림 예약 실패(listing_id=%s)", req_id)
+        from listing_extensions import invalidate_publication
+        invalidate_publication(cur, req_id)
         conn.commit()
     finally:
         cur.close()
@@ -38177,6 +38297,8 @@ from survey_service import register_survey_routes, start_survey_scheduler
 register_survey_routes(app, limiter, _serve_static_html, require_admin)
 from membership_service import register_membership_routes
 register_membership_routes(app, limiter, require_admin, current_user)
+from listing_extensions import register_listing_extension_routes, public_channel_sql
+register_listing_extension_routes(app, require_admin, current_user, _serve_static_html)
 
 
 if __name__ == "__main__":

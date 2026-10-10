@@ -359,6 +359,16 @@
   function requestItemHtml(it){
     var st = LR_STATUS_LABEL[it.status] || it.status;
     var color = LR_STATUS_COLOR[it.status] || "var(--ink-soft)";
+    var target = it.transaction_target || "unit";
+    var rightsListing = target === "business_rights";
+    var targetLabel = target === "whole" ? "건물 전체" : (rightsListing ? "영업권 양도" : "개별 호실");
+    var dealLabel = it.deal_type === "운영권양도" ? "영업권양도" : it.deal_type;
+    var publicationLabels = {pending:"검수 대기",approved:"게시 승인",rejected:"게시 반려"};
+    var publicationStatus = it.publication_status;
+    var publicationHtml = publicationStatus
+      ? '<div style="margin-top:5px;font-size:11.5px;font-weight:700;color:' + (publicationStatus==="approved"?"#42613a":(publicationStatus==="rejected"?"#91483e":"#805724")) + ';">중개 게시 상태 · ' + (publicationLabels[publicationStatus]||escapeHtml(publicationStatus)) +
+        (it.publication_reason ? '<div style="font-weight:400;color:var(--ink-soft);">검수 의견: ' + escapeHtml(it.publication_reason) + '</div>' : '') + '</div>'
+      : "";
     // ── 직거래/중개거래 뱃지 ──
     var modeBadge = it.deal_mode === "direct"
       ? '<span style="font-size:10.5px;font-weight:700;color:#4A7A18;border:1px solid #4A7A18;border-radius:999px;padding:2px 7px;margin-left:5px;vertical-align:middle;">직거래</span>'
@@ -389,7 +399,7 @@
       var scopeButton = "";
       var scope = it.disclosure_scope === "public" ? "public" : "limited";
       var scopeLabel = scope === "public" ? "전체공개" : "제한공개";
-      if (it.transaction_target === "whole") {
+      if (it.transaction_target === "whole" || rightsListing) {
         scopeButton = '<button class="lr-disclosure-btn" data-id="' + it.id + '" data-scope="' + scope + '" style="font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:5px;background:none;color:var(--ink-soft);cursor:pointer;">' + scopeLabel + '</button>';
       }
       actionBtns = '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">' +
@@ -402,15 +412,20 @@
     return '<div style="padding:11px 4px; border-bottom:1px solid var(--line);">' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">' +
         '<div style="min-width:0; flex:1;">' +
-          '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(it.building_name || "(건물명 미확인)") + '</a>' +
+          '<a href="/building/' + it.building_id + '" style="font-size:13.5px; font-weight:700; color:var(--ink); text-decoration:none;">' + escapeHtml(rightsListing ? ((it.business_rights_info&&it.business_rights_info.facility_name)||it.building_name||"영업장") : (it.building_name || "(건물명 미확인)")) + '</a>' +
           modeBadge +
-          '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">' + (it.transaction_target === "whole" ? '<b style="color:var(--brass);">건물전체</b> · ' : '') + escapeHtml(it.deal_type) +
-            (it.price_krw != null ? ' · ' + escapeHtml(it.transaction_target === "whole"
+          '<div style="font-size:12px; color:var(--ink-soft); margin-top:2px;"><b style="color:var(--brass);">' + targetLabel + '</b> · ' + escapeHtml(dealLabel) +
+            (it.price_krw != null ? ' · ' + escapeHtml(rightsListing
+              ? "보증금 " + Number(it.price_krw).toLocaleString() + "만원"
+              : (it.transaction_target === "whole"
               ? (it.deal_type === "매매" ? "매매가 " + fmtPrice(it.price_krw) + "만원" : "보증금 " + fmtPrice(it.price_krw) + "만원" + (it.monthly_rent_krw != null ? " / 월 " + fmtPrice(it.monthly_rent_krw) + "만원" : ""))
-              : fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw, it.price_krw_max)) : '') +
-            (it.transaction_target !== "whole" && it.room_count != null ? ' · 총 ' + Number(it.room_count).toLocaleString() + '실' : '') +
+              : fmtLrPrice(it.deal_type, it.price_krw, it.monthly_rent_krw, it.price_krw_max))) : '') +
+            (rightsListing && it.key_money_krw != null ? ' · 희망 권리금 ' + Number(it.key_money_krw).toLocaleString() + '만원' : '') +
+            (rightsListing && it.monthly_rent_krw != null ? ' · 월 임대료 ' + Number(it.monthly_rent_krw).toLocaleString() + '만원' : '') +
+            (target !== "whole" && it.room_count != null ? ' · 총 ' + Number(it.room_count).toLocaleString() + '실' : '') +
             ' · 최근 수정 ' + it.created_date + '</div>' +
           '<div style="font-size:12px; margin-top:3px;">' + agentHtml + '</div>' +
+          publicationHtml +
           (chatBtn ? '<div>' + chatBtn + '</div>' : '') +
           actionBtns +
         '</div>' +

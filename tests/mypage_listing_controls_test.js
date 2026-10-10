@@ -13,7 +13,7 @@ for (const needle of [
   'class="lr-hold-btn"',
   'class="lr-resume-btn"',
   'class="lr-disclosure-btn"',
-  'if (it.transaction_target === "whole")',
+  'if (it.transaction_target === "whole" || rightsListing)',
   'isResume ? "resume" : "hold"',
   '"/disclosure-scope"',
   'method: "PATCH"',

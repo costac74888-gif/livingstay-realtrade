@@ -119,11 +119,11 @@ expect(
   "건물전체 공통 권리금·융자·실인수가·객실수 자동입력 계약이 없습니다."
 );
 expect(
-  modal.includes('$("#lrAreaOwnerWrap").style.display = !whole && !isBusiness ? "block" : "none"') &&
-  modal.includes('$("#lrAreaBusinessWrap").style.display = !whole && isBusiness ? "block" : "none"') &&
+  modal.includes('$("#lrAreaOwnerWrap").style.display = !whole && !isBusiness && !isBusinessRights() ? "block" : "none"') &&
+  modal.includes('$("#lrAreaBusinessWrap").style.display = !whole && isBusiness && !isBusinessRights() ? "block" : "none"') &&
   modal.includes('$("#lrPriceWolseBusiness").style.display = dealType === "월세" && isBusiness && !whole ? "flex" : "none"') &&
   modal.includes('$("#lrShortTermBusiness").style.display = dealType === "단기임대" && isBusiness && !whole ? "flex" : "none"') &&
-  modal.includes('$("#lrPriceSale").style.display = dealType === "매매" && !isBusiness && !whole ? "block" : "none"') &&
+  modal.includes('$("#lrPriceSale").style.display = dealType === "매매" && !isBusiness && !whole && !rights ? "block" : "none"') &&
   modal.includes("Object.keys(WHOLE_TERM_FIELDS).forEach"),
   "사업주/소유자 전용면적 전환 또는 거래유형별 수익률 표시 로직이 없습니다."
 );

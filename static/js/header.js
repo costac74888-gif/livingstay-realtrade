@@ -76,8 +76,9 @@
         '<nav class="header-nav">' +
           '<button type="button" class="hnav-btn" id="myPriceBtnMenu">🏨 <span class="hnav-label">내건물시세</span></button>' +
           '<a class="hnav-btn" href="/guide">📖 <span class="hnav-label">이용안내</span></a>' +
-          '<a class="hnav-btn" href="/listings">🏠 <span class="hnav-label">직거래매물</span></a>' +
-          '<a class="hnav-btn hnav-auctions" href="/auctions"><svg style="width:16px;height:16px;vertical-align:-3px" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v13M6.5 17h7M4 5h12M5 5l-3 6h6L5 5Zm10 0-3 6h6l-3-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hnav-label">공매목록</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
+          '<a class="hnav-btn" href="/listings?channel=direct"> <span class="hnav-label">직거래 매물</span></a>' +
+          '<a class="hnav-btn" href="/listings?channel=broker"> <span class="hnav-label">중개 매물</span></a>' +
+          '<a class="hnav-btn hnav-auctions" href="/listings?channel=auction"><svg style="width:16px;height:16px;vertical-align:-3px" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v13M6.5 17h7M4 5h12M5 5l-3 6h6L5 5Zm10 0-3 6h6l-3-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hnav-label">공매목록</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
           '<a class="hnav-btn" href="/analysis">📊 <span class="hnav-label">자산분석</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span><span class="nav-badge nav-badge-hot">HOT</span></a>' +
           '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +

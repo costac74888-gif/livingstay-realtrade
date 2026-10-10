@@ -1421,7 +1421,7 @@
 @media (max-width:520px){
   .header-menu .nav-badge{ top:2px; right:10px; }
 }
-@media (min-width:521px) and (max-width:1360px){
+@media (min-width:521px) and (max-width:1560px){
   #siteHeader .brand, #siteHeader .page-title{flex-shrink:0;white-space:nowrap;}
   #siteHeader .header-actions, #siteHeader .header-menu{gap:8px;}
   #siteHeader .header-nav{gap:2px;}

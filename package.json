@@ -9,7 +9,8 @@
     "test:frontend": "python tests/frontend_distribution_test.py",
     "test:map-mobile": "node tests/map_location_browser_test.js",
     "test:analysis-mobile": "node tests/analysis_mobile_browser_test.js",
-    "test:tourapi-gallery": "node tests/tourapi_partial_gallery_browser_test.js"
+    "test:tourapi-gallery": "node tests/tourapi_partial_gallery_browser_test.js",
+    "test:listings-integration": "node tests/listing_frontend_integration_browser_test.cjs"
   },
   "dependencies": {
     "chart.js": "^4.4.4",
