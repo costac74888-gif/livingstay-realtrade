@@ -133,3 +133,4 @@
 - [HOME & STAY 2.0 개편 경계](home-stay-2-governance.md) — 소비자 단기임대 중심, 숙박 1박·비숙박 7일; 기존 원장 보존과 단계별 검증·수동 운영 승인 필수.
 - [브라우저 작업 완료 대기](browser-action-completion.md) — feedback 표시가 처리 완료는 아니다; 실제 응답·대기 상태 뒤 결과를 검증한다.
 - [노트북 impure 경계](durable-impure-boundaries.md) — 저장된 함수의 runtime wrapper가 낡았으면 인증 오류로 오판하지 말고 현재 skill 규칙으로 경계를 다시 만든다.
+- [금융 원장 잠금과 snapshot](financial-lock-snapshots.md) — 원장 행의 잠금 대기 후 JOIN 예약 상태가 최신이라고 가정하지 말고 새 문장에서 다시 조회한다.

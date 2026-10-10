@@ -103,14 +103,39 @@ class BookingRepository:
         return dict(zip(("id","user_id","application_id","receipt_id","status","revision","check_in","check_out",
                          "deadline","payment_reference","public_id","quote","source_revision","source_version","guests","total_krw"),row))
 
-    @staticmethod
-    def public(row):
-        return dict(booking_id=str(row["id"]),public_id=str(row["public_id"]),status=row["status"],
+    def public(self,row):
+        result=dict(booking_id=str(row["id"]),public_id=str(row["public_id"]),status=row["status"],
             revision=row["revision"],check_in=row["check_in"].isoformat(),check_out=row["check_out"].isoformat(),
             deadline=row["deadline"].isoformat() if row["deadline"] else None,quote=row["quote"],
             guests=row["guests"],booking_confirmed=row["status"]=="confirmed",
             payment_verified=row["payment_reference"] is not None,
             inventory_held=row["status"] in ACTIVE)
+        cancellation=getattr(self,"paid_cancellation",None)
+        if callable(cancellation) and cancellation(str(row["id"])):
+            result.update(status="cancelled_paid",booking_confirmed=False,inventory_held=False)
+        return result
+
+    def confirm_verified(self,c,who,key,verified):
+        """Internal adapter entry: same transaction as verified financial event."""
+        uid=self.details.active(c,who)
+        row=self.row(c,key,uid)
+        if row["status"]=="confirmed":
+            if proof(verified,str(row["id"]),row["total_krw"])!=row["payment_reference"]:
+                raise ContractError("PAYMENT_REFERENCE_REPLAY")
+            return row
+        if row["status"]!="awaiting_payment":raise ContractError("BOOKING_STATE_CHANGED")
+        application=self.registrations.row(c,str(row["application_id"]),None)
+        self.details.application(c,str(row["public_id"]));self.source(c,application,row)
+        reference=proof(verified,str(row["id"]),row["total_krw"])
+        c.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",(f"hs2-payment-reference:{reference}",))
+        c.execute("SELECT id FROM hs2_dev.bookings WHERE payment_reference=%s AND id<>%s",(reference,key))
+        if c.fetchone():raise ContractError("PAYMENT_REFERENCE_REPLAY")
+        c.execute("SELECT deadline>clock_timestamp() FROM hs2_dev.bookings WHERE id=%s",(key,))
+        if c.fetchone()[0] is not True:raise ContractError("BOOKING_DEADLINE_EXPIRED")
+        c.execute("""UPDATE hs2_dev.bookings SET status='confirmed',deadline=NULL,payment_reference=%s,
+            revision=revision+1 WHERE id=%s""",(reference,key))
+        self.event(c,key,uid,"verified-provider-payment")
+        return self.row(c,key,uid)
 
     def source(self,c,application,receipt):
         if application["revision"]!=receipt["source_revision"]:raise ContractError("QUOTE_SOURCE_CHANGED")
@@ -150,6 +175,8 @@ class BookingRepository:
             if c.fetchone()[0]>=3:raise ContractError("ACTIVE_BOOKING_LIMIT")
             c.execute("SELECT 1 FROM hs2_dev.bookings WHERE receipt_id=%s",(raw["receipt_id"],))
             if c.fetchone():raise ContractError("QUOTE_RECEIPT_ALREADY_USED")
+            # Locks or provider/database waits may cross the original quote TTL.
+            self.details.receipt(c,raw["receipt_id"],uid)
             key=str(uuid4())
             c.execute("""INSERT INTO hs2_dev.bookings
                 (id,user_id,application_id,receipt_id,snapshot_id,request_id,request_hash,status,check_in,check_out,deadline)
@@ -200,6 +227,8 @@ class BookingRepository:
                 if c.fetchone():raise ContractError("PAYMENT_REFERENCE_REPLAY")
                 status="confirmed";deadline="NULL"
             else:status="rejected" if action=="reject" else "cancelled";deadline="NULL"
+            c.execute("SELECT deadline IS NULL OR deadline>clock_timestamp() FROM hs2_dev.bookings WHERE id=%s",(key,))
+            if c.fetchone()[0] is not True:raise ContractError("BOOKING_DEADLINE_EXPIRED")
             c.execute(f"UPDATE hs2_dev.bookings SET status=%s,deadline={deadline},payment_reference=%s,revision=revision+1 WHERE id=%s",(status,reference,key))
             if status not in ACTIVE:c.execute("DELETE FROM hs2_dev.booking_slots WHERE booking_id=%s",(key,))
             self.event(c,key,uid,action)

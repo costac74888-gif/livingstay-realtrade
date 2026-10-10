@@ -46,7 +46,11 @@
       {"id":"P10-A02","criterion":"Actual PostgreSQL two-consumer concurrent holds, same-key retry, half-open dates, whole/descendant/sibling inventory and original cycle guard, expiry/cancel/reject recovery, scope/revision/current pricing and immutable confirmation/replay tests","check":"phase10-booking-db"},
       {"id":"P10-A03","criterion":"Actual Chromium desktop/mobile persisted detail receipt to request, own consumer/operator cards, approve/payment wait/cancel/reject and restored calendar availability; provider/auth gating and terminal re-entry","check":"phase10-booking-ui"}
     ]},
-    {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":null},
+    {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":[
+      {"id":"P11-A01","criterion":"Reviewed integer KRW financial split, no unknown deposit/fees zero, exact economic signature validation and bounded delivery metadata; no live provider/settlement","check":"phase11-finance-contracts"},
+      {"id":"P11-A02","criterion":"Real PostgreSQL atomic verified evidence and original booking confirmation, concurrent replay/fresh joined state, terms-preview consent, source/late-payment preservation, immutable price/policy/history, paid cancellation/released slots/refund reviews and separate due deposit/host reviews; authority/CSRF/live gate","check":"phase11-finance-db"},
+      {"id":"P11-A03","criterion":"Desktop/mobile actual SQL-backed financial preview before consent, own contract create/re-entry/fee-deposit separation, provider-evidence records, consumer paid-cancel/refund review and operator due-release review; explicit sandbox/no-execution and role gating","check":"phase11-finance-ui"}
+    ]},
     {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":null},
     {"id":13,"title":"관심/Chat/Notification/My Booking","native_acceptance":["S15-A01","S15-A02"],"acceptance":null},
     {"id":14,"title":"FAQ/이용 Guide/Policy","native_acceptance":[],"acceptance":null},

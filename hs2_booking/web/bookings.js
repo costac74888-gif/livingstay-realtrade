@@ -362,7 +362,16 @@
         }
       }
     }
-    if (actions.childElementCount) card.append(actions);
+    const financeLink = document.createElement("a");
+    financeLink.className = "action-button";
+    financeLink.style.display = "inline-flex";
+    financeLink.style.alignItems = "center";
+    financeLink.style.textDecoration = "none";
+    financeLink.href = `/hs2/finance/?booking_id=${encodeURIComponent(booking.booking_id)}`;
+    financeLink.textContent = "금융 조건 확인";
+    if (!actions.childElementCount) actions.classList.add("booking-actions");
+    actions.append(financeLink);
+    card.append(actions);
     return card;
   }
 
