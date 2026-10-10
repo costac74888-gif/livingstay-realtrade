@@ -25,15 +25,17 @@ def migrate(conn):
 
 
 class BookingRepository:
-    def __init__(self,details,*,payment_proof=None,payment_terms_reviewed=None):
+    def __init__(self,details,*,payment_proof=None,payment_terms_reviewed=None,event_callback=None):
         self.details=details;self.registrations=details.registrations;self.calendar=details.calendar
         if payment_proof is not None and not callable(payment_proof):raise ValueError("Trusted payment adapter required")
         self.payment_proof=payment_proof;self.payment_terms_reviewed=payment_terms_reviewed
+        if event_callback is not None and not callable(event_callback):raise ValueError("Trusted atomic event port required")
+        self.event_callback=event_callback
 
-    @staticmethod
-    def event(c,key,actor,kind,payload=None):
+    def event(self,c,key,actor,kind,payload=None):
         c.execute("INSERT INTO hs2_dev.booking_events(booking_id,actor_user_id,kind,payload) VALUES(%s,%s,%s,%s)",
             (key,actor,kind,json.dumps(payload or {})))
+        if self.event_callback:self.event_callback(c,key,actor,kind,payload or {})
 
     def expire(self,c):
         c.execute("""UPDATE hs2_dev.bookings SET status='expired',deadline=NULL,revision=revision+1

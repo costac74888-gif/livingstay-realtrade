@@ -276,7 +276,7 @@
   }
   var workLabels = {
     register: "숙박 등록", manage: "등록 관리", calendar: "운영 캘린더",
-    bookings: "예약 관리", contracts: "계약 기록", finance: "금융 업무", chat: "마이페이지 대화"
+    bookings: "예약 관리", contracts: "계약 기록", finance: "금융 업무", chat: "문의 · 채팅"
   };
   function renderLinks(container, entries, labels, legacy) {
     var fragment = document.createDocumentFragment();

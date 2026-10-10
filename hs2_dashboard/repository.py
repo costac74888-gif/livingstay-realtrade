@@ -14,7 +14,7 @@ LEGACY_LINKS=[
 WORK_LINKS=dict(register="/hs2/listings/?new=1",manage="/hs2/listings/",
     calendar="/hs2/calendar/",bookings="/hs2/bookings/?view=operator",
     contracts="/hs2/finance/?view=operator",finance="/hs2/finance/?view=operator",
-    chat="/mypage")
+    chat="/hs2/workspace/?view=operator")
 
 
 class DashboardRepository:

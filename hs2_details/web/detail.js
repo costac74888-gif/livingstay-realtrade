@@ -22,6 +22,9 @@
   const countdownNode = $("#receipt-countdown");
   const loginPrompt = $("#login-prompt");
   const loginLink = $("#consumer-login-link");
+  const saveInterestButton = $("#save-interest");
+  const inquiryButton = $("#start-inquiry");
+  const stayToolsFeedback = $("#stay-tools-feedback");
   const params = new URLSearchParams(window.location.search);
   const publicId = (params.get("public_id") || "").trim();
   const safeId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(publicId);
@@ -37,6 +40,8 @@
   let receiptTimer = null;
   let currentReceipt = null;
   let pageIdentity = publicId;
+  let workspaceCsrf = "";
+  let isFavorite = false;
 
   function setFeedback(message, state) {
     feedbackCopy.textContent = message;
@@ -236,6 +241,85 @@
       throw error;
     }
     return payload;
+  }
+
+  function setStayTools(message, state = "ready") {
+    stayToolsFeedback.textContent = message;
+    stayToolsFeedback.dataset.state = state;
+  }
+
+  async function initializeStayTools() {
+    if (!safeId) {
+      setStayTools("올바른 공개 숙소 정보가 없어 관심 저장과 문의를 사용할 수 없습니다.", "error");
+      return;
+    }
+    saveInterestButton.disabled = true;
+    inquiryButton.disabled = true;
+    try {
+      const meta = await api("/hs2/workspace/api/meta?view=consumer");
+      if (meta.view !== "consumer" || typeof meta.csrf !== "string" || !meta.csrf || meta.live_delivery_enabled !== false) {
+        throw new Error("인증된 소비자 세션을 확인할 수 없습니다.");
+      }
+      workspaceCsrf = meta.csrf;
+      const favorites = await api("/hs2/workspace/api/favorites");
+      if (!Array.isArray(favorites.items)) throw new Error("관심 숙소 목록 응답을 확인할 수 없습니다.");
+      isFavorite = favorites.items.some((entry) => entry && entry.public_id === publicId);
+      saveInterestButton.textContent = isFavorite ? "관심 숙소 저장 해제" : "관심 숙소 저장";
+      saveInterestButton.disabled = false;
+      inquiryButton.disabled = false;
+      setStayTools("인증된 소비자 세션입니다. 관심 저장 또는 문의는 선택한 버튼으로만 실행됩니다.");
+    } catch (error) {
+      setStayTools(`로그인 또는 세션 확인이 필요합니다. ${error.message || ""}`, "error");
+    }
+  }
+
+  async function toggleStayFavorite() {
+    if (!workspaceCsrf || !safeId) {
+      setStayTools("인증된 소비자 세션이 없어 관심 저장을 진행할 수 없습니다.", "error");
+      return;
+    }
+    saveInterestButton.disabled = true;
+    try {
+      const enabled = !isFavorite;
+      const result = await api(`/hs2/workspace/api/favorites/${encodeURIComponent(publicId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-HS2-CSRF": workspaceCsrf },
+        body: JSON.stringify({ enabled })
+      });
+      if (!result.item || result.item.public_id !== publicId || result.item.enabled !== enabled) {
+        throw new Error("저장 상태를 서버 응답에서 확인할 수 없습니다.");
+      }
+      isFavorite = enabled;
+      saveInterestButton.textContent = isFavorite ? "관심 숙소 저장 해제" : "관심 숙소 저장";
+      setStayTools(isFavorite ? "관심 숙소로 저장했습니다." : "관심 숙소 저장을 해제했습니다.");
+    } catch (error) {
+      setStayTools(error.message || "관심 숙소 저장을 변경하지 못했습니다.", "error");
+    } finally {
+      saveInterestButton.disabled = false;
+    }
+  }
+
+  async function startStayInquiry() {
+    if (!workspaceCsrf || !safeId) {
+      setStayTools("인증된 소비자 세션이 없어 문의를 시작할 수 없습니다.", "error");
+      return;
+    }
+    inquiryButton.disabled = true;
+    try {
+      const result = await api("/hs2/workspace/api/threads?view=consumer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-HS2-CSRF": workspaceCsrf },
+        body: JSON.stringify({ public_id: publicId })
+      });
+      if (!result.thread_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result.thread_id)) {
+        throw new Error("문의 대화 식별자를 확인할 수 없습니다.");
+      }
+      setStayTools("문의 대화를 열었습니다. 실제 발송을 의미하지 않습니다.");
+      window.location.assign(`/hs2/workspace/?view=consumer&thread_id=${encodeURIComponent(result.thread_id)}`);
+    } catch (error) {
+      setStayTools(error.message || "문의 대화를 시작하지 못했습니다.", "error");
+      inquiryButton.disabled = false;
+    }
   }
 
   function quoteIsUsable(quote, value) {
@@ -507,6 +591,8 @@
       currentQuote.sequence !== sequence || !sessionInfo || sessionInfo.can_confirm_quote !== true;
   });
   confirmButton.addEventListener("click", confirmQuote);
+  saveInterestButton.addEventListener("click", toggleStayFavorite);
+  inquiryButton.addEventListener("click", startStayInquiry);
   backLink.addEventListener("click", updateReturnLinks);
   window.addEventListener("popstate", () => {
     const nextParams = new URLSearchParams(window.location.search);
@@ -521,6 +607,7 @@
   });
 
   updateReturnLinks();
+  initializeStayTools();
   if (publicId && safeId) initialize();
   else setFeedback("숙소 식별 정보가 없거나 올바르지 않습니다. 검색 결과에서 숙소를 다시 선택해 주세요.", "error");
 })();

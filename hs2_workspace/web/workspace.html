@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f3f1e9">
+  <meta name="hs2-csrf" content="">
+  <title>Workspace · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/consumer-assets/main.css">
+  <link rel="stylesheet" href="/hs2/workspace/assets/workspace.css">
+  <script src="/hs2/workspace/assets/workspace.js" defer></script>
+</head>
+<body class="workspace-page">
+  <div class="workspace-shell">
+    <header class="workspace-topbar">
+      <a class="workspace-brand" href="/hs2/consumer" aria-label="HOME &amp; STAY 홈">
+        <img src="/static/home_stay_share.png" alt="">
+        <span><strong>홈앤스테이</strong><small>대한민국 숙박부동산 데이터 플랫폼</small></span>
+      </a>
+      <nav class="top-links" aria-label="주요 메뉴">
+        <a href="/hs2/search/">숙소 찾기</a>
+        <a href="/hs2/bookings/">예약</a>
+        <a href="/hs2/mode">모드 선택</a>
+      </nav>
+    </header>
+
+    <main class="workspace-main">
+      <div class="workspace-heading">
+        <div>
+          <p class="eyebrow">HOME &amp; STAY <span>/</span> STAY WORKSPACE</p>
+          <h1>머무름과 대화,<br><em>한곳에서 살펴봅니다.</em></h1>
+        </div>
+        <div class="heading-aside"><span class="signal-dot"></span><span id="scope-label">인증 범위 확인 중</span></div>
+      </div>
+
+      <div id="workspace-feedback" class="workspace-feedback" data-state="loading" role="status" aria-live="polite" aria-atomic="true">
+        <span class="feedback-marker" aria-hidden="true"></span>
+        <span class="feedback-text">인증된 세션과 최신 기록을 확인하고 있습니다.</span>
+        <button id="workspace-refresh" type="button" class="text-button">다시 확인</button>
+      </div>
+
+      <div class="workspace-layout">
+        <aside class="workspace-rail" aria-label="워크스페이스 안내">
+          <div class="rail-intro">
+            <p class="rail-kicker">YOUR STAY DESK</p>
+            <h2>기록은 명확하게.<br>확정은 서버에서.</h2>
+            <p>예약 상태와 메시지는 인증된 계정 범위의 서버 기록만 표시합니다.</p>
+          </div>
+          <nav class="rail-nav" aria-label="워크스페이스 섹션">
+            <a href="#conversation"><span class="nav-index">01</span> 대화</a>
+            <a href="#bookings-section" data-consumer-only><span class="nav-index">02</span> 내 예약</a>
+            <a href="#favorites-section" data-consumer-only><span class="nav-index">03</span> 관심 숙소</a>
+            <a href="#notifications-section" data-consumer-only><span class="nav-index">04</span> 알림 기록</a>
+          </nav>
+          <div class="rail-truth">
+            <span class="rail-rule"></span>
+            <p class="rail-kicker">DELIVERY STATUS</p>
+            <p>이메일·문자 발송은 현재 라이브로 실행되지 않습니다. 대기, 실패, 샌드박스 결과를 실제 전달과 구분합니다.</p>
+            <a href="/hs2/bookings/">예약 원장 보기 <span aria-hidden="true">↗</span></a>
+          </div>
+        </aside>
+
+        <div class="workspace-content">
+          <section id="conversation" class="surface conversation-surface" aria-labelledby="conversation-title">
+            <div class="section-head">
+              <div><p class="section-kicker">DIRECT DESK / PRIVATE THREADS</p><h2 id="conversation-title">대화</h2></div>
+              <span class="head-note">최근 기록 기준</span>
+            </div>
+            <div class="conversation-grid">
+              <div class="thread-column">
+                <div class="subhead"><h3>대화 목록</h3><span>최대 100개</span></div>
+                <div id="threads-list" class="thread-list" aria-live="polite" aria-busy="true">
+                  <div class="skeleton-row"></div><div class="skeleton-row"></div>
+                </div>
+              </div>
+              <div class="message-column">
+                <div class="message-head">
+                  <div><p class="section-kicker">SELECTED THREAD</p><h3 id="selected-thread-title">대화를 선택해 주세요</h3></div>
+                  <span id="message-scope-note">서버 보관 메시지</span>
+                </div>
+                <div id="messages-list" class="messages-list" aria-live="polite" aria-busy="false">
+                  <div class="empty-composition"><span class="empty-orbit" aria-hidden="true"></span><strong>대화가 아직 선택되지 않았습니다</strong><p>목록에서 본인에게 허용된 대화를 선택하면 메시지를 확인할 수 있습니다.</p></div>
+                </div>
+                <form id="message-form" class="composer">
+                  <label class="sr-only" for="message-body">메시지 내용</label>
+                  <textarea id="message-body" rows="2" maxlength="2000" placeholder="메시지를 입력하세요" disabled></textarea>
+                  <div class="composer-bottom"><span>최대 2,000자 · 전송 후에도 예약 확정이나 결제가 아닙니다.</span><button id="send-message" type="submit" disabled>메시지 전송 <span aria-hidden="true">↗</span></button></div>
+                </form>
+              </div>
+            </div>
+            <div id="inquiry-entry" class="inquiry-entry" hidden></div>
+          </section>
+
+          <section id="bookings-section" class="surface bookings-surface" data-consumer-only aria-labelledby="my-bookings-title">
+            <div class="section-head">
+              <div><p class="section-kicker">BOOKING RECORD / CONSUMER</p><h2 id="my-bookings-title">내 예약</h2></div>
+              <a class="small-link" href="/hs2/bookings/">예약 전체 보기 <span aria-hidden="true">↗</span></a>
+            </div>
+            <p class="section-description">소비자 예약 API에서 확인된 본인 기록입니다. 결제 완료나 예약 확정은 서버 상태로만 표시합니다.</p>
+            <div id="my-bookings-list" class="record-list" aria-live="polite" aria-busy="true">
+              <div class="skeleton-row"></div><div class="skeleton-row"></div>
+            </div>
+          </section>
+
+          <div class="lower-grid" data-consumer-only>
+            <section id="favorites-section" class="surface compact-surface" aria-labelledby="favorites-title">
+              <div class="section-head">
+                <div><p class="section-kicker">SAVED / PUBLIC STAYS</p><h2 id="favorites-title">관심 숙소</h2></div>
+                <a class="small-link" href="/hs2/search/">숙소 찾기 <span aria-hidden="true">↗</span></a>
+              </div>
+              <div id="favorites-list" class="favorite-list" aria-live="polite" aria-busy="true"><div class="skeleton-row"></div></div>
+            </section>
+
+            <section id="notifications-section" class="surface compact-surface" aria-labelledby="notifications-title">
+              <div class="section-head">
+                <div><p class="section-kicker">SERVER EVENTS / DELIVERY QUEUE</p><h2 id="notifications-title">알림 기록</h2></div>
+              </div>
+              <p class="section-description">알림 생성 기록과 발송 작업은 별개입니다. 실제 이메일·문자 발송은 비활성 상태입니다.</p>
+              <div id="notifications-list" class="notification-list" aria-live="polite" aria-busy="true"><div class="skeleton-row"></div></div>
+            </section>
+          </div>
+
+          <section class="surface preferences-surface" data-consumer-only aria-labelledby="preferences-title">
+            <div class="preferences-copy"><p class="section-kicker">EXPLICIT CONSENT / CHANNELS</p><h2 id="preferences-title">알림 수신 설정</h2><p>선택한 채널에 대한 서버 기록만 저장됩니다. 라이브 발송은 현재 활성화되어 있지 않습니다.</p></div>
+            <form id="preferences-form" class="preferences-form">
+              <label class="toggle-row" for="email-enabled"><span><strong>이메일</strong><small>알림 이메일 수신 동의</small></span><input id="email-enabled" type="checkbox" disabled><i aria-hidden="true"></i></label>
+              <label class="toggle-row" for="sms-enabled"><span><strong>문자</strong><small>알림 문자 수신 동의</small></span><input id="sms-enabled" type="checkbox" disabled><i aria-hidden="true"></i></label>
+              <button id="save-preferences" type="submit" disabled>설정 저장</button>
+            </form>
+          </section>
+        </div>
+      </div>
+      <footer class="workspace-footer"><span>HOME &amp; STAY <i>/</i> STAY WORKSPACE</span><span>인증된 서버 기록만 표시 · 실발송 및 결제 실행 기능 없음</span></footer>
+    </main>
+  </div>
+</body>
+</html>
