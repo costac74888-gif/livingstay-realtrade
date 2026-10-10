@@ -45,5 +45,7 @@
   "phase12-dashboard-db": {"file":"tests/test_hs2_phase12_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"b2479c11937b3da5f2a97749704bdc89df1cad70456facc3b4aa1be32ff74077"},
   "phase12-dashboard-ui": {"file":"tests/hs2_phase12_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"e124e6b03bd0934b55ca4f886df50b1ccf80a3e31c2e5454e7bdb08de7d9c77a"},
   "phase13-workspace-db": {"file":"tests/test_hs2_phase13_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"12182403465ddbeb603bcda753de05595848c5136879ccdb79a5c35c7af4adde"},
-  "phase13-workspace-ui": {"file":"tests/hs2_phase13_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"e1fd99fdf9b9f438d460cf93ffc7e04bf7430260f2a7e743bfbbd7fa6e19dcf9"}
+  "phase13-workspace-ui": {"file":"tests/hs2_phase13_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"e1fd99fdf9b9f438d460cf93ffc7e04bf7430260f2a7e743bfbbd7fa6e19dcf9"},
+  "phase14-help-content": {"file":"tests/test_hs2_phase14_help.py","kind":"python","role":"acceptance","reviewed_sha256":"dad645a5b2b07aac711ecec8b3ff29cb0044e32ada72676a6ec4bcc9c4e56892"},
+  "phase14-help-ui": {"file":"tests/hs2_phase14_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"0eb0f51edb6a9b75c7d11de973963f9d0806bfd14e3ee1ee6bcc15760a64f03f"}
 }

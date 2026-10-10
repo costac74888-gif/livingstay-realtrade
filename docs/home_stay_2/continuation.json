@@ -59,7 +59,10 @@
       {"id":"P13-A01","criterion":"Owned favorites duplicate/remove/public-withdrawal privacy; participant-only listing/own-booking chats, fresh roles, immutable retry identity and explicit read cursor; atomic booking/message notification rollback, consent/failure/retry/replay/opt-out suppression; actual email/SMS/live0","check":"phase13-workspace-db"},
       {"id":"P13-A02","criterion":"Real desktop/mobile saved-list,participant-message,my-booking,notification DOM; safe text, actual details interest/inquiry reentry, persistence, failed input retry, explicit optout, failed delivery queue, approved operator view and session-blocked data cleared","check":"phase13-workspace-ui"}
     ]},
-    {"id":14,"title":"FAQ/이용 Guide/Policy","native_acceptance":[],"acceptance":null},
+    {"id":14,"title":"FAQ/이용 Guide/Policy","native_acceptance":[],"acceptance":[
+      {"id":"P14-A01","criterion":"Original 24consumer/23operator/12special first-party FAQ topics, unique complete answers,3guides/3policy notes, initial0%/separatePG/minimum stay/review-not-cash truth and existing legal documents preserved; real search/filters/no-store/unknown explicit","check":"phase14-help-content"},
+      {"id":"P14-A02","criterion":"Actual59 FAQ DOM on desktop/mobile, server audience23/12 and search2/empty, answer accessibility, original terms/privacy links, nooverflow and server-error stale removal/input preservation","check":"phase14-help-ui"}
+    ]},
     {"id":15,"title":"Admin 확장","native_acceptance":["S16-A01","S16-A02"],"acceptance":null},
     {"id":16,"title":"Mobile","native_acceptance":["S13-A02","S18-A01"],"acceptance":null},
     {"id":17,"title":"통합 Regression/Security/Payment Validation","native_acceptance":["S17-A01","S17-A02","S18-A01"],"acceptance":null},

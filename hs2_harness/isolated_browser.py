@@ -24,6 +24,7 @@ FIXTURE_CHECKS = {
     "phase11-finance-ui": ("tests/hs2_phase11_ui_test.cjs", "finance"),
     "phase12-dashboard-ui": ("tests/hs2_phase12_ui_test.cjs", "dashboard"),
     "phase13-workspace-ui": ("tests/hs2_phase13_ui_test.cjs", "workspace"),
+    "phase14-help-ui": ("tests/hs2_phase14_ui_test.cjs", "help"),
 }
 
 
