@@ -77,9 +77,11 @@ def begin(phase):
         if prior.get("status") != "COMPLETE" or prior.get("remote", {}).get("status") != "SYNCED":
             raise core.GateError("Prior completed checkpoint and verified development sync required")
         core.git("merge-base", "--is-ancestor", prior["end"]["head"], prior["remote"]["head"])
+        prior_proof = prior.get("source_revalidation", prior.get("verification", {}))
         if phase > 4 and (
             prior["remote"].get("checkpoint_head") != prior["end"]["head"]
-            or prior["remote"].get("source_fingerprint") != prior["verification"]["fingerprint"]
+            or prior["remote"].get("source_fingerprint") != prior_proof.get("fingerprint")
+            or prior["remote"].get("source_fingerprint") != core.fingerprint()
             or prior["remote"].get("main_unchanged") is not True):
             raise core.GateError("Remote receipt does not match completed source/checkpoint")
         row = row_for(state, phase)
