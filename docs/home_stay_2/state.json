@@ -2123,6 +2123,14 @@
       "event": "WORK_EVIDENCE_REVIEWED",
       "phase": 16,
       "status": "PASS"
+    },
+    {
+      "at": "2026-10-10T19:05:40.248665+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 16,
+      "status": "COMPLETE",
+      "head": "e2e16dee4f20a0df85976fde6ca0d9e225b045e4",
+      "tag": "hs2/phase-16/complete"
     }
   ],
   "current_user_phase": 16,
@@ -12453,11 +12461,11 @@
       }
     },
     "16": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase16/WORK_INSTRUCTION.md",
       "at": "2026-10-10T18:46:55.502705+00:00",
       "source_head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "verification": {
         "at": "2026-10-10T19:04:55.997408+00:00",
         "head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
@@ -13494,6 +13502,15 @@
         "review_file": "docs/home_stay_2/phase16/IMPLEMENTATION_REVIEW.md",
         "reviewer": "internal Work; not external independent reviewer",
         "screenshot": ".local/hs2-harness/phase16-mobile.jpg"
+      },
+      "start": {
+        "head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
+        "tag": "hs2/phase-16/start"
+      },
+      "end": {
+        "head": "e2e16dee4f20a0df85976fde6ca0d9e225b045e4",
+        "tag": "hs2/phase-16/complete",
+        "at": "2026-10-10T19:05:40.248635+00:00"
       }
     }
   }
