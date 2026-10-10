@@ -1,0 +1,13 @@
+{
+  "user_phase": 3,
+  "stop_after_phase": 3,
+  "previous_checkpoint": "da2cfa27b0521e8200c266a5ca622cf5d99292f0",
+  "scope": "Private address/building/registry/coordinates reference foundation; synthetic providers and owned fixture DB only",
+  "native_correspondence": "Native stage 3 requirements inform this phase. Native stage 2 authentication is not implemented or marked complete, so native stages 2-18 remain PENDING.",
+  "acceptance": [
+    {"id":"P03-A01","criterion":"Executable private registration service/API: explicit address/building choices, all uses eligible, registry/coordinate evidence, ambiguity and failure, actor/CSRF/TTL, no guessed geometry or public location","check":"phase3-registration-contracts"},
+    {"id":"P03-A02","criterion":"Persist actual Phase 2 reference structures in owned PostgreSQL; exact optional legacy link; no original row/sequence writes; no registration grants/listings; atomic failure and duplicate/conflict handling","check":"phase3-registration-db"},
+    {"id":"P03-A03","criterion":"Phase 1/2 receipts, original registry criteria, native plan/manual gates, frozen application preserved; stale/failed/partial suite cannot complete","check":"phase3-gate-contracts"},
+    {"id":"P03-A04","criterion":"Private UI full address-to-reference flow with Korean missing/ambiguous/error states, stale-response guards and coordinate-only preview without external map calls","check":"phase3-registration-ui"}
+  ]
+}

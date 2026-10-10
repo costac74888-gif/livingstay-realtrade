@@ -1325,9 +1325,16 @@
       "status": "VERIFIED",
       "head": "1a3437041a70ab38512dda60d8a033e5f51bf774",
       "main_unchanged": true
+    },
+    {
+      "at": "2026-10-10T12:10:28.292445+00:00",
+      "event": "USER_PHASE_START",
+      "phase": 3,
+      "status": "RUNNING",
+      "stop_after_phase": 3
     }
   ],
-  "current_user_phase": 2,
+  "current_user_phase": 3,
   "user_phases": {
     "2": {
       "status": "COMPLETE",
@@ -1610,6 +1617,19 @@
         "tag": "hs2/phase-02/complete",
         "at": "2026-10-10T11:47:43.237015+00:00"
       }
+    },
+    "3": {
+      "status": "RUNNING",
+      "start": {
+        "head": "da2cfa27b0521e8200c266a5ca622cf5d99292f0",
+        "tag": "hs2/phase-03/start",
+        "at": "2026-10-10T12:10:28.292415+00:00"
+      },
+      "scope": "User Phase 3 registration address/building/registry/coordinate foundation only; native stage 3 correspondence, native stage 2 auth remains PENDING",
+      "remote": {
+        "status": "NOT_PUSHED"
+      },
+      "next_action": "Implement isolated registration service, private UI/API, mocked providers and Phase 2 reference writer; run complete registry; stop after Phase 3"
     }
   }
 }

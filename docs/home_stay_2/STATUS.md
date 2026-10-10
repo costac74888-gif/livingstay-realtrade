@@ -1,12 +1,10 @@
-# 현재 사용자 Phase 2 — COMPLETE
+# 현재 사용자 Phase 3 — RUNNING
 
-- 범위: 격리 PostgreSQL 데이터 확장. 기존 18단계의 2단계(인증)와 별도.
-- Phase 1: COMPLETE 기록 보존. 저장소 2~18단계: PENDING.
-- 완료 범위: Fixture PostgreSQL data extension, migration/rollback and preserved legacy connections
-- 검사: 13 registered groups; 0 failed
-- 원격 저장: VERIFIED
-- 차단 사유: 없음
-- 다음 작업: STOPPED at Phase 2 COMPLETE. No Phase 3/native stages 2-18. Separate user request required.
+- 범위: 주소 → 후보 선택 → 대장 확인 → 좌표 확인. 운영 DB/외부 API 호출/PG/배포 없음.
+- Phase 1·2 COMPLETE 보존. 저장소 2~18 단계는 별도 PENDING.
+- 검사: 구현 후 전체 등록 검사 실행 예정.
+- 원격 저장: NOT_PUSHED.
+- 다음 작업: Phase 3만 구현·검증 후 종료.
 
 ---
 

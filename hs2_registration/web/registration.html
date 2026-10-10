@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>건물 확인 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/registration/assets/registration.css">
+  <script src="/hs2/registration/controller.js" defer></script>
+  <script src="/hs2/registration/assets/registration.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand" aria-label="HOME & STAY">
+        <span class="brand-mark" aria-hidden="true">H/S</span>
+        <span class="brand-name">HOME &amp; STAY</span>
+      </div>
+      <span class="private-tag">비공개 · 개발 fixture</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <div>
+          <p class="eyebrow">PHASE 03 / PROPERTY IDENTITY</p>
+          <h1 id="pageTitle">먼저, 실제 건물을<br>확인합니다.</h1>
+          <p class="intro-copy">향후 등록에 앞서 주소와 건축물대장 근거를 명시적으로 대조하는 비공개 개발 절차입니다. 여기서 확인하는 것은 건물 식별 참고자료이며, 숙박 등록이나 공개를 뜻하지 않습니다.</p>
+        </div>
+        <div class="step-index"><strong>03 / 04</strong>주소부터 근거까지<br>한 단계씩 직접 선택합니다.</div>
+      </section>
+
+      <aside class="privacy-note">
+        <span aria-hidden="true">◆</span>
+        <div><b>테스트 전용 · 합성 원본</b> — 테스트 identity는 테스트 백엔드가 주입하며 실제 로그인 기능이 아닙니다. 운영 데이터와 연결되지 않고, 모든 상세 정보는 요청한 사용자에게만 보입니다. 공개 지도 내보내기, 공개 매물, 법률·권리 승인 기능이 아닙니다.</div>
+      </aside>
+
+      <section class="registration-card" aria-label="건물 확인 절차">
+        <form class="search-area" id="searchForm" novalidate>
+          <label for="addressQuery">확인할 도로명 또는 지번 주소</label>
+          <div class="search-row">
+            <input id="addressQuery" name="addressQuery" type="text" minlength="2" maxlength="160" autocomplete="off" placeholder="주소를 직접 입력해 주세요" aria-describedby="searchHint">
+            <button class="primary-button" id="searchBtn" type="submit">주소 조회</button>
+          </div>
+          <p class="field-hint" id="searchHint">검색 결과 중 주소를 직접 선택한 뒤 해당 건물을 확인합니다.</p>
+        </form>
+
+        <div class="status-band" id="statusBand" data-tone="neutral">
+          <span class="status-dot" aria-hidden="true"></span>
+          <p id="workflowStatus" role="status" aria-live="polite" aria-atomic="true">주소를 입력해 비공개 개발 fixture 조회를 시작해 주세요.</p>
+        </div>
+
+        <div class="steps" aria-label="확인 단계">
+          <div class="step is-active" data-step="address"><span>01</span>주소 선택</div>
+          <div class="step" data-step="building"><span>02</span>건물 선택</div>
+          <div class="step" data-step="coordinates"><span>03</span>좌표 확인</div>
+          <div class="step" data-step="confirm"><span>04</span>참고 확인 완료</div>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel" aria-labelledby="addressHeading">
+            <div class="panel-heading">
+              <h2 id="addressHeading">주소 후보</h2>
+              <span class="panel-kicker">ADDRESS SOURCE</span>
+            </div>
+            <div id="addressChoices" class="choice-list" aria-live="polite" aria-busy="false"></div>
+          </section>
+
+          <section class="panel" aria-labelledby="buildingHeading">
+            <div class="panel-heading">
+              <h2 id="buildingHeading">건축물 근거</h2>
+              <span class="panel-kicker">BUILDING REGISTRY</span>
+            </div>
+            <div id="buildingChoices" class="choice-list" aria-live="polite" aria-busy="false"></div>
+            <div class="coordinate-area">
+              <button class="secondary-button" id="coordinateBtn" type="button" disabled>선택 주소 좌표 확인</button>
+              <div class="coordinate-preview" id="coordinatePreview" hidden aria-live="polite">
+                <span class="coord-label">좌표 검증 · 지도 타일 없음</span>
+                <div>
+                  <div class="coord-values" id="coordinateValues"></div>
+                  <div class="coord-version" id="coordinateEvidence"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="confirm-row">
+          <p class="confirm-copy">확인 완료는 비공개 건물 참고자료를 저장하는 단계입니다. 공개 매물 등록이나 법률·권리 승인으로 이어지지 않습니다.</p>
+          <button class="primary-button confirm-button" id="confirmBtn" type="button" disabled>참고 확인 완료</button>
+        </div>
+      </section>
+      <p class="footnote"><strong>개인정보 안내:</strong> 이 화면의 주소·건물 상세와 좌표는 요청한 actor에게만 반환됩니다. 공용 지도 표시 또는 위치 데이터 내보내기를 하지 않습니다.</p>
+    </main>
+  </div>
+</body>
+</html>

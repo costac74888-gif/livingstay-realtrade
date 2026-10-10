@@ -13,14 +13,19 @@ from . import core
 
 CHECK_ID = "phase2-data-contracts"
 TEST_FILE = "tests/test_hs2_phase2_data.py"
+FIXTURE_CHECKS = {
+    CHECK_ID: TEST_FILE,
+    "phase3-registration-db": "tests/test_hs2_phase3_db.py",
+}
 
 
 def run_check(name, check, timeout):
-    if name != CHECK_ID or check["file"] != TEST_FILE:
-        raise core.GateError("Isolated DB capability is restricted to reviewed Phase 2 suite")
+    test_file=FIXTURE_CHECKS.get(name)
+    if not test_file or check["file"] != test_file:
+        raise core.GateError("Isolated DB capability requires exact reviewed fixture suite")
     core.GENERATED.mkdir(parents=True, exist_ok=True)
     log = core.GENERATED / f"{name}-{time.time_ns()}.log"
-    command = [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", Path(TEST_FILE).name, "-v"]
+    command = [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", Path(test_file).name, "-v"]
     start = time.monotonic()
     code, server = 125, None
     with log.open("w") as output, tempfile.TemporaryDirectory(prefix="hs2-pg-", dir="/tmp") as temp:
@@ -45,7 +50,7 @@ def run_check(name, check, timeout):
                 if server.poll() is not None or time.monotonic() >= deadline:
                     raise core.GateError("Isolated UNIX-socket PostgreSQL failed to start")
                 time.sleep(0.05)
-            env.update(HS2_FIXTURE_SOCKET=str(sock), HS2_FIXTURE_TEST=Path(TEST_FILE).name)
+            env.update(HS2_FIXTURE_SOCKET=str(sock), HS2_FIXTURE_TEST=Path(test_file).name)
             env["PYTHONPATH"] = str(core.ROOT / "hs2_harness/isolated_guard") + os.pathsep + env["PYTHONPATH"]
             child = subprocess.Popen(command, cwd=core.ROOT, env=env, stdout=output,
                                      stderr=subprocess.STDOUT, start_new_session=True)
@@ -73,6 +78,6 @@ def run_check(name, check, timeout):
             code = 125
     return dict(id=name, status="PASS" if code == 0 else "FAIL", exit_code=code,
                 seconds=round(time.monotonic()-start, 3), command=command,
-                test_sha256=core.digest(core.ROOT / TEST_FILE),
+                test_sha256=core.digest(core.ROOT / test_file),
                 log=str(log.relative_to(core.ROOT)), log_sha256=core.digest(log),
                 isolation="fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite")

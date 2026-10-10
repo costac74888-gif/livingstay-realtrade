@@ -132,11 +132,13 @@ def configuration():
         raise GateError("Duplicate check ID")
     for name, check in registry.items():
         path = ROOT / check["file"]
-        if check.get("isolation") is not None and (
-                name != "phase2-data-contracts"
-                or check["file"] != "tests/test_hs2_phase2_data.py"
-                or check["kind"] != "python"
-                or check["isolation"] != "temporary-postgres"):
+        reviewed_isolation = {
+            ("phase2-data-contracts","tests/test_hs2_phase2_data.py"):("python","temporary-postgres"),
+            ("phase3-registration-db","tests/test_hs2_phase3_db.py"):("python","temporary-postgres"),
+            ("phase3-registration-ui","tests/hs2_phase3_ui_test.cjs"):("node","private-browser-fixture"),
+        }
+        if check.get("isolation") is not None and reviewed_isolation.get(
+                (name,check["file"])) != (check["kind"],check["isolation"]):
             raise GateError("Unreviewed isolated database capability")
         if (check["kind"] not in {"python", "node"}
                 or check["role"] not in {"regression", "acceptance", "harness"}
@@ -189,6 +191,9 @@ def run_check(name, check, timeout=120):
     if check.get("isolation") == "temporary-postgres":
         from .isolated_postgres import run_check as isolated_check
         return isolated_check(name, check, timeout)
+    if check.get("isolation") == "private-browser-fixture":
+        from .isolated_browser import run_check as browser_check
+        return browser_check(name,check,timeout)
     GENERATED.mkdir(parents=True, exist_ok=True)
     file = check["file"]
     command = ([sys.executable, "-m", "unittest", "discover", "-s",
