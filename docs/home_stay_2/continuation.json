@@ -36,7 +36,11 @@
       {"id":"P08-A03","criterion":"Independent four-layer state and canonical layer+ID, stable pixel slots and no coordinate mutation; stale search/bounds/detail, OFF and restore generation/abort fences","check":"phase8-supermap-controller"},
       {"id":"P08-A04","criterion":"Actual Chromium desktop/mobile nonempty SQL results and SDK-interface co-location hit tests, marker cluster choice, rapid typed detail selection, full filters/URL/allOFF/retry and no price leakage","check":"phase8-supermap-ui"}
     ]},
-    {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":null},
+    {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":[
+      {"id":"P09-A01","criterion":"Strict dates/positive integer capacity, verified consumer actor, acknowledgment/current quote source and idempotency payload identity; no client authority","check":"phase9-detail-contracts"},
+      {"id":"P09-A02","criterion":"Actual PostgreSQL original immutable FK snapshots and ten-minute own quote receipts, concurrent retry, owner isolation, expiry/source changes/withdrawal/capacity/CSRF and exact night/week/month composition; no booking/hold/payment","check":"phase9-detail-db"},
+      {"id":"P09-A03","criterion":"Actual PostgreSQL Chromium desktop/mobile search to protected detail, exact line total and persisted receipt, source/input/stale response fences, minimum stay/capacity/auth and expiry display","check":"phase9-detail-ui"}
+    ]},
     {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":null},
     {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":null},
     {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":null},

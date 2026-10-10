@@ -160,6 +160,7 @@
   }
 
   function quoteText(item) {
+    if (item.layer !== "stay") return {value:"공개 요약",label:layerNames[item.layer]+" 정보"};
     const quote = item.quote;
     if (!datesAreUsable()) return { value: "날짜 선택", label: "기간 총액" };
     if (quote && Number.isSafeInteger(quote.total_krw) && quote.total_krw >= 0) {
@@ -248,6 +249,18 @@
       return;
     }
     const summary = document.createElement("div");
+    if (item.layer === "stay") {
+      const link = document.createElement("a");
+      link.className = "detail-open-link";
+      const url = new URL("/hs2/details/",window.location.origin);
+      url.searchParams.set("public_id",item.public_id);
+      for (const key of ["check_in","check_out","guests"]) {
+        if (view.params[key]) url.searchParams.set(key,view.params[key]);
+      }
+      url.searchParams.set("return",window.location.pathname+window.location.search);
+      link.href = url.pathname+url.search;link.textContent="매물 상세·예약 조건 확인";
+      summary.append(link);
+    }
     const overline = document.createElement("span");
     overline.className = "summary-overline";
     overline.textContent = `${layerNames[item.layer]} · 선택한 공개 항목`;
