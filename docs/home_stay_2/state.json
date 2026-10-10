@@ -2203,6 +2203,14 @@
       "status": "BLOCKED",
       "actual_cutover": false,
       "operational_approvals": false
+    },
+    {
+      "at": "2026-10-10T19:36:42.927765+00:00",
+      "event": "BLOCKED_PHASE_REMOTE_BACKUP_VERIFIED",
+      "phase": 18,
+      "head": "bdb489dffe5ee2e2708bcd8fd38c106b851b18ff",
+      "status": "BLOCKED",
+      "actual_cutover": false
     }
   ],
   "current_user_phase": 18,
@@ -15727,6 +15735,16 @@
         "review_file": "docs/home_stay_2/phase18/CUTOVER_BLOCKERS.md",
         "scope": "Blocker/evidence review only; NOT Cutover acceptance",
         "reviewer": "internal Work"
+      },
+      "remote": {
+        "status": "SYNCED",
+        "head": "bdb489dffe5ee2e2708bcd8fd38c106b851b18ff",
+        "source_fingerprint": "706e5a1d1769f44711ca8957a11b121790bbb28c3abaaf1e58d8b950926e9d6b",
+        "main_unchanged": true,
+        "at": "2026-10-10T19:36:42.927658+00:00",
+        "transport": "Exact development blocker backup; not Cutover completion",
+        "completion_tag_absent": true,
+        "actual_cutover": false
       }
     }
   }
