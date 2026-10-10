@@ -84,6 +84,9 @@ def begin(phase):
             or prior["remote"].get("source_fingerprint") != core.fingerprint()
             or prior["remote"].get("main_unchanged") is not True):
             raise core.GateError("Remote receipt does not match completed source/checkpoint")
+        if phase > 4:
+            phases.valid_receipt({"status": "PASS", "verification": prior_proof},
+                                 core.fingerprint(), list(core.load(core.CHECKS)))
         row = row_for(state, phase)
         if row["status"] != "PENDING":
             raise core.GateError("User phase already started/completed")
