@@ -2182,6 +2182,13 @@
       "status": "COMPLETE",
       "head": "32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1",
       "tag": "hs2/phase-17/complete"
+    },
+    {
+      "at": "2026-10-10T19:33:40.619956+00:00",
+      "event": "USER_PHASE_REMOTE_VERIFIED",
+      "phase": 17,
+      "head": "6c3729bb59ffb74f4136d4a4c2960993e8f55891",
+      "main_unchanged": true
     }
   ],
   "current_user_phase": 17,
@@ -15677,6 +15684,15 @@
         "head": "32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1",
         "tag": "hs2/phase-17/complete",
         "at": "2026-10-10T19:32:35.178074+00:00"
+      },
+      "remote": {
+        "status": "SYNCED",
+        "head": "6c3729bb59ffb74f4136d4a4c2960993e8f55891",
+        "checkpoint_head": "32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1",
+        "source_fingerprint": "1890e1c300036aa8a45dc6e4f62f67b6e6ce5fd6d1b46b29cbc8207f2d2d40c9",
+        "main_unchanged": true,
+        "at": "2026-10-10T19:33:40.619928+00:00",
+        "transport": "Git Data API exact hashes; nonforce development; independent branch/main/tag read"
       }
     }
   }
