@@ -1601,9 +1601,28 @@
       "phase": 4,
       "status": "PASS",
       "fingerprint": "8a1f128f1687e4c12e7ddcb0111fb865d340f06f1d1e5bccea9e2df05e3927b3"
+    },
+    {
+      "at": "2026-10-10T13:54:00.343221+00:00",
+      "event": "WORK_PHASE4_REMOTE_REVIEW",
+      "phase": 4,
+      "status": "SYNCED"
+    },
+    {
+      "at": "2026-10-10T13:54:00.673113+00:00",
+      "event": "WORK_INSTRUCTION_ACCEPTED",
+      "phase": 5,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T13:54:00.677757+00:00",
+      "event": "WORK_POLICY_GATE",
+      "phase": 5,
+      "status": "BLOCKED",
+      "policy": "P05-PRICE-FILTER"
     }
   ],
-  "current_user_phase": 4,
+  "current_user_phase": 5,
   "user_phases": {
     "2": {
       "status": "COMPLETE",
@@ -3103,7 +3122,28 @@
           }
         ],
         "reason": "Full registry, not bootstrap-only checks; original completed tag retained; authoritative uploaded source included"
+      },
+      "remote": {
+        "status": "SYNCED",
+        "head": "342cf46127645ddd87597a1324e1c0abb4f06466",
+        "checkpoint_head": "c62da7f5426a9e46c7bd8c80ff7e4f4ea981a502",
+        "source_fingerprint": "8a1f128f1687e4c12e7ddcb0111fb865d340f06f1d1e5bccea9e2df05e3927b3",
+        "main": "a424b3b1f13efbee73b96a093a43c20a412c1358",
+        "main_unchanged": true,
+        "at": "2026-10-10T13:54:00.343190+00:00",
+        "branch": "development/home-stay-2-phase-1-design",
+        "repository": "costac74888-gif/livingstay-realtrade",
+        "method": "Git Data API; original blob/tree/commit hashes preserved; force:false; immutable tags independently read",
+        "original_shas_preserved": true
       }
+    },
+    "5": {
+      "status": "BLOCKED",
+      "instruction": "docs/home_stay_2/phase5/WORK_INSTRUCTION.md",
+      "at": "2026-10-10T13:54:00.669825+00:00",
+      "source_head": "342cf46127645ddd87597a1324e1c0abb4f06466",
+      "next_action": "Owner selects requested-stay total vs displayed unit-rate price filter; then internal Work resumes original Phase 5, not Phase 4.",
+      "reason": "P05-PRICE-FILTER: original directive defines daily lodging and weekly/monthly non-lodging rates but does not define the common search price-filter basis. P-MONEY/P-PERIOD remain OPEN; no invented cross-period comparison."
     }
   }
 }
