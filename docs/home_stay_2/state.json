@@ -2189,9 +2189,23 @@
       "phase": 17,
       "head": "6c3729bb59ffb74f4136d4a4c2960993e8f55891",
       "main_unchanged": true
+    },
+    {
+      "at": "2026-10-10T19:33:41.246949+00:00",
+      "event": "WORK_INSTRUCTION_ACCEPTED",
+      "phase": 18,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T19:35:41.411927+00:00",
+      "event": "USER_PHASE_BLOCKED",
+      "phase": 18,
+      "status": "BLOCKED",
+      "actual_cutover": false,
+      "operational_approvals": false
     }
   ],
-  "current_user_phase": 17,
+  "current_user_phase": 18,
   "user_phases": {
     "2": {
       "status": "COMPLETE",
@@ -15693,6 +15707,26 @@
         "main_unchanged": true,
         "at": "2026-10-10T19:33:40.619928+00:00",
         "transport": "Git Data API exact hashes; nonforce development; independent branch/main/tag read"
+      }
+    },
+    "18": {
+      "status": "BLOCKED",
+      "instruction": "docs/home_stay_2/phase18/WORK_INSTRUCTION.md",
+      "at": "2026-10-10T19:33:41.243978+00:00",
+      "source_head": "b2a33db4bc1ce343e856802b8f1a48e5bfb8865e",
+      "next_action": "Owner approval required separately for production migration, actual PG/settlement, and main/live cutover; define scope and verify actual host/provider before execution",
+      "reason": "Human Approval Gates A/B/C NOT_APPROVED; actual host identity/SDK/provider and Cutover evidence NOT_VERIFIED; readiness is not completion",
+      "test_summary": "Phase18 acceptance NOT_EXECUTED; prior Phase17 source: 55 registered groups, 0 failed",
+      "start": {
+        "tag": "hs2/phase-18/start",
+        "head": "b2a33db4bc1ce343e856802b8f1a48e5bfb8865e"
+      },
+      "work_review": {
+        "passed": false,
+        "at": "2026-10-10T19:35:41.411827+00:00",
+        "review_file": "docs/home_stay_2/phase18/CUTOVER_BLOCKERS.md",
+        "scope": "Blocker/evidence review only; NOT Cutover acceptance",
+        "reviewer": "internal Work"
       }
     }
   }
