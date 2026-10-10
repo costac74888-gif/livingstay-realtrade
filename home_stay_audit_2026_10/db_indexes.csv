@@ -1,0 +1,381 @@
+﻿schemaname,tablename,indexname,indexdef
+public,account_business_memberships,account_business_memberships_pkey,CREATE UNIQUE INDEX account_business_memberships_pkey ON public.account_business_memberships USING btree (id)
+public,account_business_memberships,account_business_memberships_user_id_role_business_table_bu_key,"CREATE UNIQUE INDEX account_business_memberships_user_id_role_business_table_bu_key ON public.account_business_memberships USING btree (user_id, role, business_table, business_id)"
+public,account_business_memberships,account_business_memberships_user_idx,"CREATE INDEX account_business_memberships_user_idx ON public.account_business_memberships USING btree (user_id, status, role)"
+public,account_role_memberships,account_role_memberships_pkey,CREATE UNIQUE INDEX account_role_memberships_pkey ON public.account_role_memberships USING btree (id)
+public,account_role_memberships,account_role_memberships_user_id_role_legacy_account_id_key,"CREATE UNIQUE INDEX account_role_memberships_user_id_role_legacy_account_id_key ON public.account_role_memberships USING btree (user_id, role, legacy_account_id)"
+public,account_role_memberships,account_role_memberships_user_idx,"CREATE INDEX account_role_memberships_user_idx ON public.account_role_memberships USING btree (user_id, status, role)"
+public,admin_edit_log,admin_edit_log_pkey,CREATE UNIQUE INDEX admin_edit_log_pkey ON public.admin_edit_log USING btree (id)
+public,admin_event_subscriptions,admin_event_subscriptions_pkey,"CREATE UNIQUE INDEX admin_event_subscriptions_pkey ON public.admin_event_subscriptions USING btree (admin_user_id, event_type)"
+public,admin_notification_deliveries,admin_notification_deliveries_channel_idempotency_key_key,"CREATE UNIQUE INDEX admin_notification_deliveries_channel_idempotency_key_key ON public.admin_notification_deliveries USING btree (channel, idempotency_key)"
+public,admin_notification_deliveries,admin_notification_deliveries_pkey,CREATE UNIQUE INDEX admin_notification_deliveries_pkey ON public.admin_notification_deliveries USING btree (id)
+public,admin_notification_deliveries,idx_admin_delivery_dispatch,"CREATE INDEX idx_admin_delivery_dispatch ON public.admin_notification_deliveries USING btree (channel, status, next_attempt_at)"
+public,admin_notification_email_attempt_history,admin_notification_email_attempt_history_pkey,CREATE UNIQUE INDEX admin_notification_email_attempt_history_pkey ON public.admin_notification_email_attempt_history USING btree (id)
+public,admin_notification_email_attempt_history,idx_admin_notification_email_history_attempt,"CREATE INDEX idx_admin_notification_email_history_attempt ON public.admin_notification_email_attempt_history USING btree (email_attempt_id, attempted_at DESC)"
+public,admin_notification_email_attempts,admin_notification_email_attempts_idempotency_key_key,CREATE UNIQUE INDEX admin_notification_email_attempts_idempotency_key_key ON public.admin_notification_email_attempts USING btree (idempotency_key)
+public,admin_notification_email_attempts,admin_notification_email_attempts_notification_id_key,CREATE UNIQUE INDEX admin_notification_email_attempts_notification_id_key ON public.admin_notification_email_attempts USING btree (notification_id)
+public,admin_notification_email_attempts,admin_notification_email_attempts_pkey,CREATE UNIQUE INDEX admin_notification_email_attempts_pkey ON public.admin_notification_email_attempts USING btree (id)
+public,admin_notification_email_attempts,idx_admin_notification_email_pending,"CREATE INDEX idx_admin_notification_email_pending ON public.admin_notification_email_attempts USING btree (status, created_at)"
+public,admin_notifications,admin_notifications_admin_user_id_event_type_source_table_s_key,"CREATE UNIQUE INDEX admin_notifications_admin_user_id_event_type_source_table_s_key ON public.admin_notifications USING btree (admin_user_id, event_type, source_table, source_id)"
+public,admin_notifications,admin_notifications_pkey,CREATE UNIQUE INDEX admin_notifications_pkey ON public.admin_notifications USING btree (id)
+public,admin_notifications,idx_admin_notifications_inbox,"CREATE INDEX idx_admin_notifications_inbox ON public.admin_notifications USING btree (admin_user_id, read_at, created_at DESC)"
+public,admin_users,admin_users_email_unique,CREATE UNIQUE INDEX admin_users_email_unique ON public.admin_users USING btree (email)
+public,admin_users,admin_users_pkey,CREATE UNIQUE INDEX admin_users_pkey ON public.admin_users USING btree (id)
+public,agency_links,agency_links_link_url_key,CREATE UNIQUE INDEX agency_links_link_url_key ON public.agency_links USING btree (link_url)
+public,agency_links,agency_links_link_url_uidx,CREATE UNIQUE INDEX agency_links_link_url_uidx ON public.agency_links USING btree (link_url)
+public,agency_links,agency_links_pkey,CREATE UNIQUE INDEX agency_links_pkey ON public.agency_links USING btree (id)
+public,agent_buildings,agent_buildings_agent_building_unique,"CREATE UNIQUE INDEX agent_buildings_agent_building_unique ON public.agent_buildings USING btree (agent_id, master_building_id)"
+public,agent_buildings,agent_buildings_pkey,CREATE UNIQUE INDEX agent_buildings_pkey ON public.agent_buildings USING btree (id)
+public,agent_region_buildings,agent_region_buildings_pkey,CREATE UNIQUE INDEX agent_region_buildings_pkey ON public.agent_region_buildings USING btree (id)
+public,agent_region_buildings,agent_region_buildings_unique,"CREATE UNIQUE INDEX agent_region_buildings_unique ON public.agent_region_buildings USING btree (agent_id, master_building_id)"
+public,agent_service_regions,agent_service_regions_pkey,CREATE UNIQUE INDEX agent_service_regions_pkey ON public.agent_service_regions USING btree (id)
+public,agent_service_regions,agent_service_regions_unique,"CREATE UNIQUE INDEX agent_service_regions_unique ON public.agent_service_regions USING btree (agent_id, sgg_text)"
+public,agent_service_regions,idx_agent_service_regions_sgg_expiry,"CREATE INDEX idx_agent_service_regions_sgg_expiry ON public.agent_service_regions USING btree (sgg_text, expires_at)"
+public,agents,agents_pkey,CREATE UNIQUE INDEX agents_pkey ON public.agents USING btree (id)
+public,agents,agents_reg_number_unique,CREATE UNIQUE INDEX agents_reg_number_unique ON public.agents USING btree (reg_number)
+public,agents,agents_subdomain_slug_unique,CREATE UNIQUE INDEX agents_subdomain_slug_unique ON public.agents USING btree (subdomain_slug)
+public,agents,uq_agents_weekly_unsubscribe_token,CREATE UNIQUE INDEX uq_agents_weekly_unsubscribe_token ON public.agents USING btree (weekly_unsubscribe_token)
+public,analysis_assets_cache,analysis_assets_cache_pkey,"CREATE UNIQUE INDEX analysis_assets_cache_pkey ON public.analysis_assets_cache USING btree (cache_kind, cache_key)"
+public,analysis_source_versions,analysis_source_versions_pkey,CREATE UNIQUE INDEX analysis_source_versions_pkey ON public.analysis_source_versions USING btree (source_name)
+public,annual_tourism_roster_building_evidence,annual_tourism_roster_building_evidence_pkey,CREATE UNIQUE INDEX annual_tourism_roster_building_evidence_pkey ON public.annual_tourism_roster_building_evidence USING btree (entry_id)
+public,annual_tourism_roster_entries,annual_tourism_roster_entries_pkey,CREATE UNIQUE INDEX annual_tourism_roster_entries_pkey ON public.annual_tourism_roster_entries USING btree (id)
+public,annual_tourism_roster_entries,annual_tourism_roster_entries_version_id_source_row_number_key,"CREATE UNIQUE INDEX annual_tourism_roster_entries_version_id_source_row_number_key ON public.annual_tourism_roster_entries USING btree (version_id, source_row_number)"
+public,annual_tourism_roster_stages,annual_tourism_roster_stages_pkey,CREATE UNIQUE INDEX annual_tourism_roster_stages_pkey ON public.annual_tourism_roster_stages USING btree (token)
+public,annual_tourism_roster_versions,annual_tourism_roster_versions_pkey,CREATE UNIQUE INDEX annual_tourism_roster_versions_pkey ON public.annual_tourism_roster_versions USING btree (id)
+public,annual_tourism_roster_versions,annual_tourism_roster_versions_reference_year_source_sha256_key,"CREATE UNIQUE INDEX annual_tourism_roster_versions_reference_year_source_sha256_key ON public.annual_tourism_roster_versions USING btree (reference_year, source_sha256)"
+public,annual_tourism_roster_versions,idx_annual_tourism_roster_latest,"CREATE INDEX idx_annual_tourism_roster_latest ON public.annual_tourism_roster_versions USING btree (status, reference_year DESC, approved_at DESC)"
+public,app_meta,app_meta_pkey,CREATE UNIQUE INDEX app_meta_pkey ON public.app_meta USING btree (key)
+public,applications,applications_pkey,CREATE UNIQUE INDEX applications_pkey ON public.applications USING btree (id)
+public,applications,idx_applications_edit_token,CREATE UNIQUE INDEX idx_applications_edit_token ON public.applications USING btree (edit_token) WHERE (edit_token IS NOT NULL)
+public,auction_items,auction_items_pkey,CREATE UNIQUE INDEX auction_items_pkey ON public.auction_items USING btree (id)
+public,auction_items,auction_items_source_source_item_id_pbct_cdtn_no_key,"CREATE UNIQUE INDEX auction_items_source_source_item_id_pbct_cdtn_no_key ON public.auction_items USING btree (source, source_item_id, pbct_cdtn_no)"
+public,auction_items,idx_auction_building,CREATE INDEX idx_auction_building ON public.auction_items USING btree (master_building_id)
+public,auction_items,idx_auction_category,CREATE INDEX idx_auction_category ON public.auction_items USING btree (lodging_category)
+public,auction_items,idx_auction_coords,"CREATE INDEX idx_auction_coords ON public.auction_items USING btree (lat, lng)"
+public,auction_items,idx_auction_property,"CREATE INDEX idx_auction_property ON public.auction_items USING btree (source, source_item_id)"
+public,auction_items,idx_auction_status_deadline,"CREATE INDEX idx_auction_status_deadline ON public.auction_items USING btree (status, bid_end_at)"
+public,auction_photos,auction_photos_auction_item_id_url_key,"CREATE UNIQUE INDEX auction_photos_auction_item_id_url_key ON public.auction_photos USING btree (auction_item_id, url)"
+public,auction_photos,auction_photos_pkey,CREATE UNIQUE INDEX auction_photos_pkey ON public.auction_photos USING btree (id)
+public,auction_rounds,auction_rounds_pkey,CREATE UNIQUE INDEX auction_rounds_pkey ON public.auction_rounds USING btree (id)
+public,auction_rounds,idx_auction_round_source,"CREATE UNIQUE INDEX idx_auction_round_source ON public.auction_rounds USING btree (auction_item_id, source_round_key)"
+public,auction_watches,auction_watches_pkey,"CREATE UNIQUE INDEX auction_watches_pkey ON public.auction_watches USING btree (user_id, master_building_id)"
+public,booking_url_requests,booking_url_requests_pkey,CREATE UNIQUE INDEX booking_url_requests_pkey ON public.booking_url_requests USING btree (id)
+public,booking_url_requests,idx_bur_operator,"CREATE INDEX idx_bur_operator ON public.booking_url_requests USING btree (operator_id, submitted_at DESC)"
+public,booking_url_requests,idx_bur_status,"CREATE INDEX idx_bur_status ON public.booking_url_requests USING btree (status, submitted_at DESC)"
+public,broker_registry,broker_registry_pkey,CREATE UNIQUE INDEX broker_registry_pkey ON public.broker_registry USING btree (id)
+public,broker_registry,broker_registry_reg_number_key,CREATE UNIQUE INDEX broker_registry_reg_number_key ON public.broker_registry USING btree (reg_number)
+public,broker_registry,idx_broker_registry_jibun_norm,CREATE INDEX idx_broker_registry_jibun_norm ON public.broker_registry USING btree (jibun_norm)
+public,broker_registry,idx_broker_registry_latlng,"CREATE INDEX idx_broker_registry_latlng ON public.broker_registry USING btree (lat, lng)"
+public,broker_registry,idx_broker_registry_road_norm,CREATE INDEX idx_broker_registry_road_norm ON public.broker_registry USING btree (road_norm)
+public,broker_registry,idx_broker_registry_source_reg,"CREATE INDEX idx_broker_registry_source_reg ON public.broker_registry USING btree (source_region_code, source_reg_number)"
+public,broker_registry_members,broker_registry_members_pkey,CREATE UNIQUE INDEX broker_registry_members_pkey ON public.broker_registry_members USING btree (id)
+public,broker_registry_members,broker_registry_members_source_row_key_key,CREATE UNIQUE INDEX broker_registry_members_source_row_key_key ON public.broker_registry_members USING btree (source_row_key)
+public,broker_registry_members,idx_broker_registry_members_office,"CREATE INDEX idx_broker_registry_members_office ON public.broker_registry_members USING btree (region_code, reg_number, office_name)"
+public,bug_reports,bug_reports_pkey,CREATE UNIQUE INDEX bug_reports_pkey ON public.bug_reports USING btree (id)
+public,bug_reports,idx_bug_reports_status,"CREATE INDEX idx_bug_reports_status ON public.bug_reports USING btree (status, created_at DESC)"
+public,building_photo_fetches,building_photo_fetches_pkey,"CREATE UNIQUE INDEX building_photo_fetches_pkey ON public.building_photo_fetches USING btree (building_id, source)"
+public,building_photo_fetches,idx_bphoto_fetches_attempt,"CREATE INDEX idx_bphoto_fetches_attempt ON public.building_photo_fetches USING btree (source, status, last_attempt_at)"
+public,building_photos,building_photos_pkey,CREATE UNIQUE INDEX building_photos_pkey ON public.building_photos USING btree (id)
+public,building_photos,idx_bphotos_building,"CREATE INDEX idx_bphotos_building ON public.building_photos USING btree (building_id, display_order)"
+public,building_photos,uq_bphotos_building_url,"CREATE UNIQUE INDEX uq_bphotos_building_url ON public.building_photos USING btree (building_id, photo_url)"
+public,building_photos,uq_bphotos_hash,"CREATE UNIQUE INDEX uq_bphotos_hash ON public.building_photos USING btree (building_id, photo_hash) WHERE (photo_hash IS NOT NULL)"
+public,building_photos,uq_bphotos_listing_photo,CREATE UNIQUE INDEX uq_bphotos_listing_photo ON public.building_photos USING btree (listing_photo_id) WHERE (listing_photo_id IS NOT NULL)
+public,building_requests,building_requests_pkey,CREATE UNIQUE INDEX building_requests_pkey ON public.building_requests USING btree (id)
+public,building_stores,building_stores_pkey,CREATE UNIQUE INDEX building_stores_pkey ON public.building_stores USING btree (id)
+public,building_stores,idx_building_stores_building,CREATE INDEX idx_building_stores_building ON public.building_stores USING btree (master_building_id)
+public,building_unit_areas,building_unit_areas_pkey,CREATE UNIQUE INDEX building_unit_areas_pkey ON public.building_unit_areas USING btree (id)
+public,building_unit_areas,idx_unit_areas_building,CREATE INDEX idx_unit_areas_building ON public.building_unit_areas USING btree (master_building_id)
+public,business_building_verifications,business_building_verifications_pkey,CREATE UNIQUE INDEX business_building_verifications_pkey ON public.business_building_verifications USING btree (id)
+public,business_building_verifications,business_building_verifications_user_id_master_building_id_key,"CREATE UNIQUE INDEX business_building_verifications_user_id_master_building_id_key ON public.business_building_verifications USING btree (user_id, master_building_id)"
+public,business_building_verifications,idx_business_building_verifications_building,CREATE INDEX idx_business_building_verifications_building ON public.business_building_verifications USING btree (master_building_id)
+public,business_room_inventory,business_room_inventory_listing_request_id_room_label_key,"CREATE UNIQUE INDEX business_room_inventory_listing_request_id_room_label_key ON public.business_room_inventory USING btree (listing_request_id, room_label)"
+public,business_room_inventory,business_room_inventory_pkey,CREATE UNIQUE INDEX business_room_inventory_pkey ON public.business_room_inventory USING btree (id)
+public,business_room_inventory,ix_business_room_inventory_listing,"CREATE INDEX ix_business_room_inventory_listing ON public.business_room_inventory USING btree (listing_request_id, id)"
+public,buy_requests,buy_requests_pkey,CREATE UNIQUE INDEX buy_requests_pkey ON public.buy_requests USING btree (id)
+public,chat_messages,chat_messages_pkey,CREATE UNIQUE INDEX chat_messages_pkey ON public.chat_messages USING btree (id)
+public,chat_messages,ix_chat_messages_room,"CREATE INDEX ix_chat_messages_room ON public.chat_messages USING btree (room_id, created_at)"
+public,chat_rooms,chat_rooms_listing_request_id_buyer_user_id_key,"CREATE UNIQUE INDEX chat_rooms_listing_request_id_buyer_user_id_key ON public.chat_rooms USING btree (listing_request_id, buyer_user_id)"
+public,chat_rooms,chat_rooms_pkey,CREATE UNIQUE INDEX chat_rooms_pkey ON public.chat_rooms USING btree (id)
+public,chat_rooms,ix_chat_rooms_buyer,CREATE INDEX ix_chat_rooms_buyer ON public.chat_rooms USING btree (buyer_user_id)
+public,chat_rooms,ix_chat_rooms_seller,CREATE INDEX ix_chat_rooms_seller ON public.chat_rooms USING btree (seller_user_id)
+public,deal_alert_logs,deal_alert_logs_pkey,CREATE UNIQUE INDEX deal_alert_logs_pkey ON public.deal_alert_logs USING btree (id)
+public,deal_alert_logs,deal_alert_logs_user_id_transaction_id_alert_date_key,"CREATE UNIQUE INDEX deal_alert_logs_user_id_transaction_id_alert_date_key ON public.deal_alert_logs USING btree (user_id, transaction_id, alert_date)"
+public,deal_alert_logs,idx_deal_alert_logs_user_date,"CREATE INDEX idx_deal_alert_logs_user_date ON public.deal_alert_logs USING btree (user_id, alert_date)"
+public,discover_progress,discover_progress_pkey,"CREATE UNIQUE INDEX discover_progress_pkey ON public.discover_progress USING btree (sgg_cd, deal_ymd)"
+public,email_ad_banners,email_ad_banners_pkey,CREATE UNIQUE INDEX email_ad_banners_pkey ON public.email_ad_banners USING btree (id)
+public,gocamping_records,gocamping_records_pkey,CREATE UNIQUE INDEX gocamping_records_pkey ON public.gocamping_records USING btree (content_id)
+public,gocamping_records,idx_gocamping_records_registry,CREATE INDEX idx_gocamping_records_registry ON public.gocamping_records USING btree (lodging_registry_id)
+public,hotel_operation_metrics,hotel_operation_metrics_pkey,CREATE UNIQUE INDEX hotel_operation_metrics_pkey ON public.hotel_operation_metrics USING btree (id)
+public,hotel_operation_metrics,hotel_operation_metrics_version_id_source_file_source_row_n_key,"CREATE UNIQUE INDEX hotel_operation_metrics_version_id_source_file_source_row_n_key ON public.hotel_operation_metrics USING btree (version_id, source_file, source_row_number)"
+public,hotel_operation_metrics,idx_hotel_operation_metrics_region,"CREATE INDEX idx_hotel_operation_metrics_region ON public.hotel_operation_metrics USING btree (version_id, sido_name, sgg_name, grade)"
+public,hotel_operation_source_versions,hotel_operation_source_sha256_unique,CREATE UNIQUE INDEX hotel_operation_source_sha256_unique ON public.hotel_operation_source_versions USING btree (source_sha256)
+public,hotel_operation_source_versions,hotel_operation_source_version_reference_year_source_sha256_key,"CREATE UNIQUE INDEX hotel_operation_source_version_reference_year_source_sha256_key ON public.hotel_operation_source_versions USING btree (reference_year, source_sha256)"
+public,hotel_operation_source_versions,hotel_operation_source_versions_pkey,CREATE UNIQUE INDEX hotel_operation_source_versions_pkey ON public.hotel_operation_source_versions USING btree (id)
+public,hotel_operation_source_versions,hotel_operation_source_versions_source_sha256_key,CREATE UNIQUE INDEX hotel_operation_source_versions_source_sha256_key ON public.hotel_operation_source_versions USING btree (source_sha256)
+public,legal_documents,legal_documents_doc_type_key,CREATE UNIQUE INDEX legal_documents_doc_type_key ON public.legal_documents USING btree (doc_type)
+public,legal_documents,legal_documents_pkey,CREATE UNIQUE INDEX legal_documents_pkey ON public.legal_documents USING btree (id)
+public,listing_checklist_progress,ix_listing_checklist_progress_listing_user,"CREATE INDEX ix_listing_checklist_progress_listing_user ON public.listing_checklist_progress USING btree (listing_request_id, user_id)"
+public,listing_checklist_progress,listing_checklist_progress_pkey,CREATE UNIQUE INDEX listing_checklist_progress_pkey ON public.listing_checklist_progress USING btree (id)
+public,listing_checklist_progress,listing_checklist_progress_user_id_listing_request_id_item__key,"CREATE UNIQUE INDEX listing_checklist_progress_user_id_listing_request_id_item__key ON public.listing_checklist_progress USING btree (user_id, listing_request_id, item_key)"
+public,listing_likes,ix_listing_likes_lr,CREATE INDEX ix_listing_likes_lr ON public.listing_likes USING btree (listing_request_id)
+public,listing_likes,listing_likes_listing_request_id_user_id_key,"CREATE UNIQUE INDEX listing_likes_listing_request_id_user_id_key ON public.listing_likes USING btree (listing_request_id, user_id)"
+public,listing_likes,listing_likes_pkey,CREATE UNIQUE INDEX listing_likes_pkey ON public.listing_likes USING btree (id)
+public,listing_photos,ix_listing_photos_lr,"CREATE INDEX ix_listing_photos_lr ON public.listing_photos USING btree (listing_request_id, sort_order)"
+public,listing_photos,listing_photos_pkey,CREATE UNIQUE INDEX listing_photos_pkey ON public.listing_photos USING btree (id)
+public,listing_request_deletion_archive,ix_listing_request_deletion_archive_request,"CREATE INDEX ix_listing_request_deletion_archive_request ON public.listing_request_deletion_archive USING btree (listing_request_id, deleted_at DESC)"
+public,listing_request_deletion_archive,listing_request_deletion_archive_pkey,CREATE UNIQUE INDEX listing_request_deletion_archive_pkey ON public.listing_request_deletion_archive USING btree (id)
+public,listing_request_history,listing_request_history_pkey,CREATE UNIQUE INDEX listing_request_history_pkey ON public.listing_request_history USING btree (id)
+public,listing_requests,idx_listing_broker_publication,"CREATE INDEX idx_listing_broker_publication ON public.listing_requests USING btree (broker_agent_id, publication_status)"
+public,listing_requests,idx_listing_requests_active_direct_building,"CREATE INDEX idx_listing_requests_active_direct_building ON public.listing_requests USING btree (master_building_id) WHERE ((deal_mode = 'direct'::text) AND (COALESCE(status, ''::text) <> ALL (ARRAY['withdrawn'::text, '철회됨'::text])))"
+public,listing_requests,ix_listing_requests_active_building,CREATE INDEX ix_listing_requests_active_building ON public.listing_requests USING btree (master_building_id) WHERE (status IS DISTINCT FROM 'withdrawn'::text)
+public,listing_requests,listing_requests_pkey,CREATE UNIQUE INDEX listing_requests_pkey ON public.listing_requests USING btree (id)
+public,listing_requests,ux_lr_dealmode_seq,"CREATE UNIQUE INDEX ux_lr_dealmode_seq ON public.listing_requests USING btree (deal_mode, display_seq) WHERE (display_seq IS NOT NULL)"
+public,listings,idx_listings_building,CREATE INDEX idx_listings_building ON public.listings USING btree (master_building_id)
+public,listings,listings_pkey,CREATE UNIQUE INDEX listings_pkey ON public.listings USING btree (id)
+public,loan_consult_requests,loan_consult_requests_pkey,CREATE UNIQUE INDEX loan_consult_requests_pkey ON public.loan_consult_requests USING btree (id)
+public,loan_consultant_buildings,loan_consultant_buildings_pkey,CREATE UNIQUE INDEX loan_consultant_buildings_pkey ON public.loan_consultant_buildings USING btree (id)
+public,loan_consultant_buildings,loan_consultant_buildings_unique,"CREATE UNIQUE INDEX loan_consultant_buildings_unique ON public.loan_consultant_buildings USING btree (loan_consultant_id, master_building_id)"
+public,loan_consultant_service_areas,loan_consultant_service_areas_pkey,CREATE UNIQUE INDEX loan_consultant_service_areas_pkey ON public.loan_consultant_service_areas USING btree (id)
+public,loan_consultant_service_areas,loan_consultant_service_areas_unique,"CREATE UNIQUE INDEX loan_consultant_service_areas_unique ON public.loan_consultant_service_areas USING btree (loan_consultant_id, region_name)"
+public,loan_consultants,loan_consultants_email_unique,CREATE UNIQUE INDEX loan_consultants_email_unique ON public.loan_consultants USING btree (email)
+public,loan_consultants,loan_consultants_license_number_unique,CREATE UNIQUE INDEX loan_consultants_license_number_unique ON public.loan_consultants USING btree (license_number)
+public,loan_consultants,loan_consultants_pkey,CREATE UNIQUE INDEX loan_consultants_pkey ON public.loan_consultants USING btree (id)
+public,loan_consultants,loan_consultants_subdomain_slug_unique,CREATE UNIQUE INDEX loan_consultants_subdomain_slug_unique ON public.loan_consultants USING btree (subdomain_slug)
+public,loan_consultants,uq_loan_consultants_weekly_unsubscribe_token,CREATE UNIQUE INDEX uq_loan_consultants_weekly_unsubscribe_token ON public.loan_consultants USING btree (weekly_unsubscribe_token)
+public,lodging_approval_attempts,idx_lodging_approval_attempts_run,"CREATE INDEX idx_lodging_approval_attempts_run ON public.lodging_approval_attempts USING btree (run_id, attempt_number DESC)"
+public,lodging_approval_attempts,lodging_approval_attempts_approval_batch_id_attempt_number_key,"CREATE UNIQUE INDEX lodging_approval_attempts_approval_batch_id_attempt_number_key ON public.lodging_approval_attempts USING btree (approval_batch_id, attempt_number)"
+public,lodging_approval_attempts,lodging_approval_attempts_pkey,CREATE UNIQUE INDEX lodging_approval_attempts_pkey ON public.lodging_approval_attempts USING btree (id)
+public,lodging_approval_batches,lodging_approval_batches_approval_key_key,CREATE UNIQUE INDEX lodging_approval_batches_approval_key_key ON public.lodging_approval_batches USING btree (approval_key)
+public,lodging_approval_batches,lodging_approval_batches_pkey,CREATE UNIQUE INDEX lodging_approval_batches_pkey ON public.lodging_approval_batches USING btree (id)
+public,lodging_approval_batches,lodging_approval_batches_run_id_key,CREATE UNIQUE INDEX lodging_approval_batches_run_id_key ON public.lodging_approval_batches USING btree (run_id)
+public,lodging_approval_batches,uq_lodging_approval_source_batch,CREATE UNIQUE INDEX uq_lodging_approval_source_batch ON public.lodging_approval_batches USING btree (source_batch_id)
+public,lodging_approval_rows,lodging_approval_rows_pkey,"CREATE UNIQUE INDEX lodging_approval_rows_pkey ON public.lodging_approval_rows USING btree (approval_batch_id, source_row_id)"
+public,lodging_authority_contacts,lodging_authority_contacts_pkey,CREATE UNIQUE INDEX lodging_authority_contacts_pkey ON public.lodging_authority_contacts USING btree (id)
+public,lodging_import_staging,idx_lodging_import_staging_recent,"CREATE INDEX idx_lodging_import_staging_recent ON public.lodging_import_staging USING btree (source, created_at DESC)"
+public,lodging_import_staging,lodging_import_staging_pkey,CREATE UNIQUE INDEX lodging_import_staging_pkey ON public.lodging_import_staging USING btree (token)
+public,lodging_operator_phone_challenges,idx_lodging_op_challenge_ip_created,"CREATE INDEX idx_lodging_op_challenge_ip_created ON public.lodging_operator_phone_challenges USING btree (ip_hash, created_at DESC)"
+public,lodging_operator_phone_challenges,idx_lodging_op_challenge_phone_created,"CREATE INDEX idx_lodging_op_challenge_phone_created ON public.lodging_operator_phone_challenges USING btree (phone, created_at DESC)"
+public,lodging_operator_phone_challenges,lodging_operator_phone_challenges_pkey,CREATE UNIQUE INDEX lodging_operator_phone_challenges_pkey ON public.lodging_operator_phone_challenges USING btree (id)
+public,lodging_parallel_comparisons,idx_lodging_parallel_comparisons_recent,"CREATE INDEX idx_lodging_parallel_comparisons_recent ON public.lodging_parallel_comparisons USING btree (promotion_manifest_id, created_at DESC, id DESC)"
+public,lodging_parallel_comparisons,lodging_parallel_comparisons_pkey,CREATE UNIQUE INDEX lodging_parallel_comparisons_pkey ON public.lodging_parallel_comparisons USING btree (id)
+public,lodging_parallel_comparisons,lodging_parallel_comparisons_run_id_key,CREATE UNIQUE INDEX lodging_parallel_comparisons_run_id_key ON public.lodging_parallel_comparisons USING btree (run_id)
+public,lodging_promotion_manifests,idx_lodging_promotion_manifests_recent,CREATE INDEX idx_lodging_promotion_manifests_recent ON public.lodging_promotion_manifests USING btree (created_at DESC)
+public,lodging_promotion_manifests,lodging_promotion_manifests_manifest_key_key,CREATE UNIQUE INDEX lodging_promotion_manifests_manifest_key_key ON public.lodging_promotion_manifests USING btree (manifest_key)
+public,lodging_promotion_manifests,lodging_promotion_manifests_pkey,CREATE UNIQUE INDEX lodging_promotion_manifests_pkey ON public.lodging_promotion_manifests USING btree (id)
+public,lodging_promotion_manifests,lodging_promotion_manifests_run_id_key,CREATE UNIQUE INDEX lodging_promotion_manifests_run_id_key ON public.lodging_promotion_manifests USING btree (run_id)
+public,lodging_promotion_review_decisions,idx_lodging_promotion_review_decisions_manifest,"CREATE INDEX idx_lodging_promotion_review_decisions_manifest ON public.lodging_promotion_review_decisions USING btree (resulting_manifest_id, created_at DESC)"
+public,lodging_promotion_review_decisions,lodging_promotion_review_deci_base_manifest_id_source_row_i_key,"CREATE UNIQUE INDEX lodging_promotion_review_deci_base_manifest_id_source_row_i_key ON public.lodging_promotion_review_decisions USING btree (base_manifest_id, source_row_id)"
+public,lodging_promotion_review_decisions,lodging_promotion_review_decisions_pkey,CREATE UNIQUE INDEX lodging_promotion_review_decisions_pkey ON public.lodging_promotion_review_decisions USING btree (id)
+public,lodging_promotion_rows,idx_lodging_promotion_rows_action,"CREATE INDEX idx_lodging_promotion_rows_action ON public.lodging_promotion_rows USING btree (promotion_manifest_id, action)"
+public,lodging_promotion_rows,lodging_promotion_rows_pkey,"CREATE UNIQUE INDEX lodging_promotion_rows_pkey ON public.lodging_promotion_rows USING btree (promotion_manifest_id, source_row_id)"
+public,lodging_registry,idx_lodging_registry_gocamping_content,CREATE INDEX idx_lodging_registry_gocamping_content ON public.lodging_registry USING btree (gocamping_content_id) WHERE (gocamping_content_id IS NOT NULL)
+public,lodging_registry,idx_lodging_registry_jibun_norm,CREATE INDEX idx_lodging_registry_jibun_norm ON public.lodging_registry USING btree (jibun_norm)
+public,lodging_registry,idx_lodging_registry_name_norm,CREATE INDEX idx_lodging_registry_name_norm ON public.lodging_registry USING btree (biz_name_norm)
+public,lodging_registry,idx_lodging_registry_road_norm,CREATE INDEX idx_lodging_registry_road_norm ON public.lodging_registry USING btree (road_norm)
+public,lodging_registry,idx_lodging_registry_status,CREATE INDEX idx_lodging_registry_status ON public.lodging_registry USING btree (biz_status_name)
+public,lodging_registry,lodging_registry_permit_number_key,CREATE UNIQUE INDEX lodging_registry_permit_number_key ON public.lodging_registry USING btree (permit_number)
+public,lodging_registry,lodging_registry_pkey,CREATE UNIQUE INDEX lodging_registry_pkey ON public.lodging_registry USING btree (id)
+public,lodging_registry_alert_snapshots,idx_lodging_alert_snapshots_building,CREATE INDEX idx_lodging_alert_snapshots_building ON public.lodging_registry_alert_snapshots USING btree (master_building_id)
+public,lodging_registry_alert_snapshots,lodging_registry_alert_snapshots_pkey,CREATE UNIQUE INDEX lodging_registry_alert_snapshots_pkey ON public.lodging_registry_alert_snapshots USING btree (permit_number)
+public,lodging_source_batches,idx_lodging_source_batches_recent,"CREATE INDEX idx_lodging_source_batches_recent ON public.lodging_source_batches USING btree (source_key, created_at DESC)"
+public,lodging_source_batches,lodging_source_batches_batch_key_key,CREATE UNIQUE INDEX lodging_source_batches_batch_key_key ON public.lodging_source_batches USING btree (batch_key)
+public,lodging_source_batches,lodging_source_batches_pkey,CREATE UNIQUE INDEX lodging_source_batches_pkey ON public.lodging_source_batches USING btree (id)
+public,lodging_source_batches,uq_lodging_source_batch_snapshot,"CREATE UNIQUE INDEX uq_lodging_source_batch_snapshot ON public.lodging_source_batches USING btree (source_key, reference_date, file_sha256)"
+public,lodging_source_rows,idx_lodging_source_rows_batch_state,"CREATE INDEX idx_lodging_source_rows_batch_state ON public.lodging_source_rows USING btree (batch_id, row_state)"
+public,lodging_source_rows,idx_lodging_source_rows_snapshot,CREATE INDEX idx_lodging_source_rows_snapshot ON public.lodging_source_rows USING btree (snapshot_key)
+public,lodging_source_rows,lodging_source_rows_batch_id_row_number_key,"CREATE UNIQUE INDEX lodging_source_rows_batch_id_row_number_key ON public.lodging_source_rows USING btree (batch_id, row_number)"
+public,lodging_source_rows,lodging_source_rows_batch_id_row_number_snapshot_key_key,"CREATE UNIQUE INDEX lodging_source_rows_batch_id_row_number_snapshot_key_key ON public.lodging_source_rows USING btree (batch_id, row_number, snapshot_key)"
+public,lodging_source_rows,lodging_source_rows_pkey,CREATE UNIQUE INDEX lodging_source_rows_pkey ON public.lodging_source_rows USING btree (id)
+public,login_history,idx_login_history_user,"CREATE INDEX idx_login_history_user ON public.login_history USING btree (user_id, logged_in_at DESC)"
+public,login_history,login_history_pkey,CREATE UNIQUE INDEX login_history_pkey ON public.login_history USING btree (id)
+public,master_buildings,idx_mb_sgg_umd_jibun,"CREATE INDEX idx_mb_sgg_umd_jibun ON public.master_buildings USING btree (sgg_cd, umd_nm, jibun)"
+public,master_buildings,master_buildings_lat_lng_idx,"CREATE INDEX master_buildings_lat_lng_idx ON public.master_buildings USING btree (lat, lng) WHERE ((lat IS NOT NULL) AND (lng IS NOT NULL))"
+public,master_buildings,master_buildings_pkey,CREATE UNIQUE INDEX master_buildings_pkey ON public.master_buildings USING btree (id)
+public,master_buildings,master_buildings_source_key_uidx,CREATE UNIQUE INDEX master_buildings_source_key_uidx ON public.master_buildings USING btree (source_key) WHERE (source_key IS NOT NULL)
+public,member_documents,idx_member_docs_member,"CREATE INDEX idx_member_docs_member ON public.member_documents USING btree (member_type, member_id)"
+public,member_documents,member_documents_pkey,CREATE UNIQUE INDEX member_documents_pkey ON public.member_documents USING btree (id)
+public,member_notes,idx_member_notes_member,"CREATE INDEX idx_member_notes_member ON public.member_notes USING btree (member_type, member_id, created_at DESC)"
+public,member_notes,member_notes_pkey,CREATE UNIQUE INDEX member_notes_pkey ON public.member_notes USING btree (id)
+public,membership_checks,membership_checks_period_id_key,CREATE UNIQUE INDEX membership_checks_period_id_key ON public.membership_checks USING btree (period_id)
+public,membership_checks,membership_checks_pkey,CREATE UNIQUE INDEX membership_checks_pkey ON public.membership_checks USING btree (id)
+public,membership_checks,membership_checks_request_no_key,CREATE UNIQUE INDEX membership_checks_request_no_key ON public.membership_checks USING btree (request_no)
+public,membership_checks,membership_checks_user_id_request_token_key,"CREATE UNIQUE INDEX membership_checks_user_id_request_token_key ON public.membership_checks USING btree (user_id, request_token)"
+public,membership_history,membership_history_pkey,CREATE UNIQUE INDEX membership_history_pkey ON public.membership_history USING btree (id)
+public,membership_payments,membership_one_pending,CREATE UNIQUE INDEX membership_one_pending ON public.membership_payments USING btree (user_id) WHERE (status = 'pending'::text)
+public,membership_payments,membership_payment_queue,"CREATE INDEX membership_payment_queue ON public.membership_payments USING btree (status, created_at DESC)"
+public,membership_payments,membership_payments_pkey,CREATE UNIQUE INDEX membership_payments_pkey ON public.membership_payments USING btree (id)
+public,membership_payments,membership_payments_request_no_key,CREATE UNIQUE INDEX membership_payments_request_no_key ON public.membership_payments USING btree (request_no)
+public,membership_payments,membership_payments_user_id_request_token_key,"CREATE UNIQUE INDEX membership_payments_user_id_request_token_key ON public.membership_payments USING btree (user_id, request_token)"
+public,membership_periods,membership_period_user,"CREATE INDEX membership_period_user ON public.membership_periods USING btree (user_id, ends_at)"
+public,membership_periods,membership_periods_payment_id_key,CREATE UNIQUE INDEX membership_periods_payment_id_key ON public.membership_periods USING btree (payment_id)
+public,membership_periods,membership_periods_pkey,CREATE UNIQUE INDEX membership_periods_pkey ON public.membership_periods USING btree (id)
+public,mileage_missions,mileage_missions_code_unique,CREATE UNIQUE INDEX mileage_missions_code_unique ON public.mileage_missions USING btree (code)
+public,mileage_missions,mileage_missions_pkey,CREATE UNIQUE INDEX mileage_missions_pkey ON public.mileage_missions USING btree (id)
+public,mileage_submissions,mileage_submissions_pkey,CREATE UNIQUE INDEX mileage_submissions_pkey ON public.mileage_submissions USING btree (id)
+public,new_listing_alert_logs,idx_new_listing_alert_logs_listing,CREATE INDEX idx_new_listing_alert_logs_listing ON public.new_listing_alert_logs USING btree (listing_request_id)
+public,new_listing_alert_logs,new_listing_alert_logs_pkey,CREATE UNIQUE INDEX new_listing_alert_logs_pkey ON public.new_listing_alert_logs USING btree (id)
+public,new_listing_alert_logs,new_listing_alert_logs_user_id_listing_request_id_key,"CREATE UNIQUE INDEX new_listing_alert_logs_user_id_listing_request_id_key ON public.new_listing_alert_logs USING btree (user_id, listing_request_id)"
+public,notices,idx_notices_order,"CREATE INDEX idx_notices_order ON public.notices USING btree (is_pinned DESC, created_at DESC)"
+public,notices,notices_pkey,CREATE UNIQUE INDEX notices_pkey ON public.notices USING btree (id)
+public,notifications,idx_notifications_user,"CREATE INDEX idx_notifications_user ON public.notifications USING btree (user_id, is_read, created_at DESC)"
+public,notifications,notifications_pkey,CREATE UNIQUE INDEX notifications_pkey ON public.notifications USING btree (id)
+public,notifications,uq_notifications_user_listing,"CREATE UNIQUE INDEX uq_notifications_user_listing ON public.notifications USING btree (user_id, listing_request_id)"
+public,notifications,uq_notifications_user_tx,"CREATE UNIQUE INDEX uq_notifications_user_tx ON public.notifications USING btree (user_id, transaction_id)"
+public,operator_buildings,operator_buildings_operator_building_unique,"CREATE UNIQUE INDEX operator_buildings_operator_building_unique ON public.operator_buildings USING btree (operator_id, master_building_id)"
+public,operator_buildings,operator_buildings_pkey,CREATE UNIQUE INDEX operator_buildings_pkey ON public.operator_buildings USING btree (id)
+public,operator_consult_requests,operator_consult_requests_pkey,CREATE UNIQUE INDEX operator_consult_requests_pkey ON public.operator_consult_requests USING btree (id)
+public,operator_lodging,idx_op_lodging_building,CREATE INDEX idx_op_lodging_building ON public.operator_lodging USING btree (master_building_id) WHERE (status = 'approved'::text)
+public,operator_lodging,idx_op_lodging_permit_unique,CREATE UNIQUE INDEX idx_op_lodging_permit_unique ON public.operator_lodging USING btree (permit_no)
+public,operator_lodging,idx_op_lodging_registry_unique,CREATE UNIQUE INDEX idx_op_lodging_registry_unique ON public.operator_lodging USING btree (lodging_reg_id) WHERE (lodging_reg_id IS NOT NULL)
+public,operator_lodging,idx_op_lodging_type,"CREATE INDEX idx_op_lodging_type ON public.operator_lodging USING btree (lodging_op_type, status)"
+public,operator_lodging,operator_lodging_permit_no_key,CREATE UNIQUE INDEX operator_lodging_permit_no_key ON public.operator_lodging USING btree (permit_no)
+public,operator_lodging,operator_lodging_pkey,CREATE UNIQUE INDEX operator_lodging_pkey ON public.operator_lodging USING btree (id)
+public,operator_lodging_photos,idx_op_lodging_photos_one_primary,CREATE UNIQUE INDEX idx_op_lodging_photos_one_primary ON public.operator_lodging_photos USING btree (operator_lodging_id) WHERE is_primary
+public,operator_lodging_photos,idx_op_lodging_photos_owner_order,"CREATE INDEX idx_op_lodging_photos_owner_order ON public.operator_lodging_photos USING btree (operator_lodging_id, sort_order, id)"
+public,operator_lodging_photos,operator_lodging_photos_object_key_key,CREATE UNIQUE INDEX operator_lodging_photos_object_key_key ON public.operator_lodging_photos USING btree (object_key)
+public,operator_lodging_photos,operator_lodging_photos_pkey,CREATE UNIQUE INDEX operator_lodging_photos_pkey ON public.operator_lodging_photos USING btree (id)
+public,operator_region_buildings,operator_region_buildings_pkey,CREATE UNIQUE INDEX operator_region_buildings_pkey ON public.operator_region_buildings USING btree (id)
+public,operator_region_buildings,operator_region_buildings_unique,"CREATE UNIQUE INDEX operator_region_buildings_unique ON public.operator_region_buildings USING btree (operator_id, master_building_id)"
+public,operator_service_areas,operator_service_areas_pkey,CREATE UNIQUE INDEX operator_service_areas_pkey ON public.operator_service_areas USING btree (id)
+public,operator_service_areas,operator_service_areas_unique,"CREATE UNIQUE INDEX operator_service_areas_unique ON public.operator_service_areas USING btree (operator_id, region_name)"
+public,operator_service_regions,operator_service_regions_pkey,CREATE UNIQUE INDEX operator_service_regions_pkey ON public.operator_service_regions USING btree (id)
+public,operator_service_regions,operator_service_regions_unique,"CREATE UNIQUE INDEX operator_service_regions_unique ON public.operator_service_regions USING btree (operator_id, sgg_text)"
+public,operators,operators_pkey,CREATE UNIQUE INDEX operators_pkey ON public.operators USING btree (id)
+public,operators,operators_subdomain_slug_unique,CREATE UNIQUE INDEX operators_subdomain_slug_unique ON public.operators USING btree (subdomain_slug)
+public,operators,uq_operators_weekly_unsubscribe_token,CREATE UNIQUE INDEX uq_operators_weekly_unsubscribe_token ON public.operators USING btree (weekly_unsubscribe_token)
+public,page_views,idx_page_views_listing_recent,"CREATE INDEX idx_page_views_listing_recent ON public.page_views USING btree (listing_request_id, viewed_at DESC) WHERE (listing_request_id IS NOT NULL)"
+public,page_views,idx_page_views_viewed_at,CREATE INDEX idx_page_views_viewed_at ON public.page_views USING btree (viewed_at)
+public,page_views,page_views_pkey,CREATE UNIQUE INDEX page_views_pkey ON public.page_views USING btree (id)
+public,partner_favorites,idx_partner_favorites_agent,"CREATE INDEX idx_partner_favorites_agent ON public.partner_favorites USING btree (agent_id, created_at DESC) WHERE (agent_id IS NOT NULL)"
+public,partner_favorites,idx_partner_favorites_loan_consultant,"CREATE INDEX idx_partner_favorites_loan_consultant ON public.partner_favorites USING btree (loan_consultant_id, created_at DESC) WHERE (loan_consultant_id IS NOT NULL)"
+public,partner_favorites,idx_partner_favorites_operator,"CREATE INDEX idx_partner_favorites_operator ON public.partner_favorites USING btree (operator_id, created_at DESC) WHERE (operator_id IS NOT NULL)"
+public,partner_favorites,partner_favorites_pkey,CREATE UNIQUE INDEX partner_favorites_pkey ON public.partner_favorites USING btree (id)
+public,partner_favorites,uq_partner_favorites_agent_building,"CREATE UNIQUE INDEX uq_partner_favorites_agent_building ON public.partner_favorites USING btree (agent_id, master_building_id) WHERE (agent_id IS NOT NULL)"
+public,partner_favorites,uq_partner_favorites_loan_consultant_building,"CREATE UNIQUE INDEX uq_partner_favorites_loan_consultant_building ON public.partner_favorites USING btree (loan_consultant_id, master_building_id) WHERE (loan_consultant_id IS NOT NULL)"
+public,partner_favorites,uq_partner_favorites_operator_building,"CREATE UNIQUE INDEX uq_partner_favorites_operator_building ON public.partner_favorites USING btree (operator_id, master_building_id) WHERE (operator_id IS NOT NULL)"
+public,password_reset_tokens,password_reset_tokens_pkey,CREATE UNIQUE INDEX password_reset_tokens_pkey ON public.password_reset_tokens USING btree (id)
+public,password_reset_tokens,password_reset_tokens_token_idx,CREATE INDEX password_reset_tokens_token_idx ON public.password_reset_tokens USING btree (token)
+public,password_reset_tokens,password_reset_tokens_token_key,CREATE UNIQUE INDEX password_reset_tokens_token_key ON public.password_reset_tokens USING btree (token)
+public,password_reset_tokens,password_reset_tokens_user_idx,"CREATE INDEX password_reset_tokens_user_idx ON public.password_reset_tokens USING btree (user_id, created_at DESC)"
+public,permit_change_alert_deliveries,idx_permit_change_alert_deliveries_user,"CREATE INDEX idx_permit_change_alert_deliveries_user ON public.permit_change_alert_deliveries USING btree (user_id, created_at DESC)"
+public,permit_change_alert_deliveries,permit_change_alert_deliverie_permit_change_alert_log_id_us_key,"CREATE UNIQUE INDEX permit_change_alert_deliverie_permit_change_alert_log_id_us_key ON public.permit_change_alert_deliveries USING btree (permit_change_alert_log_id, user_id)"
+public,permit_change_alert_deliveries,permit_change_alert_deliveries_pkey,CREATE UNIQUE INDEX permit_change_alert_deliveries_pkey ON public.permit_change_alert_deliveries USING btree (id)
+public,permit_change_alert_logs,idx_permit_change_alert_logs_pending,"CREATE INDEX idx_permit_change_alert_logs_pending ON public.permit_change_alert_logs USING btree (change_date, delivery_queued_at)"
+public,permit_change_alert_logs,permit_change_alert_logs_master_building_id_change_date_key,"CREATE UNIQUE INDEX permit_change_alert_logs_master_building_id_change_date_key ON public.permit_change_alert_logs USING btree (master_building_id, change_date)"
+public,permit_change_alert_logs,permit_change_alert_logs_pkey,CREATE UNIQUE INDEX permit_change_alert_logs_pkey ON public.permit_change_alert_logs USING btree (id)
+public,point_transactions,idx_point_tx_user,"CREATE INDEX idx_point_tx_user ON public.point_transactions USING btree (user_id, created_at DESC)"
+public,point_transactions,point_transactions_pkey,CREATE UNIQUE INDEX point_transactions_pkey ON public.point_transactions USING btree (id)
+public,policy_document_revisions,idx_policy_revisions_document,"CREATE INDEX idx_policy_revisions_document ON public.policy_document_revisions USING btree (policy_document_id, revision_number DESC)"
+public,policy_document_revisions,policy_document_revisions_pkey,CREATE UNIQUE INDEX policy_document_revisions_pkey ON public.policy_document_revisions USING btree (id)
+public,policy_document_revisions,policy_document_revisions_policy_document_id_revision_numbe_key,"CREATE UNIQUE INDEX policy_document_revisions_policy_document_id_revision_numbe_key ON public.policy_document_revisions USING btree (policy_document_id, revision_number)"
+public,policy_documents,idx_policy_documents_browse,"CREATE INDEX idx_policy_documents_browse ON public.policy_documents USING btree (category, status, updated_at DESC)"
+public,policy_documents,policy_documents_document_code_key,CREATE UNIQUE INDEX policy_documents_document_code_key ON public.policy_documents USING btree (document_code)
+public,policy_documents,policy_documents_pkey,CREATE UNIQUE INDEX policy_documents_pkey ON public.policy_documents USING btree (id)
+public,premium_waitlist,premium_waitlist_pkey,CREATE UNIQUE INDEX premium_waitlist_pkey ON public.premium_waitlist USING btree (id)
+public,premium_waitlist,premium_waitlist_unique,"CREATE UNIQUE INDEX premium_waitlist_unique ON public.premium_waitlist USING btree (agent_id, master_building_id)"
+public,presale_applications,idx_presale_applications_review,"CREATE INDEX idx_presale_applications_review ON public.presale_applications USING btree (status, created_at DESC)"
+public,presale_applications,presale_applications_pkey,CREATE UNIQUE INDEX presale_applications_pkey ON public.presale_applications USING btree (id)
+public,presale_applications,uq_presale_applications_active_building,"CREATE UNIQUE INDEX uq_presale_applications_active_building ON public.presale_applications USING btree (master_building_id) WHERE (status = ANY (ARRAY['submitted'::text, 'reviewing'::text]))"
+public,presale_audit_log,idx_presale_audit_project,"CREATE INDEX idx_presale_audit_project ON public.presale_audit_log USING btree (project_id, created_at DESC)"
+public,presale_audit_log,presale_audit_log_pkey,CREATE UNIQUE INDEX presale_audit_log_pkey ON public.presale_audit_log USING btree (id)
+public,presale_projects,idx_presale_projects_public,"CREATE INDEX idx_presale_projects_public ON public.presale_projects USING btree (status, publication_start_at, publication_end_at)"
+public,presale_projects,presale_projects_master_building_id_key,CREATE UNIQUE INDEX presale_projects_master_building_id_key ON public.presale_projects USING btree (master_building_id)
+public,presale_projects,presale_projects_pkey,CREATE UNIQUE INDEX presale_projects_pkey ON public.presale_projects USING btree (id)
+public,presale_promotions,idx_presale_promotions_active,"CREATE INDEX idx_presale_promotions_active ON public.presale_promotions USING btree (presale_project_id, status, starts_at, ends_at, priority DESC)"
+public,presale_promotions,presale_promotions_pkey,CREATE UNIQUE INDEX presale_promotions_pkey ON public.presale_promotions USING btree (id)
+public,region_badge_waitlist,idx_region_badge_waitlist_sgg_pending,"CREATE INDEX idx_region_badge_waitlist_sgg_pending ON public.region_badge_waitlist USING btree (sgg_text, notified_at)"
+public,region_badge_waitlist,region_badge_waitlist_pkey,CREATE UNIQUE INDEX region_badge_waitlist_pkey ON public.region_badge_waitlist USING btree (id)
+public,region_badge_waitlist,region_badge_waitlist_unique,"CREATE UNIQUE INDEX region_badge_waitlist_unique ON public.region_badge_waitlist USING btree (agent_id, sgg_text)"
+public,revenue_records,idx_revenue_partner,"CREATE INDEX idx_revenue_partner ON public.revenue_records USING btree (partner_type, partner_id)"
+public,revenue_records,idx_revenue_start,CREATE INDEX idx_revenue_start ON public.revenue_records USING btree (start_date)
+public,revenue_records,revenue_records_pkey,CREATE UNIQUE INDEX revenue_records_pkey ON public.revenue_records USING btree (id)
+public,rone_rental_benchmarks,idx_rone_rental_benchmark_lookup,"CREATE INDEX idx_rone_rental_benchmark_lookup ON public.rone_rental_benchmarks USING btree (property_type, region_code, period DESC)"
+public,rone_rental_benchmarks,rone_rental_benchmarks_period_region_code_property_type_key,"CREATE UNIQUE INDEX rone_rental_benchmarks_period_region_code_property_type_key ON public.rone_rental_benchmarks USING btree (period, region_code, property_type)"
+public,rone_rental_benchmarks,rone_rental_benchmarks_pkey,CREATE UNIQUE INDEX rone_rental_benchmarks_pkey ON public.rone_rental_benchmarks USING btree (id)
+public,room_expiry_alerts_sent,ix_room_expiry_alerts_sent_room,CREATE INDEX ix_room_expiry_alerts_sent_room ON public.room_expiry_alerts_sent USING btree (room_id)
+public,room_expiry_alerts_sent,room_expiry_alerts_sent_pkey,CREATE UNIQUE INDEX room_expiry_alerts_sent_pkey ON public.room_expiry_alerts_sent USING btree (id)
+public,room_expiry_alerts_sent,room_expiry_alerts_sent_room_id_threshold_key,"CREATE UNIQUE INDEX room_expiry_alerts_sent_room_id_threshold_key ON public.room_expiry_alerts_sent USING btree (room_id, threshold)"
+public,room_expiry_alerts_sent,uq_room_expiry_alert_email_key,CREATE UNIQUE INDEX uq_room_expiry_alert_email_key ON public.room_expiry_alerts_sent USING btree (email_idempotency_key) WHERE (email_idempotency_key IS NOT NULL)
+public,sgg_coords,sgg_coords_pkey,CREATE UNIQUE INDEX sgg_coords_pkey ON public.sgg_coords USING btree (id)
+public,sgg_coords,sgg_coords_sido_name_sgg_name_key,"CREATE UNIQUE INDEX sgg_coords_sido_name_sgg_name_key ON public.sgg_coords USING btree (sido_name, sgg_name)"
+public,short_links,idx_short_links_expires_at,CREATE INDEX idx_short_links_expires_at ON public.short_links USING btree (expires_at)
+public,short_links,short_links_pkey,CREATE UNIQUE INDEX short_links_pkey ON public.short_links USING btree (code)
+public,site_popups,site_popups_pkey,CREATE UNIQUE INDEX site_popups_pkey ON public.site_popups USING btree (id)
+public,slots,idx_slots_building,CREATE INDEX idx_slots_building ON public.slots USING btree (master_building_id)
+public,slots,slots_pkey,CREATE UNIQUE INDEX slots_pkey ON public.slots USING btree (id)
+public,streetview_evaluation_metrics,streetview_evaluation_metrics_pkey,CREATE UNIQUE INDEX streetview_evaluation_metrics_pkey ON public.streetview_evaluation_metrics USING btree (metric_date)
+public,subway_stations,subway_stations_dedupe_uidx,"CREATE UNIQUE INDEX subway_stations_dedupe_uidx ON public.subway_stations USING btree (station_name, COALESCE(line_name, ''::text), lat, lng)"
+public,subway_stations,subway_stations_lat_lng_idx,"CREATE INDEX subway_stations_lat_lng_idx ON public.subway_stations USING btree (lat, lng)"
+public,subway_stations,subway_stations_pkey,CREATE UNIQUE INDEX subway_stations_pkey ON public.subway_stations USING btree (id)
+public,survey_request_history,idx_survey_history_request,"CREATE INDEX idx_survey_history_request ON public.survey_request_history USING btree (request_id, id)"
+public,survey_request_history,survey_request_history_pkey,CREATE UNIQUE INDEX survey_request_history_pkey ON public.survey_request_history USING btree (id)
+public,survey_requests,idx_survey_requests_created,"CREATE INDEX idx_survey_requests_created ON public.survey_requests USING btree (created_at DESC, id DESC)"
+public,survey_requests,idx_survey_requests_status_deadline,"CREATE INDEX idx_survey_requests_status_deadline ON public.survey_requests USING btree (status, payment_deadline)"
+public,survey_requests,survey_requests_pkey,CREATE UNIQUE INDEX survey_requests_pkey ON public.survey_requests USING btree (id)
+public,survey_requests,survey_requests_request_no_key,CREATE UNIQUE INDEX survey_requests_request_no_key ON public.survey_requests USING btree (request_no)
+public,survey_requests,survey_requests_request_token_hash_key,CREATE UNIQUE INDEX survey_requests_request_token_hash_key ON public.survey_requests USING btree (request_token_hash)
+public,survey_settings_history,survey_settings_history_pkey,CREATE UNIQUE INDEX survey_settings_history_pkey ON public.survey_settings_history USING btree (id)
+public,sync_failures,sync_failures_pkey,CREATE UNIQUE INDEX sync_failures_pkey ON public.sync_failures USING btree (id)
+public,sync_failures,sync_failures_sgg_cd_deal_ymd_key,"CREATE UNIQUE INDEX sync_failures_sgg_cd_deal_ymd_key ON public.sync_failures USING btree (sgg_cd, deal_ymd)"
+public,sync_log,sync_log_pkey,CREATE UNIQUE INDEX sync_log_pkey ON public.sync_log USING btree (id)
+public,title_info_backfill_failures,idx_title_info_backfill_failures_retry,CREATE INDEX idx_title_info_backfill_failures_retry ON public.title_info_backfill_failures USING btree (retry_after)
+public,title_info_backfill_failures,title_info_backfill_failures_pkey,CREATE UNIQUE INDEX title_info_backfill_failures_pkey ON public.title_info_backfill_failures USING btree (building_id)
+public,tourism_building_dong_matches,idx_tourism_building_dong_matches_region,"CREATE INDEX idx_tourism_building_dong_matches_region ON public.tourism_building_dong_matches USING btree (sido_name, sgg_name, admin_dong_name)"
+public,tourism_building_dong_matches,tourism_building_dong_matches_pkey,CREATE UNIQUE INDEX tourism_building_dong_matches_pkey ON public.tourism_building_dong_matches USING btree (building_id)
+public,tourism_datalab_stages,idx_tourism_datalab_stages_expiry,"CREATE INDEX idx_tourism_datalab_stages_expiry ON public.tourism_datalab_stages USING btree (expires_at) WHERE (state = ANY (ARRAY['previewed'::text, 'failed'::text]))"
+public,tourism_datalab_stages,tourism_datalab_stages_pkey,CREATE UNIQUE INDEX tourism_datalab_stages_pkey ON public.tourism_datalab_stages USING btree (token)
+public,tourism_dong_coords,tourism_dong_coords_pkey,CREATE UNIQUE INDEX tourism_dong_coords_pkey ON public.tourism_dong_coords USING btree (id)
+public,tourism_dong_coords,tourism_dong_coords_sido_name_sgg_name_dong_name_key,"CREATE UNIQUE INDEX tourism_dong_coords_sido_name_sgg_name_dong_name_key ON public.tourism_dong_coords USING btree (sido_name, sgg_name, dong_name)"
+public,tourism_stats,idx_tourism_stats_lodging_rank_building,CREATE INDEX idx_tourism_stats_lodging_rank_building ON public.tourism_stats USING btree (master_building_id) WHERE ((stat_type = 'lodging_search_rank'::text) AND (master_building_id IS NOT NULL))
+public,tourism_stats,idx_tourism_stats_lodging_rank_building_source,"CREATE INDEX idx_tourism_stats_lodging_rank_building_source ON public.tourism_stats USING btree (master_building_id, source_file, metric_value) WHERE ((stat_type = 'lodging_search_rank'::text) AND (master_building_id IS NOT NULL))"
+public,tourism_stats,idx_tourism_stats_lodging_rank_latest,"CREATE INDEX idx_tourism_stats_lodging_rank_latest ON public.tourism_stats USING btree (source_period DESC NULLS LAST, collected_at DESC, source_file DESC) WHERE (stat_type = 'lodging_search_rank'::text)"
+public,tourism_stats,idx_tourism_stats_lodging_rank_source,"CREATE INDEX idx_tourism_stats_lodging_rank_source ON public.tourism_stats USING btree (source_file, metric_value, id) WHERE (stat_type = 'lodging_search_rank'::text)"
+public,tourism_stats,idx_tourism_stats_lookup,"CREATE INDEX idx_tourism_stats_lookup ON public.tourism_stats USING btree (stat_type, sido_name, sgg_name, ref_yearmonth)"
+public,tourism_stats,tourism_stats_pkey,CREATE UNIQUE INDEX tourism_stats_pkey ON public.tourism_stats USING btree (id)
+public,tourism_stats,tourism_stats_row_hash_key,CREATE UNIQUE INDEX tourism_stats_row_hash_key ON public.tourism_stats USING btree (row_hash)
+public,transactions,idx_transactions_building,"CREATE INDEX idx_transactions_building ON public.transactions USING btree (building_name, address)"
+public,transactions,idx_transactions_deal_date,CREATE INDEX idx_transactions_deal_date ON public.transactions USING btree (deal_date DESC)
+public,transactions,idx_tx_address,CREATE INDEX idx_tx_address ON public.transactions USING btree (address)
+public,transactions,idx_tx_building_name,CREATE INDEX idx_tx_building_name ON public.transactions USING btree (building_name)
+public,transactions,idx_tx_deal_date,CREATE INDEX idx_tx_deal_date ON public.transactions USING btree (deal_date DESC)
+public,transactions,idx_tx_master_building,"CREATE INDEX idx_tx_master_building ON public.transactions USING btree (master_building_id, transaction_scope, deal_date DESC) WHERE (master_building_id IS NOT NULL)"
+public,transactions,idx_tx_sgg_umd_jibun,"CREATE INDEX idx_tx_sgg_umd_jibun ON public.transactions USING btree (sgg_cd, umd_nm, jibun, deal_date DESC)"
+public,transactions,transactions_pkey,CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (id)
+public,transactions,transactions_raw_key_key,CREATE UNIQUE INDEX transactions_raw_key_key ON public.transactions USING btree (raw_key)
+public,urgent_listing_alert_logs,idx_urgent_listing_alert_logs_listing,CREATE INDEX idx_urgent_listing_alert_logs_listing ON public.urgent_listing_alert_logs USING btree (listing_request_id)
+public,urgent_listing_alert_logs,urgent_listing_alert_logs_pkey,CREATE UNIQUE INDEX urgent_listing_alert_logs_pkey ON public.urgent_listing_alert_logs USING btree (id)
+public,urgent_listing_alert_logs,urgent_listing_alert_logs_user_id_listing_request_id_key,"CREATE UNIQUE INDEX urgent_listing_alert_logs_user_id_listing_request_id_key ON public.urgent_listing_alert_logs USING btree (user_id, listing_request_id)"
+public,user_alert_subscriptions,idx_user_alert_subs_match,CREATE INDEX idx_user_alert_subs_match ON public.user_alert_subscriptions USING btree (address)
+public,user_alert_subscriptions,idx_user_alert_subs_user,CREATE INDEX idx_user_alert_subs_user ON public.user_alert_subscriptions USING btree (user_id)
+public,user_alert_subscriptions,uq_user_alert_subs,"CREATE UNIQUE INDEX uq_user_alert_subs ON public.user_alert_subscriptions USING btree (user_id, COALESCE(building_name, ''::text), address)"
+public,user_alert_subscriptions,user_alert_subscriptions_pkey,CREATE UNIQUE INDEX user_alert_subscriptions_pkey ON public.user_alert_subscriptions USING btree (id)
+public,user_favorites,idx_user_favorites_deal_email_match,"CREATE INDEX idx_user_favorites_deal_email_match ON public.user_favorites USING btree (address, building_name) WHERE (deal_email_alert_enabled = true)"
+public,user_favorites,idx_user_favorites_new_listing_alert,CREATE INDEX idx_user_favorites_new_listing_alert ON public.user_favorites USING btree (master_building_id) WHERE ((new_listing_alert_enabled = true) AND (master_building_id IS NOT NULL))
+public,user_favorites,idx_user_favorites_permit_change_alert,CREATE INDEX idx_user_favorites_permit_change_alert ON public.user_favorites USING btree (master_building_id) WHERE ((permit_change_alert_enabled = true) AND (master_building_id IS NOT NULL))
+public,user_favorites,idx_user_favorites_urgent_alert,CREATE INDEX idx_user_favorites_urgent_alert ON public.user_favorites USING btree (master_building_id) WHERE ((urgent_alert_enabled = true) AND (master_building_id IS NOT NULL))
+public,user_favorites,idx_user_favorites_user,CREATE INDEX idx_user_favorites_user ON public.user_favorites USING btree (user_id)
+public,user_favorites,uq_user_favorites,"CREATE UNIQUE INDEX uq_user_favorites ON public.user_favorites USING btree (user_id, COALESCE(building_name, ''::text), address)"
+public,user_favorites,user_favorites_pkey,CREATE UNIQUE INDEX user_favorites_pkey ON public.user_favorites USING btree (id)
+public,user_recent_analysis,idx_user_recent_analysis_recent,"CREATE INDEX idx_user_recent_analysis_recent ON public.user_recent_analysis USING btree (user_id, analyzed_at DESC, building_id DESC)"
+public,user_recent_analysis,user_recent_analysis_pkey,"CREATE UNIQUE INDEX user_recent_analysis_pkey ON public.user_recent_analysis USING btree (user_id, building_id)"
+public,users,users_email_unique,CREATE UNIQUE INDEX users_email_unique ON public.users USING btree (email)
+public,users,users_kakao_id_unique,CREATE UNIQUE INDEX users_kakao_id_unique ON public.users USING btree (kakao_id)
+public,users,users_pkey,CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)
+public,weekly_email_deliveries,idx_weekly_email_deliveries_agent,"CREATE INDEX idx_weekly_email_deliveries_agent ON public.weekly_email_deliveries USING btree (agent_id, week_start) WHERE (agent_id IS NOT NULL)"
+public,weekly_email_deliveries,idx_weekly_email_deliveries_loan_consultant,"CREATE INDEX idx_weekly_email_deliveries_loan_consultant ON public.weekly_email_deliveries USING btree (loan_consultant_id, week_start) WHERE (loan_consultant_id IS NOT NULL)"
+public,weekly_email_deliveries,idx_weekly_email_deliveries_operator,"CREATE INDEX idx_weekly_email_deliveries_operator ON public.weekly_email_deliveries USING btree (operator_id, week_start) WHERE (operator_id IS NOT NULL)"
+public,weekly_email_deliveries,idx_weekly_email_deliveries_tracking,CREATE INDEX idx_weekly_email_deliveries_tracking ON public.weekly_email_deliveries USING btree (tracking_token)
+public,weekly_email_deliveries,idx_weekly_email_deliveries_week_cohort,"CREATE INDEX idx_weekly_email_deliveries_week_cohort ON public.weekly_email_deliveries USING btree (week_start, cohort, status)"
+public,weekly_email_deliveries,uq_weekly_email_deliveries_agent_week,"CREATE UNIQUE INDEX uq_weekly_email_deliveries_agent_week ON public.weekly_email_deliveries USING btree (agent_id, week_start) WHERE ((recipient_type = 'agent'::text) AND (agent_id IS NOT NULL))"
+public,weekly_email_deliveries,uq_weekly_email_deliveries_loan_consultant_week,"CREATE UNIQUE INDEX uq_weekly_email_deliveries_loan_consultant_week ON public.weekly_email_deliveries USING btree (loan_consultant_id, week_start) WHERE ((recipient_type = 'loan_consultant'::text) AND (loan_consultant_id IS NOT NULL))"
+public,weekly_email_deliveries,uq_weekly_email_deliveries_operator_week,"CREATE UNIQUE INDEX uq_weekly_email_deliveries_operator_week ON public.weekly_email_deliveries USING btree (operator_id, week_start) WHERE ((recipient_type = 'operator'::text) AND (operator_id IS NOT NULL))"
+public,weekly_email_deliveries,uq_weekly_email_deliveries_user_week,"CREATE UNIQUE INDEX uq_weekly_email_deliveries_user_week ON public.weekly_email_deliveries USING btree (user_id, week_start) WHERE ((recipient_type = 'user'::text) AND (user_id IS NOT NULL))"
+public,weekly_email_deliveries,weekly_email_deliveries_pkey,CREATE UNIQUE INDEX weekly_email_deliveries_pkey ON public.weekly_email_deliveries USING btree (id)
+public,weekly_email_deliveries,weekly_email_deliveries_tracking_token_key,CREATE UNIQUE INDEX weekly_email_deliveries_tracking_token_key ON public.weekly_email_deliveries USING btree (tracking_token)
+public,weekly_email_deliveries,weekly_email_deliveries_user_id_week_start_key,"CREATE UNIQUE INDEX weekly_email_deliveries_user_id_week_start_key ON public.weekly_email_deliveries USING btree (user_id, week_start)"
+public,weekly_email_reports,idx_weekly_email_reports_retry,"CREATE INDEX idx_weekly_email_reports_retry ON public.weekly_email_reports USING btree (experiment_start, status, claimed_at)"
+public,weekly_email_reports,weekly_email_reports_pkey,CREATE UNIQUE INDEX weekly_email_reports_pkey ON public.weekly_email_reports USING btree (id)
+public,weekly_email_reports,weekly_email_reports_report_key_key,CREATE UNIQUE INDEX weekly_email_reports_report_key_key ON public.weekly_email_reports USING btree (report_key)
+public,weekly_feature_tips,idx_weekly_feature_tips_active_episode,"CREATE INDEX idx_weekly_feature_tips_active_episode ON public.weekly_feature_tips USING btree (is_active, episode)"
+public,weekly_feature_tips,weekly_feature_tips_episode_key,CREATE UNIQUE INDEX weekly_feature_tips_episode_key ON public.weekly_feature_tips USING btree (episode)
+public,weekly_feature_tips,weekly_feature_tips_pkey,CREATE UNIQUE INDEX weekly_feature_tips_pkey ON public.weekly_feature_tips USING btree (id)

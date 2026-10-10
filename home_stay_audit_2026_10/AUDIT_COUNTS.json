@@ -1,0 +1,16 @@
+{
+  "code_files": 433,
+  "db_tables": 135,
+  "db_columns": 1625,
+  "route_method_pairs": 616,
+  "distinct_route_paths": 546,
+  "external_api_sdk_url_candidates": 58,
+  "environment_usage_sites_application_config": 339,
+  "environment_usage_sites_all": 740,
+  "environment_names_referenced": 106,
+  "master_direct_fk_constraints": 38,
+  "master_direct_fk_tables": 37,
+  "admin_menus": 32,
+  "major_risks": 20,
+  "external_api_endpoints_static": 39
+}

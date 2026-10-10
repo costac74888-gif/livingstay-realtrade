@@ -1,0 +1,741 @@
+﻿environment_variable,file,line,function,purpose,transport,status,scope,secret_value
+JUSO_API_KEY,address_utils.py,22,<module>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PUBLIC_BASE_URL,admin_action_center.py,53,canonical_origin,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,annual_tourism_roster.py,406,assert_production_connection,Replit 런타임/배포 식별 설정,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SERVE_MINIFIED_ASSETS,app.py,186,_frontend_release,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GA4_MEASUREMENT_ID,app.py,258,_inject_ga4,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PUBLIC_BASE_URL,app.py,302,_public_base_url,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,app.py,454,<module>,Flask 세션 서명,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,app.py,552,<module>,Flask 세션 서명,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,app.py,670,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,app.py,677,<module>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,app.py,678,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_JS_KEY,app.py,698,_serve_app_shell,카카오 지도 SDK 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_SERVICE_KEY,app.py,699,_serve_app_shell,한국관광공사 TourAPI·GoCamping 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,1490,get_building_provider_photo,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,1654,_streetview_fallback_photos,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,1867,save_tourapi_building_photos,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,app.py,3735,_get_bjdong_map,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,app.py,3893,_bg_fetch,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,4222,map_poi,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,app.py,5306,_show_unclassified_legend,Replit 런타임/배포 식별 설정,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,app.py,5545,submit_building,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PUBLIC_BASE_URL,app.py,6032,_send_application_received_email,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,app.py,7878,request_correction,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SESSION_SECRET,app.py,7993,_is_internal_stats_refresh_request,세션 관련 호환/설정 참조,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_JS_KEY,app.py,8247,_serve_static_html,카카오 지도 SDK 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,10020,kakao_start,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,10051,kakao_callback,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_CLIENT_SECRET,app.py,10052,kakao_callback,카카오 OAuth client secret,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,15535,public_listings,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,15547,public_listings,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,20001,admin_geocode_run,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,20047,admin_geocode_brokers_run,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,app.py,20105,admin_title_info_run,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_SERVICE_KEY,app.py,20171,admin_tourapi_metadata_prewarm_run,한국관광공사 TourAPI·GoCamping 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_SERVICE_KEY,app.py,20195,admin_tourapi_image_backfill_run,한국관광공사 TourAPI·GoCamping 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_SERVICE_KEY,app.py,20367,admin_building_photos_sync_status,한국관광공사 TourAPI·GoCamping 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,20368,admin_building_photos_sync_status,Google 지도·사진/StreetView 조회 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+VWORLD_API_KEY,app.py,20369,admin_building_photos_sync_status,VWorld 지오코딩·지도/중개업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,app.py,22064,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,25349,admin_broker_sync_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,25938,admin_lodging_sync_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,app.py,25940,admin_lodging_sync_run,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,app.py,26328,admin_camping_image_backfill_run,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,26631,admin_brhub_sync_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,27155,admin_brhub_rescan_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,app.py,27333,admin_stores_sync_run,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,27513,admin_permits_sync_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,app.py,27739,admin_realty_sync_run,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PUBLIC_BASE_URL,app.py,32694,admin_applications_approve,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PUBLIC_BASE_URL,app.py,32713,admin_applications_approve,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,35330,tourism_lodging_rank_location,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,app.py,37170,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,app.py,37217,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,app.py,37325,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,app.py,37774,_check_applyhome,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_STAGING_MAX_AGE_DAYS,apply_lodging_promotion.py,40,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,apply_lodging_promotion.py,266,run_scheduled_promotion,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,apply_lodging_promotion.py,267,run_scheduled_promotion,개발 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,apply_lodging_promotion.py,268,run_scheduled_promotion,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,apply_lodging_promotion.py,271,run_scheduled_promotion,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,apply_lodging_promotion.py,370,run_scheduled_promotion,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,apply_lodging_promotion.py,624,_apply_manifest_unfenced,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,auction_building_enrichment.py,46,_historical_parcel,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,auction_building_enrichment.py,363,run_lookup,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,auction_service.py,535,auction_admin_run,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,auction_service.py,549,start_onbid_scheduler,Replit 런타임/배포 식별 설정,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,backfill_address.py,30,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,backfill_from_lodging_registry.py,40,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,backfill_title_info.py,54,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,building_registry.py,36,<module>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,building_registry.py,211,fetch_maintenance_history,건축물 유지관리 점검 이력 인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,classify_original_buildings.py,71,main,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,cleanup_permit_pipeline.py,31,<module>,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,db.py,194,_get_connection_pool,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DISABLE_ADMIN_NOTIFICATION_ENQUEUE,db.py,256,get_conn,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,db.py,596,_development_staging_schema_allowed,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,deal_alert_digest.py,41,get_conn,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,discover_new_buildings.py,55,<module>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,discover_new_buildings.py,56,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,email_util.py,173,send_email,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RESEND_API_KEY,email_util.py,178,send_email,이메일 발송 설정·인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RESEND_FROM_EMAIL,email_util.py,179,send_email,이메일 발송 설정·인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,geocode_brokers.py,36,<module>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,geocode_buildings.py,40,<module>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,import_airbnb_lodging.py,39,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,import_tourism_stats.py,556,verify_latest_top100_lodging_addresses,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,import_tourism_stats.py,732,enrich_latest_top100_lodging_buildings,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,import_tourism_stats.py,1023,geocode_missing_dong_coords,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,import_tourism_stats.py,1106,refresh_building_dong_matches,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,import_tourism_stats.py,1210,main,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,lodging_promotion.py,285,_fetch_production_snapshot,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,lodging_promotion.py,1205,compare_production_manifest,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,lodging_promotion.py,1312,_get_development_connection,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,lodging_promotion.py,1313,_get_development_connection,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,lodging_promotion.py,1318,_get_development_connection,개발 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,lodging_promotion.py,1320,_get_development_connection,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,lodging_promotion.py,1327,_get_development_connection,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGUSER,lodging_promotion.py,1329,_get_development_connection,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGPASSWORD,lodging_promotion.py,1330,_get_development_connection,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGHOST,lodging_promotion.py,1331,_get_development_connection,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGPORT,lodging_promotion.py,1331,_get_development_connection,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGDATABASE,lodging_promotion.py,1332,_get_development_connection,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,lodging_promotion.py,1338,_get_development_connection,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,lodging_promotion.py,1649,_production_write_connection,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,lodging_staging.py,123,assert_development_connection,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,merge_dev_to_prod.py,35,_signal_prod_stats_change,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,merge_dev_to_prod.py,43,get_dev_conn,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,merge_dev_to_prod.py,50,get_prod_conn,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,prewarm_unit_areas.py,42,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_ENABLED,public_api_client.py,64,_enabled,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_BASE_URL,public_api_client.py,179,public_api_get,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,reclassify_brhub.py,53,main,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,reclassify_buildings.py,39,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,reclassify_unclassified.py,33,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,scripts/ensure_presale_schema.py,103,main,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,scripts/ensure_tourism_datalab_schema.py,67,main,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,scripts/test_localdata_api.py,21,<module>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,scripts/unify_approved_brokers.py,111,main,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,sms_util.py,45,send_sms,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SOLAPI_API_KEY,sms_util.py,50,send_sms,SMS 발송 설정·인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SOLAPI_API_SECRET,sms_util.py,51,send_sms,SMS 발송 설정·인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SOLAPI_SENDER,sms_util.py,52,send_sms,SMS 발송 설정·인증,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GENERAL_UNITS_TOOLTIP,static/admin.html,452,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOURISM_UNITS_TOOLTIP,static/admin.html,474,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2049,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2051,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2052,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2053,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2063,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2064,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2064,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2065,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2067,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2089,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2090,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2090,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2095,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2107,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2108,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2108,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2172,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2390,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2407,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2408,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2408,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2409,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2410,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2498,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,2511,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LEGAL_DOCS,static/admin.html,3311,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,6262,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+ADMIN_IS_PRODUCTION_ENV,static/admin.html,6263,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+AD_STATUS_BADGE,static/admin.html,8454,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+AD_STATUS_BADGE,static/admin.html,9121,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MEMBER_GROUPS,static/admin.html,9273,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_LODGING_OPTS,static/admin.html,9805,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PREVIEW_MODE,static/agent_dashboard.html,524,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+AGENT_REGION_BUILDING_CAP_JS,static/agent_dashboard.html,579,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PREVIEW_AGENT_ID,static/agent_dashboard.html,644,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+REQUESTED_LEAD_ID,static/agent_dashboard.html,676,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PREVIEW_AGENT_ID,static/agent_dashboard.html,686,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PREVIEW_AGENT_ID,static/agent_dashboard.html,1004,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TX_SIZE,static/building.html,328,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORAGE_PREFIX,static/js/listing_checklist.js,33,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MAX_FAVORITES,static/js/main.js,123,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MAX_FAVORITES,static/js/main.js,221,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MAP_MOBILE_MAX_WIDTH,static/js/main.js,1462,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BAR_H,static/js/main.js,2851,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_COLORS,static/js/main.js,2852,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4754,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4776,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4779,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4784,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4785,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4790,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4798,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4801,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4804,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4805,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4808,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4813,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4814,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4820,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4838,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4840,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,4848,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5229,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5236,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5239,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5242,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5243,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5246,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5249,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5252,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+FLD,static/js/main.js,5254,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_BROWSER_BASE,static/js/main.js,5747,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BUILDING_PHOTO_LOCAL_CACHE_VERSION,static/js/main.js,5831,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TYPE_LABEL,static/partners_directory.html,104,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MAX_FAVORITES,static/transactions.html,231,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DEFAULT_OBJECT_STORAGE_BUCKET_ID,storage_util.py,92,_bucket_id,객체 저장소 버킷 식별,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,store_info_util.py,38,<module>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,sync_batch.py,43,<module>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_batch.py,44,<module>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,sync_batch.py,46,<module>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,sync_batch.py,47,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SESSION_SECRET,sync_brhub.py,88,_refresh_master_stats_after_completion,세션 관련 호환/설정 참조,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SESSION_SECRET,sync_lodgings.py,751,_refresh_master_stats_after_completion,세션 관련 호환/설정 참조,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,77,__init__,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BJDONG_CODE_CSV,sync_realty_stores.py,35,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RONE_API_KEY,sync_rone_rental_benchmarks.py,191,main,한국부동산원 임대동향 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,sync_rural_hanok_trades.py,209,sync,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_rural_hanok_trades.py,209,sync,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_menu_access_browser_test.js,4,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/analysis_menu_access_browser_test.js,9,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,5,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,13,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,30,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_RENTAL_REPORT,tests/analysis_mobile_browser_test.js,70,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_RENTAL_REPORT,tests/analysis_mobile_browser_test.js,71,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,73,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_OPERATION_PRINT,tests/analysis_mobile_browser_test.js,76,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_OPERATION_PRINT,tests/analysis_mobile_browser_test.js,77,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,103,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/analysis_mobile_browser_test.js,107,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/analysis_mobile_browser_test.js,108,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,239,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,300,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,420,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,438,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,438,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,469,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_PROPERTY_DESKTOP,tests/analysis_mobile_browser_test.js,547,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,585,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,594,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,638,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_PROPERTY_DESKTOP,tests/analysis_mobile_browser_test.js,639,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,651,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,687,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,715,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,719,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,802,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,802,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,829,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,838,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,838,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,847,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,847,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,934,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,959,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,995,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,995,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1024,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1126,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_RENTAL_DESKTOP,tests/analysis_mobile_browser_test.js,1183,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+CAPTURE_RENTAL_DESKTOP,tests/analysis_mobile_browser_test.js,1184,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1190,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,1191,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1280,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1285,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1286,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,1286,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1312,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,1312,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1315,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,1315,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1318,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,1318,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1362,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1374,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1385,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,1402,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,1408,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SAVE_ANALYSIS_SCREENSHOTS,tests/analysis_mobile_browser_test.js,1431,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1446,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1470,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_mobile_browser_test.js,1477,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SELECTED_ID,tests/analysis_mobile_browser_test.js,1477,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/analysis_mobile_browser_test.js,1502,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_terms_details_browser_test.js,6,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/analysis_terms_details_browser_test.js,21,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/api_test.py,37,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SERVE_MINIFIED_ASSETS,tests/frontend_distribution_test.py,109,check_distribution,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/frontend_distribution_test.py,110,check_distribution,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/frontend_distribution_test.py,111,check_distribution,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/map_location_browser_test.js,5,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/map_location_browser_test.js,15,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/map_location_browser_test.js,16,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,203,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,206,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/map_location_browser_test.js,282,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DUPLICATE_SEARCH_ONLY,tests/map_location_browser_test.js,293,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,320,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,338,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,347,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,359,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,365,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/map_location_browser_test.js,373,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/mypage_room_inventory_test.js,48,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PYTHONPATH,tests/offline_support/frontend_workspace.py,37,frontend_workspace,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+HOMENSTAY_OFFLINE_TESTS,tests/offline_support/sitecustomize.py,4,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+REPLIT_DEV_DOMAIN,tests/offline_support/sitecustomize.py,12,<module>,Replit 런타임/배포 식별 설정,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+HOMENSTAY_MANAGED_TEST,tests/offline_support/sitecustomize.py,61,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/operation_redesign_browser_test.js,5,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/operation_redesign_browser_test.js,19,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/operation_redesign_browser_test.js,20,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/operation_redesign_browser_test.js,151,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+LOW_ADR_BUILDING_ID,tests/operation_redesign_browser_test.js,151,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_B_ID,tests/operation_redesign_browser_test.js,151,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,334,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,343,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,362,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,408,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_OPERATION_SCREENSHOTS,tests/operation_redesign_browser_test.js,441,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,575,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,578,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,580,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_OPERATION_SCREENSHOTS,tests/operation_redesign_browser_test.js,610,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,645,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_B_ID,tests/operation_redesign_browser_test.js,647,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_B_ID,tests/operation_redesign_browser_test.js,648,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,676,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,681,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,684,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,689,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,695,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,698,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,716,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,765,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,781,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,785,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,843,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,845,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,869,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,873,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,876,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,908,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,910,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,940,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,973,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/operation_redesign_browser_test.js,980,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/partner_api_integration_test.py,25,<module>,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/partner_api_integration_test.py,26,<module>,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/rental_redesign_browser_test.js,5,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/rental_redesign_browser_test.js,19,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/rental_redesign_browser_test.js,20,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/rental_redesign_browser_test.js,126,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/rental_redesign_browser_test.js,137,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,197,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+RENTAL_SLIDER_SMOKE_ONLY,tests/rental_redesign_browser_test.js,294,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,331,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,391,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,396,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,406,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,412,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,437,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,440,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,511,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,530,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,533,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,550,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,595,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,618,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,677,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,738,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,770,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,815,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,847,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,855,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,857,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,918,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,927,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,936,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,946,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,984,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,986,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+JSON,tests/rental_redesign_browser_test.js,999,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/smoke_test.py,37,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SMOKE_BASE_URL,tests/smoke_test.py,62,_resolve_base_url,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SMOKE_LIVE,tests/smoke_test.py,63,_resolve_base_url,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+REPLIT_DEV_DOMAIN,tests/smoke_test.py,64,_resolve_base_url,Replit 런타임/배포 식별 설정,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SERVE_MINIFIED_ASSETS,tests/smoke_test.py,86,run_local,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/smoke_test.py,87,run_local,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/smoke_test.py,88,run_local,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_admin_transaction_search.py,10,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+LODGING_PROMOTION_TEST_DATABASE_URL,tests/test_apply_lodging_promotion.py,63,__init__,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_apply_lodging_promotion.py,66,__init__,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_bank_membership.py,3,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,59,test_off_exact_arguments_flags_and_host_order,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+LODGING_PROMOTION_TEST_DATABASE_URL,tests/test_lodging_promotion.py,53,__init__,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion.py,56,__init__,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion.py,94,_production_fingerprint,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion.py,809,fake_get_conn,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion.py,836,test_scheduler_production_override_routes_comparison_write_to_pg_dev,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion_automation.py,74,test_unapproved_staging_is_recorded_without_creating_manifest,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_offline_suite_runner.py,22,test_isolated_builder_child_imports_and_offline_guard_without_runner,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/test_offline_suite_runner.py,23,test_isolated_builder_child_imports_and_offline_guard_without_runner,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PYTHONPATH,tests/test_offline_suite_runner.py,41,test_isolated_builder_child_imports_and_offline_guard_without_runner,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+HOMENSTAY_OFFLINE_TESTS,tests/test_offline_suite_runner.py,42,test_isolated_builder_child_imports_and_offline_guard_without_runner,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+TMPDIR,tests/test_offline_suite_runner.py,51,_run,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+TMPDIR,tests/test_offline_suite_runner.py,52,_run,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_onbid_relay.py,60,test_off_exact_direct_request_arguments_and_no_session_reuse,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,104,test_application_file_validation_rejects_pdf_and_broken_images,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,121,test_payload_domain_ranges_phone_and_public_allowlist,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,194,test_safe_url_rejects_private_local_and_credentials,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,202,test_public_stats_returns_region_counts_without_building_names,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,233,test_expired_or_unauthorized_banner_never_downloads_object,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,253,test_banner_upload_rejects_small_dimensions_before_storage,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_region_transaction_stats.py,7,test_region_aliases_are_merged_and_sorted,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_role_login.py,7,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/test_role_login.py,8,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_role_login.py,9,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_survey.py,3,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/test_unified_account.py,9,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BASE_URL,tests/tourapi_partial_gallery_browser_test.js,5,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/tourapi_partial_gallery_browser_test.js,15,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,tests/tourapi_partial_gallery_browser_test.js,16,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/tourapi_partial_gallery_browser_test.js,141,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/tourapi_partial_gallery_browser_test.js,142,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+BUILDING_ID,tests/tourapi_partial_gallery_browser_test.js,152,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,validate_lodging_all_production_delta.py,90,_fetch_production,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,validate_lodging_approval_promotion.py,183,validate,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,validate_lodging_production_delta.py,91,_fetch_production,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,weekly_digest.py,44,<module>,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SITE_URL,weekly_digest.py,46,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+WEEKLY_EMAIL_EXPERIMENT_START,weekly_digest.py,51,<module>,UNKNOWN: needs semantic interpretation,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,weekly_digest_runner.py,17,get_conn,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,zip_code_backfill.py,42,<module>,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,zip_code_backfill.py,42,<module>,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,zip_code_backfill.py,284,main_impl,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,zip_code_backfill.py,291,main_impl,운영 DB 명시 연결,UNKNOWN,CONFIRMED static reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+JUSO_API_KEY,address_utils.py,92,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_AUTH,address_utils.py,78,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,address_utils.py,78,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_QUOTA,address_utils.py,82,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+JUSO_API_KEY,address_utils.py,91,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,app.py,127,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,app.py,128,<dynamic key / module constant>,건축물 유지관리 점검 이력 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,app.py,129,<dynamic key / module constant>,Google 지도·사진/StreetView 조회 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,app.py,130,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,app.py,22277,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,app.py,22277,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,app.py,22277,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,apply_lodging_promotion.py,368,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,building_registry.py,46,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,building_registry.py,46,<dynamic key / module constant>,건축물 유지관리 점검 이력 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_QUOTA,datasync_transport_advice.py,132,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_AUTH,datasync_transport_advice.py,132,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,datasync_transport_advice.py,132,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_QUOTA,datasync_transport_advice.py,134,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DB_POOL_BACKGROUND_MAXCONN,db.py,133,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,db.py,5131,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,db.py,5132,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,db.py,184,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,db.py,185,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+VWORLD_AL_D171,import_vworld_brokers.py,26,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+VWORLD_AL_D172,import_vworld_brokers.py,27,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGUSER,lodging_promotion.py,1322,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGPASSWORD,lodging_promotion.py,1322,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGHOST,lodging_promotion.py,1322,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGPORT,lodging_promotion.py,1322,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PGDATABASE,lodging_promotion.py,1322,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,public_api_client.py,33,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,public_api_client.py,34,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,public_api_client.py,35,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,public_api_client.py,36,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_AUTH,public_api_client.py,39,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,public_api_client.py,39,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_QUOTA,public_api_client.py,39,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_BUSY,public_api_client.py,40,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_INTERNAL,public_api_client.py,41,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_BUSY,public_api_client.py,43,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,public_api_client.py,175,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_TOKEN,public_api_client.py,175,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_INTERNAL,public_api_client.py,52,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,public_api_client.py,174,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_AUTH,public_api_client.py,178,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_INTERNAL,public_api_client.py,185,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,public_api_client.py,187,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,public_api_client.py,190,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,public_api_client.py,192,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_INTERNAL,public_api_client.py,214,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,scheduled_sync.py,55,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,scheduled_sync.py,56,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,scheduled_sync.py,57,<dynamic key / module constant>,건축물 유지관리 점검 이력 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,scheduled_sync.py,58,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,scheduled_sync.py,59,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,scheduled_sync.py,60,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+JUSO_API_KEY,scheduled_sync.py,61,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,scheduled_sync.py,62,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOURISM_DATALAB_MONTHLY_MANIFEST_URL,scheduled_sync.py,63,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,scripts/build_frontend.py,39,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,scripts/build_frontend.py,40,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_TOKEN,secret_redaction.py,12,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,secret_redaction.py,12,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,secret_redaction.py,12,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,secret_redaction.py,13,<dynamic key / module constant>,건축물 유지관리 점검 이력 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,secret_redaction.py,13,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,secret_redaction.py,13,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_brhub.py,62,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MASTER_STATS_REFRESH_URL,sync_brhub.py,67,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_brokers.py,34,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOUR_API_SERVICE_KEY,sync_building_photos.py,35,<dynamic key / module constant>,한국관광공사 TourAPI·GoCamping 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,sync_building_photos.py,36,<dynamic key / module constant>,Google 지도·사진/StreetView 조회 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+VWORLD_API_KEY,sync_building_photos.py,37,<dynamic key / module constant>,VWorld 지오코딩·지도/중개업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_lodgings.py,53,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,sync_lodgings.py,56,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+MASTER_STATS_REFRESH_URL,sync_lodgings.py,69,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+JUSO_API_KEY,sync_lodgings.py,730,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,sync_lodgings.py,731,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_QUOTA,sync_onbid.py,53,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_AUTH,sync_onbid.py,55,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,sync_onbid.py,55,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,337,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,sync_onbid.py,337,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,175,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,sync_onbid.py,175,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,487,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,sync_onbid.py,487,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,522,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,sync_onbid.py,522,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_onbid.py,514,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_permits.py,49,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,sync_realty_stores.py,351,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,sync_realty_stores.py,357,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,sync_realty_stores.py,227,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,sync_runner.py,39,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_runner.py,40,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,sync_runner.py,41,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+JUSO_API_KEY,sync_runner.py,42,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,sync_rural_hanok.py,30,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,sync_rural_hanok.py,31,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+TOURISM_DATALAB_MONTHLY_MANIFEST_URL,sync_tourism_monthly.py,13,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,tests/api_test.py,452,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,tests/api_test.py,486,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,tests/api_test.py,517,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+KAKAO_REST_API_KEY,tests/api_test.py,536,<dynamic key / module constant>,카카오 REST 주소/장소 검색·OAuth 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RESEND_API_KEY,tests/api_test.py,5669,<dynamic key / module constant>,이메일 발송 설정·인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RESEND_FROM_EMAIL,tests/api_test.py,5670,<dynamic key / module constant>,이메일 발송 설정·인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/api_test.py,5671,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RESEND_API_KEY,tests/api_test.py,5692,<dynamic key / module constant>,이메일 발송 설정·인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RESEND_FROM_EMAIL,tests/api_test.py,5693,<dynamic key / module constant>,이메일 발송 설정·인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/api_test.py,5694,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+GOOGLE_MAPS_API_KEY,tests/api_test.py,7108,<dynamic key / module constant>,Google 지도·사진/StreetView 조회 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/offline_support/frontend_workspace.py,42,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/offline_support/frontend_workspace.py,43,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/offline_support/frontend_workspace.py,44,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/partner_api_integration_test.py,18,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/partner_favorites_weekly_test.py,12,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DISABLE_EXTERNAL_NOTIFICATIONS,tests/run_offline_suite.py,22,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/run_offline_suite.py,23,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_APP_BOOT_TASKS,tests/run_offline_suite.py,23,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/run_offline_suite.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,tests/run_offline_suite.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,tests/run_offline_suite.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/run_offline_suite.py,25,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/run_offline_suite.py,25,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/run_offline_suite.py,26,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/run_offline_suite.py,26,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/run_offline_suite.py,27,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_INSPECTION_SERVICE_KEY,tests/run_offline_suite.py,28,<dynamic key / module constant>,건축물 유지관리 점검 이력 인증,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,tests/run_offline_suite.py,29,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,tests/run_offline_suite.py,30,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,tests/test_annual_tourism_roster.py,80,<dynamic key / module constant>,Replit 런타임/배포 식별 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,tests/test_annual_tourism_roster.py,85,<dynamic key / module constant>,Replit 런타임/배포 식별 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_annual_tourism_roster_routes.py,8,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_apply_lodging_promotion.py,64,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,tests/test_auction_building_stats.py,96,<dynamic key / module constant>,Replit 런타임/배포 식별 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+REPLIT_DEPLOYMENT,tests/test_auction_building_stats.py,57,<dynamic key / module constant>,Replit 런타임/배포 식별 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,tests/test_camping_import.py,249,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,tests/test_camping_import.py,250,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_data_sync_transport.py,72,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_data_sync_transport.py,79,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_data_sync_transport.py,21,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,tests/test_data_sync_transport.py,21,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,tests/test_data_sync_transport.py,21,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_data_sync_transport.py,22,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_data_sync_transport.py,22,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_data_sync_transport.py,23,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_data_sync_transport.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_data_sync_transport.py,25,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_data_sync_transport.py,47,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,tests/test_datasync_transport_advice.py,51,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_datasync_transport_advice.py,84,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_datasync_transport_advice.py,85,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,tests/test_datasync_transport_advice.py,43,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_datasync_transport_advice.py,47,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_datasync_transport_advice.py,105,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_datasync_transport_advice.py,106,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_datasync_transport_advice.py,119,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,tests/test_db_connection_pool.py,17,<dynamic key / module constant>,Flask 세션 서명,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_db_connection_pool.py,18,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,tests/test_db_connection_pool.py,375,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,tests/test_db_connection_pool.py,375,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,tests/test_db_connection_pool.py,470,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,tests/test_db_connection_pool.py,470,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,tests/test_db_connection_pool.py,425,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,tests/test_db_connection_pool.py,425,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,tests/test_db_connection_pool.py,500,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,tests/test_db_connection_pool.py,500,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MINCONN,tests/test_db_connection_pool.py,562,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DB_POOL_MAXCONN,tests/test_db_connection_pool.py,562,<dynamic key / module constant>,DB 연결/통계 캐시 용량·우선순위 설정,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,tests/test_gunicorn_stats_lifecycle.py,13,<dynamic key / module constant>,Flask 세션 서명,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,tests/test_juso_relay.py,40,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_juso_relay.py,151,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_AUTH,tests/test_juso_relay.py,151,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_juso_relay.py,151,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_INTERNAL,tests/test_juso_relay.py,152,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,tests/test_juso_relay.py,174,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,220,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,221,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,222,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,222,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_AUTH,tests/test_juso_relay.py,266,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_juso_relay.py,266,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,38,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,tests/test_juso_relay.py,38,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_juso_relay.py,69,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_juso_relay.py,115,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,179,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,190,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,211,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,265,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,57,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_juso_relay.py,82,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,82,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,146,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_juso_relay.py,146,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_juso_relay.py,205,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_juso_relay.py,112,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_AUTH,tests/test_juso_relay.py,156,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_juso_relay.py,156,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,166,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,166,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,274,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_juso_relay.py,274,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,80,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_juso_relay.py,130,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,tests/test_lodging_operator_partner.py,10,<dynamic key / module constant>,Flask 세션 서명,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion.py,54,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion.py,816,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion.py,817,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,tests/test_lodging_promotion.py,818,<dynamic key / module constant>,개발 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PGUSER,tests/test_lodging_promotion.py,819,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PGPASSWORD,tests/test_lodging_promotion.py,820,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PGHOST,tests/test_lodging_promotion.py,821,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PGPORT,tests/test_lodging_promotion.py,822,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PGDATABASE,tests/test_lodging_promotion.py,823,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion_automation.py,51,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,tests/test_lodging_promotion_automation.py,52,<dynamic key / module constant>,개발 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion_automation.py,53,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion_automation.py,92,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,tests/test_lodging_promotion_automation.py,93,<dynamic key / module constant>,개발 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion_automation.py,94,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion_automation.py,159,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,tests/test_lodging_promotion_automation.py,160,<dynamic key / module constant>,개발 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion_automation.py,161,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATABASE_URL,tests/test_lodging_promotion_automation.py,221,<dynamic key / module constant>,현재 프로세스의 DB 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DEV_DATABASE_URL,tests/test_lodging_promotion_automation.py,222,<dynamic key / module constant>,개발 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_promotion_automation.py,223,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_lodging_staging.py,209,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_onbid_relay.py,102,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,102,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_onbid_relay.py,125,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_AUTH,tests/test_onbid_relay.py,126,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_onbid_relay.py,127,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_INTERNAL,tests/test_onbid_relay.py,129,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,190,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_onbid_relay.py,34,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,tests/test_onbid_relay.py,34,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_onbid_relay.py,70,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_onbid_relay.py,74,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_onbid_relay.py,116,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,184,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_onbid_relay.py,58,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_onbid_relay.py,93,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_onbid_relay.py,140,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,140,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,166,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_onbid_relay.py,90,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_policy_manual_contract.py,8,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_presale_feature_contract.py,161,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,tests/test_presale_feature_contract.py,162,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/test_prewarm_unit_areas.py,418,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_public_api_client.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,tests/test_public_api_client.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,tests/test_public_api_client.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_ONBID,tests/test_public_api_client.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_JUSO,tests/test_public_api_client.py,24,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_BASE_URL,tests/test_public_api_client.py,25,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_public_api_client.py,26,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_public_api_client.py,26,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_public_api_client.py,120,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,tests/test_public_api_client.py,200,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_public_api_client.py,270,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_QUOTA,tests/test_public_api_client.py,279,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/test_public_api_client.py,51,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,tests/test_public_api_client.py,52,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,tests/test_public_api_client.py,53,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_ENABLED,tests/test_public_api_client.py,60,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_BLDG_HUB,tests/test_public_api_client.py,61,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_public_api_client.py,95,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_public_api_client.py,163,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN_BATCH,tests/test_public_api_client.py,163,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_USE_RTMS,tests/test_public_api_client.py,98,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_AUTH,tests/test_public_api_client.py,168,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/test_public_api_client.py,202,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RTMS_SERVICE_KEY,tests/test_public_api_client.py,202,<dynamic key / module constant>,국토부 실거래 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_FORBIDDEN,tests/test_public_api_client.py,242,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+RELAY_TOKEN,tests/test_public_api_client.py,84,<dynamic key / module constant>,공공 API 중계 전송 설정·목적별 인증; actual value UNKNOWN,RELAY configuration,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/test_public_operating_records.py,7,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+LODGING_SERVICE_KEY,tests/test_scheduled_sync.py,679,<dynamic key / module constant>,행정안전부 숙박업 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/test_secret_redaction.py,82,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+BLD_SERVICE_KEY,tests/test_secret_redaction.py,109,<dynamic key / module constant>,건축HUB/건축물대장 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,tests/test_stats_invalidation_paths.py,19,<dynamic key / module constant>,Flask 세션 서명,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+DATA_GO_KR_BROKER_API_KEY,tests/test_stats_invalidation_paths.py,20,<dynamic key / module constant>,중개업소 표준데이터 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,tests/test_stats_invalidation_paths.py,21,<dynamic key / module constant>,운영 DB 명시 연결,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SESSION_SECRET,tests/test_stats_invalidation_paths.py,688,<dynamic key / module constant>,세션 관련 호환/설정 참조,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SESSION_SECRET,tests/test_stats_invalidation_paths.py,704,<dynamic key / module constant>,세션 관련 호환/설정 참조,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SESSION_SECRET,tests/test_stats_invalidation_paths.py,713,<dynamic key / module constant>,세션 관련 호환/설정 참조,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SESSION_SECRET,tests/test_stats_invalidation_paths.py,1290,<dynamic key / module constant>,세션 관련 호환/설정 참조,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SESSION_SECRET,tests/test_stats_invalidation_paths.py,1318,<dynamic key / module constant>,세션 관련 호환/설정 참조,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+STORE_INFO_SERVICE_KEY,tests/test_store_batch_priority.py,82,<dynamic key / module constant>,소상공인 상가업소 조회 인증,DIRECT for these source families; relay four-service allowlist excludes them,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+FLASK_SECRET_KEY,tests/test_unified_account.py,10,<dynamic key / module constant>,Flask 세션 서명,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,tests/test_zip_code_backfill.py,18,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,tests/test_zip_code_backfill.py,50,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+SKIP_STARTUP_SCHEMA_INIT,tests/weekly_digest_test.py,14,<dynamic key / module constant>,dynamic environment key or named reference,UNKNOWN,INFERRED env key literal; accessor may be dynamic,TEST,NOT READ / NOT RECORDED
+JUSO_API_KEY,zip_code_backfill.py,44,<dynamic key / module constant>,도로명주소 검색 인증,conditional relay via public_api_client (service/path allowlist); direct when disabled,INFERRED env key literal; accessor may be dynamic,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,85,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,96,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,107,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,118,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,145,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,206,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+DATABASE_URL,.replit,218,<shell/config>,현재 프로세스의 DB 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,218,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,227,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,239,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,.replit,251,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,scripts/start-prod.sh,4,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED
+PROD_DATABASE_URL,scripts/start-prod.sh,9,<shell/config>,운영 DB 명시 연결,UNKNOWN,CONFIRMED name reference,APPLICATION/CONFIG,NOT READ / NOT RECORDED

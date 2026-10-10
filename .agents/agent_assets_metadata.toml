@@ -808,3 +808,17 @@ mtime_ms = 1791259299646
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/0345facd-6e6a-492a-abef-1a6973c1f086/9e92fffc-63a2-422a-ab70-0a42380bc4a2"
 storage_version_token = "1791259308065028"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "vzh1CzXruqxK88jV4fK3Y"
+uri = "file://home_stay_audit_2026_10/HOME_STAY_2_PHASE0_AUDIT_20261010.zip"
+type = "unspecified"
+title = "HOME & STAY 2.0 — 0단계 조사보고서 ZIP"
+description = "19개 상세 보고서, 통합 보고서, CSV 인벤토리 및 자체검증 기록입니다. ZIP에는 Markdown과 CSV만 포함되며 운영 소스·DB 덤프·Secret·개인정보는 포함하지 않습니다."
+logical_id = "dcdb9a16-6674-427f-8f09-58ca7edadda7"
+content_hash = "sha256:ad18dfa8fec0dd55e936e959a1aa97125a18aa8901b6dd16ea26208b994308b7"
+size = 318363
+mtime_ms = 1791619956022
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/dcdb9a16-6674-427f-8f09-58ca7edadda7/aa5c08b3-762a-4859-835d-00c15f04f150"
+storage_version_token = "1791619976267895"
+content_type = "application/octet-stream"

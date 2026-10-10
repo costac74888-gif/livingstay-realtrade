@@ -1,0 +1,1626 @@
+﻿table_schema,table_name,column_name,ordinal_position,data_type,udt_name,is_nullable,column_default,is_identity,identity_generation,status
+public,account_business_memberships,id,1,bigint,int8,NO,nextval('account_business_memberships_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,account_business_memberships,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,account_business_memberships,role,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,account_business_memberships,business_id,4,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,account_business_memberships,business_table,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,account_business_memberships,status,6,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,account_business_memberships,created_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,account_role_memberships,id,1,bigint,int8,NO,nextval('account_role_memberships_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,account_role_memberships,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,account_role_memberships,role,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,account_role_memberships,legacy_account_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,account_role_memberships,status,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,account_role_memberships,created_at,6,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_edit_log,id,1,integer,int4,NO,nextval('admin_edit_log_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_edit_log,table_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_edit_log,record_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,admin_edit_log,field,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_edit_log,old_value,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_edit_log,new_value,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_edit_log,reason,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_edit_log,admin,8,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,admin_edit_log,edited_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,admin_event_subscriptions,admin_user_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,admin_event_subscriptions,event_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_event_subscriptions,in_app_enabled,3,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,admin_event_subscriptions,email_enabled,4,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,admin_event_subscriptions,updated_at,5,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,id,1,bigint,int8,NO,nextval('admin_notification_deliveries_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,channel,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,idempotency_key,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,status,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,provider_message,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,attempted_at,6,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,sent_at,7,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,source_kind,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,source_id,9,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,label,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,attempting_at,11,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,attempts,12,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,next_attempt_at,13,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notification_deliveries,outcome,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempt_history,id,1,bigint,int8,NO,nextval('admin_notification_email_attempt_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_notification_email_attempt_history,email_attempt_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempt_history,status,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempt_history,message,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempt_history,attempted_at,5,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,id,1,bigint,int8,NO,nextval('admin_notification_email_attempts_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,notification_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,recipient_email,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,idempotency_key,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,status,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,attempt_count,6,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,last_attempt_at,7,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,sent_at,8,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,error_message,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,created_at,10,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notification_email_attempts,updated_at,11,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_notifications,id,1,bigint,int8,NO,nextval('admin_notifications_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_notifications,admin_user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,event_type,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,source_table,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,source_id,5,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,title,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,body,7,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,admin_notifications,deep_link,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_notifications,in_app_enabled,9,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,admin_notifications,read_at,10,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,admin_notifications,created_at,11,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,admin_users,id,1,integer,int4,NO,nextval('admin_users_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,admin_users,email,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_users,password_hash,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,admin_users,name,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,admin_users,role,5,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,admin_users,created_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,admin_users,last_login_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agency_links,id,1,integer,int4,NO,nextval('agency_links_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,agency_links,name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,agency_links,logo_url,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,agency_links,link_url,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,agency_links,display_order,5,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agency_links,is_active,6,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,agency_links,created_at,7,timestamp with time zone,timestamptz,YES,now(),NO,,CONFIRMED production metadata
+public,agency_links,updated_at,8,timestamp with time zone,timestamptz,YES,now(),NO,,CONFIRMED production metadata
+public,agent_buildings,id,1,integer,int4,NO,nextval('agent_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,agent_buildings,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,agent_buildings,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,agent_buildings,sale_count,4,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agent_buildings,jeonse_count,5,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agent_buildings,wolse_count,6,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agent_buildings,shortterm_count,7,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agent_buildings,created_at,8,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,agent_buildings,updated_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,agent_buildings,presale_count,10,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agent_buildings,has_priority_badge,11,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,agent_buildings,premium_granted_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agent_buildings,premium_expires_at,13,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agent_buildings,reminder_sent_at,16,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agent_buildings,is_paid,17,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,agent_region_buildings,id,1,integer,int4,NO,nextval('agent_region_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,agent_region_buildings,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,agent_region_buildings,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,agent_region_buildings,added_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,agent_service_regions,id,1,integer,int4,NO,nextval('agent_service_regions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,agent_service_regions,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,agent_service_regions,sgg_text,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,agent_service_regions,granted_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,agent_service_regions,expires_at,5,timestamp without time zone,timestamp,NO,,NO,,CONFIRMED production metadata
+public,agent_service_regions,reminder_sent_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agent_service_regions,is_paid,9,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,agent_service_regions,umd_nm,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,id,1,integer,int4,NO,nextval('agents_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,agents,office_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,agents,owner_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,agents,reg_number,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,biz_reg_number,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,phone,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,email,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,agents,status,8,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,agents,subdomain_slug,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,intro_text,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,created_at,11,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,agents,approved_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agents,approved_by,13,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,agents,password_hash,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,photo_url,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,admin_tag,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,logo_url,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,is_visible,18,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,agents,priority_score,19,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,agents,admin_memo,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,intro_title,21,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,office_phone,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,office_address,23,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,tax_invoice_email,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,rejection_reason,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,manager_name,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,desired_building,27,text,text,YES,,NO,,CONFIRMED production metadata
+public,agents,weekly_email_enabled,28,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,agents,weekly_email_opted_at,29,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agents,weekly_email_updated_at,30,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,agents,weekly_unsubscribe_token,31,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,analysis_assets_cache,cache_kind,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,analysis_assets_cache,cache_key,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,analysis_assets_cache,source_version,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,analysis_assets_cache,payload,4,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,analysis_assets_cache,created_at,5,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,analysis_source_versions,source_name,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,analysis_source_versions,version,2,bigint,int8,NO,0,NO,,CONFIRMED production metadata
+public,analysis_source_versions,updated_at,3,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_building_evidence,entry_id,1,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_building_evidence,master_building_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_building_evidence,match_method,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_building_evidence,match_status,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_building_evidence,checked_at,5,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,id,1,bigint,int8,NO,nextval('annual_tourism_roster_entries_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,version_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,source_row_number,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,sido_name,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,sgg_name,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,facility_name,6,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,address,7,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,address_norm,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,subtype,9,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,raw_subtype,10,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,raw_status,11,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,is_active,12,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,room_count,13,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,tourism_operator_name,14,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,hotel_grade,15,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,grade_date,16,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,floor_count,17,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,land_area,18,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,gross_floor_area,19,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,registration_number,20,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,registration_date,21,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_entries,approval_date,22,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,token,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,admin_user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,manifest,3,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,state,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,created_at,5,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,expires_at,6,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_stages,applied_at,7,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,id,1,bigint,int8,NO,nextval('annual_tourism_roster_versions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,reference_year,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,source_file,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,source_sha256,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,status,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,approved_by,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,approved_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,next_collection_year,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,annual_tourism_roster_versions,source_name,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,app_meta,key,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,app_meta,value,2,text,text,YES,,NO,,CONFIRMED production metadata
+public,app_meta,updated_at,3,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,applications,id,1,integer,int4,NO,nextval('applications_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,applications,applicant_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,applications,office_or_company_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,applications,owner_name,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,applications,reg_number,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,biz_reg_number,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,category,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,phone,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,applications,email,9,text,text,NO,,NO,,CONFIRMED production metadata
+public,applications,website_url,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,preferred_region,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,preferred_building,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,intro_text,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_license_url,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_office_reg_url,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_biz_reg_url,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_business_card_url,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_biz_license_url,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,status,19,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,applications,reject_reason,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,linked_agent_id,21,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,linked_operator_id,22,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,reviewed_by,23,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,submitted_at,24,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,applications,reviewed_at,25,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,applications,terms_agreed_at,26,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,applications,privacy_agreed_at,27,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,applications,linked_loan_consultant_id,28,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_logo_url,29,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,preferred_building_id,30,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,doc_photo_url,31,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,intro_title,32,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,edit_token,33,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,office_address,34,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,password_hash,35,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,kakao_chat_url,36,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,lodging_op_type,37,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,booking_url,38,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,airbnb_url,39,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,airbnb_urls,40,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,applications,permit_no,41,text,text,YES,,NO,,CONFIRMED production metadata
+public,applications,linked_op_lodging_id,42,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,building_id,43,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,applications,phone_verification_challenge_id,44,uuid,uuid,YES,,NO,,CONFIRMED production metadata
+public,applications,fast_review_eligible,45,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,auction_items,id,1,integer,int4,NO,nextval('auction_items_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,auction_items,source,2,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_items,source_item_id,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,auction_items,pbct_cdtn_no,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_items,sale_kind,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,usage_name,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,lodging_category,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,title,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,unit_label,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,address_road,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,address_jibun,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,area_m2,12,real,float4,YES,,NO,,CONFIRMED production metadata
+public,auction_items,appraisal_price,13,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,auction_items,min_bid_price,14,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,auction_items,min_bid_ratio,15,real,float4,YES,,NO,,CONFIRMED production metadata
+public,auction_items,round_no,16,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,auction_items,failed_count,17,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,auction_items,bid_start_at,18,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,auction_items,bid_end_at,19,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,auction_items,status,20,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_items,status_changed_at,21,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,auction_items,disposal_method,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,notice_org,23,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,notice_no,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,detail_url,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,lat,26,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,auction_items,lng,27,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,auction_items,master_building_id,28,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,auction_items,raw,29,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,auction_items,detail_fingerprint,30,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_items,first_seen_at,31,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,auction_items,last_seen_at,32,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,auction_items,updated_at,33,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,auction_items,check_business_report,34,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_items,check_operation_succession,35,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_items,check_fee_arrears,36,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_photos,id,1,integer,int4,NO,nextval('auction_photos_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,auction_photos,auction_item_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,auction_photos,url,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,auction_photos,sort_order,4,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,auction_rounds,id,1,integer,int4,NO,nextval('auction_rounds_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,auction_rounds,auction_item_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,auction_rounds,round_no,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,auction_rounds,bid_start_at,4,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,auction_rounds,bid_end_at,5,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,auction_rounds,min_bid_price,6,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,auction_rounds,result,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,auction_rounds,source_round_key,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,auction_rounds,result_at,9,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,auction_watches,user_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,auction_watches,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,auction_watches,enabled,3,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,auction_watches,created_at,4,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,booking_url_requests,id,1,integer,int4,NO,nextval('booking_url_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,booking_url_requests,operator_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,booking_url_requests,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,booking_url_requests,booking_url,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,booking_url_requests,status,5,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,booking_url_requests,submitted_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,booking_url_requests,reviewed_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,booking_url_requests,reviewed_by,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,booking_url_requests,admin_note,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,booking_url_requests,renewal_count,10,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,booking_url_requests,expires_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,id,1,integer,int4,NO,nextval('broker_registry_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,broker_registry,office_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,broker_registry,reg_number,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,broker_registry,road_address,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,jibun_address,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,phone,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,reg_date,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,owner_name,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,lat,9,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,lng,10,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,homepage_url,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,source_updated_at,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,created_at,13,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,broker_registry,updated_at,14,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,broker_registry,road_norm,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,jibun_norm,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,biz_status,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,source_reg_number,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,source_region_code,19,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,source_name,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry,phone_numbers,21,ARRAY,_text,NO,<literal-redacted>::text[],NO,,CONFIRMED production metadata
+public,broker_registry,member_count,22,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,broker_registry_members,id,1,integer,int4,NO,nextval('broker_registry_members_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,broker_registry_members,source_row_key,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,broker_registry_members,source_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,broker_registry_members,region_code,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,region_name,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,reg_number,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,broker_registry_members,office_name,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,member_name,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,member_type_code,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,member_type_name,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,license_number,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,license_date,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,position_code,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,position_name,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,source_updated_at,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,broker_registry_members,created_at,16,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,broker_registry_members,updated_at,17,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,bug_reports,id,1,integer,int4,NO,nextval('bug_reports_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,bug_reports,user_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,account_type,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,description,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,bug_reports,page_url,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,user_agent,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,severity,7,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,bug_reports,contact,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,screenshot_key,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,status,10,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,bug_reports,admin_note,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,bug_reports,created_at,12,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,building_photo_fetches,building_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,building_photo_fetches,source,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,building_photo_fetches,status,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,building_photo_fetches,last_attempt_at,4,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,building_photo_fetches,error_message,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_photo_fetches,provider_ref,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_photo_fetches,photo_available,7,boolean,bool,YES,,NO,,CONFIRMED production metadata
+public,building_photos,id,1,integer,int4,NO,nextval('building_photos_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,building_photos,building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,building_photos,photo_url,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,building_photos,source,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,building_photos,photo_type,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_photos,is_primary,6,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,building_photos,display_order,7,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,building_photos,created_at,8,timestamp with time zone,timestamptz,YES,now(),NO,,CONFIRMED production metadata
+public,building_photos,photo_hash,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_photos,uploaded_by_user_id,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,building_photos,registrant_type,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_photos,gps_lat,12,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,building_photos,gps_lng,13,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,building_photos,gps_verified,14,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,building_photos,exif_taken_at,15,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,building_photos,listing_photo_id,16,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,building_photos,uploaded_by_agent_id,17,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,building_photos,listing_request_id,18,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,building_photos,priority_rank,19,smallint,int2,YES,99,NO,,CONFIRMED production metadata
+public,building_requests,id,1,integer,int4,NO,nextval('building_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,building_requests,road_address,2,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,building_name_hint,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,requester_note,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,status,5,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,building_requests,reject_reason,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,master_building_id,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,building_requests,created_at,8,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,building_requests,processed_at,9,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,building_requests,request_type,10,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,building_requests,target_sgg_cd,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,target_umd_nm,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,target_jibun,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,suggested_lodging_type,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,verified_lodging_type,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,changed,16,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,building_requests,suggested_building_name,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_requests,jibun_address_input,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,id,1,integer,int4,NO,nextval('building_stores_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,building_stores,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,building_stores,store_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,category,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,floor,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,updated_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,building_stores,ho_no,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,inds_mcls_nm,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_stores,inds_scls_nm,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,building_unit_areas,id,1,integer,int4,NO,nextval('building_unit_areas_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,building_unit_areas,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,building_unit_areas,ho,3,character varying,varchar,YES,,NO,,CONFIRMED production metadata
+public,building_unit_areas,area_sqm,4,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,building_unit_areas,fetched_at,5,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,business_building_verifications,id,1,integer,int4,NO,nextval('business_building_verifications_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,business_building_verifications,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,business_building_verifications,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,business_building_verifications,permit_number,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,business_building_verifications,verified_at,5,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,business_room_inventory,id,1,integer,int4,NO,nextval('business_room_inventory_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,business_room_inventory,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,business_room_inventory,room_label,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,business_room_inventory,status,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,business_room_inventory,contract_end_date,5,date,date,YES,,NO,,CONFIRMED production metadata
+public,business_room_inventory,created_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,business_room_inventory,updated_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,business_room_inventory,floor,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,business_room_inventory,channel,9,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,business_room_inventory,monthly_rent_krw,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,business_room_inventory,deposit_krw,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,id,1,integer,int4,NO,nextval('buy_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,buy_requests,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,buy_requests,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,buy_requests,deal_type,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,buy_requests,desired_price,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,price_krw,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,monthly_rent_krw,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,contact_phone,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,buy_requests,routed_agent_id,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,routed_reason,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,status,11,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,buy_requests,admin_note,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,buy_requests,created_at,13,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,buy_requests,area_sqm,14,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,chat_messages,id,1,integer,int4,NO,nextval('chat_messages_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,chat_messages,room_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,chat_messages,sender_user_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,chat_messages,body,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,chat_messages,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,chat_messages,is_read,6,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,chat_messages,attachment_key,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,chat_messages,attachment_name,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,chat_rooms,id,1,integer,int4,NO,nextval('chat_rooms_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,chat_rooms,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,chat_rooms,buyer_user_id,3,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,chat_rooms,seller_user_id,4,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,chat_rooms,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,deal_alert_logs,id,1,integer,int4,NO,nextval('deal_alert_logs_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,deal_alert_logs,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,deal_alert_logs,transaction_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,deal_alert_logs,alert_date,4,date,date,NO,,NO,,CONFIRMED production metadata
+public,deal_alert_logs,status,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,deal_alert_logs,claimed_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,deal_alert_logs,sent_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,deal_alert_logs,error_message,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,discover_progress,sgg_cd,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,discover_progress,deal_ymd,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,discover_progress,processed_at,3,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,email_ad_banners,id,1,integer,int4,NO,nextval('email_ad_banners_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,email_ad_banners,image_url,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,email_ad_banners,link_url,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,email_ad_banners,start_date,4,date,date,NO,,NO,,CONFIRMED production metadata
+public,email_ad_banners,end_date,5,date,date,NO,,NO,,CONFIRMED production metadata
+public,email_ad_banners,is_active,6,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,email_ad_banners,created_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,gocamping_records,content_id,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,gocamping_records,lodging_registry_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,gocamping_records,source_url,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,gocamping_records,web_payload,4,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,gocamping_records,photo_urls,5,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,gocamping_records,payload_hash,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,gocamping_records,parser_version,7,integer,int4,NO,1,NO,,CONFIRMED production metadata
+public,gocamping_records,fetched_at,8,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,gocamping_records,updated_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,id,1,bigint,int8,NO,nextval('hotel_operation_metrics_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,version_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,source_file,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,source_row_number,4,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,sido_name,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,sgg_name,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,grade,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,occupancy_rate,8,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,adr,9,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,revpar,10,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,foreign_guest_rate,11,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,available_room_nights,12,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,sold_room_nights,13,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,room_count,14,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_metrics,business_count,15,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,id,1,bigint,int8,NO,nextval('hotel_operation_source_versions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,reference_year,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,source_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,source_file,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,source_sha256,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,hotel_operation_source_versions,imported_at,6,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,legal_documents,id,1,integer,int4,NO,nextval('legal_documents_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,legal_documents,doc_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,legal_documents,content,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,legal_documents,updated_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,listing_checklist_progress,id,1,integer,int4,NO,nextval('listing_checklist_progress_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_checklist_progress,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_checklist_progress,listing_request_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_checklist_progress,item_key,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,listing_checklist_progress,checked_at,5,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,listing_likes,id,1,integer,int4,NO,nextval('listing_likes_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_likes,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_likes,user_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_likes,created_at,4,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,listing_photos,id,1,integer,int4,NO,nextval('listing_photos_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_photos,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_photos,image_key,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,listing_photos,sort_order,4,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,listing_photos,created_at,5,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,listing_photos,is_public,6,boolean,bool,YES,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,id,1,bigint,int8,NO,nextval('listing_request_deletion_archive_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,request_snapshot,3,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,related_snapshot,4,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,deleted_by_admin_id,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,deletion_source,6,character varying,varchar,NO,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,deleted_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,restored_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,listing_request_deletion_archive,restored_by_admin_id,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_request_history,id,1,integer,int4,NO,nextval('listing_request_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_request_history,listing_request_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_request_history,action,3,character varying,varchar,NO,,NO,,CONFIRMED production metadata
+public,listing_request_history,before_data,4,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,listing_request_history,after_data,5,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,listing_request_history,created_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,listing_requests,id,1,integer,int4,NO,nextval('listing_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listing_requests,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_requests,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listing_requests,deal_type,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,listing_requests,desired_price,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,contact_phone,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,listing_requests,routed_agent_id,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,routed_reason,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,status,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,listing_requests,created_at,10,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,listing_requests,admin_note,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,price_krw,12,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,monthly_rent_krw,13,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,deal_mode,14,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,listing_requests,verified_phone,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,area_sqm,16,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,dong,17,character varying,varchar,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,ho,18,character varying,varchar,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,registrant_type,19,character varying,varchar,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,description,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,deposit_krw,21,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,yield_rate,22,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,yield_rent_krw,23,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,display_seq,24,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,updated_at,25,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,price_krw_max,26,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,room_count,27,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,transaction_target,28,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,listing_requests,succession_loan_krw,29,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,key_money_krw,30,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,monthly_revenue_krw,31,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,annual_revenue_krw,32,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,operation_status,33,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,closed_at,34,date,date,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,remodeling_info,35,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,is_urgent,36,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,listing_requests,disclosure_scope,37,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,listing_requests,building_info_overrides,38,jsonb,jsonb,YES,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,listing_requests,matched_permit_number,39,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,short_stay_ratio,40,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,ota_revenue_ratio,41,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,business_rights_info,42,jsonb,jsonb,YES,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,listing_requests,broker_agent_id,43,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,publication_status,44,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,publication_reason,45,text,text,YES,,NO,,CONFIRMED production metadata
+public,listing_requests,publication_verified_at,46,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,listings,id,1,integer,int4,NO,nextval('listings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,listings,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,listings,agent_id,3,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listings,deal_type,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,listings,price,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listings,monthly_rent,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,listings,floor,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,listings,area,8,real,float4,YES,,NO,,CONFIRMED production metadata
+public,listings,status,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,listings,created_at,10,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,listings,updated_at,11,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consult_requests,id,1,integer,int4,NO,nextval('loan_consult_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,loan_consult_requests,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,message,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,contact_phone,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,routed_consultant_id,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,routed_reason,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consult_requests,status,8,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,loan_consult_requests,created_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,id,1,integer,int4,NO,nextval('loan_consultant_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,loan_consultant_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,created_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,updated_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,has_priority_badge,6,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,premium_granted_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,premium_expires_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,loan_consultant_buildings,is_paid,9,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,loan_consultant_service_areas,id,1,integer,int4,NO,nextval('loan_consultant_service_areas_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,loan_consultant_service_areas,loan_consultant_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,loan_consultant_service_areas,region_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consultant_service_areas,created_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consultants,id,1,integer,int4,NO,nextval('loan_consultants_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,loan_consultants,office_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consultants,owner_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consultants,license_number,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consultants,biz_reg_number,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,phone,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,email,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,loan_consultants,status,8,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,loan_consultants,subdomain_slug,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,intro_text,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,password_hash,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,photo_url,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,admin_tag,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,created_at,14,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,loan_consultants,approved_at,15,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,approved_by,16,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,logo_url,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,is_visible,18,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,loan_consultants,consultant_products,19,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,kakao_chat_url,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,priority_score,21,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,loan_consultants,admin_memo,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,service_region,23,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,office_address,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,tax_invoice_email,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,rejection_reason,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,manager_name,27,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,desired_building,28,text,text,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,weekly_email_enabled,29,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,loan_consultants,weekly_email_opted_at,30,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,weekly_email_updated_at,31,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,loan_consultants,weekly_unsubscribe_token,32,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,id,1,bigint,int8,NO,nextval('lodging_approval_attempts_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,approval_batch_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,run_id,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,attempt_number,4,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,mode,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,status,6,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,result,7,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,error,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,started_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,heartbeat_at,10,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_approval_attempts,finished_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,id,1,bigint,int8,NO,nextval('lodging_approval_batches_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_approval_batches,approval_key,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,source_batch_id,3,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,status,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,row_count,5,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,result,6,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,error,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,run_id,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,created_by,9,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,approved_by,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,created_at,11,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_approval_batches,approved_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,started_at,13,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,heartbeat_at,14,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_batches,finished_at,15,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_approval_rows,approval_batch_id,1,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_rows,source_row_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_rows,action,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_rows,payload,4,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,lodging_approval_rows,created_at,5,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_authority_contacts,id,1,integer,int4,NO,nextval('lodging_authority_contacts_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_authority_contacts,region_name_raw,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_authority_contacts,dept,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_authority_contacts,phone,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_authority_contacts,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,lodging_import_staging,token,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,source,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,filename,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,file_ext,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,file_data,5,bytea,bytea,NO,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,preview,6,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,lodging_import_staging,status,7,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_import_staging,uploaded_by,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,created_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_import_staging,started_at,10,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,finished_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,result,12,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,error,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,heartbeat_at,14,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_import_staging,run_id,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,id,1,uuid,uuid,NO,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,phone,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,otp_digest,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,ip_hash,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,expires_at,5,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,attempt_count,6,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,verified_at,7,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,consumed_at,8,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,lodging_operator_phone_challenges,created_at,9,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,id,1,bigint,int8,NO,nextval('lodging_parallel_comparisons_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,promotion_manifest_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,run_id,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,production_fingerprint,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,result,5,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,major_regression_count,6,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_parallel_comparisons,created_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,id,1,bigint,int8,NO,nextval('lodging_promotion_manifests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,manifest_key,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,status,3,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,source_batch_ids,4,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,production_baseline_fingerprint,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,target_payload_sha256,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,row_count,7,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,result,8,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,error,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,run_id,10,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,created_by,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,approved_by,12,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,created_at,13,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,approved_at,14,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,started_at,15,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,heartbeat_at,16,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,finished_at,17,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,parent_manifest_id,18,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_manifests,version_no,19,integer,int4,NO,1,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,id,1,bigint,int8,NO,nextval('lodging_promotion_review_decisions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,source_row_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,base_manifest_id,3,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,resulting_manifest_id,4,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,decision,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,decision_note,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,decided_by,7,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_review_decisions,created_at,8,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,promotion_manifest_id,1,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,source_row_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,action,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,production_match_state,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,production_building_id,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,existing_applied_building_id,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,payload,7,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,lodging_promotion_rows,created_at,8,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_registry,id,1,integer,int4,NO,nextval('lodging_registry_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_registry,biz_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_registry,permit_number,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_registry,road_address,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,jibun_address,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,permit_date,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,biz_status_name,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,biz_status_detail,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,room_count,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,hygiene_type,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,phone,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,road_norm,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,source_updated_at,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,created_at,14,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,lodging_registry,updated_at,15,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,lodging_registry,biz_name_norm,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,jibun_norm,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,applied_building_id,18,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,dismissed_at,19,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,bld_use_nm,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,facility_area,21,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,region_name,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_site_count,23,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_general_site_count,24,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_auto_site_count,25,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_glamping_site_count,26,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_caravan_site_count,27,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_classification,28,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_location_types,29,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_theme_types,30,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_amenities,31,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_toilet_count,32,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_shower_count,33,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_sink_count,34,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_operating_seasons,35,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_animal_policy,36,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_reservation_url,37,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_first_image_url,38,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,camping_image_urls,39,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,gocamping_content_id,40,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,gocamping_detail,41,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,gocamping_detail_fetched_at,42,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,western_rooms,43,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,korean_rooms,44,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,toilet_count,45,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,toilet_type,46,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,breakfast_yn,47,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,house_area,48,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,zone_type,49,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,surroundings,50,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,floors_above,51,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry,floors_below,52,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,permit_number,1,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,master_building_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,biz_status_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,biz_status_detail,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,room_count,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_registry_alert_snapshots,updated_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_source_batches,id,1,bigint,int8,NO,nextval('lodging_source_batches_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_source_batches,batch_key,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,source_key,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,filename,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,file_ext,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,file_sha256,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,reference_date,7,date,date,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,file_data,8,bytea,bytea,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,status,9,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_source_batches,total_rows,10,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_source_batches,parsed_rows,11,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_source_batches,valid_rows,12,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_source_batches,review_rows,13,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,lodging_source_batches,result,14,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,lodging_source_batches,error,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,uploaded_by,16,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,run_id,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,created_at,18,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_source_batches,updated_at,19,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_source_batches,started_at,20,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,heartbeat_at,21,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_batches,finished_at,22,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,id,1,bigint,int8,NO,nextval('lodging_source_rows_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,lodging_source_rows,batch_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,row_number,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,snapshot_key,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,authority_code,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,source_permit_number,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,permit_number,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,biz_name,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,raw_hygiene_type,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,service_category,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,legacy_lodging_type,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,raw_status,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,status_bucket,13,text,text,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,road_address,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,jibun_address,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,raw_record,16,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,row_state,17,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_source_rows,review_reason,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,lodging_source_rows,diff_kind,19,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,lodging_source_rows,created_at,20,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,lodging_source_rows,updated_at,21,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,login_history,id,1,integer,int4,NO,nextval('login_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,login_history,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,login_history,logged_in_at,3,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,login_history,ip_hash,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,login_history,user_agent,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,id,1,integer,int4,NO,nextval('master_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,master_buildings,building_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,master_buildings,road_address,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,master_buildings,jibun_address,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,sgg_text,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,sgg_cd,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,umd_nm,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,jibun,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,units,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,biz_units,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,source,11,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,master_buildings,verified_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lodging_type,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lodging_type_detail,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lat,15,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lng,16,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,slot_capacity,17,integer,int4,YES,3,NO,,CONFIRMED production metadata
+public,master_buildings,use_apr_day,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,tot_pkng_cnt,19,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,grnd_flr_cnt,20,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,ugrnd_flr_cnt,21,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,tot_area,22,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,plat_area,23,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,hhld_cnt,24,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,strct_nm,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,title_backfilled_at,26,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,mgm_bldrgst_pk,27,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,name_pending,28,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,master_buildings,building_status,29,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,master_buildings,completion_expected_date,30,date,date,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,permit_day,31,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,actual_start_day,32,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,arch_area,33,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,bc_rat,34,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,vl_rat,35,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,source_key,36,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,realty_store_name,37,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,realty_checked_at,38,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,heit,39,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,ride_use_elvt_cnt,40,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,emgen_use_elvt_cnt,41,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,main_purps_nm,42,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,jiyuk_nm,43,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,jigu_nm,44,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,guyuk_nm,45,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,last_inspection_agency,46,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,last_inspection_start_day,47,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,last_inspection_submit_day,48,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,detail_fetched_at,49,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,indr_auto_utcnt,50,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,oudr_auto_utcnt,51,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,indr_mech_utcnt,52,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,oudr_mech_utcnt,53,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lodging_subtype,54,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,booking_url,55,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,booking_url_source,56,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,booking_url_updated_at,57,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,booking_url_expires_at,58,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,zip_code,59,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,building_name_source,60,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,master_buildings,building_name_candidate_count,61,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,master_buildings,building_name_pending_base,62,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,kakao_promo_copy_count,63,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,master_buildings,building_use_type,64,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,building_use_detail,65,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lodging_classification_source,66,text,text,YES,,NO,,CONFIRMED production metadata
+public,master_buildings,lodging_classification_confidence,67,text,text,YES,,NO,,CONFIRMED production metadata
+public,member_documents,id,1,integer,int4,NO,nextval('member_documents_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,member_documents,member_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,member_documents,member_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,member_documents,doc_type,4,character varying,varchar,NO,,NO,,CONFIRMED production metadata
+public,member_documents,file_key,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,member_documents,file_type,6,character varying,varchar,NO,,NO,,CONFIRMED production metadata
+public,member_documents,uploaded_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,member_notes,id,1,integer,int4,NO,nextval('member_notes_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,member_notes,member_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,member_notes,member_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,member_notes,memo_date,4,date,date,NO,CURRENT_DATE,NO,,CONFIRMED production metadata
+public,member_notes,content,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,member_notes,author_name,6,character varying,varchar,NO,<literal-redacted>::character varying,NO,,CONFIRMED production metadata
+public,member_notes,created_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,member_notes,updated_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,member_notes,is_deleted,9,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,membership_checks,id,1,bigint,int8,NO,nextval('membership_checks_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,membership_checks,period_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,user_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,request_no,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,request_token,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,building_id,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,membership_checks,auction_id,7,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,membership_checks,title,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,address,9,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_checks,memo,10,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,status,11,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,business_report,12,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,operation_succession,13,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,fee_arrears,14,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,report,15,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_checks,created_at,16,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,membership_checks,updated_at,17,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,membership_history,id,1,bigint,int8,NO,nextval('membership_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,membership_history,payment_id,2,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,membership_history,check_id,3,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,membership_history,actor,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_history,event,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_history,note,6,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_history,created_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,membership_payments,id,1,bigint,int8,NO,nextval('membership_payments_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,membership_payments,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,membership_payments,request_no,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_payments,request_token,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_payments,depositor_name,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,membership_payments,amount,6,integer,int4,NO,29000,NO,,CONFIRMED production metadata
+public,membership_payments,bank,7,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,membership_payments,status,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_payments,created_at,9,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,membership_payments,updated_at,10,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,membership_payments,approved_by,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,membership_payments,admin_note,12,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,membership_periods,id,1,bigint,int8,NO,nextval('membership_periods_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,membership_periods,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,membership_periods,payment_id,3,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,membership_periods,starts_at,4,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,membership_periods,ends_at,5,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,membership_periods,revoked_at,6,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,mileage_missions,id,1,integer,int4,NO,nextval('mileage_missions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,mileage_missions,code,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,mileage_missions,title,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,mileage_missions,points,4,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,mileage_missions,tier,5,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,mileage_missions,active,6,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,mileage_submissions,id,1,integer,int4,NO,nextval('mileage_submissions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,mileage_submissions,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,mileage_submissions,mission_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,mileage_submissions,master_building_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,mileage_submissions,photo_urls,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,mileage_submissions,status,6,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,mileage_submissions,points_awarded,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,mileage_submissions,submitted_at,8,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,mileage_submissions,reviewed_at,9,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,mileage_submissions,reviewed_by,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,id,1,integer,int4,NO,nextval('new_listing_alert_logs_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,listing_request_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,notification_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,email_state,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,email_attempted_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,email_sent_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,email_error,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,new_listing_alert_logs,created_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,notices,id,1,integer,int4,NO,nextval('notices_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,notices,title,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,notices,body,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,notices,is_pinned,4,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,notices,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,notices,updated_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,notices,attachment_key,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,notices,category,8,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,notices,external_url,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,notices,summary,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,notifications,id,1,integer,int4,NO,nextval('notifications_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,notifications,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,notifications,title,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,notifications,body,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,notifications,building_name,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,notifications,address,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,notifications,transaction_id,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,notifications,is_read,8,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,notifications,created_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,notifications,listing_request_id,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,notifications,master_building_id,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_buildings,id,1,integer,int4,NO,nextval('operator_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_buildings,operator_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_buildings,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_buildings,note,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_buildings,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_buildings,updated_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_buildings,has_priority_badge,7,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,operator_buildings,premium_granted_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,operator_buildings,premium_expires_at,9,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,operator_buildings,is_paid,10,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,operator_consult_requests,id,1,integer,int4,NO,nextval('operator_consult_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_consult_requests,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,category,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,message,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,contact_phone,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,routed_operator_id,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,routed_reason,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_consult_requests,status,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,operator_consult_requests,created_at,10,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_lodging,id,1,integer,int4,NO,nextval('operator_lodging_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_lodging,user_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,lodging_reg_id,3,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,master_building_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,lodging_op_type,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_lodging,biz_name,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_lodging,rep_name,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,phone,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,biz_no,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,permit_no,10,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_lodging,booking_url,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,airbnb_url,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,airbnb_urls,13,jsonb,jsonb,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,gocamping_url,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,intro_text,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,photo_url,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,status,17,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,operator_lodging,approved_at,18,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,approved_by,19,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,reject_reason,20,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,created_at,21,timestamp with time zone,timestamptz,YES,now(),NO,,CONFIRMED production metadata
+public,operator_lodging,updated_at,22,timestamp with time zone,timestamptz,YES,now(),NO,,CONFIRMED production metadata
+public,operator_lodging,doc_biz_reg_url,23,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,doc_biz_license_url,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,facility_phone,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,homepage_url,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,operator_lodging,amenities,27,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,operator_lodging,badges,28,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,operator_lodging_photos,id,1,integer,int4,NO,nextval('operator_lodging_photos_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_lodging_photos,operator_lodging_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_lodging_photos,object_key,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_lodging_photos,sort_order,4,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,operator_lodging_photos,is_primary,5,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,operator_lodging_photos,created_at,6,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,operator_region_buildings,id,1,integer,int4,NO,nextval('operator_region_buildings_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_region_buildings,operator_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_region_buildings,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_region_buildings,added_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_service_areas,id,1,integer,int4,NO,nextval('operator_service_areas_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_service_areas,operator_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_service_areas,region_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_service_areas,created_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_service_regions,id,1,integer,int4,NO,nextval('operator_service_regions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operator_service_regions,operator_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,operator_service_regions,sgg_text,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,operator_service_regions,granted_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operator_service_regions,expires_at,5,timestamp without time zone,timestamp,NO,,NO,,CONFIRMED production metadata
+public,operator_service_regions,is_paid,6,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,operators,id,1,integer,int4,NO,nextval('operators_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,operators,company_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,operators,owner_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,operators,category,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,operators,biz_reg_number,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,phone,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,email,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,operators,website_url,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,status,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,operators,created_at,10,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,operators,approved_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,operators,approved_by,12,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,operators,password_hash,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,photo_url,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,intro_text,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,subdomain_slug,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,admin_tag,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,logo_url,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,is_visible,19,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,operators,priority_score,20,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,operators,admin_memo,21,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,office_address,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,tax_invoice_email,23,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,rejection_reason,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,manager_name,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,desired_building,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,operators,weekly_email_enabled,27,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,operators,weekly_email_opted_at,28,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,operators,weekly_email_updated_at,29,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,operators,weekly_unsubscribe_token,30,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,page_views,id,1,integer,int4,NO,nextval('page_views_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,page_views,path,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,page_views,ip_hash,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,page_views,user_agent,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,page_views,viewed_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,page_views,listing_request_id,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,partner_favorites,id,1,bigint,int8,NO,nextval('partner_favorites_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,partner_favorites,agent_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,partner_favorites,operator_id,3,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,partner_favorites,loan_consultant_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,partner_favorites,master_building_id,5,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,partner_favorites,created_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,partner_favorites,updated_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,password_reset_tokens,id,1,integer,int4,NO,nextval('password_reset_tokens_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,password_reset_tokens,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,password_reset_tokens,token,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,password_reset_tokens,expires_at,4,timestamp without time zone,timestamp,NO,,NO,,CONFIRMED production metadata
+public,password_reset_tokens,used_at,5,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,password_reset_tokens,created_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,password_reset_tokens,account_type,7,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,id,1,integer,int4,NO,nextval('permit_change_alert_deliveries_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,permit_change_alert_log_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,user_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,notification_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,email_state,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,email_attempted_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,email_sent_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,email_error,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,permit_change_alert_deliveries,created_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,id,1,integer,int4,NO,nextval('permit_change_alert_logs_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,change_date,3,date,date,NO,,NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,change_summary,4,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,delivery_queued_at,5,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,created_at,6,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,permit_change_alert_logs,updated_at,7,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,point_transactions,id,1,integer,int4,NO,nextval('point_transactions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,point_transactions,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,point_transactions,amount,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,point_transactions,reason,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,point_transactions,admin_id,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,point_transactions,created_at,6,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,policy_document_revisions,id,1,bigint,int8,NO,nextval('policy_document_revisions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,policy_document_revisions,policy_document_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,revision_number,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,action,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,title,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,category,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,status,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,version,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,body_markdown,9,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,effective_date,10,date,date,YES,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,change_note,11,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,policy_document_revisions,actor_id,12,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,policy_document_revisions,created_at,13,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,policy_documents,id,1,bigint,int8,NO,nextval('policy_documents_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,policy_documents,document_code,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_documents,title,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_documents,category,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_documents,status,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,policy_documents,version,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_documents,body_markdown,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,policy_documents,effective_date,8,date,date,YES,,NO,,CONFIRMED production metadata
+public,policy_documents,created_by,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,policy_documents,updated_by,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,policy_documents,published_by,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,policy_documents,created_at,12,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,policy_documents,updated_at,13,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,policy_documents,published_at,14,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,premium_waitlist,id,1,integer,int4,NO,nextval('premium_waitlist_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,premium_waitlist,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,premium_waitlist,master_building_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,premium_waitlist,created_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,premium_waitlist,notified_at,5,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,premium_waitlist,confirmation_sent_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,id,1,bigint,int8,NO,nextval('presale_applications_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,presale_applications,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,status,3,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_applications,project_id,4,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,title,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,project_status,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,project_type,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,summary,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,unit_count,9,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,remaining_units,10,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,price_min,11,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,price_max,12,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,sale_start_date,13,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,sale_end_date,14,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,move_in_date,15,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,company_name,16,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,applicant_role,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,contact_name,18,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,contact_phone,19,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,contact_email,20,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,homepage_url,21,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,evidence_object_key,22,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,evidence_filename,23,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,banner_object_key,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,banner_filename,25,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,consent_version,26,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,consented_at,27,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,presale_applications,receipt_notification_status,28,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_applications,decision_notification_status,29,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_applications,notification_error,30,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,reject_reason,31,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,reviewed_at,32,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,reviewed_by,33,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,created_at,34,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_applications,updated_at,35,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_applications,applyhome_status,36,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_applications,applyhome_notice_id,37,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,applyhome_notice_name,38,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,applyhome_checked_at,39,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_applications,applyhome_error_code,40,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_audit_log,id,1,bigint,int8,NO,nextval('presale_audit_log_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,presale_audit_log,project_id,2,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_audit_log,promotion_id,3,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_audit_log,admin_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_audit_log,action,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_audit_log,detail,6,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,presale_audit_log,created_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_audit_log,application_id,8,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,id,1,bigint,int8,NO,nextval('presale_projects_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,presale_projects,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,presale_projects,status,3,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_projects,publication_start_at,4,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,publication_end_at,5,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,title,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_projects,summary,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,unit_count,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,price_min,9,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,price_max,10,bigint,int8,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,sale_start_date,11,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,sale_end_date,12,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,contact_name,13,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,contact_phone,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,company_name,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,editorial_body,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,created_at,17,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_projects,updated_at,18,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_projects,created_by,19,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,updated_by,20,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,withdrawn_at,21,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,withdrawn_by,22,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,project_status,23,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_projects,project_type,24,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_projects,remaining_units,25,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,move_in_date,26,date,date,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,homepage_url,27,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,applyhome_status,28,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_projects,applyhome_notice_id,29,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,applyhome_notice_name,30,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,applyhome_checked_at,31,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_projects,applyhome_error_code,32,text,text,YES,,NO,,CONFIRMED production metadata
+public,presale_promotions,id,1,bigint,int8,NO,nextval('presale_promotions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,presale_promotions,presale_project_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,status,3,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,presale_promotions,starts_at,4,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,ends_at,5,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,slogan,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,cta_url,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,banner_object_key,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,presale_promotions,priority,9,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,presale_promotions,approved_at,10,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,presale_promotions,approved_by,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_promotions,created_at,12,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_promotions,updated_at,13,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,presale_promotions,created_by,14,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,presale_promotions,updated_by,15,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,region_badge_waitlist,id,1,integer,int4,NO,nextval('region_badge_waitlist_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,region_badge_waitlist,agent_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,region_badge_waitlist,sgg_text,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,region_badge_waitlist,created_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,region_badge_waitlist,confirmation_sent_at,5,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,region_badge_waitlist,notified_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,revenue_records,id,1,integer,int4,NO,nextval('revenue_records_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,revenue_records,partner_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,revenue_records,partner_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,revenue_records,product_type,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,revenue_records,start_date,5,date,date,NO,,NO,,CONFIRMED production metadata
+public,revenue_records,end_date,6,date,date,YES,,NO,,CONFIRMED production metadata
+public,revenue_records,amount,7,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,revenue_records,payment_status,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,revenue_records,memo,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,revenue_records,created_at,10,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,revenue_records,created_by,11,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,id,1,bigint,int8,NO,nextval('rone_rental_benchmarks_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,period,2,date,date,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,region_code,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,region_name,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,region_level,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,property_type,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,property_type_name,7,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,income_yield,8,numeric,numeric,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,vacancy_rate,9,numeric,numeric,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_stat_income_id,10,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_stat_vacancy_id,11,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_item_income_id,12,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_item_vacancy_id,13,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_checked_at,14,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,source_hash,15,text,text,NO,,NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,collected_at,16,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,rone_rental_benchmarks,vacancy_period,17,date,date,NO,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,id,1,integer,int4,NO,nextval('room_expiry_alerts_sent_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,room_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,threshold,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,sent_at,4,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,notification_id,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,in_app_sent_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,email_state,7,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,email_attempted_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,email_sent_at,9,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,email_error,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,room_expiry_alerts_sent,email_idempotency_key,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,sgg_coords,id,1,integer,int4,NO,nextval('sgg_coords_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,sgg_coords,sido_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,sgg_coords,sgg_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,sgg_coords,lat,4,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,sgg_coords,lng,5,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,sgg_coords,building_count,6,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,sgg_coords,refreshed_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,short_links,code,1,character varying,varchar,NO,,NO,,CONFIRMED production metadata
+public,short_links,target_path,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,short_links,expires_at,3,timestamp without time zone,timestamp,NO,,NO,,CONFIRMED production metadata
+public,short_links,created_at,4,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,site_popups,id,1,integer,int4,NO,nextval('site_popups_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,site_popups,title,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,site_popups,start_at,3,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,site_popups,end_at,4,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,site_popups,show_desktop,5,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,site_popups,show_mobile,6,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,site_popups,scope,7,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,site_popups,audience,8,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,site_popups,display_type,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,site_popups,image_ref,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,site_popups,link_url,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,site_popups,open_new_tab,12,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,site_popups,width_px,13,integer,int4,YES,400,NO,,CONFIRMED production metadata
+public,site_popups,close_mode,14,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,site_popups,is_active,15,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,site_popups,created_at,16,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,site_popups,updated_at,17,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,slots,id,1,integer,int4,NO,nextval('slots_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,slots,master_building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,slots,agent_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,slots,status,4,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,slots,queue_position,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,slots,monthly_fee,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,slots,started_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,slots,expires_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,slots,created_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,metric_date,1,date,date,NO,CURRENT_DATE,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,evaluations,2,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,base_calls,3,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,extra_calls,4,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,accepted_from_base,5,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,accepted_from_extra,6,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,rejected,7,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,streetview_evaluation_metrics,updated_at,8,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,subway_stations,id,1,integer,int4,NO,nextval('subway_stations_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,subway_stations,station_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,subway_stations,line_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,subway_stations,lat,4,double precision,float8,NO,,NO,,CONFIRMED production metadata
+public,subway_stations,lng,5,double precision,float8,NO,,NO,,CONFIRMED production metadata
+public,survey_request_history,id,1,bigint,int8,NO,nextval('survey_request_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,survey_request_history,request_id,2,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,survey_request_history,from_status,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,survey_request_history,to_status,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_request_history,note,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,survey_request_history,changed_by,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_request_history,created_at,7,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,survey_requests,id,1,bigint,int8,NO,nextval('survey_requests_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,survey_requests,request_no,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,auction_item_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,building_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,survey_requests,survey_type,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,base_fee,6,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,visit_fee,7,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,total_fee,8,bigint,int8,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,applicant_name,9,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,phone,10,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,email,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,survey_requests,memo,12,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,survey_requests,depositor_name,13,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,status,14,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,survey_requests,status_updated_at,15,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,survey_requests,created_at,16,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,survey_requests,agreed_terms_at,17,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,agreed_refund_at,18,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,agreed_privacy_at,19,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,payment_deadline,20,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,settings_snapshot,21,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,terms_snapshot,22,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,auction_title,23,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,auction_address,24,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_requests,admin_memo,25,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,survey_requests,request_token_hash,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,survey_requests,submission_hash,27,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_settings_history,id,1,bigint,int8,NO,nextval('survey_settings_history_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,survey_settings_history,changed_by,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,survey_settings_history,created_at,3,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,survey_settings_history,before,4,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,survey_settings_history,after,5,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,sync_failures,id,1,integer,int4,NO,nextval('sync_failures_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,sync_failures,sgg_cd,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,sync_failures,deal_ymd,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,sync_failures,reason,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,sync_failures,attempts,5,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,sync_failures,last_attempt_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,sync_failures,created_at,7,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,sync_log,id,1,integer,int4,NO,nextval('sync_log_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,sync_log,started_at,2,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,sync_log,finished_at,3,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,sync_log,regions_processed,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,sync_log,rows_inserted,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,sync_log,rows_matched_master,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,sync_log,rows_matched_buildinghub,7,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,sync_log,rows_unmatched,8,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,sync_log,status,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,sync_log,note,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,title_info_backfill_failures,building_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,title_info_backfill_failures,attempts,2,integer,int4,NO,1,NO,,CONFIRMED production metadata
+public,title_info_backfill_failures,last_error,3,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,title_info_backfill_failures,last_failed_at,4,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,title_info_backfill_failures,retry_after,5,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,building_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,sido_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,sgg_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,legal_dong_name,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,admin_dong_name,5,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,building_lat,6,double precision,float8,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,building_lng,7,double precision,float8,NO,,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,verification_source,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,tourism_building_dong_matches,verified_at,9,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,token,1,text,text,NO,md5((((random())::text || (clock_timestamp())::text) || (txid_current())::text)),NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,admin_user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,manifest,3,jsonb,jsonb,NO,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,manifest_hash,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,expires_at,5,timestamp with time zone,timestamptz,NO,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,state,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,attempt_count,7,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,error_message,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,created_at,9,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,tourism_datalab_stages,applied_at,10,timestamp with time zone,timestamptz,YES,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,id,1,integer,int4,NO,nextval('tourism_dong_coords_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,tourism_dong_coords,sido_name,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,sgg_name,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,dong_name,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,lat,5,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,lng,6,double precision,float8,YES,,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,building_count,7,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,tourism_dong_coords,refreshed_at,8,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,tourism_stats,id,1,bigint,int8,NO,nextval('tourism_stats_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,tourism_stats,stat_type,2,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_stats,sido_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,tourism_stats,sgg_name,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,tourism_stats,ref_yearmonth,5,text,text,YES,,NO,,CONFIRMED production metadata
+public,tourism_stats,metric_name,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_stats,metric_value,7,numeric,numeric,YES,,NO,,CONFIRMED production metadata
+public,tourism_stats,unit,8,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,tourism_stats,source,9,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,tourism_stats,source_file,10,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_stats,source_period,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,tourism_stats,dimensions,12,jsonb,jsonb,NO,<literal-redacted>::jsonb,NO,,CONFIRMED production metadata
+public,tourism_stats,row_hash,13,text,text,NO,,NO,,CONFIRMED production metadata
+public,tourism_stats,collected_at,14,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,tourism_stats,master_building_id,15,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,transactions,id,1,integer,int4,NO,nextval('transactions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,transactions,building_name,2,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,address,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,transactions,area,4,real,float4,YES,,NO,,CONFIRMED production metadata
+public,transactions,price,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,transactions,deal_date,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,deal_type,7,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,sgg_cd,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,umd_nm,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,jibun,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,match_source,11,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,raw_key,12,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,created_at,13,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,transactions,si_do,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,sgg_nm,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,floor,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,lodging_type,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,lodging_type_detail,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,transaction_scope,19,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,transactions,source_api,20,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,transactions,source_building_type,21,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,total_floor_area,22,real,float4,YES,,NO,,CONFIRMED production metadata
+public,transactions,land_area,23,real,float4,YES,,NO,,CONFIRMED production metadata
+public,transactions,match_confidence,24,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,transactions,master_building_id,25,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,transactions,source_building_name,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,transactions,updated_at,27,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,id,1,integer,int4,NO,nextval('urgent_listing_alert_logs_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,listing_request_id,3,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,notification_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,email_state,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,email_attempted_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,email_sent_at,7,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,email_error,8,text,text,YES,,NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,created_at,9,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,urgent_listing_alert_logs,tier,10,text,text,YES,,NO,,CONFIRMED production metadata
+public,user_alert_subscriptions,id,1,integer,int4,NO,nextval('user_alert_subscriptions_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,user_alert_subscriptions,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,user_alert_subscriptions,building_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,user_alert_subscriptions,address,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,user_alert_subscriptions,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,user_favorites,id,1,integer,int4,NO,nextval('user_favorites_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,user_favorites,user_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,user_favorites,building_name,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,user_favorites,address,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,user_favorites,created_at,5,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,user_favorites,master_building_id,6,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,user_favorites,urgent_alert_enabled,7,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,user_favorites,new_listing_alert_enabled,8,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,user_favorites,permit_change_alert_enabled,9,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,user_favorites,favorite_increase_alert_enabled,10,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,user_favorites,nearby_change_alert_enabled,11,boolean,bool,NO,false,NO,,CONFIRMED production metadata
+public,user_favorites,deal_email_alert_enabled,12,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,user_recent_analysis,user_id,1,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,user_recent_analysis,building_id,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,user_recent_analysis,last_mode,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,user_recent_analysis,analyzed_at,4,timestamp with time zone,timestamptz,NO,now(),NO,,CONFIRMED production metadata
+public,users,id,1,integer,int4,NO,nextval('users_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,users,email,2,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,password_hash,3,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,name,4,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,provider,5,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,users,kakao_id,6,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,created_at,7,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,users,last_login_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,users,status,9,text,text,YES,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,users,terms_agreed_at,10,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,users,privacy_agreed_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,users,marketing_agreed_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,users,points,13,integer,int4,YES,0,NO,,CONFIRMED production metadata
+public,users,admin_tag,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,email_alert_enabled,15,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,users,admin_memo,16,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,business_reg_number,17,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,tax_invoice_email,18,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,rejection_reason,19,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,weekly_email_enabled,20,boolean,bool,YES,true,NO,,CONFIRMED production metadata
+public,users,unsubscribe_token,21,uuid,uuid,YES,,NO,,CONFIRMED production metadata
+public,users,phone,22,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,phone_verified,23,boolean,bool,YES,false,NO,,CONFIRMED production metadata
+public,users,phone_code,24,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,phone_code_expires_at,25,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,users,phone_code_target,26,text,text,YES,,NO,,CONFIRMED production metadata
+public,users,user_type,27,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,users,updated_weekly_email_at,28,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,id,1,bigint,int8,NO,nextval('weekly_email_deliveries_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,user_id,2,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,agent_id,3,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,operator_id,4,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,loan_consultant_id,5,integer,int4,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,recipient_type,6,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,week_start,7,date,date,NO,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,cohort,8,text,text,NO,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,status,9,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,attempts,10,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,claimed_at,11,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,sent_at,12,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,failed_at,13,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,error_message,14,text,text,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,subject,15,text,text,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,tracking_token,16,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,claim_token,17,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,open_count,18,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,first_opened_at,19,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,last_opened_at,20,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,click_count,21,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,first_clicked_at,22,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,last_clicked_at,23,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,created_at,24,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,weekly_email_deliveries,updated_at,25,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,weekly_email_reports,id,1,bigint,int8,NO,nextval('weekly_email_reports_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,weekly_email_reports,experiment_start,2,date,date,NO,,NO,,CONFIRMED production metadata
+public,weekly_email_reports,report_key,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,weekly_email_reports,status,4,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,weekly_email_reports,attempts,5,integer,int4,NO,0,NO,,CONFIRMED production metadata
+public,weekly_email_reports,claimed_at,6,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_reports,claim_token,7,uuid,uuid,NO,gen_random_uuid(),NO,,CONFIRMED production metadata
+public,weekly_email_reports,sent_at,8,timestamp without time zone,timestamp,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_reports,error_message,9,text,text,YES,,NO,,CONFIRMED production metadata
+public,weekly_email_reports,created_at,10,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,weekly_email_reports,updated_at,11,timestamp without time zone,timestamp,NO,now(),NO,,CONFIRMED production metadata
+public,weekly_feature_tips,id,1,integer,int4,NO,nextval('weekly_feature_tips_id_seq'::regclass),NO,,CONFIRMED production metadata
+public,weekly_feature_tips,episode,2,integer,int4,NO,,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,title,3,text,text,NO,,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,body,4,text,text,NO,,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,cta_label,5,text,text,NO,<literal-redacted>::text,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,cta_url,6,text,text,NO,,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,is_active,7,boolean,bool,NO,true,NO,,CONFIRMED production metadata
+public,weekly_feature_tips,created_at,8,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata
+public,weekly_feature_tips,updated_at,9,timestamp without time zone,timestamp,YES,now(),NO,,CONFIRMED production metadata

@@ -1,0 +1,504 @@
+﻿name,type,table_name,referenced_table,definition
+account_business_memberships_business_table_check,c,account_business_memberships,-,"CHECK ((business_table = ANY (ARRAY['agents'::text, 'operators'::text, 'loan_consultants'::text, 'operator_lodging'::text])))"
+account_business_memberships_pkey,p,account_business_memberships,-,PRIMARY KEY (id)
+account_business_memberships_role_check,c,account_business_memberships,-,"CHECK ((role = ANY (ARRAY['agent'::text, 'operator'::text, 'loan_consultant'::text, 'lodging_operator'::text])))"
+account_business_memberships_user_id_fkey,f,account_business_memberships,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+account_business_memberships_user_id_role_business_table_bu_key,u,account_business_memberships,-,"UNIQUE (user_id, role, business_table, business_id)"
+account_role_memberships_pkey,p,account_role_memberships,-,PRIMARY KEY (id)
+account_role_memberships_role_check,c,account_role_memberships,-,"CHECK ((role = ANY (ARRAY['general'::text, 'agent'::text, 'operator'::text, 'loan_consultant'::text, 'lodging_operator'::text])))"
+account_role_memberships_user_id_fkey,f,account_role_memberships,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+account_role_memberships_user_id_role_legacy_account_id_key,u,account_role_memberships,-,"UNIQUE (user_id, role, legacy_account_id)"
+admin_edit_log_pkey,p,admin_edit_log,-,PRIMARY KEY (id)
+admin_event_subscriptions_admin_user_id_fkey,f,admin_event_subscriptions,admin_users,FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+admin_event_subscriptions_event_type_check,c,admin_event_subscriptions,-,"CHECK ((event_type = ANY (ARRAY['new_signup'::text, 'direct_listing'::text, 'broker_listing_request'::text, 'buy_request'::text, 'partner_agent'::text, 'partner_operator'::text, 'partner_loan_consultant'::text, 'partner_lodging_operator'::text, 'ota_booking_link_request'::text, 'survey_request'::text])))"
+admin_event_subscriptions_pkey,p,admin_event_subscriptions,-,"PRIMARY KEY (admin_user_id, event_type)"
+admin_notification_deliveries_channel_check,c,admin_notification_deliveries,-,"CHECK ((channel = ANY (ARRAY['immediate'::text, 'daily_digest'::text])))"
+admin_notification_deliveries_channel_idempotency_key_key,u,admin_notification_deliveries,-,"UNIQUE (channel, idempotency_key)"
+admin_notification_deliveries_pkey,p,admin_notification_deliveries,-,PRIMARY KEY (id)
+admin_notification_deliveries_status_check,c,admin_notification_deliveries,-,"CHECK ((status = ANY (ARRAY['pending'::text, 'attempting'::text, 'sent'::text, 'failed'::text])))"
+admin_notification_email_attempt_history_email_attempt_id_fkey,f,admin_notification_email_attempt_history,admin_notification_email_attempts,FOREIGN KEY (email_attempt_id) REFERENCES admin_notification_email_attempts(id) ON DELETE CASCADE
+admin_notification_email_attempt_history_pkey,p,admin_notification_email_attempt_history,-,PRIMARY KEY (id)
+admin_notification_email_attempt_history_status_check,c,admin_notification_email_attempt_history,-,"CHECK ((status = ANY (ARRAY['sent'::text, 'failed'::text])))"
+admin_notification_email_attempts_idempotency_key_key,u,admin_notification_email_attempts,-,UNIQUE (idempotency_key)
+admin_notification_email_attempts_notification_id_fkey,f,admin_notification_email_attempts,admin_notifications,FOREIGN KEY (notification_id) REFERENCES admin_notifications(id) ON DELETE CASCADE
+admin_notification_email_attempts_notification_id_key,u,admin_notification_email_attempts,-,UNIQUE (notification_id)
+admin_notification_email_attempts_pkey,p,admin_notification_email_attempts,-,PRIMARY KEY (id)
+admin_notification_email_attempts_status_check,c,admin_notification_email_attempts,-,"CHECK ((status = ANY (ARRAY['pending'::text, 'sending'::text, 'sent'::text, 'failed'::text])))"
+admin_notifications_admin_user_id_event_type_source_table_s_key,u,admin_notifications,-,"UNIQUE (admin_user_id, event_type, source_table, source_id)"
+admin_notifications_admin_user_id_fkey,f,admin_notifications,admin_users,FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+admin_notifications_pkey,p,admin_notifications,-,PRIMARY KEY (id)
+admin_users_email_unique,u,admin_users,-,UNIQUE (email)
+admin_users_pkey,p,admin_users,-,PRIMARY KEY (id)
+agency_links_link_url_key,u,agency_links,-,UNIQUE (link_url)
+agency_links_pkey,p,agency_links,-,PRIMARY KEY (id)
+agent_buildings_agent_building_unique,u,agent_buildings,-,"UNIQUE (agent_id, master_building_id)"
+agent_buildings_agent_id_fkey,f,agent_buildings,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+agent_buildings_master_building_id_fkey,f,agent_buildings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+agent_buildings_pkey,p,agent_buildings,-,PRIMARY KEY (id)
+agent_region_buildings_agent_id_fkey,f,agent_region_buildings,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+agent_region_buildings_master_building_id_fkey,f,agent_region_buildings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+agent_region_buildings_pkey,p,agent_region_buildings,-,PRIMARY KEY (id)
+agent_region_buildings_unique,u,agent_region_buildings,-,"UNIQUE (agent_id, master_building_id)"
+agent_service_regions_agent_id_fkey,f,agent_service_regions,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+agent_service_regions_pkey,p,agent_service_regions,-,PRIMARY KEY (id)
+agent_service_regions_unique,u,agent_service_regions,-,"UNIQUE (agent_id, sgg_text)"
+agents_approved_by_fkey,f,agents,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id)
+agents_pkey,p,agents,-,PRIMARY KEY (id)
+agents_reg_number_unique,u,agents,-,UNIQUE (reg_number)
+agents_subdomain_slug_unique,u,agents,-,UNIQUE (subdomain_slug)
+analysis_assets_cache_pkey,p,analysis_assets_cache,-,"PRIMARY KEY (cache_kind, cache_key)"
+analysis_source_versions_pkey,p,analysis_source_versions,-,PRIMARY KEY (source_name)
+annual_tourism_roster_building_evidence_entry_id_fkey,f,annual_tourism_roster_building_evidence,annual_tourism_roster_entries,FOREIGN KEY (entry_id) REFERENCES annual_tourism_roster_entries(id) ON DELETE CASCADE
+annual_tourism_roster_building_evidence_master_building_id_fkey,f,annual_tourism_roster_building_evidence,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+annual_tourism_roster_building_evidence_match_status_check,c,annual_tourism_roster_building_evidence,-,"CHECK ((match_status = ANY (ARRAY['matched'::text, 'unmatched'::text, 'ambiguous'::text, 'conflict'::text])))"
+annual_tourism_roster_building_evidence_pkey,p,annual_tourism_roster_building_evidence,-,PRIMARY KEY (entry_id)
+annual_tourism_roster_entries_pkey,p,annual_tourism_roster_entries,-,PRIMARY KEY (id)
+annual_tourism_roster_entries_room_count_check,c,annual_tourism_roster_entries,-,CHECK ((room_count >= 0))
+annual_tourism_roster_entries_version_id_fkey,f,annual_tourism_roster_entries,annual_tourism_roster_versions,FOREIGN KEY (version_id) REFERENCES annual_tourism_roster_versions(id) ON DELETE CASCADE
+annual_tourism_roster_entries_version_id_source_row_number_key,u,annual_tourism_roster_entries,-,"UNIQUE (version_id, source_row_number)"
+annual_tourism_roster_stages_pkey,p,annual_tourism_roster_stages,-,PRIMARY KEY (token)
+annual_tourism_roster_stages_state_check,c,annual_tourism_roster_stages,-,"CHECK ((state = ANY (ARRAY['previewed'::text, 'applying'::text, 'applied'::text])))"
+annual_tourism_roster_versions_pkey,p,annual_tourism_roster_versions,-,PRIMARY KEY (id)
+annual_tourism_roster_versions_reference_year_check,c,annual_tourism_roster_versions,-,CHECK (((reference_year >= 2000) AND (reference_year <= 2100)))
+annual_tourism_roster_versions_reference_year_source_sha256_key,u,annual_tourism_roster_versions,-,"UNIQUE (reference_year, source_sha256)"
+annual_tourism_roster_versions_status_check,c,annual_tourism_roster_versions,-,"CHECK ((status = ANY (ARRAY['approved'::text, 'superseded'::text])))"
+app_meta_pkey,p,app_meta,-,PRIMARY KEY (key)
+applications_building_id_fkey,f,applications,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id)
+applications_linked_agent_id_fkey,f,applications,agents,FOREIGN KEY (linked_agent_id) REFERENCES agents(id)
+applications_linked_loan_consultant_id_fkey,f,applications,loan_consultants,FOREIGN KEY (linked_loan_consultant_id) REFERENCES loan_consultants(id)
+applications_linked_op_lodging_fk,f,applications,operator_lodging,FOREIGN KEY (linked_op_lodging_id) REFERENCES operator_lodging(id)
+applications_linked_operator_id_fkey,f,applications,operators,FOREIGN KEY (linked_operator_id) REFERENCES operators(id)
+applications_pkey,p,applications,-,PRIMARY KEY (id)
+applications_preferred_building_id_fkey,f,applications,master_buildings,FOREIGN KEY (preferred_building_id) REFERENCES master_buildings(id)
+applications_reviewed_by_fkey,f,applications,admin_users,FOREIGN KEY (reviewed_by) REFERENCES admin_users(id)
+auction_items_check_business_report_check,c,auction_items,-,"CHECK ((check_business_report = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+auction_items_check_fee_arrears_check,c,auction_items,-,"CHECK ((check_fee_arrears = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+auction_items_check_operation_succession_check,c,auction_items,-,"CHECK ((check_operation_succession = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+auction_items_master_building_id_fkey,f,auction_items,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+auction_items_pkey,p,auction_items,-,PRIMARY KEY (id)
+auction_items_source_source_item_id_pbct_cdtn_no_key,u,auction_items,-,"UNIQUE (source, source_item_id, pbct_cdtn_no)"
+auction_photos_auction_item_id_fkey,f,auction_photos,auction_items,FOREIGN KEY (auction_item_id) REFERENCES auction_items(id) ON DELETE CASCADE
+auction_photos_auction_item_id_url_key,u,auction_photos,-,"UNIQUE (auction_item_id, url)"
+auction_photos_pkey,p,auction_photos,-,PRIMARY KEY (id)
+auction_rounds_auction_item_id_fkey,f,auction_rounds,auction_items,FOREIGN KEY (auction_item_id) REFERENCES auction_items(id) ON DELETE CASCADE
+auction_rounds_pkey,p,auction_rounds,-,PRIMARY KEY (id)
+auction_watches_master_building_id_fkey,f,auction_watches,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+auction_watches_pkey,p,auction_watches,-,"PRIMARY KEY (user_id, master_building_id)"
+auction_watches_user_id_fkey,f,auction_watches,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+booking_url_requests_master_building_id_fkey,f,booking_url_requests,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+booking_url_requests_operator_id_fkey,f,booking_url_requests,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+booking_url_requests_pkey,p,booking_url_requests,-,PRIMARY KEY (id)
+booking_url_requests_reviewed_by_fkey,f,booking_url_requests,admin_users,FOREIGN KEY (reviewed_by) REFERENCES admin_users(id)
+broker_registry_pkey,p,broker_registry,-,PRIMARY KEY (id)
+broker_registry_reg_number_key,u,broker_registry,-,UNIQUE (reg_number)
+broker_registry_members_pkey,p,broker_registry_members,-,PRIMARY KEY (id)
+broker_registry_members_source_row_key_key,u,broker_registry_members,-,UNIQUE (source_row_key)
+bug_reports_pkey,p,bug_reports,-,PRIMARY KEY (id)
+bug_reports_user_id_fkey,f,bug_reports,users,FOREIGN KEY (user_id) REFERENCES users(id)
+building_photo_fetches_building_id_fkey,f,building_photo_fetches,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+building_photo_fetches_pkey,p,building_photo_fetches,-,"PRIMARY KEY (building_id, source)"
+building_photos_building_id_fkey,f,building_photos,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+building_photos_listing_photo_id_fkey,f,building_photos,listing_photos,FOREIGN KEY (listing_photo_id) REFERENCES listing_photos(id) ON DELETE CASCADE
+building_photos_listing_request_id_fkey,f,building_photos,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+building_photos_pkey,p,building_photos,-,PRIMARY KEY (id)
+building_photos_uploaded_by_agent_id_fkey,f,building_photos,agents,FOREIGN KEY (uploaded_by_agent_id) REFERENCES agents(id)
+building_requests_pkey,p,building_requests,-,PRIMARY KEY (id)
+building_stores_master_building_id_fkey,f,building_stores,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+building_stores_pkey,p,building_stores,-,PRIMARY KEY (id)
+building_unit_areas_master_building_id_fkey,f,building_unit_areas,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+building_unit_areas_pkey,p,building_unit_areas,-,PRIMARY KEY (id)
+business_building_verifications_master_building_id_fkey,f,business_building_verifications,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+business_building_verifications_pkey,p,business_building_verifications,-,PRIMARY KEY (id)
+business_building_verifications_user_id_fkey,f,business_building_verifications,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+business_building_verifications_user_id_master_building_id_key,u,business_building_verifications,-,"UNIQUE (user_id, master_building_id)"
+business_room_inventory_channel_check,c,business_room_inventory,-,"CHECK ((channel = ANY (ARRAY['OTA전용'::text, '장박가능'::text])))"
+business_room_inventory_listing_request_id_fkey,f,business_room_inventory,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+business_room_inventory_listing_request_id_room_label_key,u,business_room_inventory,-,"UNIQUE (listing_request_id, room_label)"
+business_room_inventory_pkey,p,business_room_inventory,-,PRIMARY KEY (id)
+business_room_inventory_status_check,c,business_room_inventory,-,"CHECK ((status = ANY (ARRAY['입실'::text, '공실'::text])))"
+buy_requests_master_building_id_fkey,f,buy_requests,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+buy_requests_pkey,p,buy_requests,-,PRIMARY KEY (id)
+buy_requests_routed_agent_id_fkey,f,buy_requests,agents,FOREIGN KEY (routed_agent_id) REFERENCES agents(id)
+buy_requests_user_id_fkey,f,buy_requests,users,FOREIGN KEY (user_id) REFERENCES users(id)
+chat_messages_pkey,p,chat_messages,-,PRIMARY KEY (id)
+chat_messages_room_id_fkey,f,chat_messages,chat_rooms,FOREIGN KEY (room_id) REFERENCES chat_rooms(id)
+chat_messages_sender_user_id_fkey,f,chat_messages,users,FOREIGN KEY (sender_user_id) REFERENCES users(id)
+chat_rooms_buyer_user_id_fkey,f,chat_rooms,users,FOREIGN KEY (buyer_user_id) REFERENCES users(id)
+chat_rooms_listing_request_id_buyer_user_id_key,u,chat_rooms,-,"UNIQUE (listing_request_id, buyer_user_id)"
+chat_rooms_listing_request_id_fkey,f,chat_rooms,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id)
+chat_rooms_pkey,p,chat_rooms,-,PRIMARY KEY (id)
+chat_rooms_seller_user_id_fkey,f,chat_rooms,users,FOREIGN KEY (seller_user_id) REFERENCES users(id)
+deal_alert_logs_pkey,p,deal_alert_logs,-,PRIMARY KEY (id)
+deal_alert_logs_transaction_id_fkey,f,deal_alert_logs,transactions,FOREIGN KEY (transaction_id) REFERENCES transactions(id) ON DELETE CASCADE
+deal_alert_logs_user_id_fkey,f,deal_alert_logs,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+deal_alert_logs_user_id_transaction_id_alert_date_key,u,deal_alert_logs,-,"UNIQUE (user_id, transaction_id, alert_date)"
+discover_progress_pkey,p,discover_progress,-,"PRIMARY KEY (sgg_cd, deal_ymd)"
+email_ad_banners_pkey,p,email_ad_banners,-,PRIMARY KEY (id)
+gocamping_records_lodging_registry_id_fkey,f,gocamping_records,lodging_registry,FOREIGN KEY (lodging_registry_id) REFERENCES lodging_registry(id) ON DELETE SET NULL
+gocamping_records_pkey,p,gocamping_records,-,PRIMARY KEY (content_id)
+hotel_operation_metrics_pkey,p,hotel_operation_metrics,-,PRIMARY KEY (id)
+hotel_operation_metrics_version_id_fkey,f,hotel_operation_metrics,hotel_operation_source_versions,FOREIGN KEY (version_id) REFERENCES hotel_operation_source_versions(id) ON DELETE CASCADE
+hotel_operation_metrics_version_id_source_file_source_row_n_key,u,hotel_operation_metrics,-,"UNIQUE (version_id, source_file, source_row_number)"
+hotel_operation_source_version_reference_year_source_sha256_key,u,hotel_operation_source_versions,-,"UNIQUE (reference_year, source_sha256)"
+hotel_operation_source_versions_pkey,p,hotel_operation_source_versions,-,PRIMARY KEY (id)
+hotel_operation_source_versions_reference_year_check,c,hotel_operation_source_versions,-,CHECK (((reference_year >= 2000) AND (reference_year <= 2100)))
+hotel_operation_source_versions_source_sha256_key,u,hotel_operation_source_versions,-,UNIQUE (source_sha256)
+legal_documents_doc_type_key,u,legal_documents,-,UNIQUE (doc_type)
+legal_documents_pkey,p,legal_documents,-,PRIMARY KEY (id)
+listing_checklist_progress_listing_request_id_fkey,f,listing_checklist_progress,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+listing_checklist_progress_pkey,p,listing_checklist_progress,-,PRIMARY KEY (id)
+listing_checklist_progress_user_id_fkey,f,listing_checklist_progress,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+listing_checklist_progress_user_id_listing_request_id_item__key,u,listing_checklist_progress,-,"UNIQUE (user_id, listing_request_id, item_key)"
+listing_likes_listing_request_id_fkey,f,listing_likes,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+listing_likes_listing_request_id_user_id_key,u,listing_likes,-,"UNIQUE (listing_request_id, user_id)"
+listing_likes_pkey,p,listing_likes,-,PRIMARY KEY (id)
+listing_likes_user_id_fkey,f,listing_likes,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+listing_photos_listing_request_id_fkey,f,listing_photos,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+listing_photos_pkey,p,listing_photos,-,PRIMARY KEY (id)
+listing_request_deletion_archive_pkey,p,listing_request_deletion_archive,-,PRIMARY KEY (id)
+listing_request_history_listing_request_id_fkey,f,listing_request_history,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id)
+listing_request_history_pkey,p,listing_request_history,-,PRIMARY KEY (id)
+listing_requests_broker_agent_id_fkey,f,listing_requests,agents,FOREIGN KEY (broker_agent_id) REFERENCES agents(id)
+listing_requests_master_building_id_fkey,f,listing_requests,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+listing_requests_pkey,p,listing_requests,-,PRIMARY KEY (id)
+listing_requests_routed_agent_id_fkey,f,listing_requests,agents,FOREIGN KEY (routed_agent_id) REFERENCES agents(id)
+listing_requests_user_id_fkey,f,listing_requests,users,FOREIGN KEY (user_id) REFERENCES users(id)
+listings_agent_id_fkey,f,listings,agents,FOREIGN KEY (agent_id) REFERENCES agents(id)
+listings_master_building_id_fkey,f,listings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+listings_pkey,p,listings,-,PRIMARY KEY (id)
+loan_consult_requests_master_building_id_fkey,f,loan_consult_requests,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+loan_consult_requests_pkey,p,loan_consult_requests,-,PRIMARY KEY (id)
+loan_consult_requests_routed_consultant_id_fkey,f,loan_consult_requests,loan_consultants,FOREIGN KEY (routed_consultant_id) REFERENCES loan_consultants(id)
+loan_consult_requests_user_id_fkey,f,loan_consult_requests,users,FOREIGN KEY (user_id) REFERENCES users(id)
+loan_consultant_buildings_loan_consultant_id_fkey,f,loan_consultant_buildings,loan_consultants,FOREIGN KEY (loan_consultant_id) REFERENCES loan_consultants(id) ON DELETE CASCADE
+loan_consultant_buildings_master_building_id_fkey,f,loan_consultant_buildings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+loan_consultant_buildings_pkey,p,loan_consultant_buildings,-,PRIMARY KEY (id)
+loan_consultant_buildings_unique,u,loan_consultant_buildings,-,"UNIQUE (loan_consultant_id, master_building_id)"
+loan_consultant_service_areas_loan_consultant_id_fkey,f,loan_consultant_service_areas,loan_consultants,FOREIGN KEY (loan_consultant_id) REFERENCES loan_consultants(id) ON DELETE CASCADE
+loan_consultant_service_areas_pkey,p,loan_consultant_service_areas,-,PRIMARY KEY (id)
+loan_consultant_service_areas_unique,u,loan_consultant_service_areas,-,"UNIQUE (loan_consultant_id, region_name)"
+loan_consultants_approved_by_fkey,f,loan_consultants,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id)
+loan_consultants_email_unique,u,loan_consultants,-,UNIQUE (email)
+loan_consultants_license_number_unique,u,loan_consultants,-,UNIQUE (license_number)
+loan_consultants_pkey,p,loan_consultants,-,PRIMARY KEY (id)
+loan_consultants_subdomain_slug_unique,u,loan_consultants,-,UNIQUE (subdomain_slug)
+lodging_approval_attempts_approval_batch_id_attempt_number_key,u,lodging_approval_attempts,-,"UNIQUE (approval_batch_id, attempt_number)"
+lodging_approval_attempts_approval_batch_id_fkey,f,lodging_approval_attempts,lodging_approval_batches,FOREIGN KEY (approval_batch_id) REFERENCES lodging_approval_batches(id) ON DELETE CASCADE
+lodging_approval_attempts_mode_check,c,lodging_approval_attempts,-,"CHECK ((mode = ANY (ARRAY['dry_run'::text, 'apply'::text])))"
+lodging_approval_attempts_pkey,p,lodging_approval_attempts,-,PRIMARY KEY (id)
+lodging_approval_attempts_status_check,c,lodging_approval_attempts,-,"CHECK ((status = ANY (ARRAY['running'::text, 'done'::text, 'failed'::text])))"
+lodging_approval_batches_approval_key_key,u,lodging_approval_batches,-,UNIQUE (approval_key)
+lodging_approval_batches_approved_by_fkey,f,lodging_approval_batches,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id) ON DELETE SET NULL
+lodging_approval_batches_created_by_fkey,f,lodging_approval_batches,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE SET NULL
+lodging_approval_batches_pkey,p,lodging_approval_batches,-,PRIMARY KEY (id)
+lodging_approval_batches_run_id_key,u,lodging_approval_batches,-,UNIQUE (run_id)
+lodging_approval_batches_source_batch_id_fkey,f,lodging_approval_batches,lodging_source_batches,FOREIGN KEY (source_batch_id) REFERENCES lodging_source_batches(id) ON DELETE RESTRICT
+lodging_approval_batches_status_check,c,lodging_approval_batches,-,"CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'dry_run'::text, 'applied'::text, 'failed'::text])))"
+lodging_approval_rows_action_check,c,lodging_approval_rows,-,"CHECK ((action = ANY (ARRAY['insert'::text, 'update'::text, 'status_change'::text])))"
+lodging_approval_rows_approval_batch_id_fkey,f,lodging_approval_rows,lodging_approval_batches,FOREIGN KEY (approval_batch_id) REFERENCES lodging_approval_batches(id) ON DELETE CASCADE
+lodging_approval_rows_pkey,p,lodging_approval_rows,-,"PRIMARY KEY (approval_batch_id, source_row_id)"
+lodging_approval_rows_source_row_id_fkey,f,lodging_approval_rows,lodging_source_rows,FOREIGN KEY (source_row_id) REFERENCES lodging_source_rows(id) ON DELETE RESTRICT
+lodging_authority_contacts_pkey,p,lodging_authority_contacts,-,PRIMARY KEY (id)
+lodging_import_staging_pkey,p,lodging_import_staging,-,PRIMARY KEY (token)
+lodging_import_staging_source_check,c,lodging_import_staging,-,"CHECK ((source = ANY (ARRAY['airbnb'::text, 'rural'::text, 'hanok'::text])))"
+lodging_import_staging_status_check,c,lodging_import_staging,-,"CHECK ((status = ANY (ARRAY['preview'::text, 'applying'::text, 'done'::text, 'failed'::text])))"
+lodging_import_staging_uploaded_by_fkey,f,lodging_import_staging,admin_users,FOREIGN KEY (uploaded_by) REFERENCES admin_users(id) ON DELETE SET NULL
+lodging_operator_phone_challenges_attempt_count_check,c,lodging_operator_phone_challenges,-,CHECK (((attempt_count >= 0) AND (attempt_count <= 5)))
+lodging_operator_phone_challenges_pkey,p,lodging_operator_phone_challenges,-,PRIMARY KEY (id)
+lodging_parallel_comparisons_pkey,p,lodging_parallel_comparisons,-,PRIMARY KEY (id)
+lodging_parallel_comparisons_promotion_manifest_id_fkey,f,lodging_parallel_comparisons,lodging_promotion_manifests,FOREIGN KEY (promotion_manifest_id) REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT
+lodging_parallel_comparisons_run_id_key,u,lodging_parallel_comparisons,-,UNIQUE (run_id)
+lodging_promotion_manifests_approved_by_fkey,f,lodging_promotion_manifests,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id) ON DELETE RESTRICT
+lodging_promotion_manifests_created_by_fkey,f,lodging_promotion_manifests,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE RESTRICT
+lodging_promotion_manifests_manifest_key_key,u,lodging_promotion_manifests,-,UNIQUE (manifest_key)
+lodging_promotion_manifests_parent_manifest_id_fkey,f,lodging_promotion_manifests,lodging_promotion_manifests,FOREIGN KEY (parent_manifest_id) REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT
+lodging_promotion_manifests_pkey,p,lodging_promotion_manifests,-,PRIMARY KEY (id)
+lodging_promotion_manifests_run_id_key,u,lodging_promotion_manifests,-,UNIQUE (run_id)
+lodging_promotion_manifests_status_check,c,lodging_promotion_manifests,-,"CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'dry_run'::text, 'applied'::text, 'failed'::text])))"
+lodging_promotion_review_deci_base_manifest_id_source_row_i_key,u,lodging_promotion_review_decisions,-,"UNIQUE (base_manifest_id, source_row_id)"
+lodging_promotion_review_decisions_base_manifest_id_fkey,f,lodging_promotion_review_decisions,lodging_promotion_manifests,FOREIGN KEY (base_manifest_id) REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT
+lodging_promotion_review_decisions_decided_by_fkey,f,lodging_promotion_review_decisions,admin_users,FOREIGN KEY (decided_by) REFERENCES admin_users(id) ON DELETE RESTRICT
+lodging_promotion_review_decisions_decision_check,c,lodging_promotion_review_decisions,-,"CHECK ((decision = ANY (ARRAY['exclude'::text, 'include_unclassified_history'::text])))"
+lodging_promotion_review_decisions_pkey,p,lodging_promotion_review_decisions,-,PRIMARY KEY (id)
+lodging_promotion_review_decisions_resulting_manifest_id_fkey,f,lodging_promotion_review_decisions,lodging_promotion_manifests,FOREIGN KEY (resulting_manifest_id) REFERENCES lodging_promotion_manifests(id) ON DELETE RESTRICT
+lodging_promotion_review_decisions_source_row_id_fkey,f,lodging_promotion_review_decisions,lodging_source_rows,FOREIGN KEY (source_row_id) REFERENCES lodging_source_rows(id) ON DELETE RESTRICT
+lodging_promotion_rows_action_check,c,lodging_promotion_rows,-,"CHECK ((action = ANY (ARRAY['insert'::text, 'update'::text, 'status_change'::text])))"
+lodging_promotion_rows_pkey,p,lodging_promotion_rows,-,"PRIMARY KEY (promotion_manifest_id, source_row_id)"
+lodging_promotion_rows_promotion_manifest_id_fkey,f,lodging_promotion_rows,lodging_promotion_manifests,FOREIGN KEY (promotion_manifest_id) REFERENCES lodging_promotion_manifests(id) ON DELETE CASCADE
+lodging_promotion_rows_source_row_id_fkey,f,lodging_promotion_rows,lodging_source_rows,FOREIGN KEY (source_row_id) REFERENCES lodging_source_rows(id) ON DELETE RESTRICT
+lodging_registry_applied_building_id_fkey,f,lodging_registry,master_buildings,FOREIGN KEY (applied_building_id) REFERENCES master_buildings(id)
+lodging_registry_permit_number_key,u,lodging_registry,-,UNIQUE (permit_number)
+lodging_registry_pkey,p,lodging_registry,-,PRIMARY KEY (id)
+lodging_registry_alert_snapshots_master_building_id_fkey,f,lodging_registry_alert_snapshots,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+lodging_registry_alert_snapshots_pkey,p,lodging_registry_alert_snapshots,-,PRIMARY KEY (permit_number)
+lodging_source_batches_batch_key_key,u,lodging_source_batches,-,UNIQUE (batch_key)
+lodging_source_batches_pkey,p,lodging_source_batches,-,PRIMARY KEY (id)
+lodging_source_batches_source_key_check,c,lodging_source_batches,-,"CHECK ((source_key = ANY (ARRAY['tourism_lodging'::text, 'tourism_pension'::text, 'rural_homestay'::text, 'lodging'::text, 'foreign_city_homestay'::text, 'general_camping'::text, 'auto_camping'::text, 'hanok'::text])))"
+lodging_source_batches_status_check,c,lodging_source_batches,-,"CHECK ((status = ANY (ARRAY['uploaded'::text, 'parsed'::text, 'validating'::text, 'review_required'::text, 'validated'::text, 'approved'::text, 'dry_run'::text, 'applied'::text, 'failed'::text])))"
+lodging_source_batches_uploaded_by_fkey,f,lodging_source_batches,admin_users,FOREIGN KEY (uploaded_by) REFERENCES admin_users(id) ON DELETE SET NULL
+lodging_source_rows_batch_id_fkey,f,lodging_source_rows,lodging_source_batches,FOREIGN KEY (batch_id) REFERENCES lodging_source_batches(id) ON DELETE CASCADE
+lodging_source_rows_batch_id_row_number_key,u,lodging_source_rows,-,"UNIQUE (batch_id, row_number)"
+lodging_source_rows_batch_id_row_number_snapshot_key_key,u,lodging_source_rows,-,"UNIQUE (batch_id, row_number, snapshot_key)"
+lodging_source_rows_diff_kind_check,c,lodging_source_rows,-,"CHECK ((diff_kind = ANY (ARRAY['new'::text, 'changed'::text, 'unchanged'::text, 'status_change'::text, 'review_required'::text])))"
+lodging_source_rows_pkey,p,lodging_source_rows,-,PRIMARY KEY (id)
+lodging_source_rows_row_state_check,c,lodging_source_rows,-,"CHECK ((row_state = ANY (ARRAY['validated'::text, 'review_required'::text, 'invalid'::text])))"
+login_history_pkey,p,login_history,-,PRIMARY KEY (id)
+login_history_user_id_fkey,f,login_history,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+master_buildings_pkey,p,master_buildings,-,PRIMARY KEY (id)
+member_documents_pkey,p,member_documents,-,PRIMARY KEY (id)
+member_notes_pkey,p,member_notes,-,PRIMARY KEY (id)
+membership_checks_business_report_check,c,membership_checks,-,"CHECK ((business_report = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+membership_checks_check,c,membership_checks,-,CHECK (((building_id IS NOT NULL) OR (auction_id IS NOT NULL)))
+membership_checks_fee_arrears_check,c,membership_checks,-,"CHECK ((fee_arrears = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+membership_checks_operation_succession_check,c,membership_checks,-,"CHECK ((operation_succession = ANY (ARRAY['need_check'::text, 'ok'::text, 'issue'::text])))"
+membership_checks_period_id_fkey,f,membership_checks,membership_periods,FOREIGN KEY (period_id) REFERENCES membership_periods(id)
+membership_checks_period_id_key,u,membership_checks,-,UNIQUE (period_id)
+membership_checks_pkey,p,membership_checks,-,PRIMARY KEY (id)
+membership_checks_request_no_key,u,membership_checks,-,UNIQUE (request_no)
+membership_checks_status_check,c,membership_checks,-,"CHECK ((status = ANY (ARRAY['received'::text, 'investigating'::text, 'reported'::text])))"
+membership_checks_user_id_fkey,f,membership_checks,users,FOREIGN KEY (user_id) REFERENCES users(id)
+membership_checks_user_id_request_token_key,u,membership_checks,-,"UNIQUE (user_id, request_token)"
+membership_history_check_id_fkey,f,membership_history,membership_checks,FOREIGN KEY (check_id) REFERENCES membership_checks(id)
+membership_history_payment_id_fkey,f,membership_history,membership_payments,FOREIGN KEY (payment_id) REFERENCES membership_payments(id)
+membership_history_pkey,p,membership_history,-,PRIMARY KEY (id)
+membership_payments_amount_check,c,membership_payments,-,CHECK ((amount = 29000))
+membership_payments_pkey,p,membership_payments,-,PRIMARY KEY (id)
+membership_payments_request_no_key,u,membership_payments,-,UNIQUE (request_no)
+membership_payments_status_check,c,membership_payments,-,"CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'canceled'::text, 'revoked'::text])))"
+membership_payments_user_id_fkey,f,membership_payments,users,FOREIGN KEY (user_id) REFERENCES users(id)
+membership_payments_user_id_request_token_key,u,membership_payments,-,"UNIQUE (user_id, request_token)"
+membership_periods_check,c,membership_periods,-,CHECK ((ends_at > starts_at))
+membership_periods_payment_id_fkey,f,membership_periods,membership_payments,FOREIGN KEY (payment_id) REFERENCES membership_payments(id)
+membership_periods_payment_id_key,u,membership_periods,-,UNIQUE (payment_id)
+membership_periods_pkey,p,membership_periods,-,PRIMARY KEY (id)
+membership_periods_user_id_fkey,f,membership_periods,users,FOREIGN KEY (user_id) REFERENCES users(id)
+mileage_missions_code_unique,u,mileage_missions,-,UNIQUE (code)
+mileage_missions_pkey,p,mileage_missions,-,PRIMARY KEY (id)
+mileage_submissions_agent_id_fkey,f,mileage_submissions,agents,FOREIGN KEY (agent_id) REFERENCES agents(id)
+mileage_submissions_master_building_id_fkey,f,mileage_submissions,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+mileage_submissions_mission_id_fkey,f,mileage_submissions,mileage_missions,FOREIGN KEY (mission_id) REFERENCES mileage_missions(id)
+mileage_submissions_pkey,p,mileage_submissions,-,PRIMARY KEY (id)
+mileage_submissions_reviewed_by_fkey,f,mileage_submissions,admin_users,FOREIGN KEY (reviewed_by) REFERENCES admin_users(id)
+new_listing_alert_logs_listing_request_id_fkey,f,new_listing_alert_logs,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+new_listing_alert_logs_notification_id_fkey,f,new_listing_alert_logs,notifications,FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+new_listing_alert_logs_pkey,p,new_listing_alert_logs,-,PRIMARY KEY (id)
+new_listing_alert_logs_user_id_fkey,f,new_listing_alert_logs,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+new_listing_alert_logs_user_id_listing_request_id_key,u,new_listing_alert_logs,-,"UNIQUE (user_id, listing_request_id)"
+notices_pkey,p,notices,-,PRIMARY KEY (id)
+notifications_listing_request_id_fkey,f,notifications,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+notifications_master_building_id_fkey,f,notifications,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+notifications_pkey,p,notifications,-,PRIMARY KEY (id)
+notifications_user_id_fkey,f,notifications,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+operator_buildings_master_building_id_fkey,f,operator_buildings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+operator_buildings_operator_building_unique,u,operator_buildings,-,"UNIQUE (operator_id, master_building_id)"
+operator_buildings_operator_id_fkey,f,operator_buildings,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+operator_buildings_pkey,p,operator_buildings,-,PRIMARY KEY (id)
+operator_consult_requests_master_building_id_fkey,f,operator_consult_requests,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+operator_consult_requests_pkey,p,operator_consult_requests,-,PRIMARY KEY (id)
+operator_consult_requests_routed_operator_id_fkey,f,operator_consult_requests,operators,FOREIGN KEY (routed_operator_id) REFERENCES operators(id)
+operator_consult_requests_user_id_fkey,f,operator_consult_requests,users,FOREIGN KEY (user_id) REFERENCES users(id)
+operator_lodging_approved_by_fkey,f,operator_lodging,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id)
+operator_lodging_lodging_op_type_check,c,operator_lodging,-,"CHECK ((lodging_op_type = ANY (ARRAY['airbnb'::text, 'camping'::text, 'rural'::text, 'hanok'::text, 'living'::text])))"
+operator_lodging_lodging_reg_id_fkey,f,operator_lodging,lodging_registry,FOREIGN KEY (lodging_reg_id) REFERENCES lodging_registry(id)
+operator_lodging_master_building_id_fkey,f,operator_lodging,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+operator_lodging_permit_no_key,u,operator_lodging,-,UNIQUE (permit_no)
+operator_lodging_pkey,p,operator_lodging,-,PRIMARY KEY (id)
+operator_lodging_status_check,c,operator_lodging,-,"CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])))"
+operator_lodging_user_id_fkey,f,operator_lodging,users,FOREIGN KEY (user_id) REFERENCES users(id)
+operator_lodging_photos_object_key_key,u,operator_lodging_photos,-,UNIQUE (object_key)
+operator_lodging_photos_operator_lodging_id_fkey,f,operator_lodging_photos,operator_lodging,FOREIGN KEY (operator_lodging_id) REFERENCES operator_lodging(id) ON DELETE CASCADE
+operator_lodging_photos_pkey,p,operator_lodging_photos,-,PRIMARY KEY (id)
+operator_region_buildings_master_building_id_fkey,f,operator_region_buildings,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+operator_region_buildings_operator_id_fkey,f,operator_region_buildings,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+operator_region_buildings_pkey,p,operator_region_buildings,-,PRIMARY KEY (id)
+operator_region_buildings_unique,u,operator_region_buildings,-,"UNIQUE (operator_id, master_building_id)"
+operator_service_areas_operator_id_fkey,f,operator_service_areas,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+operator_service_areas_pkey,p,operator_service_areas,-,PRIMARY KEY (id)
+operator_service_areas_unique,u,operator_service_areas,-,"UNIQUE (operator_id, region_name)"
+operator_service_regions_operator_id_fkey,f,operator_service_regions,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+operator_service_regions_pkey,p,operator_service_regions,-,PRIMARY KEY (id)
+operator_service_regions_unique,u,operator_service_regions,-,"UNIQUE (operator_id, sgg_text)"
+operators_approved_by_fkey,f,operators,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id)
+operators_pkey,p,operators,-,PRIMARY KEY (id)
+operators_subdomain_slug_unique,u,operators,-,UNIQUE (subdomain_slug)
+page_views_pkey,p,page_views,-,PRIMARY KEY (id)
+partner_favorites_agent_id_fkey,f,partner_favorites,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+partner_favorites_loan_consultant_id_fkey,f,partner_favorites,loan_consultants,FOREIGN KEY (loan_consultant_id) REFERENCES loan_consultants(id) ON DELETE CASCADE
+partner_favorites_master_building_id_fkey,f,partner_favorites,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+partner_favorites_one_owner,c,partner_favorites,-,"CHECK ((num_nonnulls(agent_id, operator_id, loan_consultant_id) = 1))"
+partner_favorites_operator_id_fkey,f,partner_favorites,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+partner_favorites_pkey,p,partner_favorites,-,PRIMARY KEY (id)
+password_reset_tokens_pkey,p,password_reset_tokens,-,PRIMARY KEY (id)
+password_reset_tokens_token_key,u,password_reset_tokens,-,UNIQUE (token)
+permit_change_alert_deliverie_permit_change_alert_log_id_us_key,u,permit_change_alert_deliveries,-,"UNIQUE (permit_change_alert_log_id, user_id)"
+permit_change_alert_deliveries_notification_id_fkey,f,permit_change_alert_deliveries,notifications,FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+permit_change_alert_deliveries_permit_change_alert_log_id_fkey,f,permit_change_alert_deliveries,permit_change_alert_logs,FOREIGN KEY (permit_change_alert_log_id) REFERENCES permit_change_alert_logs(id) ON DELETE CASCADE
+permit_change_alert_deliveries_pkey,p,permit_change_alert_deliveries,-,PRIMARY KEY (id)
+permit_change_alert_deliveries_user_id_fkey,f,permit_change_alert_deliveries,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+permit_change_alert_logs_master_building_id_change_date_key,u,permit_change_alert_logs,-,"UNIQUE (master_building_id, change_date)"
+permit_change_alert_logs_master_building_id_fkey,f,permit_change_alert_logs,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+permit_change_alert_logs_pkey,p,permit_change_alert_logs,-,PRIMARY KEY (id)
+point_transactions_admin_id_fkey,f,point_transactions,admin_users,FOREIGN KEY (admin_id) REFERENCES admin_users(id)
+point_transactions_pkey,p,point_transactions,-,PRIMARY KEY (id)
+point_transactions_user_id_fkey,f,point_transactions,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+policy_document_revisions_action_check,c,policy_document_revisions,-,"CHECK ((action = ANY (ARRAY['created'::text, 'updated'::text, 'published'::text, 'archived'::text])))"
+policy_document_revisions_actor_id_fkey,f,policy_document_revisions,admin_users,FOREIGN KEY (actor_id) REFERENCES admin_users(id) ON DELETE SET NULL
+policy_document_revisions_change_note_check,c,policy_document_revisions,-,CHECK ((char_length(change_note) <= 1000))
+policy_document_revisions_pkey,p,policy_document_revisions,-,PRIMARY KEY (id)
+policy_document_revisions_policy_document_id_fkey,f,policy_document_revisions,policy_documents,FOREIGN KEY (policy_document_id) REFERENCES policy_documents(id) ON DELETE CASCADE
+policy_document_revisions_policy_document_id_revision_numbe_key,u,policy_document_revisions,-,"UNIQUE (policy_document_id, revision_number)"
+policy_document_revisions_revision_number_check,c,policy_document_revisions,-,CHECK ((revision_number >= 1))
+policy_documents_body_markdown_check,c,policy_documents,-,CHECK (((char_length(body_markdown) >= 1) AND (char_length(body_markdown) <= 100000)))
+policy_documents_category_check,c,policy_documents,-,"CHECK ((category = ANY (ARRAY['operations'::text, 'data'::text, 'privacy'::text, 'product'::text, 'other'::text])))"
+policy_documents_created_by_fkey,f,policy_documents,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE SET NULL
+policy_documents_document_code_check,c,policy_documents,-,CHECK (((char_length(document_code) >= 1) AND (char_length(document_code) <= 80)))
+policy_documents_document_code_key,u,policy_documents,-,UNIQUE (document_code)
+policy_documents_pkey,p,policy_documents,-,PRIMARY KEY (id)
+policy_documents_published_by_fkey,f,policy_documents,admin_users,FOREIGN KEY (published_by) REFERENCES admin_users(id) ON DELETE SET NULL
+policy_documents_status_check,c,policy_documents,-,"CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'archived'::text])))"
+policy_documents_title_check,c,policy_documents,-,CHECK (((char_length(title) >= 1) AND (char_length(title) <= 200)))
+policy_documents_updated_by_fkey,f,policy_documents,admin_users,FOREIGN KEY (updated_by) REFERENCES admin_users(id) ON DELETE SET NULL
+policy_documents_version_check,c,policy_documents,-,CHECK (((char_length(version) >= 1) AND (char_length(version) <= 40)))
+premium_waitlist_agent_id_fkey,f,premium_waitlist,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+premium_waitlist_master_building_id_fkey,f,premium_waitlist,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+premium_waitlist_pkey,p,premium_waitlist,-,PRIMARY KEY (id)
+premium_waitlist_unique,u,premium_waitlist,-,"UNIQUE (agent_id, master_building_id)"
+presale_applications_check,c,presale_applications,-,CHECK (((remaining_units IS NULL) OR ((remaining_units >= 0) AND ((unit_count IS NULL) OR (remaining_units <= unit_count)))))
+presale_applications_check1,c,presale_applications,-,CHECK (((price_max IS NULL) OR (price_min IS NULL) OR (price_max >= price_min)))
+presale_applications_check2,c,presale_applications,-,CHECK (((sale_end_date IS NULL) OR (sale_start_date IS NULL) OR (sale_end_date >= sale_start_date)))
+presale_applications_decision_notification_status_check,c,presale_applications,-,"CHECK ((decision_notification_status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text])))"
+presale_applications_master_building_id_fkey,f,presale_applications,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE RESTRICT
+presale_applications_pkey,p,presale_applications,-,PRIMARY KEY (id)
+presale_applications_price_max_check,c,presale_applications,-,CHECK (((price_max IS NULL) OR (price_max >= 0)))
+presale_applications_price_min_check,c,presale_applications,-,CHECK (((price_min IS NULL) OR (price_min >= 0)))
+presale_applications_project_id_fkey,f,presale_applications,presale_projects,FOREIGN KEY (project_id) REFERENCES presale_projects(id) ON DELETE SET NULL
+presale_applications_project_status_check,c,presale_applications,-,"CHECK ((project_status = ANY (ARRAY['presale'::text, 'scheduled'::text, 'sold_out'::text])))"
+presale_applications_project_type_check,c,presale_applications,-,"CHECK ((project_type = ANY (ARRAY['living'::text, 'tourist'::text, 'officetel'::text, 'mixed'::text])))"
+presale_applications_receipt_notification_status_check,c,presale_applications,-,"CHECK ((receipt_notification_status = ANY (ARRAY['pending'::text, 'sent'::text, 'failed'::text])))"
+presale_applications_reviewed_by_fkey,f,presale_applications,admin_users,FOREIGN KEY (reviewed_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_applications_status_check,c,presale_applications,-,"CHECK ((status = ANY (ARRAY['submitted'::text, 'reviewing'::text, 'approved'::text, 'rejected'::text])))"
+presale_applications_unit_count_check,c,presale_applications,-,CHECK (((unit_count IS NULL) OR (unit_count > 0)))
+presale_audit_log_admin_id_fkey,f,presale_audit_log,admin_users,FOREIGN KEY (admin_id) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_audit_log_application_id_fkey,f,presale_audit_log,presale_applications,FOREIGN KEY (application_id) REFERENCES presale_applications(id) ON DELETE SET NULL
+presale_audit_log_pkey,p,presale_audit_log,-,PRIMARY KEY (id)
+presale_audit_log_project_id_fkey,f,presale_audit_log,presale_projects,FOREIGN KEY (project_id) REFERENCES presale_projects(id) ON DELETE SET NULL
+presale_audit_log_promotion_id_fkey,f,presale_audit_log,presale_promotions,FOREIGN KEY (promotion_id) REFERENCES presale_promotions(id) ON DELETE SET NULL
+presale_projects_check,c,presale_projects,-,CHECK (((publication_end_at IS NULL) OR (publication_start_at IS NULL) OR (publication_end_at > publication_start_at)))
+presale_projects_check1,c,presale_projects,-,CHECK (((sale_end_date IS NULL) OR (sale_start_date IS NULL) OR (sale_end_date >= sale_start_date)))
+presale_projects_check2,c,presale_projects,-,CHECK (((price_max IS NULL) OR (price_min IS NULL) OR (price_max >= price_min)))
+presale_projects_created_by_fkey,f,presale_projects,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_projects_master_building_id_fkey,f,presale_projects,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE RESTRICT
+presale_projects_master_building_id_key,u,presale_projects,-,UNIQUE (master_building_id)
+presale_projects_pkey,p,presale_projects,-,PRIMARY KEY (id)
+presale_projects_price_max_check,c,presale_projects,-,CHECK (((price_max IS NULL) OR (price_max >= 0)))
+presale_projects_price_min_check,c,presale_projects,-,CHECK (((price_min IS NULL) OR (price_min >= 0)))
+presale_projects_project_status_check,c,presale_projects,-,"CHECK ((project_status = ANY (ARRAY['presale'::text, 'scheduled'::text, 'sold_out'::text]))) NOT VALID"
+presale_projects_project_type_check,c,presale_projects,-,"CHECK ((project_type = ANY (ARRAY['living'::text, 'tourist'::text, 'officetel'::text, 'mixed'::text]))) NOT VALID"
+presale_projects_remaining_units_check,c,presale_projects,-,CHECK (((remaining_units IS NULL) OR ((remaining_units >= 0) AND ((unit_count IS NULL) OR (remaining_units <= unit_count))))) NOT VALID
+presale_projects_status_check,c,presale_projects,-,"CHECK ((status = ANY (ARRAY['draft'::text, 'scheduled'::text, 'published'::text, 'withdrawn'::text])))"
+presale_projects_unit_count_check,c,presale_projects,-,CHECK (((unit_count IS NULL) OR (unit_count > 0)))
+presale_projects_updated_by_fkey,f,presale_projects,admin_users,FOREIGN KEY (updated_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_projects_withdrawn_by_fkey,f,presale_projects,admin_users,FOREIGN KEY (withdrawn_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_promotions_approved_by_fkey,f,presale_promotions,admin_users,FOREIGN KEY (approved_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_promotions_check,c,presale_promotions,-,CHECK ((ends_at > starts_at))
+presale_promotions_created_by_fkey,f,presale_promotions,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id) ON DELETE SET NULL
+presale_promotions_pkey,p,presale_promotions,-,PRIMARY KEY (id)
+presale_promotions_presale_project_id_fkey,f,presale_promotions,presale_projects,FOREIGN KEY (presale_project_id) REFERENCES presale_projects(id) ON DELETE CASCADE
+presale_promotions_priority_check,c,presale_promotions,-,CHECK (((priority >= 0) AND (priority <= 10000)))
+presale_promotions_status_check,c,presale_promotions,-,"CHECK ((status = ANY (ARRAY['draft'::text, 'approved'::text, 'withdrawn'::text])))"
+presale_promotions_updated_by_fkey,f,presale_promotions,admin_users,FOREIGN KEY (updated_by) REFERENCES admin_users(id) ON DELETE SET NULL
+region_badge_waitlist_agent_id_fkey,f,region_badge_waitlist,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+region_badge_waitlist_pkey,p,region_badge_waitlist,-,PRIMARY KEY (id)
+region_badge_waitlist_unique,u,region_badge_waitlist,-,"UNIQUE (agent_id, sgg_text)"
+revenue_records_created_by_fkey,f,revenue_records,admin_users,FOREIGN KEY (created_by) REFERENCES admin_users(id)
+revenue_records_partner_type_check,c,revenue_records,-,"CHECK ((partner_type = ANY (ARRAY['agent'::text, 'operator'::text, 'loan_consultant'::text])))"
+revenue_records_payment_status_check,c,revenue_records,-,"CHECK ((payment_status = ANY (ARRAY['대기'::text, '완료'::text, '만료'::text])))"
+revenue_records_pkey,p,revenue_records,-,PRIMARY KEY (id)
+revenue_records_product_type_check,c,revenue_records,-,"CHECK ((product_type = ANY (ARRAY['building_slot'::text, 'priority_exposure'::text])))"
+rone_rental_benchmarks_income_yield_check,c,rone_rental_benchmarks,-,CHECK (((income_yield > ('-100'::integer)::numeric) AND (income_yield < (100)::numeric)))
+rone_rental_benchmarks_period_region_code_property_type_key,u,rone_rental_benchmarks,-,"UNIQUE (period, region_code, property_type)"
+rone_rental_benchmarks_pkey,p,rone_rental_benchmarks,-,PRIMARY KEY (id)
+rone_rental_benchmarks_region_level_check,c,rone_rental_benchmarks,-,"CHECK ((region_level = ANY (ARRAY['sgg'::text, 'province'::text, 'market'::text, 'national'::text])))"
+rone_rental_benchmarks_vacancy_rate_check,c,rone_rental_benchmarks,-,CHECK (((vacancy_rate >= (0)::numeric) AND (vacancy_rate <= (100)::numeric)))
+room_expiry_alerts_sent_notification_id_fkey,f,room_expiry_alerts_sent,notifications,FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+room_expiry_alerts_sent_pkey,p,room_expiry_alerts_sent,-,PRIMARY KEY (id)
+room_expiry_alerts_sent_room_id_fkey,f,room_expiry_alerts_sent,business_room_inventory,FOREIGN KEY (room_id) REFERENCES business_room_inventory(id) ON DELETE CASCADE
+room_expiry_alerts_sent_room_id_threshold_key,u,room_expiry_alerts_sent,-,"UNIQUE (room_id, threshold)"
+sgg_coords_pkey,p,sgg_coords,-,PRIMARY KEY (id)
+sgg_coords_sido_name_sgg_name_key,u,sgg_coords,-,"UNIQUE (sido_name, sgg_name)"
+short_links_pkey,p,short_links,-,PRIMARY KEY (code)
+short_links_target_path_check,c,short_links,-,CHECK (((target_path ~~ '/admin%'::text) OR (target_path ~~ '/agent/dashboard%'::text)))
+site_popups_pkey,p,site_popups,-,PRIMARY KEY (id)
+slots_agent_id_fkey,f,slots,agents,FOREIGN KEY (agent_id) REFERENCES agents(id)
+slots_master_building_id_fkey,f,slots,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id)
+slots_pkey,p,slots,-,PRIMARY KEY (id)
+streetview_evaluation_metrics_pkey,p,streetview_evaluation_metrics,-,PRIMARY KEY (metric_date)
+subway_stations_pkey,p,subway_stations,-,PRIMARY KEY (id)
+survey_request_history_pkey,p,survey_request_history,-,PRIMARY KEY (id)
+survey_request_history_request_id_fkey,f,survey_request_history,survey_requests,FOREIGN KEY (request_id) REFERENCES survey_requests(id) ON DELETE CASCADE
+survey_requests_auction_item_id_fkey,f,survey_requests,auction_items,FOREIGN KEY (auction_item_id) REFERENCES auction_items(id)
+survey_requests_building_id_fkey,f,survey_requests,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+survey_requests_check,c,survey_requests,-,CHECK (((base_fee >= 0) AND (visit_fee >= 0) AND (total_fee = (base_fee + visit_fee))))
+survey_requests_pkey,p,survey_requests,-,PRIMARY KEY (id)
+survey_requests_request_no_key,u,survey_requests,-,UNIQUE (request_no)
+survey_requests_request_token_hash_key,u,survey_requests,-,UNIQUE (request_token_hash)
+survey_requests_status_check,c,survey_requests,-,"CHECK ((status = ANY (ARRAY['received'::text, 'paid'::text, 'investigating'::text, 'reported'::text, 'canceled'::text, 'refunded'::text])))"
+survey_requests_survey_type_check,c,survey_requests,-,"CHECK ((survey_type = ANY (ARRAY['basic'::text, 'visit'::text])))"
+survey_settings_history_pkey,p,survey_settings_history,-,PRIMARY KEY (id)
+sync_failures_pkey,p,sync_failures,-,PRIMARY KEY (id)
+sync_failures_sgg_cd_deal_ymd_key,u,sync_failures,-,"UNIQUE (sgg_cd, deal_ymd)"
+sync_log_pkey,p,sync_log,-,PRIMARY KEY (id)
+title_info_backfill_failures_attempts_check,c,title_info_backfill_failures,-,CHECK ((attempts > 0))
+title_info_backfill_failures_building_id_fkey,f,title_info_backfill_failures,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+title_info_backfill_failures_pkey,p,title_info_backfill_failures,-,PRIMARY KEY (building_id)
+tourism_building_dong_matches_building_id_fkey,f,tourism_building_dong_matches,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+tourism_building_dong_matches_pkey,p,tourism_building_dong_matches,-,PRIMARY KEY (building_id)
+tourism_datalab_stages_admin_user_id_fkey,f,tourism_datalab_stages,admin_users,FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+tourism_datalab_stages_pkey,p,tourism_datalab_stages,-,PRIMARY KEY (token)
+tourism_datalab_stages_state_check,c,tourism_datalab_stages,-,"CHECK ((state = ANY (ARRAY['previewed'::text, 'applying'::text, 'applied'::text, 'failed'::text])))"
+tourism_dong_coords_pkey,p,tourism_dong_coords,-,PRIMARY KEY (id)
+tourism_dong_coords_sido_name_sgg_name_dong_name_key,u,tourism_dong_coords,-,"UNIQUE (sido_name, sgg_name, dong_name)"
+tourism_stats_master_building_id_fkey,f,tourism_stats,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+tourism_stats_pkey,p,tourism_stats,-,PRIMARY KEY (id)
+tourism_stats_row_hash_key,u,tourism_stats,-,UNIQUE (row_hash)
+transactions_master_building_id_fkey,f,transactions,master_buildings,FOREIGN KEY (master_building_id) REFERENCES master_buildings(id) ON DELETE SET NULL
+transactions_match_confidence_check,c,transactions,-,"CHECK ((match_confidence = ANY (ARRAY['exact'::text, 'unmatched'::text])))"
+transactions_pkey,p,transactions,-,PRIMARY KEY (id)
+transactions_raw_key_key,u,transactions,-,UNIQUE (raw_key)
+transactions_scope_check,c,transactions,-,"CHECK ((transaction_scope = ANY (ARRAY['unit'::text, 'whole_building'::text, 'land_or_site'::text])))"
+urgent_listing_alert_logs_listing_request_id_fkey,f,urgent_listing_alert_logs,listing_requests,FOREIGN KEY (listing_request_id) REFERENCES listing_requests(id) ON DELETE CASCADE
+urgent_listing_alert_logs_notification_id_fkey,f,urgent_listing_alert_logs,notifications,FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+urgent_listing_alert_logs_pkey,p,urgent_listing_alert_logs,-,PRIMARY KEY (id)
+urgent_listing_alert_logs_user_id_fkey,f,urgent_listing_alert_logs,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+urgent_listing_alert_logs_user_id_listing_request_id_key,u,urgent_listing_alert_logs,-,"UNIQUE (user_id, listing_request_id)"
+user_alert_subscriptions_pkey,p,user_alert_subscriptions,-,PRIMARY KEY (id)
+user_alert_subscriptions_user_id_fkey,f,user_alert_subscriptions,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_favorites_pkey,p,user_favorites,-,PRIMARY KEY (id)
+user_favorites_user_id_fkey,f,user_favorites,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_recent_analysis_building_id_fkey,f,user_recent_analysis,master_buildings,FOREIGN KEY (building_id) REFERENCES master_buildings(id) ON DELETE CASCADE
+user_recent_analysis_last_mode_check,c,user_recent_analysis,-,"CHECK ((last_mode = ANY (ARRAY['property'::text, 'rental'::text, 'operation'::text])))"
+user_recent_analysis_pkey,p,user_recent_analysis,-,"PRIMARY KEY (user_id, building_id)"
+user_recent_analysis_user_id_fkey,f,user_recent_analysis,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+users_email_unique,u,users,-,UNIQUE (email)
+users_kakao_id_unique,u,users,-,UNIQUE (kakao_id)
+users_pkey,p,users,-,PRIMARY KEY (id)
+weekly_email_deliveries_agent_id_fkey,f,weekly_email_deliveries,agents,FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+weekly_email_deliveries_attempts_check,c,weekly_email_deliveries,-,CHECK (((attempts >= 0) AND (attempts <= 3)))
+weekly_email_deliveries_click_count_check,c,weekly_email_deliveries,-,CHECK ((click_count >= 0))
+weekly_email_deliveries_cohort_check,c,weekly_email_deliveries,-,"CHECK ((cohort = ANY (ARRAY['tue'::text, 'thu'::text])))"
+weekly_email_deliveries_loan_consultant_id_fkey,f,weekly_email_deliveries,loan_consultants,FOREIGN KEY (loan_consultant_id) REFERENCES loan_consultants(id) ON DELETE CASCADE
+weekly_email_deliveries_open_count_check,c,weekly_email_deliveries,-,CHECK ((open_count >= 0))
+weekly_email_deliveries_operator_id_fkey,f,weekly_email_deliveries,operators,FOREIGN KEY (operator_id) REFERENCES operators(id) ON DELETE CASCADE
+weekly_email_deliveries_owner_check,c,weekly_email_deliveries,-,"CHECK ((((recipient_type = 'user'::text) AND (user_id IS NOT NULL) AND (num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)) OR ((recipient_type = 'agent'::text) AND (agent_id IS NOT NULL) AND (num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)) OR ((recipient_type = 'operator'::text) AND (operator_id IS NOT NULL) AND (num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1)) OR ((recipient_type = 'loan_consultant'::text) AND (loan_consultant_id IS NOT NULL) AND (num_nonnulls(user_id, agent_id, operator_id, loan_consultant_id) = 1))))"
+weekly_email_deliveries_pkey,p,weekly_email_deliveries,-,PRIMARY KEY (id)
+weekly_email_deliveries_status_check,c,weekly_email_deliveries,-,"CHECK ((status = ANY (ARRAY['sending'::text, 'sent'::text, 'failed'::text])))"
+weekly_email_deliveries_tracking_token_key,u,weekly_email_deliveries,-,UNIQUE (tracking_token)
+weekly_email_deliveries_user_id_fkey,f,weekly_email_deliveries,users,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+weekly_email_deliveries_user_id_week_start_key,u,weekly_email_deliveries,-,"UNIQUE (user_id, week_start)"
+weekly_email_reports_attempts_check,c,weekly_email_reports,-,CHECK ((attempts >= 0))
+weekly_email_reports_pkey,p,weekly_email_reports,-,PRIMARY KEY (id)
+weekly_email_reports_report_key_key,u,weekly_email_reports,-,UNIQUE (report_key)
+weekly_email_reports_status_check,c,weekly_email_reports,-,"CHECK ((status = ANY (ARRAY['sending'::text, 'sent'::text, 'failed'::text])))"
+weekly_feature_tips_episode_check,c,weekly_feature_tips,-,CHECK (((episode >= 1) AND (episode <= 8)))
+weekly_feature_tips_episode_key,u,weekly_feature_tips,-,UNIQUE (episode)
+weekly_feature_tips_pkey,p,weekly_feature_tips,-,PRIMARY KEY (id)
