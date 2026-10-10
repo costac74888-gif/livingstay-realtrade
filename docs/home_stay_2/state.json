@@ -1718,6 +1718,12 @@
       "status": "COMPLETE",
       "head": "87580f8ebf946cf8f9a7f1cb0b7ac76158e6b2c6",
       "tag": "hs2/phase-06/complete"
+    },
+    {
+      "at": "2026-10-10T15:31:55.757206+00:00",
+      "event": "WORK_PROOF_COUNTS_RECONCILED",
+      "phase": 6,
+      "status": "COMPLETE"
     }
   ],
   "current_user_phase": 6,
@@ -4303,7 +4309,7 @@
           }
         ]
       },
-      "test_summary": "27 registered groups PASS; Python 292 tests; Chromium 122 counted assertions",
+      "test_summary": "27 registered groups PASS; Python 292 tests; Chromium 206 assertions (84+46+44+32)",
       "work_review": {
         "passed": true,
         "at": "2026-10-10T15:31:06.553525+00:00",
