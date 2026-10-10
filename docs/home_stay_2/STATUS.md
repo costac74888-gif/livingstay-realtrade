@@ -1,3 +1,15 @@
+# 현재 사용자 Phase 2 — PASS
+
+- 범위: 격리 PostgreSQL 데이터 확장. 기존 18단계의 2단계(인증)와 별도.
+- Phase 1: COMPLETE 기록 보존. 저장소 2~18단계: PENDING.
+- 완료 범위: Fixture PostgreSQL data extension, migration/rollback and preserved legacy connections
+- 검사: 13 registered groups; 0 failed
+- 원격 저장: NOT_PUSHED
+- 차단 사유: 없음
+- 다음 작업: Commit verified source/evidence, finish local checkpoint, push development branch only
+
+---
+
 # HOME & STAY 2.0 Harness 상태
 
 - 하네스 자체검사: **PASS**
@@ -24,9 +36,3 @@
 | 16 | PENDING | - | - |
 | 17 | PENDING | - | - |
 | 18 | PENDING | - | - |
-
-## 현재 사용자 Phase 2 — RUNNING
-
-격리 PostgreSQL 데이터 확장만 구현·검증 중. Phase 1 COMPLETE 기록 보존.
-저장소 2~18단계 PENDING; 운영 DB/PG/배포 금지. 원격: NOT_PUSHED.
-다음: 확장 구조·개발용 migration·복구 검사 후 전체 등록 검사.
