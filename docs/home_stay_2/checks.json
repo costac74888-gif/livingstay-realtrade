@@ -22,5 +22,8 @@
   "phase4-mode-ui": {"file":"tests/hs2_phase4_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"b3647e6343f13060b17c4a911f225bb7cafec449fcc89289d9458c95b76c4ecf"},
   "phase5-search-contracts": {"file":"tests/test_hs2_phase5_search.py","kind":"python","role":"acceptance","reviewed_sha256":"b15d21a9a2c7de038008c3f1b817d063ab982f170db497da98a220ed036cace4"},
   "phase5-consumer-db": {"file":"tests/test_hs2_phase5_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"edbc07d22d50c0ccbb600ab87742a3027a7dc2452d2699dacddfb705f4626bff"},
-  "phase5-consumer-ui": {"file":"tests/hs2_phase5_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"bb5db795832fe45901aaf2da83c7b15d26436bdbc5ef1ec1d0efc8f9e19cfc86"}
+  "phase5-consumer-ui": {"file":"tests/hs2_phase5_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"bb5db795832fe45901aaf2da83c7b15d26436bdbc5ef1ec1d0efc8f9e19cfc86"},
+  "phase6-validation": {"file":"tests/test_hs2_phase6_validation.py","kind":"python","role":"acceptance","reviewed_sha256":"32e8c02fa0602530ae5a9c6c7fe199f58d5a83c4e82d125dfbc28edd293200d4"},
+  "phase6-listing-db": {"file":"tests/test_hs2_phase6_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"147c3af1ffb4bcabec2924febbb806142a0496aee653110842c879024c807e4f"},
+  "phase6-listing-ui": {"file":"tests/hs2_phase6_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"13a2827d71d7717f95e3a5c03660b8aa8b42b46e3667cff9c8a6581ec3d65469"}
 }

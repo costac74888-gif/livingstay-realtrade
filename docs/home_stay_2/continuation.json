@@ -20,7 +20,11 @@
       {"id":"P05-A02","criterion":"Read original Phase2 public view using actual owned PostgreSQL; fresh explicit synthetic day rates; withdrawal and incomplete quotes; public role and unchanged legacy","check":"phase5-consumer-db"},
       {"id":"P05-A03","criterion":"Actual desktop/mobile DOM with nonempty public cards, date-gated period-total inputs, selection, URL restore, errors/retry, safe SDK interface and protected metadata","check":"phase5-consumer-ui"}
     ]},
-    {"id":6,"title":"단기임대 매물등록","native_acceptance":["S04-A01","S04-A02","S05-A01","S05-A02","S06-A01","S06-A02"],"acceptance":null},
+    {"id":6,"title":"단기임대 매물등록","native_acceptance":["S04-A01","S04-A02","S05-A01","S05-A02","S06-A01","S06-A02"],"acceptance":[
+      {"id":"P06-A01","criterion":"Strict operator-declared space/type/stay/photo/responsibility/ownership input; no client authority","check":"phase6-validation"},
+      {"id":"P06-A02","criterion":"Persistent PostgreSQL CRUD/submission/review, original actor-owned address confirmation, scope/CSRF/revision/expiry/revocation, public privacy and preserved originals","check":"phase6-listing-db"},
+      {"id":"P06-A03","criterion":"Actual PostgreSQL Chromium upload/save/re-entry/submission/admin publication/edit-unpublish/withdrawal, desktop/mobile DOM and blocked external network","check":"phase6-listing-ui"}
+    ]},
     {"id":7,"title":"가격/Calendar Engine","native_acceptance":["S06-A01","S06-A02","S07-A01","S07-A02","S08-A01","S08-A02","S09-A01","S10-A01"],"acceptance":null},
     {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":null},
     {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":null},

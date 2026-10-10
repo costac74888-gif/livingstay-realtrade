@@ -10,7 +10,9 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser();parser.add_argument("--port-file",required=True);parser.add_argument("--port",type=int,default=0)
     args=parser.parse_args();p=Path(args.port_file)
     if not str(p).startswith("/tmp/hs2-"):raise SystemExit("Owned temporary fixture only")
-    if os.environ.get("HS2_FIXTURE_SCREEN") == "consumer":
+    if os.environ.get("HS2_FIXTURE_SCREEN") == "listings":
+        from hs2_listings.fixture_http import server
+    elif os.environ.get("HS2_FIXTURE_SCREEN") == "consumer":
         from hs2_consumer.fixture_http import server
     elif os.environ.get("HS2_FIXTURE_SCREEN") == "mode":
         from hs2_modes.fixture_http import server

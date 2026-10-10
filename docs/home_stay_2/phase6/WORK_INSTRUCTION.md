@@ -16,7 +16,7 @@ Phase 5의 현재 소스 전체 24개 등록검사 PASS·내부 Work 검토·imm
 가격/캘린더·전체 검색·예약/결제·실제 운영 연결은 후속 Phase와 승인 경계로 분리한다.
 기존 제한공개 주소/건물명/사진/좌표 및 자동 건물값 보호를 우회하지 않는다.
 
-## 현재 사용자 결정 필요 — P06-PUBLICATION-TIMING
+## 권장안 자동 결정 — P06-PUBLICATION-TIMING
 
 원문은 등록 마지막 단계의 공개설정을 요구하지만 새 매물의 공개 시점은 정하지 않았다.
 기존 P-PUBLICATION도 OPEN이다. 등록 완료와 소비자 공개를 같은 상태로 처리할지,
@@ -25,4 +25,30 @@ Phase 5의 현재 소스 전체 24개 등록검사 PASS·내부 Work 검토·imm
 
 이번 질문은 공개 시점/처리 흐름만 결정한다. full/연락처 공개, 권리 유효기간,
 세금·부분 월·취소·재고·실제 배포/운영 권한까지 승인한 것으로 해석하지 않는다.
-현재 acceptance는 미등록이며 Phase 6 구현/완료 PASS를 주장하지 않는다.
+처음 차단 당시 acceptance는 미등록이었다. 권장안 위임 후 아래 실제 검사로 재개했으며,
+전체 검사·Work 검토·원격 확인 전에는 완료로 기록하지 않는다.
+
+2026-10-11 사용자가 권장안 자동 진행을 위임했다. 관리자 등록권한·공개정보
+확인 후 공개를 선택하고 Phase 6을 재개한다. 기존 운영 승인 Gate는 열지 않는다.
+
+## 실제 acceptance
+
+- P06-A01: 엄격한 공간/요금/책임/사진/유형 입력; 숙박 1박·비숙박 7일;
+  client actor/권한 필드·임의 사진/후보 ID 거부.
+- P06-A02: 실제 격리 PostgreSQL + 기존 주소 참조 workflow 연결; actor/business 경계,
+  CSRF, 초안/수정/제출/반려/승인/철회, revision fence, 승인 만료·권한 회수,
+  기존 제한공개 view 보호와 원본/감사 보존.
+- P06-A03: 실제 Chromium + PostgreSQL HTTP, 사진 upload, 새로고침 이후 초안 재진입,
+  제출·관리자 승인·공개·수정 즉시 비공개·철회, 1280/390px, 외부 요청 차단.
+
+## 운영 연결 경계
+
+새 Blueprint는 app.py에 mount하지 않았다. trusted account/context/admin/CSRF와
+기존 주소확인 service의 actor-owned read callback을 요구한다. 회원/사업장 신규 계정을
+만들지 않는다. 실제 signed-in 원장 연결·공공 API·사진 App Storage·운영 migration은
+통합 및 승인된 Cutover에서 연결하며, fixture callback을 운영에 사용하는 것은 금지한다.
+소비자 조회는 `public_rows`의 revision/기간/계정/사업장/권한 재검증 경계를 거쳐야 한다.
+원래 Phase 2 view만 직접 조회해 새 매물의 승인 유효기간을 우회하면 안 된다.
+
+사진은 현재 개발 API의 private binary 저장으로만 검증했다(장당 512KiB, 최대 선택 10장).
+실제 발송·예약·결제·법률 인증을 수행하거나 검증한 것으로 표시하지 않는다.

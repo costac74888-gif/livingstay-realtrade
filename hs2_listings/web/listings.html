@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="icon" href="/hs2/listings/assets/favicon.svg" type="image/svg+xml">
+  <title>운영자 매물 등록 · HOME & STAY</title>
+  <link rel="stylesheet" href="/hs2/listings/assets/listings.css">
+  <script src="/hs2/listings/assets/listings.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/hs2/listings/" aria-label="HOME & STAY 매물 등록 홈">
+        <span class="brand-mark" aria-hidden="true">H</span>
+        <span class="brand-copy"><span class="brand-name">HOME &amp; STAY</span><span class="brand-subtitle">Operator workspace</span></span>
+      </a>
+      <div class="header-actions"><span class="private-label">비공개 운영자 등록</span><a class="subtle-link" href="/hs2/registration/">주소 확인</a></div>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div><p class="eyebrow">PRIVATE REGISTRATION · 01</p><h1 id="page-title">공간을 등록합니다</h1><p class="intro-copy">확인된 주소·건물 정보를 연결하고 공간의 실제 운영 형태를 알려주세요. 저장한 정보는 관리자 검토 전까지 공개되지 않습니다.</p></div>
+        <aside class="intro-aside">관리자는 등록 권한과 공개 가능한 정보를 확인합니다. 건물의 법적 용도 적합성을 판정하거나 보증하지 않습니다.</aside>
+      </section>
+      <div class="notice" role="note"><span class="notice-mark" aria-hidden="true">i</span><p><strong>일반 건물과 창고·상업용 공간도 등록할 수 있습니다.</strong> 운영자가 숙박/비숙박 형태를 직접 선택하며, 기존 숙박 분류에 억지로 맞추지 않습니다. 등록은 예약이나 결제를 제공하지 않습니다.</p></div>
+      <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+      <div class="layout">
+        <section class="panel" aria-labelledby="form-title">
+          <div class="panel-head"><div><p class="kicker">SPACE DETAILS</p><h2 id="form-title">등록 정보</h2></div><div id="statusline" class="status-line"><span class="status-pill" data-status="draft">새 초안</span></div></div>
+          <div class="panel-body">
+            <form id="applicationForm" novalidate>
+              <div class="form-grid">
+                <div class="field wide"><label for="title">등록 제목 <span class="required">필수</span></label><input id="title" name="title" maxlength="100" autocomplete="off" placeholder="예: 성수동 작업실형 공간"><span class="hint">관리자 검토용 제목입니다. 주소·건물명은 공개 정보에 포함되지 않습니다.</span></div>
+                <div class="field wide"><label for="space_label">공간 이름 <span class="required">필수</span></label><input id="space_label" name="space_label" maxlength="100" placeholder="예: 2층 독립 공간"></div>
+                <div class="field"><label for="space_scope">등록 범위</label><select id="space_scope" name="space_scope"><option value="unit">일부 공간 / 호실</option><option value="whole">건물 전체</option></select></div>
+                <div class="field"><label for="stay_kind">운영 형태 <span class="required">필수 선택</span></label><select id="stay_kind" name="stay_kind"><option value="">형태를 선택하세요</option><option value="lodging">숙박형 운영</option><option value="non_lodging">비숙박형 운영</option></select><span class="hint">운영자가 선언한 형태이며 정부 인증·판정이 아닙니다.</span></div>
+                <div class="field half"><label for="rooms">방 수</label><input id="rooms" name="rooms" type="number" min="0" max="30" step="1" inputmode="numeric" placeholder="0–30"></div>
+                <div class="field half"><label for="area_m2">전용 면적 (㎡)</label><input id="area_m2" name="area_m2" type="number" min="0.01" max="10000" step="0.01" inputmode="decimal" placeholder="예: 42.5"></div>
+                <div class="field half"><label for="guests">수용 인원</label><input id="guests" name="guests" type="number" min="1" max="100" step="1" inputmode="numeric" placeholder="1–100"></div>
+              </div>
+              <div class="section-divider">사진 및 편의 정보</div>
+              <div class="field wide">
+                <span class="field-label">공간 사진 <span class="required">제출 필수</span></span>
+                <div class="upload-box">
+                  <div class="upload-top"><p>JPEG, PNG, WebP · 파일당 512KiB 이하 · 최대 10장<br>사진은 로그인된 사용자와 검토 관리자만 볼 수 있습니다.</p><label class="file-button" for="photoFiles">사진 선택</label></div>
+                  <input id="photoFiles" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple aria-label="공간 사진 선택">
+                  <div id="photoGrid" class="photo-grid" aria-live="polite"></div>
+                </div>
+              </div>
+              <div class="field wide spaced-fields"><span class="field-label">편의 시설</span><div class="check-row">
+                <label><input type="checkbox" name="options" value="wifi"> 와이파이</label><label><input type="checkbox" name="options" value="kitchen"> 주방</label><label><input type="checkbox" name="options" value="parking"> 주차</label><label><input type="checkbox" name="options" value="washer"> 세탁기</label>
+              </div></div>
+              <div class="section-divider">가격 및 이용 규칙</div>
+              <div class="price-grid">
+                <div class="field"><label for="nightly">1박 요금 (원)</label><div class="price-control"><input id="nightly" type="number" min="0" max="1000000000" step="1" inputmode="numeric" placeholder="해당 시 입력"><span>원</span></div><span class="hint">숙박형 제출에 필요</span></div>
+                <div class="field"><label for="weekly">주 요금 (원)</label><div class="price-control"><input id="weekly" type="number" min="0" max="1000000000" step="1" inputmode="numeric" placeholder="선택 입력"><span>원</span></div></div>
+                <div class="field"><label for="monthly">월 요금 (원)</label><div class="price-control"><input id="monthly" type="number" min="0" max="1000000000" step="1" inputmode="numeric" placeholder="선택 입력"><span>원</span></div><span class="hint">비숙박형은 주/월 중 하나 필요</span></div>
+              </div>
+              <div class="form-grid spaced-fields">
+                <div class="field"><label for="min_stay">최소 이용 기간 (일)</label><input id="min_stay" type="number" min="1" max="730" step="1" inputmode="numeric" placeholder="숙박형 1일 / 비숙박형 7일 이상"></div>
+                <div class="field"><span class="field-label">운영 옵션</span><div class="check-row"><label><input id="instant" type="checkbox"> 즉시 확정 운영</label><label><input id="discount" type="checkbox"> 할인 운영</label></div><span class="hint">예약 기능이 활성화되었다는 뜻은 아닙니다.</span></div>
+              </div>
+              <div class="section-divider">공개 범위와 확인</div>
+              <div class="consent">
+                <label><input id="responsibility" type="checkbox"><span>등록 정보의 정확성과 운영 책임이 등록자에게 있음을 확인합니다. <span class="required">제출 필수</span></span></label>
+                <label><input id="public_summary" type="checkbox"><span>관리자 승인 후 공간의 제한된 공개 요약 정보 게시에 동의합니다.</span></label>
+                <p>공개는 관리자 승인을 거치며 365일 후 만료되어 갱신 검토가 필요합니다. 수정한 내용은 다시 검토됩니다. 정확한 주소·건물명·사진·GPS 좌표·연락처는 공개하지 않습니다. 공개는 법적 용도 적합성 확인이 아닙니다.</p>
+              </div>
+              <div class="actions">
+                <button id="saveButton" class="button primary" type="button">초안 저장</button>
+                <button id="submitButton" class="button secondary" type="button" disabled>검토 요청</button>
+                <span class="spacer"></span>
+                <button id="withdrawButton" class="button danger" type="button" hidden>등록 철회</button>
+              </div>
+            </form>
+          </div>
+        </section>
+        <aside class="panel">
+          <div class="side-panel">
+            <p class="kicker">CONFIRMED ADDRESS</p><h2>확인된 건물 연결</h2>
+            <label class="field-label" for="workflowSelect">주소 확인 기록</label>
+            <select id="workflowSelect" class="reference-select"><option value="">확인된 기록을 불러오는 중</option></select>
+            <a class="registration-link" href="/hs2/registration/">주소 또는 건물 확인하기</a>
+            <button id="newApplication" class="button secondary new-registration" type="button">새 등록 시작</button>
+            <div id="referenceHint" class="hint">목록에 표시된 확인 완료 기록만 선택할 수 있습니다.</div>
+            <div class="meta-block" aria-label="현재 등록 정보">
+              <div class="meta-line"><span>상태</span><strong id="sideStatus">새 초안</strong></div>
+              <div class="meta-line"><span>수정 차수</span><strong id="revision">아직 저장 전</strong></div>
+              <div class="meta-line"><span>검토 결과</span><strong id="reviewResult">검토 전</strong></div>
+              <div class="meta-line"><span>검토 메모</span><strong id="reviewNote">없음</strong></div>
+            </div>
+            <div id="savedApplications" class="saved-list" aria-label="저장한 등록"></div>
+            <div class="privacy-card"><strong>제한 공개</strong>정확한 건물·주소, 등록 사진, GPS 위치, 연락처는 공개 화면에서 가려집니다. 사진은 비공개 주소를 통해 로그인 상태에서만 전송합니다.</div>
+          </div>
+        </aside>
+      </div>
+      <footer class="page-footer"><span>HOME &amp; STAY · PRIVATE OPERATOR WORKSPACE</span><span>관리자 검토는 등록 권한과 공개 정보만 확인합니다. 법률 자문·예약·결제 서비스가 아닙니다.</span></footer>
+    </main>
+  </div>
+</body>
+</html>

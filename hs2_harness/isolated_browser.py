@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from contextlib import ExitStack
 from . import core
 
 CHECK_ID="phase3-registration-ui"
@@ -15,6 +16,7 @@ FIXTURE_CHECKS = {
     CHECK_ID: (TEST_FILE, "registration"),
     "phase4-mode-ui": ("tests/hs2_phase4_ui_test.cjs", "mode"),
     "phase5-consumer-ui": ("tests/hs2_phase5_ui_test.cjs", "consumer"),
+    "phase6-listing-ui": ("tests/hs2_phase6_ui_test.cjs", "listings"),
 }
 
 
@@ -24,10 +26,14 @@ def run_check(name,check,timeout):
     test_file, screen = entry
     core.GENERATED.mkdir(parents=True,exist_ok=True);log=core.GENERATED/f"{name}-{time.time_ns()}.log"
     start=time.monotonic();code=125
-    with tempfile.TemporaryDirectory(prefix="hs2-browser-") as temp,log.open("w") as output:
+    with tempfile.TemporaryDirectory(prefix="hs2-browser-") as temp,log.open("w") as output, ExitStack() as stack:
         root=Path(temp);env=core.test_env(root);fixture=None;child=None
         env["HS2_FIXTURE_SCREEN"] = screen
         try:
+            if screen == "listings":
+                from .owned_cluster import owned_cluster
+                env = stack.enter_context(owned_cluster(env,output,"test_hs2_phase6_db.py"))
+                env["PYTHONPATH"] = str(core.ROOT/"hs2_harness/isolated_guard")+os.pathsep+env["PYTHONPATH"]
             chromium=shutil.which("chromium")
             if not chromium:raise core.GateError("Local Chromium unavailable")
             port_file=root/"port"
