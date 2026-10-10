@@ -822,3 +822,17 @@ mtime_ms = 1791619956022
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/dcdb9a16-6674-427f-8f09-58ca7edadda7/aa5c08b3-762a-4859-835d-00c15f04f150"
 storage_version_token = "1791619976267895"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "7w-thbjeUeD7e3kFuOY-2"
+uri = "file://.local/suite-audit/contacts/verification-report.html"
+type = "html"
+title = "연락처 개선 검증·남은 경고와 실패"
+description = "등록 57그룹, 일반 회귀 114개, 개인정보·정적 보안 경고와 GitHub 저장 결과를 구분한 상세 보고서입니다."
+logical_id = "2f224ea9-7239-4171-912d-10f48427e7f0"
+content_hash = "sha256:cfef034cebfd6f17506d99abced86472d6e48eb2af3d18393a50ad0aeb33de14"
+size = 9419
+mtime_ms = 1791669583383
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/2f224ea9-7239-4171-912d-10f48427e7f0/7fe2cb5c-852c-4242-8266-4858a86931d5"
+storage_version_token = "1791669585255879"
+content_type = "text/html"

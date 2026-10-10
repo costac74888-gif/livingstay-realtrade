@@ -137,3 +137,4 @@
 - [채팅 읽음 경계](chat-read-cursors.md) — 읽음은 화면에 전달된 마지막 메시지까지만; 조회 이후 도착한 메시지를 읽음으로 확대하지 않는다.
 - [격리 브라우저 HTTP](owned-browser-requests.md) — Playwright APIRequestContext는 Node 통신 차단 대상; 준비 요청도 고정 owned origin의 브라우저 fetch로 한다.
 - [연락처 진단·보고 정책](contact-diagnostic-privacy.md) — 발송·동기화 원본은 보존하고 기본 로그만 마스킹; 관리자 원본 보고는 명시적 비공개 파일로 제한한다.
+- [자산 전달과 소스 지문](asset-delivery-fingerprint.md) — Library 자동 메타데이터 변경은 기능 코드 변경과 구분하고 최종 지문·Git 저장 순서를 맞춘다.
