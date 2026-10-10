@@ -1,12 +1,12 @@
-# 현재 사용자 Phase 5 — COMPLETE
+# 현재 사용자 Phase 6 — BLOCKED
 
-- 범위: PC 소비자 Main. 사용자 총괄지시서 기준; native 번호와 구분.
+- 범위: 단기임대 매물등록. 사용자 총괄지시서 기준; native 번호와 구분.
 - Work: Replit 내부의 지시·검토 역할. 외부 통신 아님.
 - 기존 Phase 1~3 영수증·native 계획·검사·보존·운영 Gate 유지.
-- 검사: 24 registered groups; 0 failed
-- 원격 저장: SYNCED
-- 차단 사유: 없음
-- 다음 작업: Verify development remote then issue next user phase; operational gates remain closed
+- 검사: 미검증
+- 원격 저장: NOT_VERIFIED
+- 차단 사유: P06-PUBLICATION-TIMING: original registration flow does not specify immediate publication vs admin registration-rights/public-data review
+- 다음 작업: Await this narrow publication-workflow decision, then implement Phase6; no building-use legal eligibility gate
 
 ---
 

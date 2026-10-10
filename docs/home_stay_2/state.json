@@ -1673,9 +1673,22 @@
       "phase": 5,
       "status": "COMPLETE",
       "head": "de95f63c29ee1eed9e78e633b65ba55404629137"
+    },
+    {
+      "at": "2026-10-10T14:39:44.360736+00:00",
+      "event": "WORK_INSTRUCTION_ACCEPTED",
+      "phase": 6,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T14:40:37.054200+00:00",
+      "event": "WORK_POLICY_GATE",
+      "phase": 6,
+      "status": "BLOCKED",
+      "policy": "P06-PUBLICATION-TIMING"
     }
   ],
-  "current_user_phase": 5,
+  "current_user_phase": 6,
   "user_phases": {
     "2": {
       "status": "COMPLETE",
@@ -3731,6 +3744,14 @@
         "at": "2026-10-10T14:38:48.417545+00:00",
         "method": "Git Data API; original hashes verified; inline UTF-8 tree; force:false; remote tags verified"
       }
+    },
+    "6": {
+      "status": "BLOCKED",
+      "instruction": "docs/home_stay_2/phase6/WORK_INSTRUCTION.md",
+      "at": "2026-10-10T14:39:44.357323+00:00",
+      "source_head": "fcf756eb8940656e7a80a86e7e782540c3a68357",
+      "next_action": "Await this narrow publication-workflow decision, then implement Phase6; no building-use legal eligibility gate",
+      "reason": "P06-PUBLICATION-TIMING: original registration flow does not specify immediate publication vs admin registration-rights/public-data review"
     }
   }
 }
