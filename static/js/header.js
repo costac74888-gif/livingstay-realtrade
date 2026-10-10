@@ -81,7 +81,7 @@
           '<a class="hnav-btn hnav-auctions" href="/listings?channel=auction"><svg style="width:16px;height:16px;vertical-align:-3px" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v13M6.5 17h7M4 5h12M5 5l-3 6h6L5 5Zm10 0-3 6h6l-3-6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hnav-label">공매목록</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
           '<a class="hnav-btn" href="/analysis">📊 <span class="hnav-label">자산분석</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span><span class="nav-badge nav-badge-hot">HOT</span></a>' +
-          '<a class="hnav-btn" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
+           '<a class="hnav-btn" id="headerMypageLink" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
         '</nav>' +
         '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
       '</div>' +
@@ -100,7 +100,7 @@
       '<div class="auth-modal" role="dialog" aria-modal="true" aria-labelledby="authModalTitle">' +
         '<button class="auth-modal-close" id="authModalClose" aria-label="닫기">&times;</button>' +
         '<img class="auth-brand-logo" src="/static/home_stay_share.png" alt="HOME &amp; STAY">' +
-        '<h2 class="auth-modal-title" id="authModalTitle">로그인</h2>' +
+         '<h2 class="auth-modal-title" id="authModalTitle">일반회원 로그인</h2>' +
         '<div class="auth-error" id="authError" style="display:none;"></div>' +
         '<form id="authForm" autocomplete="on">' +
           '<div class="auth-field" id="authNameField" style="display:none;">' +

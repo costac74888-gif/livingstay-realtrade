@@ -17,11 +17,11 @@
     <div class="admin-login-card">
       <div class="admin-login-brand">HOME &amp; STAY</div>
       <h1 class="admin-login-title">중개사 로그인</h1>
-      <p class="admin-login-sub">가입 시 설정하신 이메일과 비밀번호를 입력하세요.</p>
+      <p class="admin-login-sub">일반회원과 중개사는 같은 비밀번호를 사용합니다. 가입한 이메일과 비밀번호를 입력하세요.</p>
       <form id="loginForm" class="admin-login-form" autocomplete="off">
         <input
           id="agentEmail"
-          type="text"
+          type="email"
           class="admin-input"
           placeholder="아이디(이메일)"
           autocomplete="username"
@@ -35,9 +35,18 @@
           autocomplete="current-password"
           required
         />
+        <label class="agent-remember" for="rememberLogin">
+          <input id="rememberLogin" type="checkbox" />
+          <span>로그인 상태 유지 (31일)</span>
+        </label>
         <button type="submit" class="admin-btn admin-btn-primary" id="loginBtn">로그인</button>
       </form>
       <div id="loginMsg" class="admin-login-msg" role="alert"></div>
+      <div id="contextPicker" class="agent-context-picker" hidden></div>
+      <div class="agent-login-links">
+        <a href="/?login=general">일반회원 로그인</a>
+        <a href="/?login=reset">비밀번호 재설정</a>
+      </div>
     </div>
   </div>
 
@@ -45,40 +54,113 @@
     const form = document.getElementById("loginForm");
     const msg = document.getElementById("loginMsg");
     const btn = document.getElementById("loginBtn");
-    const requestedNext = new URLSearchParams(window.location.search).get("next") || "";
-    let nextTarget = "/agent/dashboard";
-    try {
-      const parsed = new URL(requestedNext, window.location.origin);
-      if (
-        parsed.origin === window.location.origin
-        && parsed.pathname === "/agent/dashboard"
-      ) {
-        nextTarget = parsed.pathname + parsed.search + parsed.hash;
-      }
-    } catch (_) {}
+    const picker = document.getElementById("contextPicker");
+    const remember = document.getElementById("rememberLogin");
+    let busy = false;
+
+    function showMessage(text) {
+      msg.textContent = text;
+      msg.hidden = false;
+    }
+
+    function safeRedirect(path, fallback) {
+      if (typeof path !== "string" || !path) return fallback;
+      try {
+        const parsed = new URL(path, window.location.origin);
+        if (parsed.origin === window.location.origin) {
+          return parsed.pathname + parsed.search + parsed.hash;
+        }
+      } catch (_) {}
+      return fallback;
+    }
+
+    function showContexts(contexts) {
+      picker.innerHTML = "";
+      picker.hidden = false;
+      const title = document.createElement("p");
+      title.className = "admin-login-sub";
+      title.textContent = "접속할 중개사무소를 선택하세요.";
+      picker.appendChild(title);
+      const select = document.createElement("select");
+      select.className = "admin-input";
+      select.id = "contextChoice";
+      select.setAttribute("aria-label", "접속할 중개사무소");
+      contexts.forEach(function (context) {
+        const option = document.createElement("option");
+        option.value = String(context.id);
+        option.textContent = context.business_name || context.name || context.label || "중개사무소";
+        select.appendChild(option);
+      });
+      picker.appendChild(select);
+      const chooseButton = document.createElement("button");
+      chooseButton.type = "button";
+      chooseButton.className = "admin-btn admin-btn-primary";
+      chooseButton.textContent = "선택한 사무소로 접속";
+      chooseButton.addEventListener("click", async function () {
+        if (busy || !select.value) return;
+        busy = true;
+        chooseButton.disabled = true;
+        showMessage("");
+        try {
+          const response = await fetch("/api/auth/context", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ context_id: select.value })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result.ok) {
+            throw new Error(result.message || "사무소 선택에 실패했습니다. 다시 시도해주세요.");
+          }
+          window.location.href = safeRedirect(result.redirect, "/agent/dashboard");
+        } catch (error) {
+          showMessage(error.message || "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+          busy = false;
+          chooseButton.disabled = false;
+        }
+      });
+      picker.appendChild(chooseButton);
+    }
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const email = document.getElementById("agentEmail").value.trim();
-      const password = document.getElementById("agentPassword").value.trim();
+      const password = document.getElementById("agentPassword").value;
       msg.textContent = "";
+      msg.hidden = false;
+      picker.hidden = true;
+      picker.innerHTML = "";
+      busy = true;
       btn.disabled = true;
       btn.textContent = "확인 중…";
       try {
         const res = await fetch("/api/agent/login", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({ email, password, remember: !!remember.checked, role: "agent" }),
         });
         const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) {
-          window.location.href = nextTarget;
+        if (res.ok && data.ok && data.select_context && Array.isArray(data.contexts) && data.contexts.length) {
+          showContexts(data.contexts);
+          msg.textContent = "로그인되었습니다. 접속할 사무소를 선택해주세요.";
+          busy = false;
           return;
         }
-        msg.textContent = data.message || "로그인에 실패했습니다.";
+        if (res.ok && data.ok) {
+          window.location.href = safeRedirect(data.redirect, "/agent/dashboard");
+          return;
+        }
+        const code = String(data.code || data.error || "").toLowerCase();
+        const message = data.message ||
+          (code.indexOf("pending") !== -1 ? "중개사무소 승인 대기 중입니다. 승인 완료 후 로그인할 수 있습니다." :
+            code.indexOf("link") !== -1 ? "연결된 중개사무소가 없습니다. 중개사 등록 상태를 확인해주세요." :
+              "중개사 로그인에 실패했습니다. 이메일과 계정 상태를 확인해주세요.");
+        showMessage(message);
       } catch (err) {
-        msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+        showMessage("네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
       } finally {
+        busy = false;
         btn.disabled = false;
         btn.textContent = "로그인";
       }

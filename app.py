@@ -8988,7 +8988,7 @@ def _get_account_contexts(user_id):
              WHERE user_id = %s AND status = 'active'
              ORDER BY CASE role WHEN 'general' THEN 0 ELSE 1 END, role
         """, (user_id,))
-        roles = [row["role"] for row in cur.fetchall()]
+        roles = list(dict.fromkeys(row["role"] for row in cur.fetchall()))
         if "general" not in roles:
             roles.insert(0, "general")
         cur.execute("""
@@ -9003,6 +9003,9 @@ def _get_account_contexts(user_id):
                    END AS business_name
               FROM account_business_memberships b
              WHERE b.user_id = %s AND b.status = 'active'
+               AND (b.role <> 'agent' OR EXISTS (
+                   SELECT 1 FROM agents a WHERE a.id=b.business_id
+                     AND b.business_table='agents' AND a.status='approved'))
              ORDER BY b.role, b.business_table, b.business_id
         """, (user_id,))
         businesses = [dict(row) for row in cur.fetchall()]
@@ -9013,6 +9016,8 @@ def _get_account_contexts(user_id):
     contexts = []
     business_roles = {row["role"] for row in businesses}
     for role in roles:
+        if role == "agent" and role not in business_roles:
+            continue
         if role == "general" or role not in business_roles:
             contexts.append({
                 "id": _account_context_id(role),
@@ -9107,6 +9112,15 @@ def auth_switch_context():
             """, (u["id"], role, table, business_id))
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "선택한 역할 또는 사업장에 대한 권한이 없습니다."}), 403
+        if role == "agent":
+            cur.execute("""
+                SELECT 1 FROM agents a
+                 JOIN account_role_memberships r ON r.user_id=%s
+                   AND r.role='agent' AND r.status='active'
+                WHERE a.id=%s AND a.status='approved'
+            """, (u["id"], business_id))
+            if table != "agents" or not cur.fetchone():
+                return jsonify({"ok": False, "message": "승인된 중개사 사업장을 선택해주세요."}), 403
     finally:
         cur.close()
         conn.close()
@@ -9475,9 +9489,108 @@ def auth_signup():
         cur.close()
         conn.close()
 
-    session["user_id"] = new_id
-    session.permanent = True
+    _begin_account_login(new_id, "general", remember=True)
     return jsonify({"ok": True})
+
+
+def _begin_account_login(user_id, role, context=None, remember=False):
+    """Replace previous account/role credentials, not unrelated admin state."""
+    for key in ("user_id", "agent_id", "operator_id", "loan_consultant_id",
+                "active_role", "active_business_id", "active_business_table",
+                "account_reauthenticated_user_id", "account_reauthenticated_at"):
+        session.pop(key, None)
+    session["user_id"] = user_id
+    session["active_role"] = role
+    session.permanent = bool(remember)
+    if context:
+        session["active_business_table"] = context["business_table"]
+        session["active_business_id"] = context["business_id"]
+        if context["business_table"] == "agents":
+            session["agent_id"] = context["business_id"]
+
+
+def _unified_role_login(data, role):
+    """Explicit login entry: credentials belong to users; roles are DB-scoped."""
+    email = str(data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    fail = (jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401)
+    if role not in ("general", "agent") or not email or not password:
+        return fail
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        if role == "agent":
+            cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(LOWER(%s), 0))", (email,))
+        cur.execute("SELECT id,password_hash,status FROM users WHERE LOWER(email)=%s", (email,))
+        row = cur.fetchone()
+        if not row and role == "agent":
+            # A standalone, unlinked legacy office can claim its own credential.
+            # Never merge by email into an existing users identity here.
+            cur.execute("""SELECT a.* FROM agents a WHERE LOWER(a.email)=%s
+                AND a.status='approved' AND NOT EXISTS (
+                    SELECT 1 FROM account_business_memberships b
+                    WHERE b.business_table='agents' AND b.business_id=a.id)
+                FOR UPDATE""", (email,))
+            standalone = cur.fetchall()
+            if (len(standalone) == 1 and standalone[0].get("password_hash")
+                    and check_password_hash(standalone[0]["password_hash"], password)):
+                a = standalone[0]
+                cur.execute("""INSERT INTO users(email,password_hash,name,provider,status,
+                    phone,phone_verified,email_alert_enabled,weekly_email_enabled)
+                    VALUES (%s,%s,%s,'email','active',%s,FALSE,FALSE,%s)
+                    RETURNING id,password_hash,status""",
+                    (email,a["password_hash"],a.get("owner_name") or a["office_name"],
+                     a.get("phone"),bool(a.get("weekly_email_enabled"))))
+                row = cur.fetchone()
+                cur.execute("""INSERT INTO account_role_memberships(user_id,role,status,legacy_account_id)
+                    VALUES (%s,'general','active',NULL),(%s,'agent','active',%s)""",
+                    (row["id"],row["id"],a["id"]))
+                cur.execute("""INSERT INTO account_business_memberships
+                    (user_id,role,business_table,business_id,status)
+                    VALUES (%s,'agent','agents',%s,'active')""", (row["id"],a["id"]))
+                cur.execute("UPDATE agents SET password_hash=NULL WHERE id=%s", (a["id"],))
+        if (not row or row.get("status") == "withdrawn" or not row["password_hash"]
+                or not check_password_hash(row["password_hash"], password)):
+            return fail
+        contexts = []
+        if role == "agent":
+            cur.execute("""
+                SELECT b.business_id,b.business_table,a.office_name AS business_name
+                  FROM account_business_memberships b
+                  JOIN agents a ON a.id=b.business_id AND b.business_table='agents'
+                  JOIN account_role_memberships r ON r.user_id=b.user_id
+                    AND r.role='agent' AND r.status='active'
+                 WHERE b.user_id=%s AND b.role='agent' AND b.status='active'
+                   AND a.status='approved'
+                 GROUP BY b.business_id,b.business_table,a.office_name
+                 ORDER BY b.business_id
+            """, (row["id"],))
+            contexts = [
+                dict(item, role="agent",
+                     id=_account_context_id("agent", "agents", item["business_id"]),
+                     dashboard_url="/agent/dashboard")
+                for item in cur.fetchall()
+            ]
+            if not contexts:
+                return jsonify({"ok": False, "message":
+                    "연결된 승인 중개사 계정이 없습니다. 일반회원 로그인 후 마이페이지에서 중개사 계정을 연결하거나 승인 상태를 확인해주세요."}), 403
+        cur.execute("UPDATE users SET last_login_at=NOW() WHERE id=%s", (row["id"],))
+        _record_login_history(cur, row["id"])
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        if getattr(exc, "pgcode", None) == "23505":
+            return jsonify({"ok": False, "message": "계정 정보가 변경되었습니다. 다시 로그인해주세요."}), 409
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    selected = contexts[0] if len(contexts) == 1 else None
+    _begin_account_login(row["id"], role if selected or role == "general" else "general",
+                         selected, data.get("remember"))
+    if role == "agent" and len(contexts) > 1:
+        return jsonify({"ok": True, "select_context": True, "contexts": contexts})
+    return jsonify({"ok": True, "redirect": "/agent/dashboard" if role == "agent" else "/mypage"})
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -9487,6 +9600,8 @@ def auth_login():
     비밀번호가 일치하는 계정을 찾아 로그인시킨다. 실패 시 계정 존재 여부를
     노출하지 않도록 메시지를 통일한다."""
     data = request.get_json(force=True, silent=True) or {}
+    if "role" in data:
+        return _unified_role_login(data, data.get("role"))
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     fail_msg = "이메일 또는 비밀번호가 올바르지 않습니다."
@@ -9504,9 +9619,8 @@ def auth_login():
                 cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (row["id"],))
                 _record_login_history(cur, row["id"])
                 conn.commit()
-                session["user_id"] = row["id"]
-                session.permanent = bool(data.get("remember"))
-                return jsonify({"ok": True})
+                _begin_account_login(row["id"], "general", remember=data.get("remember"))
+                return jsonify({"ok": True, "redirect": "/mypage"})
             # A unified users identity owns this email. Do not fall through to
             # a legacy partner password, which would create ambiguous login.
             return jsonify({"ok": False, "message": fail_msg}), 401
@@ -9556,8 +9670,13 @@ def auth_me():
     if u:
         contexts = _get_account_contexts(u["id"])
         active_context = _active_account_context()
+        if active_context and not any(c["id"] == active_context["id"] for c in contexts):
+            _begin_account_login(u["id"], "general", remember=session.permanent)
+            active_context = _active_account_context()
         if not active_context and contexts:
             active_context = contexts[0]
+        if active_context:
+            active_context = next((c for c in contexts if c["id"] == active_context["id"]), active_context)
         return jsonify({
             "logged_in": True,
             "account_type": "user",
@@ -9999,8 +10118,7 @@ def kakao_callback():
         cur.close()
         conn.close()
 
-    session["user_id"] = uid
-    session.permanent = True
+    _begin_account_login(uid, "general", remember=True)
     return redirect("/")
 
 
@@ -10908,6 +11026,28 @@ def require_agent(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         agent_id = session.get("agent_id")
+        if session.get("user_id"):
+            if (session.get("active_role") != "agent"
+                    or session.get("active_business_table") != "agents"
+                    or session.get("active_business_id") != agent_id):
+                agent_id = None
+            else:
+                conn = get_conn()
+                cur = conn.cursor()
+                try:
+                    cur.execute("""
+                        SELECT 1 FROM account_business_memberships b
+                        JOIN agents a ON a.id=b.business_id AND a.status='approved'
+                        JOIN account_role_memberships r ON r.user_id=b.user_id
+                          AND r.role='agent' AND r.status='active'
+                        WHERE b.user_id=%s AND b.business_id=%s AND b.business_table='agents'
+                          AND b.role='agent' AND b.status='active'
+                    """, (session["user_id"], agent_id))
+                    if not cur.fetchone():
+                        agent_id = None
+                finally:
+                    cur.close()
+                    conn.close()
         if not agent_id or not _legacy_business_session_allowed("agents", agent_id):
             if agent_id:
                 session.pop("agent_id", None)
@@ -11005,39 +11145,17 @@ def agent_public_profile(slug):
 @app.route("/api/agent/login", methods=["POST"])
 @limiter.limit("5 per minute; 20 per hour")
 def agent_login():
-    """agents 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용.
-    실패 시 이메일 존재 여부를 드러내지 않도록 통일된 메시지로 401을 반환한다."""
+    """Broker entry uses the same users credential and approved linked office."""
     data = request.get_json(force=True, silent=True) or {}
-    email = (data.get("email") or "").strip()
-    password = data.get("password") or ""
-    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
-    if not email or not password:
-        return fail
-
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT id, password_hash, status FROM agents WHERE LOWER(email) = LOWER(%s)",
-            (email,),
-        )
-        row = cur.fetchone()
-        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
-            return fail
-        if row["status"] != "approved":
-            return jsonify({"ok": False, "message": "승인된 중개사 계정이 아닙니다."}), 403
-    finally:
-        cur.close()
-        conn.close()
-
-    session["agent_id"] = row["id"]
-    session.permanent = True
-    return jsonify({"ok": True})
+    return _unified_role_login(data, "agent")
 
 
 @app.route("/api/agent/logout", methods=["POST"])
 def agent_logout():
-    session.pop("agent_id", None)
+    for key in ("user_id", "agent_id", "operator_id", "loan_consultant_id",
+                "active_role", "active_business_id", "active_business_table",
+                "account_reauthenticated_user_id", "account_reauthenticated_at"):
+        session.pop(key, None)
     return jsonify({"ok": True})
 
 
@@ -11046,6 +11164,8 @@ def agent_logout():
 @limiter.limit("5 per minute; 20 per hour")
 def agent_change_password():
     """중개사 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (admin/mypage와 같은 패턴)."""
+    if session.get("user_id"):
+        return auth_change_password()
     agent_id = session.get("agent_id")
     data = request.get_json(force=True, silent=True) or {}
     current_pw = data.get("current_password") or ""

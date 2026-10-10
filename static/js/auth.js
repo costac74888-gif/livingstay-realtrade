@@ -251,7 +251,7 @@
       if (forgotLink) forgotLink.style.display = "none";
       if (socialLinks) socialLinks.style.display = "none";
     } else {
-      titleEl.textContent = "로그인";
+      titleEl.textContent = "일반회원 로그인";
       nameField.style.display = "none";
       if (passwordField) passwordField.style.display = "";
       if (passwordInput) { passwordInput.disabled = false; passwordInput.required = true; }
@@ -282,9 +282,28 @@
   function renderLoggedIn(user) {
     var contexts = normalizeContexts(user);
     var active = user.active_context || user.active_role_context || user.active_role;
+    if (typeof active === "string") active = { role: active };
+    active = active || {};
+    var activeRole = contextRole(active);
+    if (activeRole === "user" && user.account_type && user.account_type !== "user") {
+      activeRole = String(user.account_type).toLowerCase();
+      active.role = activeRole;
+    }
+    var activeLabel = contextLabel(active);
+    var isMemberRole = activeRole === "user" || activeRole === "general" || activeRole === "member";
+    var activeOffice = active.business_name || active.office_name || active.company_name || active.building_name ||
+      (!isMemberRole
+      ? (user.business_name || user.office_name || user.company_name || user.building_name)
+      : "");
+    var activeDashboard = active.dashboard_url || active.redirect ||
+      ROLE_DASHBOARDS[activeRole] || "/mypage";
+    var mypageLink = document.getElementById("headerMypageLink");
+    if (mypageLink) mypageLink.href = activeDashboard;
     var switcher = renderContextSwitcher(contexts, active);
     authArea.innerHTML =
       '<span class="auth-username">' + escapeHtml(user.name || "회원") + '님</span>' +
+      '<span class="auth-active-context">' + escapeHtml(activeLabel) +
+        (activeOffice ? ' · ' + escapeHtml(activeOffice) : '') + '</span>' +
       switcher +
       '<button type="button" class="auth-btn auth-btn-ghost" id="authLogoutBtn">로그아웃</button>';
     var logoutBtn = document.getElementById("authLogoutBtn");
@@ -301,9 +320,12 @@
 
   function renderLoggedOut() {
     authArea.innerHTML =
-      '<button type="button" class="auth-btn auth-btn-solid" id="authLoginBtn">로그인</button>';
+      '<button type="button" class="auth-btn auth-btn-solid" id="authLoginBtn">일반회원 로그인</button>' +
+      '<a class="auth-btn auth-btn-ghost" href="/agent/login">중개사 로그인</a>';
     var loginBtn = document.getElementById("authLoginBtn");
     if (loginBtn) loginBtn.addEventListener("click", openModal);
+    var mypageLink = document.getElementById("headerMypageLink");
+    if (mypageLink) mypageLink.href = "/mypage";
   }
 
   // localStorage 관심단지(favKey 배열)를 서버로 이관 → 응답(합쳐진 최종 목록)으로 localStorage 재동기화.
@@ -467,7 +489,7 @@
           terms: !!(agreeTerms && agreeTerms.checked),
           privacy: !!(agreePrivacy && agreePrivacy.checked),
           marketing: !!(agreeMarketing && agreeMarketing.checked) }
-      : { email: email, password: password, remember: !!(rememberInput && rememberInput.checked) };
+      : { email: email, password: password, remember: !!(rememberInput && rememberInput.checked), role: "general" };
 
     submitBtn.disabled = true;
     fetch(url, {
@@ -496,19 +518,20 @@
   }
 
   // 카카오 로그인 실패 시 홈으로 ?login_error=1 붙여 돌아옴 → 안내 후 URL 정리
-  // 마이페이지 등에서 ?login=1 로 들어오면 로그인 모달을 자동으로 연다.
+  // ?login=general 또는 ?login=reset으로 일반 로그인/비밀번호 재설정 모달을 연다.
   function checkLoginError() {
     try {
       var params = new URLSearchParams(window.location.search);
       var hadLoginError = !!params.get("login_error");
-      var wantLogin = !!params.get("login");
-      if (hadLoginError || wantLogin) {
+      var loginMode = params.get("login") || "";
+      if (hadLoginError || loginMode) {
         params.delete("login_error");
         params.delete("login");
         var qs = params.toString();
         var clean = window.location.pathname + (qs ? "?" + qs : "");
         window.history.replaceState({}, "", clean);
         openModal();
+        if (loginMode === "reset") setMode("reset");
         if (hadLoginError) showError("카카오 로그인에 실패했습니다. 다시 시도해주세요.");
       }
     } catch (err) { /* URLSearchParams 미지원 등 → 무시 */ }
