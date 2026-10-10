@@ -178,20 +178,20 @@ class BrokerAuthorizationTests(unittest.TestCase):
             _is_public_direct_listing=lambda *a: False,
             _best_effort_weekly_email_opt_in=lambda *a, **k: None,
         )
-        for mode in ("direct", "broker"):
+        for mode, publish in (("direct", False), ("broker", True), ("broker", False)):
             for target in ("unit", "whole", "business_rights"):
-                with self.subTest(mode=mode, target=target):
+                with self.subTest(mode=mode, publish=publish, target=target):
                     data = dict(master_building_id=7, transaction_target=target, deal_type="매매",
-                                deal_mode=mode, publish_as_broker=mode == "broker",
+                                deal_mode=mode, publish_as_broker=publish, contact_phone="01000000000",
                                 price_krw=10000, business_rights_info={"occ": 0})
                     with self.app.test_request_context(json=data):
                         session.update(active_role="agent", active_business_table="agents",
                                        active_business_id=11)
                         response = ns["create_listing_request"]()
                     self.assertTrue(response.json["ok"])
-                    self.assertEqual(response.json["publication_status"], "pending" if mode == "broker" else None)
+                    self.assertEqual(response.json["publication_status"], "pending" if publish else None)
         # The only delivery entrypoint is mocked: never send real SMS/email.
-        self.assertEqual(ns["_notify_lead_agents"].call_count, 6)
+        self.assertEqual(ns["_notify_lead_agents"].call_count, 9)
 
 
 class ReviewRouteTests(unittest.TestCase):

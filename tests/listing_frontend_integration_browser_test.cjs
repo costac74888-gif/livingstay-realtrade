@@ -300,6 +300,36 @@ const server = http.createServer((req, res) => {
     assert.equal(Object.hasOwn(edited.body, "deal_mode"), false);
     assert.deepEqual(modalErrors, []);
 
+    // Ordinary members can request brokerage without publishing an advertisement.
+    const memberPage = await context.newPage();
+    await memberPage.route("**/api/listings/registration-context", route =>
+      route.fulfill({ json: { ok: true, can_publish_broker: false } }));
+    await memberPage.goto(`${base}/modal-harness`);
+    for (const target of ["unit", "whole", "business_rights"]) {
+      await memberPage.click("#openNew");
+      await memberPage.locator("#lrForm").waitFor({ state: "visible" });
+      const brokerButton = memberPage.locator('.lr-mode[data-mode="broker"]');
+      assert.equal(await brokerButton.innerText(), "중개의뢰");
+      assert.equal(await brokerButton.isEnabled(), true);
+      await brokerButton.click();
+      await memberPage.locator(`.lr-target[data-target="${target}"]`).click();
+      assert.match(await memberPage.locator("#lrModeHelp").innerText(), /공개 매물로 게시되지 않습니다/);
+      await memberPage.locator("#lrSubmit").click();
+      await memberPage.locator("#lrDone").waitFor({ state: "visible" });
+      const lead = calls.findLast(call => call.path === "/api/listing-requests" && call.method === "POST");
+      assert.equal(lead.body.deal_mode, "broker");
+      assert.equal(lead.body.publish_as_broker, false);
+      assert.equal(lead.body.transaction_target, target);
+      assert.match(await memberPage.locator("#lrDone").innerText(), /중개의뢰가 접수/);
+      assert.doesNotMatch(await memberPage.locator("#lrDone").innerText(), /검수 요청|게시 승인/);
+      await memberPage.locator("#lrClose").click();
+    }
+    await memberPage.route("**/api/listings/registration-context", route => route.abort());
+    await memberPage.click("#openNew");
+    await memberPage.locator('.lr-mode[data-mode="broker"]').click();
+    assert.equal(await memberPage.locator('.lr-mode[data-mode="broker"]').isEnabled(), true);
+    await memberPage.locator("#lrClose").click();
+
     const reviewPage = await context.newPage();
     await reviewPage.goto(`${base}/broker-review`);
     await reviewPage.locator(".review-card").waitFor();

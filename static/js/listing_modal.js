@@ -126,6 +126,7 @@
     if ((transactionTarget === "whole" ? WHOLE_DEAL_TYPES : DEAL_TYPES).indexOf(dealType) < 0) dealType = "매매";
     var dealMode = prefill.deal_mode || "direct";
     if (dealMode !== "broker") dealMode = "direct";
+    var canPublishBroker = false;
     var photoItems = photoArray(prefill.photos || prefill.existing_photos).map(function (photo) {
       return { kind: "existing", photo: photo, isPublic: photo.is_public !== false };
     });
@@ -165,7 +166,7 @@
         '<form id="lrForm" style="padding:16px 18px 20px;">' +
           '<section id="lrModeSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">진행 방식</div>' +
           '<div style="display:flex;gap:8px;"><button type="button" class="lr-mode" data-mode="direct" style="flex:1;padding:9px;border-radius:8px;border:1px solid #4A7A18;background:' + (dealMode === "direct" ? "#4A7A18" : "#fff") + ';color:' + (dealMode === "direct" ? "#fff" : "#4A7A18") + ';font:700 13px inherit;cursor:pointer;">직거래</button>' +
-          '<button type="button" class="lr-mode" data-mode="broker" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--brass,#b4863f);background:' + (dealMode === "broker" ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dealMode === "broker" ? "#fff" : "var(--brass,#b4863f)") + ';font:700 13px inherit;cursor:pointer;">중개사 연결</button></div>' +
+          '<button type="button" class="lr-mode" data-mode="broker" style="flex:1;padding:9px;border-radius:8px;border:1px solid var(--brass,#b4863f);background:' + (dealMode === "broker" ? "var(--brass,#b4863f)" : "#fff") + ';color:' + (dealMode === "broker" ? "#fff" : "var(--brass,#b4863f)") + ';font:700 13px inherit;cursor:pointer;">중개의뢰</button></div>' +
           '<div id="lrModeHelp" style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;"></div></section>' +
             '<section id="lrTargetSection" style="margin-bottom:17px;"><div style="font-size:12px;font-weight:800;color:var(--ink);margin-bottom:7px;">STEP 2 · 거래대상</div>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="lr-target" data-target="unit" style="flex:1;min-width:95px;padding:9px;border-radius:8px;border:1px solid #4A7A18;background:' + (transactionTarget === "unit" ? "#4A7A18" : "#fff") + ';color:' + (transactionTarget === "unit" ? "#fff" : "#4A7A18") + ';font:700 13px inherit;cursor:pointer;">개별 호실</button>' +
@@ -447,7 +448,12 @@
         button.style.background = active ? (dealMode === "direct" ? "#4A7A18" : "var(--brass,#b4863f)") : "#fff";
         button.style.color = active ? "#fff" : (button.getAttribute("data-mode") === "direct" ? "#4A7A18" : "var(--brass,#b4863f)");
       });
-      $("#lrModeHelp").textContent = dealMode === "direct" ? "인증된 휴대폰 번호로 구매자와 직접 연락합니다." : "조건에 맞는 담당 중개사에게 연결합니다.";
+      $("#lrModeHelp").textContent = dealMode === "direct"
+        ? "인증된 휴대폰 번호로 구매자와 직접 연락합니다."
+        : (canPublishBroker ? "승인된 중개사 계정으로 중개 매물 게시를 요청합니다. 검수 승인 후 공개됩니다."
+          : "매물 조건을 전달하여 중개를 의뢰합니다. 중개의뢰는 공개 매물로 게시되지 않습니다.");
+      if (!isEdit) $("#lrSubmit").textContent = dealMode === "broker"
+        ? (canPublishBroker ? "중개 매물 검수 요청하기" : "중개의뢰 접수하기") : "매물의뢰 접수하기";
       updateUrgentVisibility();
     }
     function updateUrgentVisibility() {
@@ -711,17 +717,13 @@
     });
     if (!isEdit) {
       var brokerModeButton = overlay.querySelector('.lr-mode[data-mode="broker"]');
-      brokerModeButton.disabled = true;
-      brokerModeButton.title = "현재 활성 사업자 역할이 승인된 중개사 계정이어야 합니다.";
+      brokerModeButton.title = "매물 조건을 전달하여 중개를 의뢰합니다.";
       fetch("/api/listings/registration-context",{credentials:"same-origin"}).then(function(r){return r.json();})
         .then(function(context){
-          var allowed=!!(context&&context.ok&&context.can_publish_broker);
-          brokerModeButton.disabled=!allowed;
-          brokerModeButton.setAttribute("aria-disabled",allowed?"false":"true");
-          brokerModeButton.title=allowed?"중개사 계정으로 등록합니다.":"현재 활성 사업자 역할이 승인된 중개사 계정이어야 합니다.";
-          if(!allowed&&dealMode==="broker"){dealMode="direct";updateMode();}
-          if(!allowed) $("#lrModeHelp").textContent="중개 매물은 승인된 활성 중개사 계정에서 등록할 수 있습니다. 마이페이지에서 사업자 역할을 해당 중개사 계정으로 전환한 뒤 다시 시도해 주세요.";
-        }).catch(function(){brokerModeButton.disabled=true;});
+          canPublishBroker=!!(context&&context.ok&&context.can_publish_broker);
+          brokerModeButton.title=canPublishBroker?"승인된 중개사 계정으로 중개 매물 게시를 요청합니다.":"매물 조건을 전달하여 중개를 의뢰합니다.";
+          updateMode();
+        }).catch(function(){canPublishBroker=false;updateMode();});
     }
     Array.prototype.forEach.call(overlay.querySelectorAll(".lr-target"), function (button) {
       button.addEventListener("click", function () {
@@ -1295,7 +1297,7 @@
       if (!isEdit) {
         body.master_building_id = parseInt(buildingId, 10);
         body.deal_mode = dealMode;
-        if (dealMode === "broker") body.publish_as_broker = true;
+        if (dealMode === "broker") body.publish_as_broker = canPublishBroker;
       }
       submit.disabled = true; submit.textContent = "처리 중…";
       var savedListingId = null;
@@ -1325,8 +1327,10 @@
         });
       }).then(function () {
         clearDraft();
-        if (!isEdit && dealMode === "broker") {
+        if (!isEdit && dealMode === "broker" && canPublishBroker) {
           $("#lrDone").innerHTML = '<div style="font-size:18px;font-weight:800;">중개 매물 검수 요청이 접수됐습니다</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">게시 승인이 완료된 뒤 목록에 공개됩니다. 마이페이지에서 검수 상태를 확인할 수 있습니다.</div>';
+        } else if (!isEdit && dealMode === "broker") {
+          $("#lrDone").innerHTML = '<div style="font-size:18px;font-weight:800;">중개의뢰가 접수됐습니다</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">마이페이지에서 담당 중개사 배정 및 처리 상태를 확인할 수 있습니다. 공개 매물로 게시되지 않습니다.</div>';
         }
         form.style.display = "none"; $("#lrDone").style.display = "block";
         if (typeof options.onSuccess === "function") options.onSuccess();
@@ -1334,7 +1338,7 @@
         if (savedListingId) {
           clearDraft();
           form.style.display = "none";
-          $("#lrDone").innerHTML = '<div style="font-size:18px;font-weight:800;">'+(dealMode==="broker"?"검수 대기 매물은 저장했습니다":"매물 정보는 저장했습니다")+'</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">일부 사진은 업로드하지 못했습니다. 마이페이지에서 다시 수정해 주세요.</div>';
+          $("#lrDone").innerHTML = '<div style="font-size:18px;font-weight:800;">'+(dealMode==="broker"?(canPublishBroker?"검수 대기 매물은 저장했습니다":"중개의뢰는 접수했습니다"):"매물 정보는 저장했습니다")+'</div><div style="font-size:13px;color:var(--ink-soft);margin-top:8px;">일부 사진은 업로드하지 못했습니다. 마이페이지에서 다시 수정해 주세요.</div>';
           $("#lrDone").style.display = "block";
           if (typeof options.onSuccess === "function") options.onSuccess();
           return;
