@@ -4,9 +4,9 @@
 - 번호 대응: 저장소 3단계 요구를 참고하되 인증 2단계 미시작; 저장소 2~18 PENDING.
 - Phase 1·2: COMPLETE 영수증 보존.
 - 완료 범위: 구현·검증 중
-- 검사: 17 registered groups; 3 failed
+- 검사: 17 registered groups; 1 failed
 - 원격 저장: NOT_PUSHED
-- 차단 사유: Failed checks: phase3-registration-contracts, phase3-registration-db, phase3-registration-ui
+- 차단 사유: Failed checks: phase3-registration-ui
 - 다음 작업: Repair scoped failures and rerun entire registry
 
 ---
