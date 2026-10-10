@@ -1,10 +1,13 @@
-# 현재 사용자 Phase 3 — RUNNING
+# 현재 사용자 Phase 3 — FAIL
 
-- 범위: 주소 → 후보 선택 → 대장 확인 → 좌표 확인. 운영 DB/외부 API 호출/PG/배포 없음.
-- Phase 1·2 COMPLETE 보존. 저장소 2~18 단계는 별도 PENDING.
-- 검사: 구현 후 전체 등록 검사 실행 예정.
-- 원격 저장: NOT_PUSHED.
-- 다음 작업: Phase 3만 구현·검증 후 종료.
+- 범위: 전체 용도 건물 후보·주소·대장·좌표 확인의 등록 기반. 격리/모의 전용.
+- 번호 대응: 저장소 3단계 요구를 참고하되 인증 2단계 미시작; 저장소 2~18 PENDING.
+- Phase 1·2: COMPLETE 영수증 보존.
+- 완료 범위: 구현·검증 중
+- 검사: 17 registered groups; 3 failed
+- 원격 저장: NOT_PUSHED
+- 차단 사유: Failed checks: phase3-registration-contracts, phase3-registration-db, phase3-registration-ui
+- 다음 작업: Repair scoped failures and rerun entire registry
 
 ---
 

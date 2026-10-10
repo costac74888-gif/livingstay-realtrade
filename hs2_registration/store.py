@@ -44,7 +44,7 @@ class PostgresReferenceStore:
                     c.execute("INSERT INTO hs2_dev.master_links VALUES(%s,%s,%s,%s)",
                               (str(ref),master_id,identity,building["evidence_version"]))
                 c.execute("RELEASE SAVEPOINT hs2_reference")
-                return ref
+                return str(ref)
             except BaseException:
                 c.execute("ROLLBACK TO SAVEPOINT hs2_reference")
                 c.execute("RELEASE SAVEPOINT hs2_reference")

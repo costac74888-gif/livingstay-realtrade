@@ -56,3 +56,5 @@ def create_blueprint(service, resolve_actor, check_csrf):
         if action=="coordinates" and not data:return jsonify(service.coordinates(actor,key))
         if action=="confirm" and not data:return jsonify(service.confirm(actor,key))
         raise RegistrationError("INVALID_ACTION")
+
+    return bp
