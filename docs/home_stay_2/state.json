@@ -3,7 +3,11 @@
   "current_stage": 0,
   "handoff": {
     "phase": "0.5",
-    "status": "SELF_CHECK_PASS_PENDING_REMOTE",
+    "status": "READY_FOR_WORK",
+    "remote_branch_verified_commit": "26765afccdb1c0f4fc2ed66c99a39f5fb3c06e3a",
+    "remote_main_verified_unchanged": true,
+    "git_status": "source and PASS records committed; final checkpoint resolves the completion commit",
+    "work_ready": true,
     "phase_status": "COMPLETE",
     "self_check_status": "PASS",
     "self_check_source_commit": "c41e0988d2c622369a5748793cbb8a2c90140dc0",
