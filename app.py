@@ -8970,6 +8970,13 @@ _ACCOUNT_CONTEXT_REDIRECTS = {
     "loan_consultant": "/loan-consultant/dashboard",
 }
 
+_ACCOUNT_PARTNER_TABLES = {
+    "agent": "agents",
+    "operator": "operators",
+    "loan_consultant": "loan_consultants",
+    "lodging_operator": "operator_lodging",
+}
+
 
 def _account_context_id(role, business_table=None, business_id=None):
     if business_id is None:
@@ -8977,10 +8984,11 @@ def _account_context_id(role, business_table=None, business_id=None):
     return f"{role}:{business_table}:{business_id}"
 
 
-def _get_account_contexts(user_id):
+def _get_account_contexts(user_id, cursor=None):
     """Return selectable, active contexts with stable IDs and display names."""
-    conn = get_conn()
-    cur = conn.cursor()
+    owned = cursor is None
+    conn = get_conn() if owned else None
+    cur = conn.cursor() if owned else cursor
     try:
         cur.execute("""
             SELECT role
@@ -9003,20 +9011,26 @@ def _get_account_contexts(user_id):
                    END AS business_name
               FROM account_business_memberships b
              WHERE b.user_id = %s AND b.status = 'active'
-               AND (b.role <> 'agent' OR EXISTS (
-                   SELECT 1 FROM agents a WHERE a.id=b.business_id
-                     AND b.business_table='agents' AND a.status='approved'))
+               AND EXISTS (SELECT 1 FROM account_role_memberships r
+                   WHERE r.user_id=b.user_id AND r.role=b.role AND r.status='active')
+               AND CASE b.business_table
+                 WHEN 'agents' THEN EXISTS (SELECT 1 FROM agents a WHERE a.id=b.business_id AND a.status='approved')
+                 WHEN 'operators' THEN EXISTS (SELECT 1 FROM operators o WHERE o.id=b.business_id AND o.status='approved')
+                 WHEN 'loan_consultants' THEN EXISTS (SELECT 1 FROM loan_consultants l WHERE l.id=b.business_id AND l.status='approved')
+                 WHEN 'operator_lodging' THEN EXISTS (SELECT 1 FROM operator_lodging l WHERE l.id=b.business_id AND l.status='approved')
+                 ELSE FALSE END
              ORDER BY b.role, b.business_table, b.business_id
         """, (user_id,))
         businesses = [dict(row) for row in cur.fetchall()]
     finally:
-        cur.close()
-        conn.close()
+        if owned:
+            cur.close()
+            conn.close()
 
     contexts = []
     business_roles = {row["role"] for row in businesses}
     for role in roles:
-        if role == "agent" and role not in business_roles:
+        if role != "general" and role not in business_roles:
             continue
         if role == "general" or role not in business_roles:
             contexts.append({
@@ -9112,15 +9126,13 @@ def auth_switch_context():
             """, (u["id"], role, table, business_id))
         if not cur.fetchone():
             return jsonify({"ok": False, "message": "선택한 역할 또는 사업장에 대한 권한이 없습니다."}), 403
-        if role == "agent":
-            cur.execute("""
-                SELECT 1 FROM agents a
-                 JOIN account_role_memberships r ON r.user_id=%s
-                   AND r.role='agent' AND r.status='active'
-                WHERE a.id=%s AND a.status='approved'
-            """, (u["id"], business_id))
-            if table != "agents" or not cur.fetchone():
-                return jsonify({"ok": False, "message": "승인된 중개사 사업장을 선택해주세요."}), 403
+        if role != "general":
+            eligible = _get_account_contexts(u["id"], cursor=cur)
+            if not any(c["role"] == role and c["business_table"] == table
+                       and c["business_id"] == business_id for c in eligible):
+                return jsonify({"ok": False, "message": "승인된 파트너 사업장을 선택해주세요."}), 403
+        elif business_id is not None or table:
+            return jsonify({"ok": False, "message": "일반회원 역할에는 사업장을 지정할 수 없습니다."}), 400
     finally:
         cur.close()
         conn.close()
@@ -9505,75 +9517,72 @@ def _begin_account_login(user_id, role, context=None, remember=False):
     if context:
         session["active_business_table"] = context["business_table"]
         session["active_business_id"] = context["business_id"]
-        if context["business_table"] == "agents":
-            session["agent_id"] = context["business_id"]
+        key = {"agents": "agent_id", "operators": "operator_id",
+               "loan_consultants": "loan_consultant_id"}.get(context["business_table"])
+        if key:
+            session[key] = context["business_id"]
 
 
 def _unified_role_login(data, role):
     """Explicit login entry: credentials belong to users; roles are DB-scoped."""
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "message": "로그인 요청 형식이 올바르지 않습니다."}), 400
     email = str(data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     fail = (jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401)
-    if role not in ("general", "agent") or not email or not password:
+    if (role not in ("general", "partner", *_ACCOUNT_PARTNER_TABLES) or not email
+            or not isinstance(password, str) or not password):
         return fail
     conn = get_conn()
     cur = conn.cursor()
     try:
-        if role == "agent":
+        if role != "general":
             cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(LOWER(%s), 0))", (email,))
         cur.execute("SELECT id,password_hash,status FROM users WHERE LOWER(email)=%s", (email,))
         row = cur.fetchone()
-        if not row and role == "agent":
-            # A standalone, unlinked legacy office can claim its own credential.
-            # Never merge by email into an existing users identity here.
-            cur.execute("""SELECT a.* FROM agents a WHERE LOWER(a.email)=%s
-                AND a.status='approved' AND NOT EXISTS (
-                    SELECT 1 FROM account_business_memberships b
-                    WHERE b.business_table='agents' AND b.business_id=a.id)
-                FOR UPDATE""", (email,))
-            standalone = cur.fetchall()
-            if (len(standalone) == 1 and standalone[0].get("password_hash")
-                    and check_password_hash(standalone[0]["password_hash"], password)):
-                a = standalone[0]
+        if not row and role != "general":
+            # Claim only legacy businesses whose own password was just proved.
+            # NEVER merge by email into an existing users identity.
+            standalone = []
+            for candidate_role, table in _ACCOUNT_PARTNER_TABLES.items():
+                if table == "operator_lodging" or role not in ("partner", candidate_role):
+                    continue
+                cur.execute(f"""SELECT a.* FROM {table} a WHERE LOWER(a.email)=%s
+                    AND a.status='approved' AND NOT EXISTS (
+                        SELECT 1 FROM account_business_memberships b
+                        WHERE b.business_table=%s AND b.business_id=a.id) FOR UPDATE""", (email, table))
+                standalone.extend((candidate_role, table, a) for a in cur.fetchall()
+                    if a.get("password_hash") and check_password_hash(a["password_hash"], password))
+            if standalone:
+                a = standalone[0][2]
                 cur.execute("""INSERT INTO users(email,password_hash,name,provider,status,
                     phone,phone_verified,email_alert_enabled,weekly_email_enabled)
                     VALUES (%s,%s,%s,'email','active',%s,FALSE,FALSE,%s)
                     RETURNING id,password_hash,status""",
-                    (email,a["password_hash"],a.get("owner_name") or a["office_name"],
+                    (email,a["password_hash"],a.get("owner_name") or a.get("name")
+                     or a.get("office_name") or a.get("company_name") or "파트너",
                      a.get("phone"),bool(a.get("weekly_email_enabled"))))
                 row = cur.fetchone()
                 cur.execute("""INSERT INTO account_role_memberships(user_id,role,status,legacy_account_id)
-                    VALUES (%s,'general','active',NULL),(%s,'agent','active',%s)""",
-                    (row["id"],row["id"],a["id"]))
-                cur.execute("""INSERT INTO account_business_memberships
-                    (user_id,role,business_table,business_id,status)
-                    VALUES (%s,'agent','agents',%s,'active')""", (row["id"],a["id"]))
-                cur.execute("UPDATE agents SET password_hash=NULL WHERE id=%s", (a["id"],))
+                    VALUES (%s,'general','active',NULL)""", (row["id"],))
+                for candidate_role, table, business in standalone:
+                    cur.execute("""INSERT INTO account_role_memberships(user_id,role,status,legacy_account_id)
+                        VALUES (%s,%s,'active',%s)""", (row["id"],candidate_role,business["id"]))
+                    cur.execute("""INSERT INTO account_business_memberships
+                        (user_id,role,business_table,business_id,status)
+                        VALUES (%s,%s,%s,%s,'active')""",
+                        (row["id"],candidate_role,table,business["id"]))
+                    cur.execute(f"UPDATE {table} SET password_hash=NULL WHERE id=%s", (business["id"],))
         if (not row or row.get("status") == "withdrawn" or not row["password_hash"]
                 or not check_password_hash(row["password_hash"], password)):
             return fail
         contexts = []
-        if role == "agent":
-            cur.execute("""
-                SELECT b.business_id,b.business_table,a.office_name AS business_name
-                  FROM account_business_memberships b
-                  JOIN agents a ON a.id=b.business_id AND b.business_table='agents'
-                  JOIN account_role_memberships r ON r.user_id=b.user_id
-                    AND r.role='agent' AND r.status='active'
-                 WHERE b.user_id=%s AND b.role='agent' AND b.status='active'
-                   AND a.status='approved'
-                 GROUP BY b.business_id,b.business_table,a.office_name
-                 ORDER BY b.business_id
-            """, (row["id"],))
-            contexts = [
-                dict(item, role="agent",
-                     id=_account_context_id("agent", "agents", item["business_id"]),
-                     dashboard_url="/agent/dashboard")
-                for item in cur.fetchall()
-            ]
+        if role != "general":
+            contexts = [c for c in _get_account_contexts(row["id"], cursor=cur)
+                        if c["role"] != "general" and (role == "partner" or c["role"] == role)]
             if not contexts:
                 return jsonify({"ok": False, "message":
-                    "연결된 승인 중개사 계정이 없습니다. 일반회원 로그인 후 마이페이지에서 중개사 계정을 연결하거나 승인 상태를 확인해주세요."}), 403
+                    "연결된 승인 파트너 계정이 없습니다. 일반회원 로그인 후 마이페이지에서 파트너 계정을 연결하거나 승인 상태를 확인해주세요."}), 403
         cur.execute("UPDATE users SET last_login_at=NOW() WHERE id=%s", (row["id"],))
         _record_login_history(cur, row["id"])
         conn.commit()
@@ -9586,11 +9595,11 @@ def _unified_role_login(data, role):
         cur.close()
         conn.close()
     selected = contexts[0] if len(contexts) == 1 else None
-    _begin_account_login(row["id"], role if selected or role == "general" else "general",
+    _begin_account_login(row["id"], selected["role"] if selected else "general",
                          selected, data.get("remember"))
-    if role == "agent" and len(contexts) > 1:
+    if role != "general" and len(contexts) > 1:
         return jsonify({"ok": True, "select_context": True, "contexts": contexts})
-    return jsonify({"ok": True, "redirect": "/agent/dashboard" if role == "agent" else "/mypage"})
+    return jsonify({"ok": True, "redirect": selected["dashboard_url"] if selected else "/mypage"})
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -11000,21 +11009,34 @@ def admin_change_password():
 # ------------------------------------------------------------
 
 def _legacy_business_session_allowed(business_table, business_id):
-    """Legacy-only rows remain compatible; linked rows require an active owner."""
+    """Approved legacy rows or an explicitly selected, active unified owner."""
+    role = next((r for r,t in _ACCOUNT_PARTNER_TABLES.items() if t == business_table), None)
+    if not role or not business_id:
+        return False
+    uid = session.get("user_id")
+    if uid and (session.get("active_role") != role
+                or session.get("active_business_table") != business_table
+                or session.get("active_business_id") != business_id):
+        return False
     conn = get_conn()
     cur = conn.cursor()
     try:
-        cur.execute("""
-            SELECT COUNT(*) AS linked_count,
-                   COUNT(*) FILTER (
-                     WHERE b.status='active' AND u.status <> 'withdrawn'
-                   ) AS active_count
-              FROM account_business_memberships b
-              JOIN users u ON u.id=b.user_id
-             WHERE b.business_table=%s AND b.business_id=%s
-        """, (business_table, business_id))
-        row = cur.fetchone()
-        return not row or row["linked_count"] == 0 or row["active_count"] > 0
+        if uid:
+            cur.execute(f"""SELECT 1 FROM account_business_memberships b
+                JOIN {business_table} a ON a.id=b.business_id AND a.status='approved'
+                JOIN users u ON u.id=b.user_id AND u.status='active'
+                JOIN account_role_memberships r ON r.user_id=b.user_id
+                    AND r.role=b.role AND r.status='active'
+                WHERE b.user_id=%s AND b.role=%s AND b.business_table=%s
+                    AND b.business_id=%s AND b.status='active'""",
+                (uid,role,business_table,business_id))
+        else:
+            cur.execute(f"""SELECT 1 FROM {business_table} a
+                WHERE a.id=%s AND a.status='approved' AND NOT EXISTS (
+                    SELECT 1 FROM account_business_memberships b
+                    WHERE b.business_table=%s AND b.business_id=a.id)""",
+                (business_id,business_table))
+        return bool(cur.fetchone())
     finally:
         cur.close()
         conn.close()
@@ -17016,44 +17038,22 @@ def require_operator(f):
 def operator_login_page():
     return _serve_static_html("operator_login.html")
 
+@app.route("/partner/login")
+@app.route("/lodging-operator/login")
+def partner_login_page():
+    return _serve_static_html("partner_login.html")
+
 
 @app.route("/api/operator/login", methods=["POST"])
 @limiter.limit("5 per minute; 20 per hour")
 def operator_login():
-    """operators 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용.
-    실패 시 이메일 존재 여부를 드러내지 않도록 통일된 메시지로 401을 반환한다."""
     data = request.get_json(force=True, silent=True) or {}
-    email = (data.get("email") or "").strip()
-    password = data.get("password") or ""
-    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
-    if not email or not password:
-        return fail
-
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT id, password_hash, status FROM operators WHERE LOWER(email) = LOWER(%s)",
-            (email,),
-        )
-        row = cur.fetchone()
-        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
-            return fail
-        if row["status"] != "approved":
-            return jsonify({"ok": False, "message": "승인된 운영지원업체 계정이 아닙니다."}), 403
-    finally:
-        cur.close()
-        conn.close()
-
-    session["operator_id"] = row["id"]
-    session.permanent = True
-    return jsonify({"ok": True})
+    return _unified_role_login(data, "operator")
 
 
 @app.route("/api/operator/logout", methods=["POST"])
 def operator_logout():
-    session.pop("operator_id", None)
-    return jsonify({"ok": True})
+    return auth_logout()
 
 
 @app.route("/api/operator/password", methods=["PUT"])
@@ -17061,6 +17061,8 @@ def operator_logout():
 @limiter.limit("5 per minute; 20 per hour")
 def operator_change_password():
     """운영업체 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (agent와 같은 패턴)."""
+    if session.get("user_id"):
+        return auth_change_password()
     operator_id = session.get("operator_id")
     data = request.get_json(force=True, silent=True) or {}
     current_pw = data.get("current_password") or ""
@@ -17861,40 +17863,13 @@ def loan_consultant_login_page():
 @app.route("/api/loan-consultant/login", methods=["POST"])
 @limiter.limit("5 per minute; 20 per hour")
 def loan_consultant_login():
-    """loan_consultants 테이블 기반 이메일/비밀번호 로그인. status='approved'만 허용."""
     data = request.get_json(force=True, silent=True) or {}
-    email = (data.get("email") or "").strip()
-    password = data.get("password") or ""
-    fail = jsonify({"ok": False, "message": "이메일 또는 비밀번호가 올바르지 않습니다."}), 401
-    if not email or not password:
-        return fail
-
-    conn = get_conn()
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "SELECT id, password_hash, status FROM loan_consultants WHERE LOWER(email) = LOWER(%s) "
-            "ORDER BY approved_at DESC NULLS LAST, id DESC LIMIT 1",
-            (email,),
-        )
-        row = cur.fetchone()
-        if not row or not row["password_hash"] or not check_password_hash(row["password_hash"], password):
-            return fail
-        if row["status"] != "approved":
-            return jsonify({"ok": False, "message": "승인된 대출상담사 계정이 아닙니다."}), 403
-    finally:
-        cur.close()
-        conn.close()
-
-    session["loan_consultant_id"] = row["id"]
-    session.permanent = True
-    return jsonify({"ok": True})
+    return _unified_role_login(data, "loan_consultant")
 
 
 @app.route("/api/loan-consultant/logout", methods=["POST"])
 def loan_consultant_logout():
-    session.pop("loan_consultant_id", None)
-    return jsonify({"ok": True})
+    return auth_logout()
 
 
 @app.route("/api/loan-consultant/password", methods=["PUT"])
@@ -17902,6 +17877,8 @@ def loan_consultant_logout():
 @limiter.limit("5 per minute; 20 per hour")
 def loan_consultant_change_password():
     """대출상담사 비밀번호 변경 — 현재 비밀번호 확인 후 교체 (agent와 같은 패턴)."""
+    if session.get("user_id"):
+        return auth_change_password()
     lc_id = session.get("loan_consultant_id")
     data = request.get_json(force=True, silent=True) or {}
     current_pw = data.get("current_password") or ""

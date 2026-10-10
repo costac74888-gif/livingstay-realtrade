@@ -17,7 +17,7 @@
     <div class="admin-login-card">
       <div class="admin-login-brand">HOME &amp; STAY</div>
       <h1 class="admin-login-title">운영지원업체 로그인</h1>
-      <p class="admin-login-sub">가입 시 설정하신 이메일과 비밀번호를 입력하세요.</p>
+      <p class="admin-login-sub">일반회원과 파트너는 같은 비밀번호를 사용합니다. 가입한 이메일과 비밀번호를 입력하세요.</p>
       <form id="loginForm" class="admin-login-form" autocomplete="off">
         <input
           id="operatorEmail"
@@ -35,44 +35,23 @@
           autocomplete="current-password"
           required
         />
+        <label class="agent-remember" for="rememberLogin">
+          <input id="rememberLogin" type="checkbox" />
+          <span>로그인 상태 유지 (31일)</span>
+        </label>
         <button type="submit" class="admin-btn admin-btn-primary" id="loginBtn">로그인</button>
       </form>
-      <div id="loginMsg" class="admin-login-msg" role="alert"></div>
+      <div id="loginMsg" class="admin-login-msg" role="status" aria-live="polite" hidden></div>
+      <div id="contextPicker" class="agent-context-picker" hidden></div>
+      <div class="agent-login-links">
+        <a href="/?login=general">일반회원 로그인</a>
+        <a href="/?login=reset">비밀번호 재설정</a>
+        <a href="/partner/login">파트너 통합 로그인</a>
+      </div>
     </div>
   </div>
 
-  <script>
-    const form = document.getElementById("loginForm");
-    const msg = document.getElementById("loginMsg");
-    const btn = document.getElementById("loginBtn");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const email = document.getElementById("operatorEmail").value.trim();
-      const password = document.getElementById("operatorPassword").value.trim();
-      msg.textContent = "";
-      btn.disabled = true;
-      btn.textContent = "확인 중…";
-      try {
-        const res = await fetch("/api/operator/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.ok) {
-          window.location.href = "/";
-          return;
-        }
-        msg.textContent = data.message || "로그인에 실패했습니다.";
-      } catch (err) {
-        msg.textContent = "네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "로그인";
-      }
-    });
-  </script>
+  <script src="/static/js/partner_login.js"></script>
   <script src="/static/js/pw_toggle.js"></script>
 </body>
 </html>

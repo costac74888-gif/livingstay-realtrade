@@ -82,6 +82,7 @@
           '<a class="hnav-btn" href="/analysis">📊 <span class="hnav-label">자산분석</span><span class="nav-badge nav-badge-new">NEW</span></a>' +
           '<a class="hnav-btn" href="/transactions">📊 <span class="hnav-label">실거래목록</span><span class="nav-badge nav-badge-hot">HOT</span></a>' +
            '<a class="hnav-btn" id="headerMypageLink" href="/mypage">👤 <span class="hnav-label">마이페이지</span></a>' +
+           '<a class="hnav-btn" id="headerPartnerLoginLink" href="/partner/login" style="display:none;">파트너 로그인</a>' +
         '</nav>' +
         '<div class="auth-area" id="authArea"><!-- auth.js가 로그인/로그아웃 상태를 채움 --></div>' +
       '</div>' +

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>파트너 로그인 | HOME &amp; STAY</title>
+  <link rel="icon" href="/static/img/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/img/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/static/css/main.css" />
+</head>
+<body>
+  <div class="admin-login-wrap">
+    <div class="admin-login-card">
+      <div class="admin-login-brand">HOME &amp; STAY</div>
+      <h1 class="admin-login-title" id="partnerLoginTitle">파트너 통합 로그인</h1>
+      <p class="admin-login-sub" id="partnerLoginIntro">일반회원과 파트너는 같은 비밀번호를 사용합니다. 가입한 이메일과 비밀번호로 로그인하면 이용 가능한 역할과 사업장을 선택할 수 있습니다.</p>
+
+      <nav class="partner-login-hub" aria-label="파트너 서비스 및 로그인">
+        <p class="partner-hub-label">파트너별 안내</p>
+        <a href="/agent/login">중개사 <span>중개사 로그인</span></a>
+        <a href="/operator/login">운영지원업체 <span>위탁 · 청소 · 세탁 · 용품 · 소독 · 세무 · 인테리어</span></a>
+        <a href="/loan-consultant/login">대출상담사 <span>대출상담사 로그인</span></a>
+        <a href="/lodging-operator/login">숙박 운영자 <span>운영 사업장 로그인</span></a>
+        <a href="/apply/presale">분양사 <span>계정 로그인은 준비 중 · 등록 신청</span></a>
+      </nav>
+
+      <form id="loginForm" class="admin-login-form" autocomplete="off">
+        <input
+          id="partnerEmail"
+          type="email"
+          class="admin-input"
+          placeholder="아이디(이메일)"
+          autocomplete="username"
+          required
+        />
+        <input
+          id="partnerPassword"
+          type="password"
+          class="admin-input"
+          placeholder="비밀번호"
+          autocomplete="current-password"
+          required
+        />
+        <label class="agent-remember" for="rememberLogin">
+          <input id="rememberLogin" type="checkbox" />
+          <span>로그인 상태 유지 (31일)</span>
+        </label>
+        <button type="submit" class="admin-btn admin-btn-primary" id="loginBtn">로그인</button>
+      </form>
+      <div id="loginMsg" class="admin-login-msg" role="status" aria-live="polite" hidden></div>
+      <div id="contextPicker" class="agent-context-picker" hidden></div>
+      <div class="agent-login-links">
+        <a href="/?login=general">일반회원 로그인</a>
+        <a href="/?login=reset">비밀번호 재설정</a>
+        <a href="/partner">파트너 등록 안내</a>
+      </div>
+    </div>
+  </div>
+  <script src="/static/js/partner_login.js"></script>
+  <script src="/static/js/pw_toggle.js"></script>
+</body>
+</html>

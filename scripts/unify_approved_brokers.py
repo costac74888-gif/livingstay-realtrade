@@ -11,24 +11,30 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 
-def unify(conn, agent_ids, approve_existing=False, apply=False):
+def unify(conn, agent_ids, approve_existing=False, apply=False, business_table="agents"):
+    config = {"agents": ("agent", "office_name"),
+              "operators": ("operator", "company_name"),
+              "loan_consultants": ("loan_consultant", "office_name")}
+    if business_table not in config:
+        raise ValueError("Unsupported partner table")
+    role, name_field = config[business_table]
     result = {"agents": len(agent_ids), "created_users": 0, "existing_users": 0, "already_linked": 0}
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SET LOCAL lock_timeout='5s'")
         cur.execute("SET LOCAL statement_timeout='30s'")
         cur.execute("SELECT pg_advisory_xact_lock(19641010, 1)")
-        cur.execute("SELECT * FROM agents WHERE id=ANY(%s) ORDER BY id FOR UPDATE", (agent_ids,))
+        cur.execute(f"SELECT * FROM {business_table} WHERE id=ANY(%s) ORDER BY id FOR UPDATE", (agent_ids,))
         agents = cur.fetchall()
         if len(agents) != len(set(agent_ids)):
             raise ValueError("Target account set changed; nothing applied")
-        cur.execute("""SELECT md5(jsonb_agg(to_jsonb(a)-'password_hash' ORDER BY a.id)::text) AS checksum
-            FROM agents a WHERE id=ANY(%s)""", (agent_ids,))
+        cur.execute(f"""SELECT md5(jsonb_agg(to_jsonb(a)-'password_hash' ORDER BY a.id)::text) AS checksum
+            FROM {business_table} a WHERE id=ANY(%s)""", (agent_ids,))
         profile_checksum = cur.fetchone()["checksum"]
         for a in agents:
             if a["status"] != "approved" or not (a.get("email") or "").strip():
                 raise ValueError("Every target must be an approved broker with an email")
             cur.execute("""SELECT user_id,status FROM account_business_memberships
-                WHERE business_table='agents' AND business_id=%s FOR UPDATE""", (a["id"],))
+                WHERE business_table=%s AND business_id=%s FOR UPDATE""", (business_table,a["id"]))
             owners = cur.fetchall()
             cur.execute("SELECT * FROM users WHERE LOWER(email)=LOWER(%s) FOR UPDATE", (a["email"],))
             users = cur.fetchall()
@@ -60,7 +66,7 @@ def unify(conn, agent_ids, approve_existing=False, apply=False):
                     (email,password_hash,name,provider,status,phone,phone_verified,
                      email_alert_enabled,weekly_email_enabled)
                     VALUES (LOWER(%s),%s,%s,'email','active',%s,FALSE,FALSE,%s) RETURNING id""",
-                    (a["email"].strip(), a["password_hash"], a.get("owner_name") or a["office_name"],
+                    (a["email"].strip(), a["password_hash"], a.get("owner_name") or a.get("name") or a[name_field],
                      a.get("phone"), bool(a.get("weekly_email_enabled"))))
                 uid = cur.fetchone()["id"]
                 result["created_users"] += 1
@@ -71,29 +77,32 @@ def unify(conn, agent_ids, approve_existing=False, apply=False):
             cur.execute("""INSERT INTO account_role_memberships
                     (user_id,role,status,legacy_account_id) VALUES (%s,%s,'active',%s)
                     ON CONFLICT (user_id,role,legacy_account_id) DO UPDATE SET status='active'""",
-                    (uid, "agent", a["id"]))
+                    (uid, role, a["id"]))
             cur.execute("""INSERT INTO account_business_memberships
                 (user_id,role,business_table,business_id,status)
-                VALUES (%s,'agent','agents',%s,'active')
+                VALUES (%s,%s,%s,%s,'active')
                 ON CONFLICT (user_id,role,business_table,business_id) DO UPDATE SET status='active'""",
-                (uid, a["id"]))
-            cur.execute("UPDATE agents SET password_hash=NULL WHERE id=%s", (a["id"],))
-        cur.execute("""SELECT md5(jsonb_agg(to_jsonb(a)-'password_hash' ORDER BY a.id)::text) AS checksum
-            FROM agents a WHERE id=ANY(%s)""", (agent_ids,))
+                (uid, role, business_table,a["id"]))
+            cur.execute(f"UPDATE {business_table} SET password_hash=NULL WHERE id=%s", (a["id"],))
+        cur.execute(f"""SELECT md5(jsonb_agg(to_jsonb(a)-'password_hash' ORDER BY a.id)::text) AS checksum
+            FROM {business_table} a WHERE id=ANY(%s)""", (agent_ids,))
         if cur.fetchone()["checksum"] != profile_checksum:
             raise ValueError("Broker business/profile data changed; refusing cutover")
         result["business_data_preserved"] = True
         # Preserve only non-sensitive counts as the administrator audit marker.
         cur.execute("""INSERT INTO app_meta(key,value) VALUES (%s,%s)
             ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value""",
-            ("account_broker_unification", json.dumps(result)))
+            ("account_broker_unification" if role == "agent" else f"account_{role}_unification", json.dumps(result)))
     conn.commit() if apply else conn.rollback()
     return dict(result, applied=apply)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--agent-ids", required=True, type=int, nargs="+")
+    targets = parser.add_mutually_exclusive_group(required=True)
+    targets.add_argument("--agent-ids", type=int, nargs="+")
+    targets.add_argument("--business-ids", type=int, nargs="+")
+    parser.add_argument("--business-table", choices=["agents","operators","loan_consultants"], default="agents")
     parser.add_argument("--expected-fingerprint", required=True)
     parser.add_argument("--approve-existing-users", action="store_true")
     parser.add_argument("--apply", action="store_true")
@@ -105,7 +114,8 @@ def main():
             cur.execute("SELECT md5(system_identifier::text || '|' || current_database()) FROM pg_control_system()")
             if cur.fetchone()[0] != args.expected_fingerprint:
                 raise ValueError("Production fingerprint mismatch")
-        print(json.dumps(unify(conn, args.agent_ids, args.approve_existing_users, args.apply)))
+        print(json.dumps(unify(conn, args.agent_ids or args.business_ids, args.approve_existing_users,
+                               args.apply, args.business_table)))
     finally:
         conn.close()
 

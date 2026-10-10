@@ -31,6 +31,7 @@
       </div>
       <div id="menuGuestAuth" style="display:none; width:100%; flex:1 0 100%; gap:8px;">
         <button type="button" id="menuLoginBtn" style="flex:1; background:var(--ink); color:#fff; border:none; border-radius:8px; padding:10px 12px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;">일반회원 로그인</button>
+        <a id="menuPartnerLoginLink" href="/partner/login" style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--brass-tint, #F4EDDF); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; text-decoration:none; box-sizing:border-box;">파트너 로그인</a>
         <a id="menuAgentLoginLink" href="/agent/login" style="flex:1; display:flex; align-items:center; justify-content:center; background:var(--brass-tint, #F4EDDF); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; text-decoration:none; box-sizing:border-box;">중개사 로그인</a>
       </div>
       <div id="menuContextSwitchWrap" style="display:none; width:100%; flex:1 0 100%;">
@@ -135,7 +136,7 @@
   var ROLE_DASHBOARDS = {
     agent: "/agent/dashboard",
     operator: "/operator/dashboard",
-    lodging_operator: "/operator/dashboard",
+    lodging_operator: "/lodging-operator/manage",
     operations_support: "/operator/dashboard",
     support: "/operator/dashboard",
     loan_consultant: "/loan-consultant/dashboard"

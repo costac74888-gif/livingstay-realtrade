@@ -9,9 +9,16 @@ const root = path.resolve(__dirname, "..");
 const calls = [];
 const offices = [1, 2].map(id => ({id:`agent:agents:${id}`,role:"agent",business_id:id,
   business_table:"agents",business_name:`검사 사무소 ${id}`,dashboard_url:"/agent/dashboard"}));
+const partnerContexts = {
+  operator: [{id:"operator:operators:1",role:"operator",business_id:1,business_table:"operators",business_name:"위탁 업체",dashboard_url:"/operator/dashboard"}],
+  loan_consultant: [{id:"loan_consultant:loan_consultants:1",role:"loan_consultant",business_id:1,business_table:"loan_consultants",business_name:"대출 사무소",dashboard_url:"/loan-consultant/dashboard"}],
+  lodging_operator: [{id:"lodging_operator:operator_lodging:1",role:"lodging_operator",business_id:1,business_table:"operator_lodging",business_name:"숙박 사업장",dashboard_url:"/lodging-operator/manage"}],
+};
+const general = {id:"general",role:"general",dashboard_url:"/mypage"};
+const everyContext = [general,
+  ...offices,...Object.values(partnerContexts).flat()];
 let user = null;
 let multiple = false;
-const general = {id:"general",role:"general",dashboard_url:"/mypage"};
 const server = http.createServer(async(req,res) => {
   const url = new URL(req.url,"http://test");
   const json = data => { res.setHeader("Content-Type","application/json"); res.end(JSON.stringify(data)); };
@@ -21,14 +28,18 @@ const server = http.createServer(async(req,res) => {
     calls.push({path:url.pathname,body});
     if (url.pathname === "/api/auth/login" || url.pathname === "/api/agent/login") {
       const role = url.pathname.includes("/agent/") ? "agent" : body.role;
+      const eligible = role === "agent" ? offices : role === "partner"
+        ? [...partnerContexts.operator,...partnerContexts.loan_consultant] : (partnerContexts[role] || []);
+      const choose = multiple && role !== "general";
+      const active = choose || role === "general" ? general : eligible[0];
       user = {logged_in:true,name:"검사 회원",account_type:"user",provider:"email",
-        active_context:role === "agent" && !multiple ? offices[0] : general,contexts:[general,...offices]};
-      return json(role === "agent" && multiple ? {ok:true,select_context:true,contexts:offices}
-        : {ok:true,redirect:role === "agent" ? "/agent/dashboard" : "/mypage"});
+        active_context:active,contexts:everyContext};
+      return json(choose ? {ok:true,select_context:true,contexts:eligible}
+        : {ok:true,redirect:active.dashboard_url});
     }
     if (url.pathname === "/api/auth/context") {
-      user.active_context = offices.find(c => c.id === body.context_id);
-      return json({ok:true,redirect:"/agent/dashboard"});
+      user.active_context = everyContext.find(c => c.id === body.context_id);
+      return json({ok:true,redirect:user.active_context.dashboard_url});
     }
     return json({ok:true});
   }
@@ -37,6 +48,12 @@ const server = http.createServer(async(req,res) => {
   if (url.pathname === "/agent/login") {
     res.setHeader("Content-Type","text/html");
     return res.end(fs.readFileSync(path.join(root,"static/agent_login.html")));
+  }
+  const roleFiles = {"/operator/login":"operator_login.html","/loan-consultant/login":"loan_consultant_login.html",
+    "/lodging-operator/login":"partner_login.html","/partner/login":"partner_login.html"};
+  if (roleFiles[url.pathname]) {
+    res.setHeader("Content-Type","text/html");
+    return res.end(fs.readFileSync(path.join(root,"static",roleFiles[url.pathname])));
   }
   if (url.pathname === "/menu") {
     res.setHeader("Content-Type","text/html");
@@ -111,8 +128,44 @@ const server = http.createServer(async(req,res) => {
       await page.locator("#authModal").waitFor({state:"visible"});
       assert.equal(await page.locator("#authModalTitle").innerText(),"비밀번호 찾기");
       assert.deepEqual(errors,[]);
+      for (const [role, route, dashboard] of [
+        ["operator","/operator/login","/operator/dashboard"],
+        ["loan_consultant","/loan-consultant/login","/loan-consultant/dashboard"],
+        ["lodging_operator","/lodging-operator/login","/lodging-operator/manage"],
+        ["partner","/partner/login","/operator/dashboard"],
+      ]) {
+        multiple=false;user=null;
+        await page.goto(base+route);
+        assert.equal(await page.locator('a[href="/?login=reset"]').count(),1);
+        await page.locator('#loginForm input[autocomplete="username"]').fill("test@example.test");
+        await page.locator('input[type="password"]').fill(" shared-pass-123 ");
+        await page.check("#rememberLogin");
+        await page.click("#loginBtn");
+        await page.waitForURL("**"+dashboard);
+        const body=calls.findLast(c=>c.path==="/api/auth/login").body;
+        assert.equal(body.role,role);
+        assert.equal(body.password," shared-pass-123 ");
+        assert.equal(body.remember,true);
+        await page.locator(".auth-active-context").waitFor({state:"attached"});
+        assert.equal(await page.locator("#headerMypageLink").getAttribute("href"),dashboard);
+        if (width<=520) {
+          await page.goto(base+"/menu");
+          await page.locator("#menuActiveContext").waitFor();
+          assert.equal(await page.locator("#menuMypageLink").getAttribute("href"),dashboard);
+        }
+      }
+      multiple=true;
+      await page.goto(base+"/partner/login");
+      await page.locator('#loginForm input[autocomplete="username"]').fill("test@example.test");
+      await page.locator('input[type="password"]').fill("shared-pass-123");
+      await page.click("#loginBtn");
+      await page.selectOption("#contextChoice",partnerContexts.loan_consultant[0].id);
+      await page.getByRole("button",{name:"선택한 역할로 접속"}).click();
+      await page.waitForURL("**/loan-consultant/dashboard");
+      assert.equal(calls.findLast(c=>c.path==="/api/auth/context").body.context_id,partnerContexts.loan_consultant[0].id);
+      assert.deepEqual(errors,[]);
       await ctx.close();
     }
-    console.log("PASS shared-password login entries, role dashboards/office badge, selection and reset: desktop/mobile");
+    console.log("PASS general/broker/operator/loan/lodging/partner entries, shared password, remember, dashboards and context selection: desktop/mobile");
   } finally {await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

@@ -122,12 +122,13 @@
     lodging_operator: "숙박 운영자",
     operations_support: "운영지원업체",
     support: "운영지원업체",
-    loan_consultant: "대출상담사"
+    loan_consultant: "대출상담사",
+    partner: "파트너"
   };
   var ROLE_DASHBOARDS = {
     agent: "/agent/dashboard",
     operator: "/operator/dashboard",
-    lodging_operator: "/operator/dashboard",
+    lodging_operator: "/lodging-operator/manage",
     loan_consultant: "/loan-consultant/dashboard",
     operations_support: "/operator/dashboard",
     support: "/operator/dashboard"
@@ -280,6 +281,8 @@
   }
 
   function renderLoggedIn(user) {
+    var partnerLoginLink = document.getElementById("headerPartnerLoginLink");
+    if (partnerLoginLink) partnerLoginLink.style.display = "none";
     var contexts = normalizeContexts(user);
     var active = user.active_context || user.active_role_context || user.active_role;
     if (typeof active === "string") active = { role: active };
@@ -319,6 +322,8 @@
   }
 
   function renderLoggedOut() {
+    var partnerLoginLink = document.getElementById("headerPartnerLoginLink");
+    if (partnerLoginLink) partnerLoginLink.style.display = "";
     authArea.innerHTML =
       '<button type="button" class="auth-btn auth-btn-solid" id="authLoginBtn">일반회원 로그인</button>' +
       '<a class="auth-btn auth-btn-ghost" href="/agent/login">중개사 로그인</a>';
