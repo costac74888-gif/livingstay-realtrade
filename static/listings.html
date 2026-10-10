@@ -764,16 +764,18 @@
         () => window.prompt("아래 매물 링크를 복사하세요:", url)
       );
     }
-   function listingChannelBadgeHtml(item){
-     const broker=(item.listing_channel||item.deal_mode)==="broker";
-     return `<span class="ls-channel-badge" style="${broker?"":"background:#edf2e9;color:#42613a"}">${broker?"중개":"직거래"}</span>`;
-   }
-   function listingTargetBadgeHtml(item){
-     const labels={unit:"개별 호실",whole:"건물 전체",business_rights:"영업권 양도"};
-     return labels[item.transaction_target]?`<span class="ls-channel-badge" style="background:#f5eadb;color:#805724">${labels[item.transaction_target]}</span>`:"";
-   }
     window.prompt("아래 매물 링크를 복사하세요:", url);
     return Promise.resolve();
+  }
+
+  function listingChannelBadgeHtml(item){
+    const broker=(item.listing_channel||item.deal_mode)==="broker";
+    return `<span class="ls-channel-badge" style="${broker?"":"background:#edf2e9;color:#42613a"}">${broker?"중개":"직거래"}</span>`;
+  }
+
+  function listingTargetBadgeHtml(item){
+    const labels={unit:"개별 호실",whole:"건물 전체",business_rights:"영업권 양도"};
+    return labels[item.transaction_target]?`<span class="ls-channel-badge" style="background:#f5eadb;color:#805724">${labels[item.transaction_target]}</span>`:"";
   }
 
   function shareItem(item){
@@ -1580,6 +1582,7 @@
         moreBtn.style.display = d.has_more ? "" : "none";
       }
     } catch(e){
+      console.error("매물 목록 표시 실패", e);
       if (reset){
          boardBody.innerHTML = `<tr><td colspan="11" class="listings-empty">오류가 발생했습니다.</td></tr>`;
         cardGrid.innerHTML  = `<div class="listings-empty" style="grid-column:1/-1;">${state.channel==="auction"?"공매 정보를 불러오지 못했습니다. 다시 시도해 주세요.":"오류가 발생했습니다."}<br><button type="button" id="lsRetryLoad" style="margin-top:10px">다시 시도</button></div>`;

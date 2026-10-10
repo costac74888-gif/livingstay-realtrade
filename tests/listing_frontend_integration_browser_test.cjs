@@ -16,6 +16,14 @@ const auctionFixture = {
   min_bid_price: 6172500, min_bid_ratio: 50, failed_count: 2,
   bid_end_at: "2026-12-01T10:00:00", status: "bidding"
 };
+const listingFixtures = ["unit", "whole", "business_rights"].map((target, index) => ({
+  id: 741 + index, building_id: 91, building_name: "검사용 숙박시설",
+  transaction_target: target, lodging_type: "생활", deal_type: "매매",
+  price_krw: 0, monthly_rent_krw: 0, key_money_krw: 0, area_sqm: 25,
+  room_count: 12, yield_rate: 0, listing_date: "2026-10-10",
+  photos: [], financial_details_visible: true, disclosure_scope: "public",
+  business_rights_info: { facility_name: "검사용 영업장" }
+}));
 
 function json(res, data, status = 200) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
@@ -29,7 +37,7 @@ function fixtureGlobals() {
   return `<script>
     window.LodgingTypes={badge:(x)=>x||"숙박",color:()=>"rgb(60,80,100)"};
     window.LivingstayListingIcons={heart:()=>"",chat:()=>"문의",share:()=>"공유",photoCount:()=>""};
-    window.Icons={messageCircle:()=>"문의"};
+    window.Icons=window.Icons||{messageCircle:()=>"문의"};
     window.confirm=()=>true;
     window.openChat=()=>{};
   </script>`;
@@ -42,7 +50,7 @@ function stripExternalScripts(source, keep) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   if (url.pathname === "/listings") {
-    let body = stripExternalScripts(htmlFile("listings.html"), ["format_util.js", "listing_icons.js", "listing_modal.js"]);
+    let body = stripExternalScripts(htmlFile("listings.html"), ["format_util.js", "/static/js/icons.js", "listing_icons.js", "listing_modal.js"]);
     body = body.replace('<script>\n(function(){', fixtureGlobals() + '<script>\n(function(){');
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(body); return;
   }
@@ -86,7 +94,18 @@ const server = http.createServer((req, res) => {
       items: [{ ...auctionFixture, id: auctionFixture.id + Number(url.searchParams.get("page") || 1) }]
     });
   }
-  if (url.pathname === "/api/listings") return json(res, { ok: true, items: [], has_more: false });
+  if (url.pathname === "/api/listings") {
+    const channel = url.searchParams.get("channel") || "direct";
+    const target = url.searchParams.get("transaction_target");
+    const limited = url.searchParams.get("disclosure_scope") === "limited";
+    const items = listingFixtures.filter(item =>
+      (!target || item.transaction_target === target) && (!limited || item.transaction_target !== "unit")
+    ).map(item => ({
+      ...item, deal_mode: channel, listing_channel: channel,
+      is_limited_listing: limited, disclosure_scope: limited ? "limited" : "public"
+    }));
+    return json(res, { ok: true, items, has_more: false });
+  }
   if (url.pathname === "/api/auth/me") return json(res, { logged_in: true, id: 23, name: "테스트 회원", phone: "010-2456-7890", phone_verified: true });
   if (url.pathname === "/api/listings/registration-context") return json(res, { ok: true, can_publish_broker: true });
   if (url.pathname.endsWith("/area-types")) return json(res, { ok: true, areas: [] });
@@ -138,6 +157,12 @@ const server = http.createServer((req, res) => {
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
+    page.on("console", message => {
+      if (message.type() === "error" && message.text().startsWith("매물 목록 표시 실패")) {
+        errors.push(message.text());
+        console.error(message.text());
+      }
+    });
     await page.goto(`${base}/listings?channel=auction`);
     await page.locator(".ls-card-item").waitFor();
     assert.match(await page.locator(".ls-card-item").innerText(), /12,345,000원/);
@@ -176,6 +201,31 @@ const server = http.createServer((req, res) => {
     await page.locator('#lsChannelTabs [data-channel="direct"]').click();
     assert.equal(await page.locator("#listingsTitle").innerText(), "숙박 매물 · 직거래");
     assert.equal(await page.locator('a[href="/auctions"]').count(), 1);
+    assert.deepEqual(errors, []);
+
+    // Nonempty responses are essential: loadListings catches renderer exceptions.
+    // Checking pageerror or only empty API responses cannot detect those failures.
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const channel of ["direct", "broker"]) {
+        for (const scope of ["public", "limited"]) {
+          await page.goto(`${base}/listings?channel=${channel}&disclosure_scope=${scope}`);
+          const expected = scope === "limited" ? 2 : 3;
+          await page.waitForFunction(count =>
+            document.querySelectorAll("#lsBoardBody tr[data-listing-id]").length === count &&
+            document.querySelectorAll(".ls-card-item[data-listing-id]").length === count,
+          expected, { timeout: 5000 });
+          assert.doesNotMatch(await page.locator("#lsBoardBody").innerText(), /오류가 발생|불러오기 실패/);
+          if (width > 520) {
+            await page.locator('.ls-view-tabs [data-view="board"]').click();
+            assert.equal(await page.locator("#lsBoardBody").isVisible(), true);
+          }
+          await page.locator('.ls-view-tabs [data-view="card"]').click();
+          assert.equal(await page.locator(".ls-card-item").first().isVisible(), true);
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        }
+      }
+    }
     assert.deepEqual(errors, []);
 
     const modalPage = await context.newPage();
@@ -296,7 +346,7 @@ const server = http.createServer((req, res) => {
     assert.ok(await privacyPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await privacyPage.setViewportSize({ width: 390, height: 844 });
     assert.ok(await privacyPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-    console.log("PASS: channel/list auction filters+server pagination; rights target/create/edit/draft/zero; stale review version/content; shared detail navigation/privacy desktop+mobile");
+    console.log("PASS: nonempty direct/broker unit+whole+rights board/card public+limited desktop+mobile; auction filters+pagination; rights create/edit/draft/zero; stale review; shared detail/privacy");
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));
