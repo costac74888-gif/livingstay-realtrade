@@ -56,6 +56,7 @@ main { padding-top: 20px; }
 h1 { margin: 6px 0 0; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.17; letter-spacing: -.065em; font-weight: 760; }
 h1 em { color: var(--teal); font-style: normal; }
 .heading-note { margin: 0 1px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.65; text-align: right; }
+.mobile-entry { display: none; }
 #searchForm { display: grid; gap: 11px; }
 .search-row {
   display: grid; grid-template-columns: minmax(230px, 1fr) minmax(130px, .43fr) 12px minmax(130px, .43fr) 92px;
@@ -223,7 +224,13 @@ h1 em { color: var(--teal); font-style: normal; }
   .account-link { font-size: 10px; }
   main { padding-top: 17px; }
   .page-heading { margin-bottom: 13px; }
+  .page-heading { flex-wrap: wrap; }
   .heading-note { display: none; }
+  .mobile-entry {
+    display: inline-flex; min-height: 44px; flex: 0 0 auto; align-items: center; gap: 7px;
+    margin-top: 1px; padding: 0 12px; border: 1px solid #b8cdbd; border-radius: 8px;
+    color: var(--teal-deep); background: #e8f0e6; font-size: 10px; font-weight: 800; text-decoration: none;
+  }
   h1 { font-size: clamp(23px, 7vw, 31px); }
   .search-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 9px; }
   .location-field { grid-column: 1 / -1; }

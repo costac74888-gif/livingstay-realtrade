@@ -1,0 +1,213 @@
+/* A focused, mobile-only presentation layer. The original search shell and
+   controller remain the source of truth for data, selection and map layers. */
+.mobile-panel-switch { display: none; }
+
+@media (max-width: 760px) {
+  body[data-mobile-experience="true"] {
+    overflow-x: clip;
+    min-width: 0;
+  }
+
+  body[data-mobile-experience="true"] .supermap-shell {
+    width: 100%;
+    padding-inline: 14px;
+  }
+
+  body[data-mobile-experience="true"] .supermap-main {
+    padding-top: 12px;
+  }
+
+  body[data-mobile-experience="true"] .mobile-panel-switch {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    margin: 12px -2px 8px;
+    padding: 5px;
+    border: 1px solid #cfdbd0;
+    border-radius: 13px;
+    background: rgba(242, 243, 236, .96);
+    box-shadow: 0 5px 15px rgba(32, 58, 59, .08);
+    backdrop-filter: blur(10px);
+  }
+
+  body[data-mobile-experience="true"] .mobile-panel-switch button {
+    min-width: 0;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    color: #60736a;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 750;
+    touch-action: manipulation;
+    transition: color .16s ease, background-color .16s ease, transform .16s ease;
+  }
+
+  body[data-mobile-experience="true"] .mobile-panel-switch button[aria-pressed="true"] {
+    border-color: #24564f;
+    color: #f8fbf6;
+    background: #28615b;
+    box-shadow: 0 2px 5px rgba(32, 58, 59, .15);
+  }
+
+  body[data-mobile-experience="true"] .mobile-panel-switch button:active {
+    transform: scale(.985);
+  }
+
+  body[data-mobile-experience="true"] .mobile-switch-mark {
+    position: relative;
+    width: 16px;
+    height: 14px;
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  body[data-mobile-experience="true"] .mobile-list-mark::before,
+  body[data-mobile-experience="true"] .mobile-list-mark::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 16px;
+    height: 4px;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+  }
+
+  body[data-mobile-experience="true"] .mobile-list-mark::before { top: 0; }
+  body[data-mobile-experience="true"] .mobile-list-mark::after { bottom: 0; }
+
+  body[data-mobile-experience="true"] .mobile-map-mark {
+    border: 1.5px solid currentColor;
+    border-radius: 3px;
+    background: linear-gradient(105deg, transparent 30%, currentColor 32%, currentColor 36%, transparent 38%, transparent 64%, currentColor 66%, currentColor 70%, transparent 72%);
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace {
+    display: block;
+    min-height: 0;
+    margin-top: 0;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace > .results-pane,
+  body[data-mobile-experience="true"] .supermap-workspace > .map-pane {
+    min-width: 0;
+    width: 100%;
+    padding: 8px 0 16px;
+    border: 0;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace > .results-pane[hidden],
+  body[data-mobile-experience="true"] .supermap-workspace > .map-pane[hidden] {
+    display: none !important;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace .listing-list {
+    max-height: none;
+    overflow: visible;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace .listing-card {
+    min-height: 76px;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 11px;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace .map-pane {
+    min-height: 0;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace .map-topline {
+    margin: 2px 0 10px;
+  }
+
+  body[data-mobile-experience="true"] .map-layout {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    gap: 8px;
+  }
+
+  body[data-mobile-experience="true"] .layer-controls {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 7px;
+  }
+
+  body[data-mobile-experience="true"] .layer-heading,
+  body[data-mobile-experience="true"] .layer-footnote {
+    grid-column: 1 / -1;
+  }
+
+  body[data-mobile-experience="true"] .layer-toggle {
+    min-height: 44px;
+    grid-template-columns: 12px minmax(0, 1fr);
+    gap: 4px;
+    padding: 5px;
+  }
+
+  body[data-mobile-experience="true"] .layer-count {
+    grid-column: 2;
+  }
+
+  body[data-mobile-experience="true"] .map-canvas {
+    width: 100%;
+    min-height: min(62dvh, 520px);
+    height: min(62dvh, 520px);
+    border-radius: 13px;
+  }
+
+  body[data-mobile-experience="true"] .hs2-marker-toggle {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  body[data-mobile-experience="true"] .hs2-marker-choice {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  body[data-mobile-experience="true"] .page-footer {
+    display: grid;
+    gap: 7px;
+    line-height: 1.55;
+  }
+
+  body[data-mobile-experience="true"] .supermap-workspace .listing-price {
+    min-width: 72px;
+  }
+}
+
+@media (max-width: 390px) {
+  body[data-mobile-experience="true"] .supermap-shell { padding-inline: 11px; }
+  body[data-mobile-experience="true"] .supermap-workspace .listing-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  body[data-mobile-experience="true"] .supermap-workspace .listing-price {
+    grid-column: 2;
+    align-items: start;
+    text-align: left;
+  }
+  body[data-mobile-experience="true"] .map-privacy { font-size: 8px; }
+}
+
+@media (min-width: 761px) {
+  body[data-mobile-experience="true"] .mobile-panel-switch { display: none !important; }
+  body[data-mobile-experience="true"] .supermap-workspace > .results-pane,
+  body[data-mobile-experience="true"] .supermap-workspace > .map-pane {
+    display: flex;
+  }
+  body[data-mobile-experience="true"] .supermap-workspace > .results-pane { display: block; }
+  body[data-mobile-experience="true"] .supermap-workspace > .map-pane { display: flex; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-mobile-experience="true"] .mobile-panel-switch button { transition: none; }
+}

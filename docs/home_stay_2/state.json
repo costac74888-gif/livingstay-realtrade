@@ -2081,9 +2081,51 @@
       "status": "COMPLETE",
       "head": "9624b1833b034906a720290a793df892ebc3e37f",
       "tag": "hs2/phase-15/complete"
+    },
+    {
+      "at": "2026-10-10T18:46:55.210348+00:00",
+      "event": "DEVELOPMENT_REMOTE_VERIFIED",
+      "phase": 15,
+      "status": "SYNCED"
+    },
+    {
+      "at": "2026-10-10T18:46:55.506003+00:00",
+      "event": "WORK_INSTRUCTION_ACCEPTED",
+      "phase": 16,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T18:52:32.234437+00:00",
+      "event": "REPLIT_FULL_VERIFY_START",
+      "phase": 16,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T18:57:08.821524+00:00",
+      "event": "REPLIT_FULL_VERIFY_RESULT",
+      "phase": 16,
+      "status": "FAIL"
+    },
+    {
+      "at": "2026-10-10T19:00:36.211661+00:00",
+      "event": "REPLIT_FULL_VERIFY_START",
+      "phase": 16,
+      "status": "RUNNING"
+    },
+    {
+      "at": "2026-10-10T19:04:56.001643+00:00",
+      "event": "REPLIT_FULL_VERIFY_RESULT",
+      "phase": 16,
+      "status": "PASS"
+    },
+    {
+      "at": "2026-10-10T19:05:38.518317+00:00",
+      "event": "WORK_EVIDENCE_REVIEWED",
+      "phase": 16,
+      "status": "PASS"
     }
   ],
-  "current_user_phase": 15,
+  "current_user_phase": 16,
   "user_phases": {
     "2": {
       "status": "COMPLETE",
@@ -12399,6 +12441,1059 @@
         "head": "9624b1833b034906a720290a793df892ebc3e37f",
         "tag": "hs2/phase-15/complete",
         "at": "2026-10-10T18:46:01.437008+00:00"
+      },
+      "remote": {
+        "status": "SYNCED",
+        "head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
+        "checkpoint_head": "9624b1833b034906a720290a793df892ebc3e37f",
+        "source_fingerprint": "9b46fcf8c1117c39bd900aade054c5bc4c17a3ccbbca1ab30246846b2d3bb7fb",
+        "main_unchanged": true,
+        "at": "2026-10-10T18:46:55.210326+00:00",
+        "transport": "Git Data API exact hashes; nonforce development; independent branch/main read"
+      }
+    },
+    "16": {
+      "status": "PASS",
+      "instruction": "docs/home_stay_2/phase16/WORK_INSTRUCTION.md",
+      "at": "2026-10-10T18:46:55.502705+00:00",
+      "source_head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
+      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "verification": {
+        "at": "2026-10-10T19:04:55.997408+00:00",
+        "head": "5820254ee34a53ea0518068f12ca2d5cbf1d7b2b",
+        "fingerprint": "9a18889e608e041104c74b811ccddabed0bbb03e1b29bab781517058fa175b98",
+        "preservation": {
+          "frozen_files": 13,
+          "preserved_routes": 616,
+          "must_exist": 10
+        },
+        "results": [
+          {
+            "id": "admin-scope",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.066,
+            "command": [
+              "node",
+              "tests/admin_data_sync_scope_test.js"
+            ],
+            "test_sha256": "cc775704f4b22fa44f7addb0e6e35a74cb2cb38b7cb1806a7d70b52ed86a795c",
+            "log": ".local/hs2-harness/admin-scope-1791658839525529449.log",
+            "log_sha256": "fb569d1a9d5876c9d7fdf04e09afc259d34e276923769b949ffcf5707568b686"
+          },
+          {
+            "id": "auction-domain",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.616,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_auction_domain.py",
+              "-v"
+            ],
+            "test_sha256": "d0151d9807ce904af7d919d3b9e37f02da16a4d81b1adec7176b51d24f428eb9",
+            "log": ".local/hs2-harness/auction-domain-1791658839591474025.log",
+            "log_sha256": "4e55c353b68da8e8867568e089f8e9a76a8a4b16d75fba1615d51a4aa6203698"
+          },
+          {
+            "id": "harness-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 1.117,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "6c6d6ac90067774f8208445c49ba1461122617697945df89ffde36b2c258be2d",
+            "log": ".local/hs2-harness/harness-contracts-1791658840207473170.log",
+            "log_sha256": "36a8a080657857c69526274dc5a978eabceba6dd40ab9d84b4df8803ca80a47a"
+          },
+          {
+            "id": "harness-unit",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.165,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_harness.py",
+              "-v"
+            ],
+            "test_sha256": "5eabe2170480d1a6cf335aa2cc2fa055d2678c0ea362b5b1fb1f2166d0f8c2fa",
+            "log": ".local/hs2-harness/harness-unit-1791658841324641010.log",
+            "log_sha256": "d0a9886006149b8a383b362ef750792d9318ce03153a030b82c276370a525f03"
+          },
+          {
+            "id": "lodging-status",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.115,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_lodging_report_status.py",
+              "-v"
+            ],
+            "test_sha256": "8d5f95e3b9455beed4ca6e7dfff974e45434bd1fdefba7c7c5ce833590dcbd3c",
+            "log": ".local/hs2-harness/lodging-status-1791658841489777979.log",
+            "log_sha256": "c5c6a72050b9210b4deda6a76ceb30255a2331cd11853abcb6f97a29c947f9a6"
+          },
+          {
+            "id": "lodging-types",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.266,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_lodging_categories.py",
+              "-v"
+            ],
+            "test_sha256": "6ebfb7570116de9ca0e32724f381690805044c189a04c53ea1ed120d118b8e29",
+            "log": ".local/hs2-harness/lodging-types-1791658841604591566.log",
+            "log_sha256": "c5c02fef0b37f088405bc0a4176171745b838feb928d23d9e1a5ad6105c469bd"
+          },
+          {
+            "id": "map-legacy",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.165,
+            "command": [
+              "node",
+              "tests/auction_map_exclusive_test.cjs"
+            ],
+            "test_sha256": "3fc9217bb2ba64dab9dbe68be6144c6be254b87a882a01ebb49f590e0d18e6d0",
+            "log": ".local/hs2-harness/map-legacy-1791658841870995528.log",
+            "log_sha256": "01b5d56ff22716d32f5ba9e409059f64b3c85be2a5ca27488b9c29eb4ebcc2cf"
+          },
+          {
+            "id": "phase1-graph-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.114,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase1_graph_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "1d6c4ce3150185b90648537d099ee0e7d4e10b1a15317c909d808037af8b4c65",
+            "log": ".local/hs2-harness/phase1-graph-contracts-1791658842036423065.log",
+            "log_sha256": "77b2ac548d2666b26f61a83a0deea8452fc83bbc1bbaed565643eaf00ffd9c0b"
+          },
+          {
+            "id": "phase1-use-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.116,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase1_use_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "3f58c00b72d20dad6432ae7df36a0c5da174c02bd92306e0cae3c7791d241e96",
+            "log": ".local/hs2-harness/phase1-use-contracts-1791658842151135450.log",
+            "log_sha256": "a23be364e9ef353cf09f1b8807307e83731b1797b1ba56cf8e9d49cab1241dd2"
+          },
+          {
+            "id": "phase10-booking-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.116,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase10_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "b293aafb04ed0dac5bedc6303fc9c6970217b46797f5f590153c336ee20e1ead",
+            "log": ".local/hs2-harness/phase10-booking-contracts-1791658842267011335.log",
+            "log_sha256": "fd2cc84987c5e08401651c26600a30311745379cd998a3a4e787d63c51203638"
+          },
+          {
+            "id": "phase10-booking-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 11.662,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase10_db.py",
+              "-v"
+            ],
+            "test_sha256": "418624eaaa0eef952373e415fb80f0049bbb0a8ea3c45bd1d382205d6fb4164b",
+            "log": ".local/hs2-harness/phase10-booking-db-1791658842384091673.log",
+            "log_sha256": "667b8c46221264b04113eeaf22fb75d6eb162ccf7e07c1939ce4e03a4d1cc4e0",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase10-booking-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 8.508,
+            "command": [
+              "node",
+              "tests/hs2_phase10_ui_test.cjs"
+            ],
+            "test_sha256": "ef5b776908bd6e53e0c64083610ffc46a7ecbcdc7c27de572ee0bcd0f0425126",
+            "log": ".local/hs2-harness/phase10-booking-ui-1791658854047084125.log",
+            "log_sha256": "82db1cfec2f493f758841a79bb942572c52c4d47a43721bdcb5f3a9cc0ae8ca0",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase11-finance-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.117,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase11_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "0cae6aa6e90ecf3e8c74e68813dd16f0a28124782614d8f068b4892fc403d59c",
+            "log": ".local/hs2-harness/phase11-finance-contracts-1791658862555713601.log",
+            "log_sha256": "b72aba6dbb8498f6ce711d319cd182a429a5324857b55533eb19d0b6297f3f48"
+          },
+          {
+            "id": "phase11-finance-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 12.964,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase11_db.py",
+              "-v"
+            ],
+            "test_sha256": "00fd503fd84a2b6223d092e66f74ef296cb1582caf2ab591c1576bd3a9524f69",
+            "log": ".local/hs2-harness/phase11-finance-db-1791658862672627605.log",
+            "log_sha256": "2d5efc8e3e1619f73aca36696163cc4dd0cff4bc12303117dd278fa71c63ece3",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase11-finance-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 9.93,
+            "command": [
+              "node",
+              "tests/hs2_phase11_ui_test.cjs"
+            ],
+            "test_sha256": "8099f8cb0e1f7382e4c9d89c4816ab053b1d883d2134abfc4a5537147698295d",
+            "log": ".local/hs2-harness/phase11-finance-ui-1791658875636526246.log",
+            "log_sha256": "efff84dbd118004108864516c521e5b08f98d03e3a390d2df7b322b2f170b193",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase12-dashboard-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 7.454,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase12_db.py",
+              "-v"
+            ],
+            "test_sha256": "b2479c11937b3da5f2a97749704bdc89df1cad70456facc3b4aa1be32ff74077",
+            "log": ".local/hs2-harness/phase12-dashboard-db-1791658885566799493.log",
+            "log_sha256": "ed6adca854f8712a49ebb722beac0949f5a37aca09a4e5d7db3f3cf4d40853b1",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase12-dashboard-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 7.864,
+            "command": [
+              "node",
+              "tests/hs2_phase12_ui_test.cjs"
+            ],
+            "test_sha256": "e124e6b03bd0934b55ca4f886df50b1ccf80a3e31c2e5454e7bdb08de7d9c77a",
+            "log": ".local/hs2-harness/phase12-dashboard-ui-1791658893021109502.log",
+            "log_sha256": "47c9099797b6221aee14f412c8f9ce8bdc729cdd6e4a17d0f6e4569e88a51684",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase13-workspace-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 7.951,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase13_db.py",
+              "-v"
+            ],
+            "test_sha256": "12182403465ddbeb603bcda753de05595848c5136879ccdb79a5c35c7af4adde",
+            "log": ".local/hs2-harness/phase13-workspace-db-1791658900885485999.log",
+            "log_sha256": "9660ee63da44a3ec56a286e9e9b0c5b9592fba0e4320e2be6208283fc332a7a1",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase13-workspace-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 13.549,
+            "command": [
+              "node",
+              "tests/hs2_phase13_ui_test.cjs"
+            ],
+            "test_sha256": "e1fd99fdf9b9f438d460cf93ffc7e04bf7430260f2a7e743bfbbd7fa6e19dcf9",
+            "log": ".local/hs2-harness/phase13-workspace-ui-1791658908836873715.log",
+            "log_sha256": "af437a4ee8b743d051ec2554e1adefa5c2e04d075c7b6c8028b36cfa9dc42b51",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase14-help-content",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.216,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase14_help.py",
+              "-v"
+            ],
+            "test_sha256": "dad645a5b2b07aac711ecec8b3ff29cb0044e32ada72676a6ec4bcc9c4e56892",
+            "log": ".local/hs2-harness/phase14-help-content-1791658922385789004.log",
+            "log_sha256": "cf16edd21135de190b356b6610e06304e591e6742fc818a0dfedeb7b40961a29"
+          },
+          {
+            "id": "phase14-help-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 3.984,
+            "command": [
+              "node",
+              "tests/hs2_phase14_ui_test.cjs"
+            ],
+            "test_sha256": "0eb0f51edb6a9b75c7d11de973963f9d0806bfd14e3ee1ee6bcc15760a64f03f",
+            "log": ".local/hs2-harness/phase14-help-ui-1791658922602353534.log",
+            "log_sha256": "d87864384b51a5156834c09992e313cba23fff212acbbc94af334626ae877786",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase15-admin-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 6.498,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase15_db.py",
+              "-v"
+            ],
+            "test_sha256": "aa69e39e78ad2858f0d23a39ed8d215148d89997a3e2c9d8984a14466a5f973e",
+            "log": ".local/hs2-harness/phase15-admin-db-1791658926586772234.log",
+            "log_sha256": "cf7707a78453582569f70e27f1f2b24f2316eb2a70fed2c6014e1579b0db6825",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase15-admin-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 34.906,
+            "command": [
+              "node",
+              "tests/hs2_phase15_ui_test.cjs"
+            ],
+            "test_sha256": "625ea67ba5cbea4aa58947c22c3b6a342b994e0e0379b6d1b0ba284b3beab8d1",
+            "log": ".local/hs2-harness/phase15-admin-ui-1791658933085206187.log",
+            "log_sha256": "463ff4bd4a6cbea2a8eee3f61c238dc526c20b49883dd1138a30b458efb41a47",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase16-mobile-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.265,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase16_mobile.py",
+              "-v"
+            ],
+            "test_sha256": "7bafdad644cc5588ac416f9d31de03477d2febe1fb3f87a0082e57f4c96af4ab",
+            "log": ".local/hs2-harness/phase16-mobile-contracts-1791658967991604946.log",
+            "log_sha256": "9236409e3a5b1a0031f5f0910ac6497ce82e6c5f6cc1f8e97d8b9359197560e4"
+          },
+          {
+            "id": "phase16-mobile-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 19.901,
+            "command": [
+              "node",
+              "tests/hs2_phase16_ui_test.cjs"
+            ],
+            "test_sha256": "97574bc0885da5be722638425ada54a503464d2142f8ef544e7cba84d992266e",
+            "log": ".local/hs2-harness/phase16-mobile-ui-1791658968256837698.log",
+            "log_sha256": "ae0b68443646c5d97e23c163f4e68dc8f5d1df018c279fe6a9c0942d7059753e",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase2-data-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 4.195,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase2_data.py",
+              "-v"
+            ],
+            "test_sha256": "da1c76bc3fe86ac32d9c97387ea75c2d28250fe32b21dc122a9bbaa3011636ed",
+            "log": ".local/hs2-harness/phase2-data-contracts-1791658988158527848.log",
+            "log_sha256": "2b7b2fa4bdfd3e7f2a0b5f3a26e10020a4467cac7141fae9afadf49883fa60c0",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase2-gate-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.767,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase2_gates.py",
+              "-v"
+            ],
+            "test_sha256": "5db8812f9ed5055efc8bd27b84ca18a1c77af15b8321a66e40e3ee442cd694c7",
+            "log": ".local/hs2-harness/phase2-gate-contracts-1791658992353961919.log",
+            "log_sha256": "53a1d43d99139cf97d8685629e91bee91e870e7376ef49f605cfc1bc4b2e96ea"
+          },
+          {
+            "id": "phase3-gate-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 1.02,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase3_gates.py",
+              "-v"
+            ],
+            "test_sha256": "2046281720d3a56c5de3e7379f32a24c8e46efae51aa34324c3d85bed5a696e6",
+            "log": ".local/hs2-harness/phase3-gate-contracts-1791658993121622343.log",
+            "log_sha256": "c24eeb3ccba72c7a038a75e2516d11edce72cadc03e277629ddf530e97f6002f"
+          },
+          {
+            "id": "phase3-registration-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.315,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase3_registration.py",
+              "-v"
+            ],
+            "test_sha256": "849886d51909ec91a1cad7f781639836397d8724a0dbaac3f61fc1179f2caec3",
+            "log": ".local/hs2-harness/phase3-registration-contracts-1791658994141870397.log",
+            "log_sha256": "bec65f8700af268ff97a419d411c36c3962bc5523f2f7e24616c13c12d067e97"
+          },
+          {
+            "id": "phase3-registration-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 3.232,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase3_db.py",
+              "-v"
+            ],
+            "test_sha256": "0d968d26f41bba0c2052a2b379b4b622853a3ed4e7bed198f12d9d5de6faead7",
+            "log": ".local/hs2-harness/phase3-registration-db-1791658994457318230.log",
+            "log_sha256": "a398110b9c4919aa2ad9a7ce6cd242ffd0a574329340366e10d1ffea8ff797a1",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase3-registration-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 6.391,
+            "command": [
+              "node",
+              "tests/hs2_phase3_ui_test.cjs"
+            ],
+            "test_sha256": "65f002dcc248488faf2e90b1fef89da88afa6b123d38331bd67af64a69de94e6",
+            "log": ".local/hs2-harness/phase3-registration-ui-1791658997689562909.log",
+            "log_sha256": "d6012f2ff6a515da074125cd2ec34a2f4d389c605cded2901c1eed2b24918d2a",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase4-auth-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 6.336,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase4_auth_db.py",
+              "-v"
+            ],
+            "test_sha256": "a63d28b7881281619e530715b909554b6c378831cae5f8e6c5fa465bbf7c2a32",
+            "log": ".local/hs2-harness/phase4-auth-db-1791659004080961109.log",
+            "log_sha256": "5587af1d0a3e4c67fefdc57fd2e7ea2eec4a24424f45dd5b8b4d93d446197840",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase4-continuation-gates",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.967,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase4_continuation.py",
+              "-v"
+            ],
+            "test_sha256": "3b16a3172ff77839d1d867c3f7f074891fdb4f0f465f65eed03ed4cb5ee33ad5",
+            "log": ".local/hs2-harness/phase4-continuation-gates-1791659010417628921.log",
+            "log_sha256": "8d92d1986cd76553e0b2865210cdc094544a8013f8440695fa9f73175936969d"
+          },
+          {
+            "id": "phase4-mode-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.366,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase4_modes.py",
+              "-v"
+            ],
+            "test_sha256": "29c705da20a470c375763a0f622b17824417262d771a996dda8321439e572935",
+            "log": ".local/hs2-harness/phase4-mode-contracts-1791659011384998924.log",
+            "log_sha256": "bf7f296ebcd3721d08f848322599117227054500a0471e2d8743e5a365a869c7"
+          },
+          {
+            "id": "phase4-mode-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 2.885,
+            "command": [
+              "node",
+              "tests/hs2_phase4_ui_test.cjs"
+            ],
+            "test_sha256": "b3647e6343f13060b17c4a911f225bb7cafec449fcc89289d9458c95b76c4ecf",
+            "log": ".local/hs2-harness/phase4-mode-ui-1791659011750797408.log",
+            "log_sha256": "c9c09781b13c183262fd80234e16127b99efb1b70a45ce9602f4f441014ca719",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase5-consumer-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 2.976,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase5_db.py",
+              "-v"
+            ],
+            "test_sha256": "edbc07d22d50c0ccbb600ab87742a3027a7dc2452d2699dacddfb705f4626bff",
+            "log": ".local/hs2-harness/phase5-consumer-db-1791659014635524479.log",
+            "log_sha256": "aeb093c46775065d6d7c40a34a4a96dac9419efed796444ea2a66f211eb754c5",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase5-consumer-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 3.436,
+            "command": [
+              "node",
+              "tests/hs2_phase5_ui_test.cjs"
+            ],
+            "test_sha256": "bb5db795832fe45901aaf2da83c7b15d26436bdbc5ef1ec1d0efc8f9e19cfc86",
+            "log": ".local/hs2-harness/phase5-consumer-ui-1791659017612052884.log",
+            "log_sha256": "2459d471e70332357f0468d6b0fafe3d3f3481b84e80cffbde4c83d30b18654c",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase5-search-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.266,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase5_search.py",
+              "-v"
+            ],
+            "test_sha256": "b15d21a9a2c7de038008c3f1b817d063ab982f170db497da98a220ed036cace4",
+            "log": ".local/hs2-harness/phase5-search-contracts-1791659021047758361.log",
+            "log_sha256": "fe3dc0b26cf5d1ec2188ee8773680302464e9f682be8d7c4db0f5337eb89e40e"
+          },
+          {
+            "id": "phase6-listing-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 7.746,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase6_db.py",
+              "-v"
+            ],
+            "test_sha256": "147c3af1ffb4bcabec2924febbb806142a0496aee653110842c879024c807e4f",
+            "log": ".local/hs2-harness/phase6-listing-db-1791659021313508206.log",
+            "log_sha256": "dea8b2e33130e5a08935ed3741980c36fde30d2285307e6dd26ef42e86c846e6",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase6-listing-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 15.549,
+            "command": [
+              "node",
+              "tests/hs2_phase6_ui_test.cjs"
+            ],
+            "test_sha256": "13a2827d71d7717f95e3a5c03660b8aa8b42b46e3667cff9c8a6581ec3d65469",
+            "log": ".local/hs2-harness/phase6-listing-ui-1791659029059348489.log",
+            "log_sha256": "135081e23dbf6c2da5e49172c604ad1810c5500b936426f3d9c942d4209c1a23",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase6-validation",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.116,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase6_validation.py",
+              "-v"
+            ],
+            "test_sha256": "32e8c02fa0602530ae5a9c6c7fe199f58d5a83c4e82d125dfbc28edd293200d4",
+            "log": ".local/hs2-harness/phase6-validation-1791659044608884046.log",
+            "log_sha256": "eea4c9f2e99beaeabd4eea9c6f7550156ebad2baae1eb6123598364e75eb34b0"
+          },
+          {
+            "id": "phase7-calendar-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 6.856,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase7_db.py",
+              "-v"
+            ],
+            "test_sha256": "13605f55505f4fd31d5088670515a76e9750a535db5b356941b9d2eef40076c6",
+            "log": ".local/hs2-harness/phase7-calendar-db-1791659044724746612.log",
+            "log_sha256": "4873469b65fec8c458031262f724179e721468d8dce87dd5fa71b9fd7edeb60b",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase7-calendar-engine",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.115,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase7_engine.py",
+              "-v"
+            ],
+            "test_sha256": "3e2cb2e059e9c34d17fa1f6fd8f0f1f86a7a9dd4204197a47fbc3c3194892cd8",
+            "log": ".local/hs2-harness/phase7-calendar-engine-1791659051581158653.log",
+            "log_sha256": "c0a8e46852e8e430b3f3b478c4f7336bc232e60c75a7a1019334c36ff0318460"
+          },
+          {
+            "id": "phase7-calendar-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 8.369,
+            "command": [
+              "node",
+              "tests/hs2_phase7_ui_test.cjs"
+            ],
+            "test_sha256": "7a31166185cbc4d1c8047d0af9683d34cb5d20d489df99f64a074c66dd51fd5b",
+            "log": ".local/hs2-harness/phase7-calendar-ui-1791659051696724510.log",
+            "log_sha256": "f0a66992380844da7a45f27c667900c15310bae709b5b61fcaf716efc3728778",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase8-supermap-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.115,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase8_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "f23641d6ee403293d30e25c796194b361d2afdbd7b6e6fd91efbb88d96dfab02",
+            "log": ".local/hs2-harness/phase8-supermap-contracts-1791659060066420384.log",
+            "log_sha256": "542ce80857f94b9f5f51ce60aeafdafc0df02b9c21daba22a0ed2a1f1bf2d07d"
+          },
+          {
+            "id": "phase8-supermap-controller",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.065,
+            "command": [
+              "node",
+              "tests/hs2_phase8_controller_test.cjs"
+            ],
+            "test_sha256": "2b31e3acc623c5d17726a896ec58546691d4feeee4440d50dd56367dc34bd318",
+            "log": ".local/hs2-harness/phase8-supermap-controller-1791659060181497740.log",
+            "log_sha256": "51b062a0c192d1c99f9730797c4d6cac889afab755c88f54000e59a73e7841eb"
+          },
+          {
+            "id": "phase8-supermap-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 8.249,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase8_db.py",
+              "-v"
+            ],
+            "test_sha256": "b06aae160ad3506e46519f5c075c5c0645b25533396c9c6124e453e185b8c549",
+            "log": ".local/hs2-harness/phase8-supermap-db-1791659060246705682.log",
+            "log_sha256": "0e18d2d92cb8a963a37fba42e6cc5188b638d1320e9bdf885f70b5f3f1fad2da",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase8-supermap-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 9.322,
+            "command": [
+              "node",
+              "tests/hs2_phase8_ui_test.cjs"
+            ],
+            "test_sha256": "f0492cea638231df664ae9722cf341f5b9c30eab7198883e0049c582932b7a5f",
+            "log": ".local/hs2-harness/phase8-supermap-ui-1791659068496441943.log",
+            "log_sha256": "4107e212648c405a20081c21f64f502910f274d18be4ea5ee019e1faa96de8a0",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "phase9-detail-contracts",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.115,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase9_contracts.py",
+              "-v"
+            ],
+            "test_sha256": "4b378b92fa0c409b9c547aaa6a142f138604dd1b69867339b3f6061bb329b4f9",
+            "log": ".local/hs2-harness/phase9-detail-contracts-1791659077819069104.log",
+            "log_sha256": "83a440fead0a185185daea0303b06dd4f82724a1c92bd2922bcf948d55ea469b"
+          },
+          {
+            "id": "phase9-detail-db",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 8.546,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_phase9_db.py",
+              "-v"
+            ],
+            "test_sha256": "f64a9c2ba7687c569ba1e1c042355ef5269509f9fc2af2e7084e2fd54f448bfd",
+            "log": ".local/hs2-harness/phase9-detail-db-1791659077934240827.log",
+            "log_sha256": "72e0c4565f469ffe03f128e86b0a89163baf70ffc9bfd28b9a1d6b7a38669c8d",
+            "isolation": "fresh PostgreSQL /tmp cluster, UNIX socket only, deleted after suite"
+          },
+          {
+            "id": "phase9-detail-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 8.72,
+            "command": [
+              "node",
+              "tests/hs2_phase9_ui_test.cjs"
+            ],
+            "test_sha256": "c94355c22dfec2d03ff0f7e7bf1f6bddd0f5c92262564c62c0c51e7591ed12d4",
+            "log": ".local/hs2-harness/phase9-detail-ui-1791659086480041742.log",
+            "log_sha256": "30e66058a9ceab0a50eaf012bbc39e297b1167d24e394e3f30d7302608e99260",
+            "isolation": "owned loopback synthetic HTTP + reviewed Chromium only"
+          },
+          {
+            "id": "privacy-ui",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.065,
+            "command": [
+              "node",
+              "tests/listings_card_layout_test.js"
+            ],
+            "test_sha256": "1aa2c0f0d8f412e07f6765831af1627dc989ed24e4513b107febc8aa4e1068dd",
+            "log": ".local/hs2-harness/privacy-ui-1791659095199857054.log",
+            "log_sha256": "2c7f317312bdb319bba8d72a163c91d214c9cda4bb59fac2fb6d20ff7c66b353"
+          },
+          {
+            "id": "relay",
+            "status": "PASS",
+            "exit_code": 0,
+            "seconds": 0.616,
+            "command": [
+              "/home/runner/workspace/.pythonlibs/bin/python",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests",
+              "-p",
+              "test_hs2_relay_contract.py",
+              "-v"
+            ],
+            "test_sha256": "a50c384345d3d93d72b143bb3145457bb9e5f29d64db67119012488d8bf10606",
+            "log": ".local/hs2-harness/relay-1791659095264753525.log",
+            "log_sha256": "c0f4bcd4a3539bd6d626c9598aefc872887963267c0dc64448dc78d71cf676dd"
+          }
+        ]
+      },
+      "test_summary": "53 registered groups; 0 failed",
+      "work_review": {
+        "passed": true,
+        "at": "2026-10-10T19:05:38.406670+00:00",
+        "fingerprint": "9a18889e608e041104c74b811ccddabed0bbb03e1b29bab781517058fa175b98",
+        "reviewed_check_ids": [
+          "admin-scope",
+          "auction-domain",
+          "harness-contracts",
+          "harness-unit",
+          "lodging-status",
+          "lodging-types",
+          "map-legacy",
+          "phase1-graph-contracts",
+          "phase1-use-contracts",
+          "phase10-booking-contracts",
+          "phase10-booking-db",
+          "phase10-booking-ui",
+          "phase11-finance-contracts",
+          "phase11-finance-db",
+          "phase11-finance-ui",
+          "phase12-dashboard-db",
+          "phase12-dashboard-ui",
+          "phase13-workspace-db",
+          "phase13-workspace-ui",
+          "phase14-help-content",
+          "phase14-help-ui",
+          "phase15-admin-db",
+          "phase15-admin-ui",
+          "phase16-mobile-contracts",
+          "phase16-mobile-ui",
+          "phase2-data-contracts",
+          "phase2-gate-contracts",
+          "phase3-gate-contracts",
+          "phase3-registration-contracts",
+          "phase3-registration-db",
+          "phase3-registration-ui",
+          "phase4-auth-db",
+          "phase4-continuation-gates",
+          "phase4-mode-contracts",
+          "phase4-mode-ui",
+          "phase5-consumer-db",
+          "phase5-consumer-ui",
+          "phase5-search-contracts",
+          "phase6-listing-db",
+          "phase6-listing-ui",
+          "phase6-validation",
+          "phase7-calendar-db",
+          "phase7-calendar-engine",
+          "phase7-calendar-ui",
+          "phase8-supermap-contracts",
+          "phase8-supermap-controller",
+          "phase8-supermap-db",
+          "phase8-supermap-ui",
+          "phase9-detail-contracts",
+          "phase9-detail-db",
+          "phase9-detail-ui",
+          "privacy-ui",
+          "relay"
+        ],
+        "review_file": "docs/home_stay_2/phase16/IMPLEMENTATION_REVIEW.md",
+        "reviewer": "internal Work; not external independent reviewer",
+        "screenshot": ".local/hs2-harness/phase16-mobile.jpg"
       }
     }
   }

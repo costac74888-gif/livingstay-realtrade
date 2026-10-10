@@ -1,6 +1,6 @@
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
-from flask import Blueprint, jsonify, request, send_from_directory
+from flask import Blueprint, Response, jsonify, request, send_from_directory
 from hs2_design.domain import ContractError
 from .contracts import parse
 
@@ -33,9 +33,14 @@ def create_blueprint(repo, *, map_config, allow_request):
     def page():
         return send_from_directory(WEB, "search.html")
 
+    @bp.get("/mobile/")
+    def mobile():
+        from .mobile import mobile_shell
+        return Response(mobile_shell((WEB/"search.html").read_text()),mimetype="text/html")
+
     @bp.get("/assets/<name>")
     def assets(name):
-        if name not in {"search.js", "search.css", "controller.js"}:
+        if name not in {"search.js", "search.css", "controller.js","mobile.js","mobile.css"}:
             raise ContractError("ASSET_NOT_FOUND")
         return send_from_directory(WEB, name)
 

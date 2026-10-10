@@ -9,7 +9,7 @@ async function main(){
   await page.goto(base+"/hs2/help/");
   await page.evaluate(()=>fetch("/hs2/listings-fixture/identity",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({admin:true})}));
   await page.goto(base+"/hs2/admin/");
-  const ready=()=>page.waitForFunction(()=>document.querySelector("#admin-feedback")?.dataset.state==="ready");
+  const ready=()=>page.waitForFunction(()=>document.querySelector("#admin-feedback")?.dataset.state==="ready"&&!document.querySelector("#admin-record-form [type=submit]")?.disabled);
   await ready();
   ok((await page.locator("#admin-registrations").innerText()).length>100,"Real registrations and calendar price");
   ok((await page.locator("#admin-bookings").innerText()).includes("2027"),"Real booking records");
@@ -21,7 +21,12 @@ async function main(){
   const title="실제 관리자 질문 "+width+"?";
   await form.locator('[name="question"]').fill(title);
   await form.locator('[name="answer"]').fill("<script>window.__unsafe=1</script> 실행되지 않는 관리자 답변");
-  await form.locator('[type=submit]').click();await ready();
+  await page.route("**/hs2/admin/api/overview",async route=>{await new Promise(resolve=>setTimeout(resolve,700));await route.continue();});
+  await form.locator('[type=submit]').click();
+  await page.waitForFunction(()=>document.querySelector("#admin-feedback")?.dataset.state==="loading");
+  ok(await page.locator("#admin-record-kind").isDisabled(),"Pending real write locks follow-up editing");
+  await ready();
+  await page.unroute("**/hs2/admin/api/overview");
   const record=page.locator("#admin-records article[data-record-id]").filter({hasText:title}).first();
   await record.waitFor();
   ok((await record.innerText()).includes("draft")||(await record.innerText()).includes("초안"),"Persisted draft DOM");

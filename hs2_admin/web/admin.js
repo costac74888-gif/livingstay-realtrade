@@ -99,7 +99,7 @@
 
   function markBusy(value) {
     busy = value;
-    document.querySelectorAll("button").forEach((button) => {
+    document.querySelectorAll("button,input,select,textarea").forEach((button) => {
       if (button.id !== "admin-refresh") button.disabled = value;
     });
   }
@@ -533,6 +533,7 @@
     const { kind, payload } = buildPayload();
     const wasEditing = Boolean(editing.id);
     markBusy(true);
+    setFeedback("loading", "관리자 기록을 저장하고 최신 원장을 확인하고 있습니다.");
     try {
       if (editing.id) {
         const note = $("#admin-review-note").value.trim();
@@ -549,8 +550,8 @@
         await request(`${API}/records`, { method: "POST", body: JSON.stringify({ kind, payload }) });
       }
       resetEditor();
-      setFeedback("ready", wasEditing ? "기록 변경 내용을 초안으로 저장했습니다." : "새 관리자 초안을 생성했습니다.");
       await refreshOverviewOnly();
+      setFeedback("ready", wasEditing ? "기록 변경 내용을 초안으로 저장했습니다." : "새 관리자 초안을 생성했습니다.");
     } catch (error) {
       handleError(error, "기록 저장 실패");
     } finally {
@@ -572,6 +573,7 @@
       return;
     }
     markBusy(true);
+    setFeedback("loading", "관리자 결정을 저장하고 최신 원장을 확인하고 있습니다.");
     try {
       await request(`${API}/records/${encodeURIComponent(record.id)}/change`, {
         method: "POST",
@@ -601,6 +603,7 @@
       return;
     }
     markBusy(true);
+    setFeedback("loading", "등록 신청 결정을 저장하고 최신 상태를 확인하고 있습니다.");
     try {
       await request(`${API}/applications/${encodeURIComponent(button.dataset.recordId)}/review`, {
         method: "POST",

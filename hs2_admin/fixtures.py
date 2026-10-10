@@ -6,8 +6,8 @@ from .repository import AdminRepository,migrate
 from .api import create_blueprint
 
 
-def create_fixture_app(initialize=True,populate=None):
-    app=finance_app(initialize,populate=populate)
+def create_fixture_app(initialize=True,populate=None,app_factory=finance_app):
+    app=app_factory(initialize,populate=populate)
     if initialize:
         with connect_fixture() as conn:migrate(conn)
     # Same signed-session resolver used by Phase6's existing admin route.
