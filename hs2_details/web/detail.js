@@ -168,6 +168,8 @@
     receiptTimer = null;
     currentReceipt = null;
     receiptPanel.hidden = true;
+    const existingBookingLink = receiptPanel.querySelector("#booking-request-link");
+    if (existingBookingLink) existingBookingLink.remove();
     ackWrap.hidden = !currentQuote;
     clearReceiptStorage();
   }
@@ -348,6 +350,18 @@
       timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
     }).format(expires);
     receiptPanel.hidden = false;
+    const existingBookingLink = receiptPanel.querySelector("#booking-request-link");
+    if (existingBookingLink) existingBookingLink.remove();
+    const link = document.createElement("a");
+    link.id = "booking-request-link";
+    link.className = "secondary-button booking-request-link";
+    link.href = `/hs2/bookings/?receipt_id=${encodeURIComponent(receipt.receipt_id)}`;
+    link.textContent = "예약 신청 단계로";
+    link.style.display = "grid";
+    link.style.placeItems = "center";
+    link.style.marginTop = "12px";
+    link.style.textDecoration = "none";
+    receiptPanel.append(link);
     receiptTimer = window.setInterval(() => {
       if (!currentReceipt) return;
       const remaining = Math.max(0, Math.ceil((expires.getTime() - Date.now()) / 1000));

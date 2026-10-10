@@ -20,6 +20,7 @@ FIXTURE_CHECKS = {
     "phase7-calendar-ui": ("tests/hs2_phase7_ui_test.cjs", "calendar"),
     "phase8-supermap-ui": ("tests/hs2_phase8_ui_test.cjs", "supermap"),
     "phase9-detail-ui": ("tests/hs2_phase9_ui_test.cjs", "details"),
+    "phase10-booking-ui": ("tests/hs2_phase10_ui_test.cjs", "bookings"),
 }
 
 
@@ -33,9 +34,10 @@ def run_check(name,check,timeout):
         root=Path(temp);env=core.test_env(root);fixture=None;child=None
         env["HS2_FIXTURE_SCREEN"] = screen
         try:
-            if screen in {"listings", "calendar", "supermap", "details"}:
+            if screen in {"listings", "calendar", "supermap", "details", "bookings"}:
                 from .owned_cluster import owned_cluster
                 env = stack.enter_context(owned_cluster(env,output,
+                    "test_hs2_phase10_db.py" if screen == "bookings" else
                     "test_hs2_phase9_db.py" if screen == "details" else
                     "test_hs2_phase8_db.py" if screen == "supermap" else
                     "test_hs2_phase7_db.py" if screen == "calendar" else "test_hs2_phase6_db.py"))

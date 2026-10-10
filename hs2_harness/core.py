@@ -148,6 +148,8 @@ def configuration():
             ("phase8-supermap-ui","tests/hs2_phase8_ui_test.cjs"):("node","private-browser-fixture"),
             ("phase9-detail-db","tests/test_hs2_phase9_db.py"):("python","temporary-postgres"),
             ("phase9-detail-ui","tests/hs2_phase9_ui_test.cjs"):("node","private-browser-fixture"),
+            ("phase10-booking-db","tests/test_hs2_phase10_db.py"):("python","temporary-postgres"),
+            ("phase10-booking-ui","tests/hs2_phase10_ui_test.cjs"):("node","private-browser-fixture"),
         }
         if check.get("isolation") is not None and reviewed_isolation.get(
                 (name,check["file"])) != (check["kind"],check["isolation"]):

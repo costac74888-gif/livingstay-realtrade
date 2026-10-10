@@ -41,7 +41,11 @@
       {"id":"P09-A02","criterion":"Actual PostgreSQL original immutable FK snapshots and ten-minute own quote receipts, concurrent retry, owner isolation, expiry/source changes/withdrawal/capacity/CSRF and exact night/week/month composition; no booking/hold/payment","check":"phase9-detail-db"},
       {"id":"P09-A03","criterion":"Actual PostgreSQL Chromium desktop/mobile search to protected detail, exact line total and persisted receipt, source/input/stale response fences, minimum stay/capacity/auth and expiry display","check":"phase9-detail-ui"}
     ]},
-    {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":null},
+    {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":[
+      {"id":"P10-A01","criterion":"Explicit booking request/immutable payload identity, strict revision and trusted payment proof bound to full integer KRW booking amount; never client paid/identity","check":"phase10-booking-contracts"},
+      {"id":"P10-A02","criterion":"Actual PostgreSQL two-consumer concurrent holds, same-key retry, half-open dates, whole/descendant/sibling inventory and original cycle guard, expiry/cancel/reject recovery, scope/revision/current pricing and immutable confirmation/replay tests","check":"phase10-booking-db"},
+      {"id":"P10-A03","criterion":"Actual Chromium desktop/mobile persisted detail receipt to request, own consumer/operator cards, approve/payment wait/cancel/reject and restored calendar availability; provider/auth gating and terminal re-entry","check":"phase10-booking-ui"}
+    ]},
     {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":null},
     {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":null},
     {"id":13,"title":"관심/Chat/Notification/My Booking","native_acceptance":["S15-A01","S15-A02"],"acceptance":null},

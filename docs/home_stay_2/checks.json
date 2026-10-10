@@ -35,5 +35,8 @@
   "phase8-supermap-ui": {"file":"tests/hs2_phase8_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"f0492cea638231df664ae9722cf341f5b9c30eab7198883e0049c582932b7a5f"},
   "phase9-detail-contracts": {"file":"tests/test_hs2_phase9_contracts.py","kind":"python","role":"acceptance","reviewed_sha256":"4b378b92fa0c409b9c547aaa6a142f138604dd1b69867339b3f6061bb329b4f9"},
   "phase9-detail-db": {"file":"tests/test_hs2_phase9_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"f64a9c2ba7687c569ba1e1c042355ef5269509f9fc2af2e7084e2fd54f448bfd"},
-  "phase9-detail-ui": {"file":"tests/hs2_phase9_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"c94355c22dfec2d03ff0f7e7bf1f6bddd0f5c92262564c62c0c51e7591ed12d4"}
+  "phase9-detail-ui": {"file":"tests/hs2_phase9_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"c94355c22dfec2d03ff0f7e7bf1f6bddd0f5c92262564c62c0c51e7591ed12d4"},
+  "phase10-booking-contracts": {"file":"tests/test_hs2_phase10_contracts.py","kind":"python","role":"acceptance","reviewed_sha256":"b293aafb04ed0dac5bedc6303fc9c6970217b46797f5f590153c336ee20e1ead"},
+  "phase10-booking-db": {"file":"tests/test_hs2_phase10_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"418624eaaa0eef952373e415fb80f0049bbb0a8ea3c45bd1d382205d6fb4164b"},
+  "phase10-booking-ui": {"file":"tests/hs2_phase10_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"ef5b776908bd6e53e0c64083610ffc46a7ecbcdc7c27de572ee0bcd0f0425126"}
 }
