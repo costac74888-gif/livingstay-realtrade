@@ -193,7 +193,15 @@ class BoardTests(unittest.TestCase):
             name for name in old if name.startswith("admin_scheduled_sync")
         }
         for name in protected & old.keys():
-            self.assertEqual(new.get(name), old[name], name)
+            expected = old[name]
+            if name == "admin_title_info_run":
+                # Explicitly approved detailed backfill: only runner/arguments
+                # change; authentication, limits and the action route stay frozen.
+                expected = expected.replace("Constant(value='backfill_title_info.py')", "Constant(value='backfill_building_details.py')")
+                before = ast.dump(ast.parse('["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.05"]', mode="eval").body)
+                after = ast.dump(ast.parse('["--status-key", _TITLE_INFO_META_KEY, "--adopt", "--continuous", "--batch-limit", "1000", "--sleep", "1.0"]', mode="eval").body)
+                expected = expected.replace(before, after)
+            self.assertEqual(new.get(name), expected, name)
         node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef)
                     and n.name == "admin_datasync_board")
         self.assertIn("require_admin", [ast.unparse(d) for d in node.decorator_list])

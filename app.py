@@ -814,62 +814,16 @@ def get_authority_index():
     return _AUTHORITY_INDEX
 
 
+_DETAIL_ONDEMAND_GATE = threading.BoundedSemaphore(1)
+
+
 def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
-    """건물 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드로 조회해
-    캐싱한다. 요청 스레드를 안 막기 위해 별도 스레드에서 실행됨 — 이번
-    방문자는 못 보고, 다음 방문자부터 채워진 값을 본다."""
+    """배치와 동일한 lease·부분 커밋·재시도 정책으로 온디맨드 상세 보강."""
+    if not _DETAIL_ONDEMAND_GATE.acquire(blocking=False):
+        return
     try:
-        bjd = _get_bjdong_map().find_bjdong_cd(sgg_cd, umd_nm)
-        if not bjd:
-            return
-        plat_gb, bun, ji = parse_jibun(jibun)
-        rows_title = building_registry._fetch_title_rows(sgg_cd, bjd, plat_gb, bun, ji)
-        rep = max(rows_title, key=lambda r: int(r.get("hoCnt") or 0)) if rows_title else None
-        jj_rows = building_registry.fetch_jijigu_rows(sgg_cd, bjd, plat_gb, bun, ji) if rep else []
-        insp_rows = building_registry.fetch_maintenance_history(sgg_cd, bjd, plat_gb, bun, ji)
-
-        updates = {"detail_fetched_at": datetime.now()}
-        if rep:
-            updates.update({
-                "plat_area":          _to_float(rep.get("platArea")),
-                "arch_area":          _to_float(rep.get("archArea")),
-                "tot_area":           _to_float(rep.get("totArea")),
-                "bc_rat":             _to_float(rep.get("bcRat")),
-                "vl_rat":             _to_float(rep.get("vlRat")),
-                "heit":               _to_float(rep.get("heit")),
-                "grnd_flr_cnt":       _to_int(rep.get("grndFlrCnt")),
-                "ugrnd_flr_cnt":      _to_int(rep.get("ugrndFlrCnt")),
-                "ride_use_elvt_cnt":  _to_int(rep.get("rideUseElvtCnt")),
-                "emgen_use_elvt_cnt": _to_int(rep.get("emgenUseElvtCnt")),
-                "main_purps_nm":      rep.get("mainPurpsCdNm") or None,
-                "strct_nm":           rep.get("strctCdNm") or None,
-                "hhld_cnt":           _to_int(rep.get("hhldCnt")),
-                "indr_auto_utcnt":    _to_int(rep.get("indrAutoUtcnt")),
-                "oudr_auto_utcnt":    _to_int(rep.get("oudrAutoUtcnt")),
-                "indr_mech_utcnt":    _to_int(rep.get("indrMechUtcnt")),
-                "oudr_mech_utcnt":    _to_int(rep.get("oudrMechUtcnt")),
-                "use_apr_day":        _fmt_date(rep.get("useAprDay")),
-                "permit_day":         _fmt_date(rep.get("pmsDay")),
-                "actual_start_day":   _fmt_date(rep.get("stcnsDay")),
-            })
-        if jj_rows:
-            updates["jiyuk_nm"]  = next((r.get("jiyukNm")  for r in jj_rows if r.get("jiyukNm")),  None)
-            updates["jigu_nm"]   = next((r.get("jiguNm")   for r in jj_rows if r.get("jiguNm")),   None)
-            updates["guyuk_nm"]  = next((r.get("guyukNm")  for r in jj_rows if r.get("guyukNm")),  None)
-        if insp_rows:
-            latest = max(insp_rows, key=lambda r: r.get("chkStrtDay") or "")
-            updates["last_inspection_agency"]     = latest.get("chkCoNm") or None
-            updates["last_inspection_start_day"]  = _fmt_date(latest.get("chkStrtDay"))
-            updates["last_inspection_submit_day"] = _fmt_date(latest.get("submitDe"))
-
-        conn = get_conn()
-        cur = conn.cursor()
-        set_sql = ", ".join(f"{k}=%s" for k in updates)
-        cur.execute(f"UPDATE master_buildings SET {set_sql} WHERE id=%s",
-                    list(updates.values()) + [building_id])
-        conn.commit()
-        cur.close()
-        conn.close()
+        from building_detail_enrichment import enrich
+        enrich(building_id, _get_bjdong_map())
     except Exception as exc:
         log_redacted_exception(
             app.logger,
@@ -879,6 +833,8 @@ def _fetch_and_cache_building_detail(building_id, sgg_cd, umd_nm, jibun):
             _EXTERNAL_API_SECRET_ENV_NAMES,
             building_id,
         )
+    finally:
+        _DETAIL_ONDEMAND_GATE.release()
 
 
 def _google_streetview_metadata(lat, lng, key, radius=50):
@@ -2311,6 +2267,9 @@ def get_building(building_id):
         return jsonify({"error": "not found"}), 404
 
     building = dict(row)  # mutable — 즉시조회 결과를 이번 응답에도 반영
+    from building_detail_enrichment import read_status, public_status, due_stages
+    detail_state = read_status(cur, building_id)
+    building["detail_status"] = public_status(detail_state)
     # Property information is sourced exclusively from the building master.
     # Do not let approved operating-roster facts overwrite these register
     # fields, even when their names or addresses differ.
@@ -2369,8 +2328,9 @@ def get_building(building_id):
     # 첫 방문 시 표제부·지역지구구역·정기점검을 백그라운드 스레드로 조회해 캐싱.
     # 요청 스레드를 블로킹하지 않으므로 이번 방문자는 "-"로 보이고,
     # 다음 방문자부터 채워진 값을 본다.
-    if (not building.get("detail_fetched_at")
+    if (due_stages(detail_state) and not building["detail_status"]["running"]
             and building.get("sgg_cd") and building.get("umd_nm") and building.get("jibun")):
+        building["detail_status"]["running"] = True  # accepted work, before lease claim
         threading.Thread(
             target=_fetch_and_cache_building_detail,
             args=(building_id, building["sgg_cd"], building["umd_nm"], building["jibun"]),
@@ -19928,8 +19888,9 @@ def admin_title_info_run():
     if not os.environ.get("BLD_SERVICE_KEY"):
         return jsonify({"ok": False, "message": "BLD_SERVICE_KEY 시크릿이 등록되어 있지 않습니다."}), 400
     ok, code, payload = _start_detached_sync(
-        _TITLE_INFO_META_KEY, "backfill_title_info.py",
-        ["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.05"], done_cooldown_min=5)
+        _TITLE_INFO_META_KEY, "backfill_building_details.py",
+        ["--status-key", _TITLE_INFO_META_KEY, "--adopt", "--continuous",
+         "--batch-limit", "1000", "--sleep", "1.0"], done_cooldown_min=5)
     if ok:
         payload["message"] = "건축정보 채우기를 시작했습니다."
     return jsonify(payload), code
@@ -19943,6 +19904,8 @@ def admin_title_info_status():
     cur = conn.cursor()
     try:
         s = _title_info_counts(cur)
+        from building_detail_enrichment import summary_counts
+        detailed = summary_counts(cur)
         status = _read_sync_status_row(cur, _TITLE_INFO_META_KEY)
     finally:
         cur.close()
@@ -19952,6 +19915,7 @@ def admin_title_info_status():
         "total": s["total"],
         "with_title": s["with_title"],
         "missing": s["missing"],
+        "detailed": detailed,
         "status": status,
     })
 
@@ -36953,12 +36917,18 @@ def _resume_interrupted_sync_jobs():
     try:
         for meta_key, script_name, script_args in jobs:
             try:
-                cur.execute("SELECT value FROM app_meta WHERE key=%s", (meta_key,))
+                cur.execute("SELECT value, updated_at < NOW()-INTERVAL '5 minutes' AS stale FROM app_meta WHERE key=%s", (meta_key,))
                 row = cur.fetchone()
                 state = None
                 if row and row["value"]:
                     try:
-                        state = json.loads(row["value"]).get("state")
+                        saved_status = json.loads(row["value"])
+                        state = saved_status.get("state")
+                        if meta_key == _TITLE_INFO_META_KEY and saved_status.get("mode") == "details":
+                            if not row.get("stale"):
+                                continue  # A live workspace batch owns this DB lease.
+                            script_name = "backfill_building_details.py"
+                            script_args = ["--status-key", meta_key, "--adopt", "--continuous", "--sleep", "1.0"]
                     except (TypeError, ValueError):
                         state = None
                 if state != "running":

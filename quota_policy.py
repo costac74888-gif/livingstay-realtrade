@@ -69,7 +69,7 @@ def claim_rtms_request(counter_key="rtms_daily_calls", cap=None) -> int:
         conn.close()
 
 
-def claim_building_hub_request() -> int:
+def claim_building_hub_request(*, cap=None) -> int:
     """Atomically reserve one Building HUB request across registry/permits.
 
     Legacy per-collector progress counters are deliberately retained; this is
@@ -80,7 +80,10 @@ def claim_building_hub_request() -> int:
     cur = conn.cursor()
     try:
         today = korea_today()
-        cap = int(PROVIDER_QUOTAS["building_hub"]["total"])
+        provider_cap = int(PROVIDER_QUOTAS["building_hub"]["total"])
+        cap = min(int(cap if cap is not None else provider_cap), provider_cap)
+        if cap <= 0:
+            raise ValueError("Building HUB cap must be positive")
         fresh = f'{{"date":"{today}","count":1}}'
         cur.execute("""
             INSERT INTO app_meta (key, value, updated_at) VALUES (%s, %s, NOW())

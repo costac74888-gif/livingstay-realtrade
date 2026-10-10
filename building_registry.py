@@ -23,6 +23,8 @@ discover_new_buildings.py, verify_units.py, sync_batch.py, app.py, cleanup_unver
 import os
 import re
 import time
+from contextvars import ContextVar
+from contextlib import contextmanager
 from xml.etree import ElementTree as ET
 
 import requests
@@ -42,6 +44,17 @@ LIVINGSTAY_KEYWORD = "생활숙박시설"
 _RETRY_MAX = 2        # ConnectTimeout 재시도 횟수 (총 최대 3회 시도)
 _RETRY_SLEEP = 2.5    # 재시도 사이 대기(초)
 _SECRET_ENV_NAMES = ("BLD_SERVICE_KEY", "BLD_INSPECTION_SERVICE_KEY")
+_REQUEST_OBSERVER = ContextVar("registry_request_observer", default=None)
+
+
+@contextmanager
+def observe_requests(callback):
+    """상세 보강의 요청별 예산·lease 갱신. 다른 수집기 카운터는 변경하지 않는다."""
+    token = _REQUEST_OBSERVER.set(callback)
+    try:
+        yield
+    finally:
+        _REQUEST_OBSERVER.reset(token)
 
 
 class BuildingRegistryRequestError(RuntimeError):
@@ -59,6 +72,9 @@ def _get_with_retry(url, params, timeout, retry_max=None, purpose="realtime"):
     max_retries = _RETRY_MAX if retry_max is None else max(0, int(retry_max))
     for attempt in range(1 + max_retries):
         try:
+            observer = _REQUEST_OBSERVER.get()
+            if observer:
+                observer(url)
             response = public_api_get(url, params=params, timeout=timeout, purpose=purpose)
             response.raise_for_status()
             return response
@@ -152,6 +168,8 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
                 f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
             )
         _check_api_result_code(root)
+        if root.find(".//items") is None and root.find(".//totalCount") is None:
+            raise RuntimeError("표제부 API 응답 구조 확인 실패")
         items = root.findall(".//item")
         rows.extend({c.tag: (c.text or "").strip() for c in it} for it in items)
 
@@ -161,6 +179,8 @@ def _fetch_title_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, timeout=15, re
         except ValueError:
             total = len(rows)
 
+        if not items and len(rows) < total:
+            raise RuntimeError("표제부 API 원본 건수와 응답 항목 불일치")
         if not items or len(rows) >= total:
             break
         if page >= max_pages:
@@ -179,21 +199,13 @@ def fetch_jijigu_rows(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realt
         "numOfRows": 20, "pageNo": 1,
         "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
-    resp = _get_with_retry(
+    return _fetch_auxiliary_rows(
         "https://apis.data.go.kr/1613000/BldRgstHubService/getBrJijiguInfo",
-        params=params, timeout=10, purpose=purpose,
+        params, purpose,
     )
-    try:
-        root = ET.fromstring(resp.content)
-    except ET.ParseError as e:
-        response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
-        raise RuntimeError(
-            f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
-        )
-    return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
 
 
-def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
+def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):
     """정기점검이력(getMaintenanceHistory) — 점검기관·시작일·제출일 목록."""
     params = {
         "serviceKey": os.environ.get("BLD_INSPECTION_SERVICE_KEY", ""),
@@ -202,18 +214,31 @@ def fetch_maintenance_history(sigungu_cd, bjdong_cd, plat_gb, bun, ji):
         "numOfRows": 20, "pageNo": 1,
         "type": "xml",  # 생략하면 기본 JSON → ET.fromstring 실패 (2026-08 실측 확인)
     }
-    resp = _get_with_retry(
+    return _fetch_auxiliary_rows(
         "https://apis.data.go.kr/1613000/MtnChkHubService/getMaintenanceHistory",
-        params=params, timeout=10,
+        params, purpose,
     )
-    try:
-        root = ET.fromstring(resp.content)
-    except ET.ParseError as e:
-        response_excerpt = redact_exception(resp.text[:300], _SECRET_ENV_NAMES)
-        raise RuntimeError(
-            f"건축물대장 API XML 파싱 오류: {e} / 응답: {response_excerpt}"
+
+
+def _fetch_auxiliary_rows(url, params, purpose):
+    rows = []
+    for page in range(1, 101):
+        response = _get_with_retry(
+            url, params={**params, "pageNo": page}, timeout=10, purpose=purpose,
         )
-    return [{c.tag: (c.text or "").strip() for c in it} for it in root.findall(".//item")]
+        root = ET.fromstring(response.content)
+        _check_api_result_code(root)
+        if root.find(".//items") is None and root.find(".//totalCount") is None:
+            raise RuntimeError("건축정보 API 응답 구조 확인 실패")
+        items = root.findall(".//item")
+        rows.extend({c.tag: (c.text or "").strip() for c in item} for item in items)
+        total = int(root.findtext(".//totalCount") or len(rows))
+        if not items and len(rows) < total:
+            raise RuntimeError("건축정보 API 원본 건수와 응답 항목 불일치")
+        if not items or len(rows) >= total:
+            return rows
+        time.sleep(REQUEST_SLEEP)
+    raise RuntimeError("건축정보 API 페이지 한도 초과")
 
 
 def fetch_building_title(sigungu_cd, bjdong_cd, plat_gb, bun, ji, *, purpose="realtime"):

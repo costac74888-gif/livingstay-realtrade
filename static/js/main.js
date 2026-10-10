@@ -6762,8 +6762,8 @@ function _renderDetailCards(b, buildingId){
     ["구역",          fmtTxt(b.guyuk_nm)],
     ["주용도",        fmtTxt(b.main_purps_nm)],
     ["구조",          fmtTxt(b.strct_nm)],
-    ["자주식 주차",   fmtNum((b.indr_auto_utcnt ?? 0) + (b.oudr_auto_utcnt ?? 0) || null, "대")],
-    ["기계식 주차",   fmtNum((b.indr_mech_utcnt ?? 0) + (b.oudr_mech_utcnt ?? 0) || null, "대")],
+    ["자주식 주차",   fmtNum(b.indr_auto_utcnt == null && b.oudr_auto_utcnt == null ? null : (b.indr_auto_utcnt ?? 0) + (b.oudr_auto_utcnt ?? 0), "대")],
+    ["기계식 주차",   fmtNum(b.indr_mech_utcnt == null && b.oudr_mech_utcnt == null ? null : (b.indr_mech_utcnt ?? 0) + (b.oudr_mech_utcnt ?? 0), "대")],
     ["승용승강기",    fmtNum(b.ride_use_elvt_cnt, "대")],
     ["비상승강기",    fmtNum(b.emgen_use_elvt_cnt, "대")],
     ["건축허가일",    fmtDay(b.permit_day)],
@@ -6773,13 +6773,25 @@ function _renderDetailCards(b, buildingId){
     ["정기점검유효일", fmtDayPlus3Y(b.last_inspection_submit_day)],
     ["점검기관",      fmtTxt(b.last_inspection_agency)],
   ];
-  const cells = pairs.map(([k, v]) => `
+  const fieldKeys = ["building_name","units","plat_area","arch_area","tot_area","bc_rat","vl_rat","grnd_flr_cnt","heit","jiyuk_nm","jigu_nm","guyuk_nm","main_purps_nm","strct_nm","indr_auto_utcnt","indr_mech_utcnt","ride_use_elvt_cnt","emgen_use_elvt_cnt","permit_day","actual_start_day","use_apr_day","last_inspection_submit_day","last_inspection_submit_day","last_inspection_agency"];
+  const cells = pairs.map(([k, v], i) => {
+    const state = b.detail_status?.fields?.[fieldKeys[i]];
+    const note = state === "failed" ? (v === "-" ? "조회 실패" : "조회 실패 · 기존값")
+      : state === "empty" && v === "-" ? "원본 미제공" : "";
+    return `
     <div class="b-bldg-cell">
       <div class="b-bldg-k">${k}</div>
       <div class="b-bldg-v">${v}</div>
-    </div>`).join("");
-  const hint = b.detail_fetched_at ? ""
-    : ` <span style="font-size:11px;color:#8a94a0;font-weight:500;margin-left:4px;">조회 중…</span>`;
+      ${note ? `<div style="font-size:10px;color:#8a94a0;">${note}</div>` : ""}
+    </div>`;
+  }).join("");
+  const stageStates = Object.values(b.detail_status?.stages || {}).map(s => s.status);
+  const detailHint = b.detail_status?.running ? "조회 중…"
+    : stageStates.includes("deferred") ? "오늘 조회 한도 · 다음 날짜에 재조회"
+    : stageStates.includes("failed") ? "일부 조회 실패 · 저장값 유지"
+    : stageStates.length === 3 && stageStates.every(s => ["ok","empty"].includes(s)) ? "조회 완료"
+    : b.detail_fetched_at ? "기존 조회값" : "상세 조회 대기";
+  const hint = ` <span data-detail-status style="font-size:11px;color:#8a94a0;font-weight:500;margin-left:4px;">${detailHint}</span>`;
   const unitStatsHtml = (() => {
     const stats = Array.isArray(b.unit_area_stats) ? b.unit_area_stats : [];
     if (!stats.length) return "";
@@ -6964,14 +6976,21 @@ function _startDetailPoll(buildingId){
       if (res.ok){
         const fresh = await res.json();
         if (_detailPollBuildingId !== buildingId) return;
-        if (fresh.detail_fetched_at){
+        _renderDetailCards(fresh, buildingId);
+        const stages = Object.values(fresh.detail_status?.stages || {});
+        if (!fresh.detail_status?.running && stages.length === 3
+            && stages.every(s => ["ok","empty","failed","deferred"].includes(s.status))){
           _detailPollBuildingId = null;
-          _renderDetailCards(fresh, buildingId);
           return;
         }
       }
     } catch(e){ /* 네트워크 오류 — 다음 회차에 재시도 */ }
     if (tries < MAX_TRIES) _detailPollTimer = setTimeout(poll, INTERVAL);
+    else {
+      const hint = document.querySelector("#bBldgInfoCard [data-detail-status]");
+      if (hint) hint.textContent = "추가 조회 대기 · 다시 열어 확인";
+      _detailPollBuildingId = null;
+    }
   }
   _detailPollTimer = setTimeout(poll, INTERVAL);
 }
@@ -8210,7 +8229,7 @@ async function loadBuildingHeader(id){
   // 건축정보(표제부) + 타임라인 — _renderDetailCards 공유 렌더러로 그린다.
   // detail_fetched_at이 없으면 "조회 중…" 힌트가 표시되고 폴링이 자동 시작된다.
   _renderDetailCards(b, id);
-  if (!b.detail_fetched_at
+  if ((b.detail_status?.running || Object.keys(b.detail_status?.stages || {}).length < 3)
       && b.sgg_cd && b.umd_nm && b.jibun) {
     _startDetailPoll(id);
   }

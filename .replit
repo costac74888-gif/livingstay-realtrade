@@ -104,7 +104,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 10 python -u backfill_title_info.py --status-key title_info_sync_status --sleep 0.05"
+args = "env DATABASE_URL=\"$PROD_DATABASE_URL\" nice -n 19 python -u backfill_building_details.py --continuous --batch-limit 1000 --sleep 1.0"
 
 [[workflows.workflow]]
 name = "BRHUB Sync"

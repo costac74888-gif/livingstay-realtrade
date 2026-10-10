@@ -200,7 +200,15 @@ class AdviceTests(unittest.TestCase):
             ["git", "diff", "--name-only", "HEAD"], text=True).splitlines())
         self.assertFalse(changed & {
             "datasync_controls.py", "scheduled_sync.py",
-            "db.py", ".replit", "gunicorn.conf.py"})
+            "db.py", "gunicorn.conf.py"})
+        # This request explicitly authorizes replacing only the existing
+        # Fill PK workflow; unrelated workflow/port settings stay unchanged.
+        old_config = subprocess.check_output(["git", "show", "HEAD:.replit"], text=True)
+        expected_config = old_config.replace(
+            "nice -n 10 python -u backfill_title_info.py --status-key title_info_sync_status --sleep 0.05",
+            "nice -n 19 python -u backfill_building_details.py --continuous --batch-limit 1000 --sleep 1.0",
+        )
+        self.assertEqual(Path(".replit").read_text(), expected_config)
         from datasync_controls import RUN_HANDLERS
         # 전체 app.py를 금지하면 무관한 범례·통계 변경까지 실패한다.
         for path in ("app.py", "auction_service.py"):
@@ -213,7 +221,15 @@ class AdviceTests(unittest.TestCase):
                 name for name in old if name.startswith("admin_scheduled_sync")
             }
             for name in protected & old.keys():
-                self.assertEqual(new.get(name), old[name], name)
+                expected = old[name]
+                if name == "admin_title_info_run":
+                    # Approved full-detail runner; retain the no-mutation contract
+                    # for every other action, and this route's auth and validation.
+                    expected = expected.replace("Constant(value='backfill_title_info.py')", "Constant(value='backfill_building_details.py')")
+                    before = ast.dump(ast.parse('["--status-key", _TITLE_INFO_META_KEY, "--sleep", "0.05"]', mode="eval").body)
+                    after = ast.dump(ast.parse('["--status-key", _TITLE_INFO_META_KEY, "--adopt", "--continuous", "--batch-limit", "1000", "--sleep", "1.0"]', mode="eval").body)
+                    expected = expected.replace(before, after)
+                self.assertEqual(new.get(name), expected, name)
         self.assertNotIn("os.environ[", Path("datasync_transport_advice.py").read_text())
 
 
