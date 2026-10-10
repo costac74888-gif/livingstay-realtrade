@@ -131,3 +131,4 @@
 - [건축정보 보강과 완성률](building-detail-coverage-policy.md) — 누락 보강은 기존 정상값을 보존하며, 기본정보 보유율·API 조회 완료·전체 항목 확보를 구분한다.
 - [매물 게시와 양도 분류](listing-channel-target-policy.md) — 게시 방식과 거래 대상은 독립이며 기존 중개의뢰를 공개 매물로 바꾸지 않는다.
 - [HOME & STAY 2.0 개편 경계](home-stay-2-governance.md) — 소비자 단기임대 중심, 숙박 1박·비숙박 7일; 기존 원장 보존과 단계별 검증·수동 운영 승인 필수.
+- [브라우저 작업 완료 대기](browser-action-completion.md) — feedback 표시가 처리 완료는 아니다; 실제 응답·대기 상태 뒤 결과를 검증한다.

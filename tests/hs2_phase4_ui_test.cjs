@@ -31,7 +31,11 @@ async function run() {
       assert((await page.evaluate(() => document.documentElement.scrollWidth)) <= width); assertions += 4;
       await page.locator("#loginEmail").fill("business@example.test");
       await page.locator("#loginPassword").fill("wrong");
+      const failedLogin = page.waitForResponse(r =>
+        r.url().endsWith("/hs2/api/email-login") && r.status() === 401);
       await page.locator("#emailLoginButton").click();
+      await failedLogin;
+      await page.waitForFunction(() => !document.querySelector("#emailLoginButton").disabled);
       await page.waitForFunction(() => !document.querySelector("#feedback").hidden);
       assert((await page.locator("#feedback").textContent()).includes("확인"));
       assert((await page.locator("#sessionBadge").textContent()).includes("로그아웃")); assertions += 2;

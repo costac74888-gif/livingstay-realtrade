@@ -14,6 +14,7 @@ TEST_FILE="tests/hs2_phase3_ui_test.cjs"
 FIXTURE_CHECKS = {
     CHECK_ID: (TEST_FILE, "registration"),
     "phase4-mode-ui": ("tests/hs2_phase4_ui_test.cjs", "mode"),
+    "phase5-consumer-ui": ("tests/hs2_phase5_ui_test.cjs", "consumer"),
 }
 
 

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>머물 곳 찾기 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/consumer-assets/main.css">
+  <script src="/hs2/consumer-assets/main.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/hs2/consumer" aria-label="HOME &amp; STAY 검색 홈">
+        <img class="brand-logo" src="/static/home_stay_share.png" alt="">
+        <span class="brand-copy">
+          <span class="brand-name">홈앤스테이</span>
+          <span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span>
+        </span>
+      </a>
+      <div class="header-right">
+        <span class="private-label"><span class="private-dot" aria-hidden="true"></span>비공개 개발 확인</span>
+        <a class="account-link" href="/hs2/mode">계정 <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+
+    <main>
+      <section class="search-section" aria-labelledby="pageTitle">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">FIND A PLACE TO STAY</p>
+            <h1 id="pageTitle">머물 곳을 <em>비교해 보세요.</em></h1>
+          </div>
+          <p class="heading-note">숙박과 비숙박 체류 정보를<br>선택한 조건으로 찾아봅니다.</p>
+        </div>
+
+        <form id="searchForm" novalidate>
+          <div class="search-row">
+            <div class="field location-field">
+              <label for="q">지역 · 건물 · 지하철</label>
+              <div class="input-wrap location-wrap">
+                <span class="field-mark location-mark" aria-hidden="true"></span>
+              <input id="q" name="q" type="search" maxlength="100" autocomplete="off" placeholder="어느 동네에서 머무를까요?">
+              </div>
+            </div>
+            <div class="field date-field">
+              <label for="check_in">입실일</label>
+              <input id="check_in" name="check_in" type="date">
+            </div>
+            <div class="date-connector" aria-hidden="true">—</div>
+            <div class="field date-field">
+              <label for="check_out">퇴실일</label>
+              <input id="check_out" name="check_out" type="date">
+            </div>
+            <button class="search-button" type="submit"><span class="search-icon" aria-hidden="true"></span>검색</button>
+          </div>
+
+          <div class="filter-row" aria-label="상세 검색 조건">
+            <fieldset class="filter-group price-group">
+              <legend>기간 총액 <span class="unit-hint">선택한 기간 기준</span></legend>
+              <div class="range-inputs">
+                <label class="visually-hidden" for="min_total">최소 총액 (원)</label>
+                <input id="min_total" name="min_total" type="number" inputmode="numeric" min="0" step="10000" placeholder="최소" disabled>
+                <span aria-hidden="true">~</span>
+                <label class="visually-hidden" for="max_total">최대 총액 (원)</label>
+                <input id="max_total" name="max_total" type="number" inputmode="numeric" min="0" step="10000" placeholder="최대" disabled>
+                <span class="currency">원</span>
+              </div>
+              <span id="priceHint" class="field-hint">입실일과 퇴실일을 선택하면 사용할 수 있어요.</span>
+            </fieldset>
+
+            <div class="field compact-field">
+              <label for="rooms">방 수</label>
+              <select id="rooms" name="rooms" disabled aria-describedby="limitedDataNote">
+                <option value="">전체</option><option value="1">1개 이상</option><option value="2">2개 이상</option><option value="3">3개 이상</option>
+              </select>
+            </div>
+            <div class="field compact-field">
+              <label for="kind">유형</label>
+              <select id="kind" name="kind">
+                <option value="all">전체</option><option value="lodging">숙박</option><option value="non_lodging">비숙박</option>
+              </select>
+            </div>
+            <div class="field compact-field area-field">
+              <label for="min_area">최소 면적</label>
+              <div class="unit-input"><input id="min_area" name="min_area" type="number" min="0" step="1" inputmode="numeric" placeholder="전체" disabled aria-describedby="limitedDataNote"><span>㎡</span></div>
+            </div>
+            <div class="field compact-field guests-field">
+              <label for="guests">인원</label>
+              <select id="guests" name="guests" disabled aria-describedby="limitedDataNote">
+                <option value="">전체</option><option value="1">1명 이상</option><option value="2">2명 이상</option><option value="4">4명 이상</option><option value="6">6명 이상</option>
+              </select>
+            </div>
+            <fieldset class="filter-group options-group">
+              <legend>옵션</legend>
+              <div class="check-list">
+                <label><input type="checkbox" name="options" value="wifi" disabled aria-describedby="limitedDataNote"><span>와이파이</span></label>
+                <label><input type="checkbox" name="options" value="kitchen" disabled aria-describedby="limitedDataNote"><span>주방</span></label>
+                <label><input type="checkbox" name="options" value="parking" disabled aria-describedby="limitedDataNote"><span>주차</span></label>
+                <label><input type="checkbox" name="options" value="washer" disabled aria-describedby="limitedDataNote"><span>세탁기</span></label>
+              </div>
+            </fieldset>
+            <label class="switch-filter"><input id="instant" name="instant" type="checkbox" value="1" disabled aria-describedby="limitedDataNote"><span class="switch-ui" aria-hidden="true"></span><span>즉시입주</span></label>
+            <label class="switch-filter"><input id="discount" name="discount" type="checkbox" value="1" disabled aria-describedby="limitedDataNote"><span class="switch-ui" aria-hidden="true"></span><span>할인</span></label>
+            <div class="field compact-field sort-field">
+              <label for="sort">정렬</label>
+              <select id="sort" name="sort"><option value="id">기본순</option><option value="total_asc">기간 총액 낮은순</option></select>
+            </div>
+          </div>
+        </form>
+        <p id="limitedDataNote" class="limited-data-note"><span class="note-mark" aria-hidden="true">i</span><span><strong>보호 메타데이터와 위치는 표시하지 않습니다.</strong> 방·면적·인원·옵션·즉시입주·할인 상세 조건은 후속 등록 및 검색 단계에서 연결됩니다.</span></p>
+      </section>
+
+      <section class="workspace" aria-label="검색 결과와 지도">
+        <section class="results-pane" aria-labelledby="resultsTitle">
+          <div class="results-heading">
+            <div>
+              <p class="section-kicker">STAYS &amp; PROPERTY</p>
+              <h2 id="resultsTitle">조건에 맞는 곳</h2>
+            </div>
+            <span id="resultCount" class="result-count" aria-live="polite">검색 전</span>
+          </div>
+          <div id="statusMessage" class="status-message" role="status" aria-live="polite" aria-atomic="true">
+            <span class="status-mark" aria-hidden="true"></span>
+            <span>검색 조건을 선택하고 검색해 주세요.</span>
+          </div>
+          <div id="errorPanel" class="error-panel" role="alert" hidden>
+            <div class="error-symbol" aria-hidden="true">!</div>
+            <div class="error-copy">
+              <strong id="errorTitle">검색 결과를 불러오지 못했습니다.</strong>
+              <p id="errorCopy">조건은 그대로 유지됩니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
+              <button id="retryButton" class="retry-button" type="button">다시 시도</button>
+            </div>
+          </div>
+          <div id="selectedSummary" class="selected-summary" aria-live="polite" hidden></div>
+          <div id="listingList" class="listing-list" aria-label="검색된 숙소 및 체류 공간"></div>
+          <div id="emptyPanel" class="empty-panel" hidden>
+            <span class="empty-index" aria-hidden="true">—</span>
+            <h3>조건에 맞는 결과가 없습니다.</h3>
+            <p>기간이나 필터를 조정해 다시 찾아보세요.</p>
+          </div>
+        </section>
+
+        <aside class="map-pane" aria-label="지도 영역">
+          <div class="map-topline">
+            <div>
+              <p class="section-kicker">MAP VIEW</p>
+              <h2>위치 확인</h2>
+            </div>
+            <span class="map-privacy">정확한 위치 비공개</span>
+          </div>
+          <div id="mapCanvas" class="map-canvas" aria-label="지도">
+            <div class="map-placeholder" id="mapPlaceholder">
+              <span class="map-emblem" aria-hidden="true"><span></span></span>
+              <strong id="mapMessage">지도를 연결할 수 없습니다.</strong>
+              <p id="mapDetail">검색 응답의 지도 연결 정보를 확인해 주세요.</p>
+            </div>
+          </div>
+          <div class="map-footer"><span class="map-status-dot" aria-hidden="true"></span><span id="mapStatus">지도 연결 정보 대기 중</span></div>
+        </aside>
+      </section>
+
+      <footer class="page-footer">
+        <span>HOME &amp; STAY <i aria-hidden="true">/</i> 비공개 개발 확인</span>
+        <span>기간 총액은 유효한 견적이 있는 결과에 한해 표시됩니다.</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

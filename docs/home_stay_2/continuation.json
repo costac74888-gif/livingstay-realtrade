@@ -15,7 +15,11 @@
       {"id":"P04-A03","criterion":"Exact user directive/order, historical receipts/checks/native gates, fresh whole-registry receipts and independent remote checkpoint evidence","check":"phase4-continuation-gates"},
       {"id":"P04-A04","criterion":"Actual private Chromium email login/multi-business switching/errors/logout; consumer Kakao entry, keyboard/desktop/mobile and safe rendering","check":"phase4-mode-ui"}
     ]},
-    {"id":5,"title":"PC 소비자 Main","native_acceptance":["S11-A01","S11-A02"],"acceptance":null},
+    {"id":5,"title":"PC 소비자 Main","native_acceptance":["S11-A01","S11-A02"],"acceptance":[
+      {"id":"P05-A01","criterion":"Private query/API with owner-selected period-total comparison; date/minimum-stay validation; no missing-quote zero/unit conversions and no private metadata leakage","check":"phase5-search-contracts"},
+      {"id":"P05-A02","criterion":"Read original Phase2 public view using actual owned PostgreSQL; fresh explicit synthetic day rates; withdrawal and incomplete quotes; public role and unchanged legacy","check":"phase5-consumer-db"},
+      {"id":"P05-A03","criterion":"Actual desktop/mobile DOM with nonempty public cards, date-gated period-total inputs, selection, URL restore, errors/retry, safe SDK interface and protected metadata","check":"phase5-consumer-ui"}
+    ]},
     {"id":6,"title":"단기임대 매물등록","native_acceptance":["S04-A01","S04-A02","S05-A01","S05-A02","S06-A01","S06-A02"],"acceptance":null},
     {"id":7,"title":"가격/Calendar Engine","native_acceptance":["S06-A01","S06-A02","S07-A01","S07-A02","S08-A01","S08-A02","S09-A01","S10-A01"],"acceptance":null},
     {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":null},

@@ -1,15 +1,3 @@
-# 현재 사용자 Phase 5 — BLOCKED
-
-- 범위: PC 소비자 Main. 사용자 총괄지시서 기준; native 번호와 구분.
-- Work: Replit 내부의 지시·검토 역할. 외부 통신 아님.
-- 기존 Phase 1~3 영수증·native 계획·검사·보존·운영 Gate 유지.
-- 검사: 미검증
-- 원격 저장: NOT_VERIFIED
-- 차단 사유: P05-PRICE-FILTER: original directive defines daily lodging and weekly/monthly non-lodging rates but does not define the common search price-filter basis. P-MONEY/P-PERIOD remain OPEN; no invented cross-period comparison.
-- 다음 작업: Owner selects requested-stay total vs displayed unit-rate price filter; then internal Work resumes original Phase 5, not Phase 4.
-
----
-
 # HOME & STAY 2.0 Harness 상태
 
 - 하네스 자체검사: **PASS**
