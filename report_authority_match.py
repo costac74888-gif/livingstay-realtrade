@@ -13,6 +13,8 @@ lodging_authority_contacts(엑셀 적재본) ↔ master_buildings.sgg_text 매�
 """
 
 from collections import defaultdict
+from privacy_logging import private_contact_report
+from contextlib import redirect_stdout
 
 from db import get_conn
 from address_utils import (
@@ -22,7 +24,7 @@ from address_utils import (
 )
 
 
-def main():
+def main(contact_report=None):
     conn = get_conn()
     cur = conn.cursor()
 
@@ -36,6 +38,15 @@ def main():
     cur.close()
     conn.close()
 
+    if contact_report:
+        with private_contact_report(contact_report) as output, redirect_stdout(output):
+            render_report(contacts, master, include_contacts=True)
+        print("연락처 포함 보고서는 비공개 폴더에 저장했습니다.")
+    render_report(contacts, master)
+
+
+def render_report(contacts, master, include_contacts=False):
+    total_buildings = sum(c for _, c in master)
     index = build_authority_index(contacts)
 
     matched_sgg, unmatched_sgg = [], []
@@ -82,7 +93,8 @@ def main():
     print(f"  광주광역시     : {gwangju['광주광역시']}건  (섞이면 안 됨)")
     for sgg, cnt, dept, phone, how in matched_sgg:
         if "광주" in sgg:
-            print(f"    · {sgg!r} ({cnt}건) → {dept} / {phone}  [{how}]")
+            displayed = phone if include_contacts else "[연락처 숨김]"
+            print(f"    · {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
     for sgg, cnt, how in unmatched_sgg:
         if "광주" in sgg:
             print(f"    · {sgg!r} ({cnt}건) → 확인중 [{how}]")
@@ -96,7 +108,8 @@ def main():
     print("── [폴백(시도 대표행)으로 매칭된 sgg_text] ──")
     for sgg, cnt, dept, phone, how in matched_sgg:
         if how.startswith("fallback"):
-            print(f"  {sgg!r} ({cnt}건) → {dept} / {phone}  [{how}]")
+            displayed = phone if include_contacts else "[연락처 숨김]"
+            print(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
     print()
 
     print(f"── [엑셀에 있으나 매칭에 안 쓰인 지자체명: {len(unused_contacts)}개] ──")
@@ -108,8 +121,13 @@ def main():
 
     print("── [매칭 성공 전체 목록] ──")
     for sgg, cnt, dept, phone, how in matched_sgg:
-        print(f"  {sgg!r} ({cnt}건) → {dept} / {phone}  [{how}]")
+        displayed = phone if include_contacts else "[연락처 숨김]"
+        print(f"  {sgg!r} ({cnt}건) → {dept} / {displayed}  [{how}]")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="기본 콘솔 보고서는 연락처를 숨깁니다.")
+    parser.add_argument("--contact-report", metavar="FILENAME",
+                        help="연락처 포함 보고서를 .local/private-reports/에 0600으로 새로 저장")
+    main(parser.parse_args().contact_report)

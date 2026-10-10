@@ -13,6 +13,7 @@ KST 기준 전날 새로 수집된 거래(created_at)를 관심단지 알림 구
 import argparse
 import html
 import logging
+from privacy_logging import redact_contact_data
 import os
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
@@ -230,7 +231,7 @@ def run(alert_date=None, dry_run=False):
             deals = bucket["deals"]
             if dry_run:
                 result["sent"] += 1
-                log.info("  [DRY-RUN] %s | 새 실거래 %d건", user["email"], len(deals))
+                log.info("  [DRY-RUN] user=%s | 새 실거래 %d건", user["id"], len(deals))
                 continue
 
             claimed_ids = _claim_deals(cur, user["id"], [d["transaction_id"] for d in deals], alert_date)
@@ -258,10 +259,10 @@ def run(alert_date=None, dry_run=False):
             conn.commit()
             if ok:
                 result["sent"] += 1
-                log.info("  ✓ %s | %d건", user["email"], len(claimed_deals))
+                log.info("  ✓ user=%s | %d건", user["id"], len(claimed_deals))
             else:
                 result["errors"] += 1
-                log.warning("  ✗ %s — %s", user["email"], message)
+                log.warning("  ✗ user=%s — %s", user["id"], redact_contact_data(message))
     finally:
         conn.close()
 

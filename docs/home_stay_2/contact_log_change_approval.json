@@ -1,0 +1,16 @@
+{
+  "scope": "contact-diagnostic-only",
+  "approval_basis": "Explicit user request to improve legacy contact logging while preserving delivery, synchronization and administrator reporting; no operational approval.",
+  "files": {
+    "sync_batch.py": {
+      "baseline_sha256": "aebebd5e0995b67894ca9a1f2c259e3981e96a69cd5ec89d6535c5b341f5b495",
+      "approved_sha256": "fcd0285193f726b4eb262e21aafe984f08c6fa104eccb0041e228ea1da490c28",
+      "reason": "Mask email delivery failure diagnostics only; recipients, content and synchronization are unchanged."
+    },
+    "sync_lodgings.py": {
+      "baseline_sha256": "ad36f35d437f592737428776c639fc6344a9b0860db5622db59b949c75f15a58",
+      "approved_sha256": "02636eca5383c4696b7fff8c383ac0f1d140da39912059f7af60e4f42373abd3",
+      "reason": "Mask diagnostic contacts and retain delivery IDs; original permit data, recipients, state transitions, idempotency and retries are unchanged."
+    }
+  }
+}

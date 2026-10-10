@@ -643,9 +643,11 @@ def _send_tx_email(to_email, name_disp, deal_type, area, price, floor_val, deal_
         subject = f"[홈앤스테이] 새로운 실거래가 등록 — {name_disp}"
         ok, msg = send_email(to_email, subject, html)
         if not ok:
-            print(f"  이메일 발송 실패({to_email}): {msg}")
+            from privacy_logging import redact_contact_data
+            print(f"  이메일 발송 실패: {redact_contact_data(msg)}")
     except Exception as e:
-        print(f"  이메일 발송 중 오류({to_email}): {e}")
+        from privacy_logging import redact_contact_data
+        print(f"  이메일 발송 중 오류: {type(e).__name__}: {redact_contact_data(e)}")
 
 
 def _apply_trade_month(

@@ -7,3 +7,5 @@ __pycache__/
 # Offline development harness generated logs are never deployment assets
 .local/hs2-harness/
 artifacts/mockup-sandbox/dist/
+.local/private-reports/
+.local/suite-audit/

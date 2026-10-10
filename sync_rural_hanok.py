@@ -673,7 +673,8 @@ def sync(
                     except Exception as exc:
                         conn.rollback()
                         counters["failed"] += 1
-                        print(f"  [실패] {data['biz_name']}: {exc}")
+                        from privacy_logging import redact_contact_data
+                        print(f"  [실패] {redact_contact_data(data['biz_name'])}: {redact_contact_data(exc)}")
                 if max_pages and page >= max_pages:
                     if not dry_run and not page_complete:
                         raise RuntimeError(

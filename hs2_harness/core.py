@@ -96,8 +96,21 @@ def routes():
 
 def preservation():
     baseline = load(BASELINE)
+    # Keep the original frozen baseline immutable. This user-approved logging
+    # delta permits ONLY two exact reviewed revisions, never subsequent edits.
+    approval_path = DOC / "contact_log_change_approval.json"
+    approvals = {}
+    if approval_path.is_file():
+        approval = load(approval_path)
+        approvals = approval["files"]
+        if (approval["scope"] != "contact-diagnostic-only"
+                or set(approvals) != {"sync_batch.py", "sync_lodgings.py"}
+                or any(baseline["frozen_files"].get(name) != record["baseline_sha256"]
+                       for name, record in approvals.items())):
+            raise GateError("Invalid contact-only legacy change approval")
     missing = [name for name, sha in baseline["frozen_files"].items()
-               if not (ROOT / name).is_file() or digest(ROOT / name) != sha]
+               if not (ROOT / name).is_file() or digest(ROOT / name) not in
+               {sha, approvals.get(name, {}).get("approved_sha256")}]
     if missing:
         raise GateError("Preservation violation: " + ", ".join(missing))
     inventory = ROOT / baseline["route_inventory"]

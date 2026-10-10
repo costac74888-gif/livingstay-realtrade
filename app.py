@@ -6052,9 +6052,11 @@ def _send_application_received_email(applicant_type, company_name, to_email, edi
         """
         ok, msg = send_email(to_email, "[홈앤스테이] 신청이 접수되었습니다", html)
         if not ok:
-            app.logger.warning("신청 접수 이메일 발송 실패 (%s, %s): %s", applicant_type, to_email, msg)
-    except Exception:
-        app.logger.exception("신청 접수 이메일 발송 중 오류 (%s, %s)", applicant_type, to_email)
+            from privacy_logging import redact_contact_data
+            app.logger.warning("신청 접수 이메일 발송 실패 (%s): %s", applicant_type, redact_contact_data(msg))
+    except Exception as exc:
+        from privacy_logging import redact_contact_data
+        app.logger.warning("신청 접수 이메일 발송 중 오류 (%s, %s): %s", applicant_type, type(exc).__name__, redact_contact_data(exc))
 
 
 def _send_approval_email(applicant_type, to_email, login_id, temp_pw, login_url):
@@ -6080,10 +6082,12 @@ def _send_approval_email(applicant_type, to_email, login_id, temp_pw, login_url)
         """
         ok, msg = send_email(to_email, "[홈앤스테이] 승인되었습니다 — 로그인 안내", html)
         if not ok:
-            app.logger.warning("승인 이메일 발송 실패 (%s, %s): %s", applicant_type, to_email, msg)
+            from privacy_logging import redact_contact_data
+            app.logger.warning("승인 이메일 발송 실패 (%s): %s", applicant_type, redact_contact_data(msg))
         return ok, msg
     except Exception as e:
-        app.logger.exception("승인 이메일 발송 중 오류 (%s, %s)", applicant_type, to_email)
+        from privacy_logging import redact_contact_data
+        app.logger.warning("승인 이메일 발송 중 오류 (%s, %s): %s", applicant_type, type(e).__name__, redact_contact_data(e))
         return False, str(e)
 
 

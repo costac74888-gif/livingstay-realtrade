@@ -21,6 +21,7 @@ import html
 import hashlib
 import secrets as _secrets
 import logging
+from privacy_logging import redact_contact_data
 import re
 import time
 from datetime import date, datetime, timedelta
@@ -2487,7 +2488,7 @@ def main():
     today      = kst_today()
     if args.test_admin_report:
         ok, msg = _send_admin_delivery_report(1, 1, 0, test=True)
-        log.info("관리자 테스트 보고: %s", msg)
+        log.info("관리자 테스트 보고: %s", redact_contact_data(msg))
         return 0 if ok else 1
     is_manual_preview = target_uid is not None
     if not is_manual_preview and not args.manual_all:
@@ -2552,7 +2553,7 @@ def main():
                 period_start=period_start, period_end=period_end,
                 news_items=news_items,
             )
-            log.info("관리자 주간 이메일 사본: %s", msg)
+            log.info("관리자 주간 이메일 사본: %s", redact_contact_data(msg))
             return 0 if ok else 1
 
         # 일반회원과 승인된 파트너를 동일한 발송 입력으로 정규화한다.
@@ -2574,7 +2575,7 @@ def main():
                     )
                     conn.commit()
                     if not delivery:
-                        log.info("  - %s (이미 발송됨/다른 작업자가 처리 중)", email)
+                        log.info("  - type=%s id=%s (이미 발송됨/다른 작업자가 처리 중)", recipient_type, uid)
                         continue
                 personalized = (
                     _personalize_recipient(
@@ -2640,14 +2641,14 @@ def main():
             if dry_run:
                 if not ok:
                     errors += 1
-                    log.warning("  [DRY-RUN] ✗ %s — %s", email, msg)
+                    log.warning("  [DRY-RUN] ✗ type=%s id=%s — %s", recipient_type, uid, redact_contact_data(msg))
                 continue
             if ok:
                 sent += 1
-                log.info("  ✓ %s", email)
+                log.info("  ✓ type=%s id=%s", recipient_type, uid)
             else:
                 errors += 1
-                log.warning("  ✗ %s — %s", email, msg)
+                log.warning("  ✗ type=%s id=%s — %s", recipient_type, uid, redact_contact_data(msg))
 
     finally:
         conn.close()
@@ -2661,14 +2662,14 @@ def main():
         if copy_ok:
             log.info("관리자 주간 이메일 사본 발송 완료")
         else:
-            log.warning("관리자 주간 이메일 사본 발송 실패 — %s", copy_msg)
+            log.warning("관리자 주간 이메일 사본 발송 실패 — %s", redact_contact_data(copy_msg))
         report_ok, report_msg = _send_admin_delivery_report(
             len(users), sent, errors, cohort=selected_cohort,
         )
         if report_ok:
             log.info("관리자 주간 결과 보고 발송 완료")
         else:
-            log.warning("관리자 주간 결과 보고 실패 — %s", report_msg)
+            log.warning("관리자 주간 결과 보고 실패 — %s", redact_contact_data(report_msg))
         # Report delivery has its own ledger and can be retried on subsequent
         # Thursday runs without resending any member emails.
         try:
@@ -2677,8 +2678,8 @@ def main():
                 _send_experiment_report(report_conn, today)
             finally:
                 report_conn.close()
-        except Exception:
-            log.warning("8주 실험 보고서 처리 실패", exc_info=True)
+        except Exception as exc:
+            log.warning("8주 실험 보고서 처리 실패: %s", redact_contact_data(exc))
     return 0 if errors == 0 else 1
 
 

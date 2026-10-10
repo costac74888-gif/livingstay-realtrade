@@ -65,7 +65,7 @@ def main():
         conn.commit()
         print(f"하우스 계정 생성 완료 — agents.id={new_id}")
         print(f"  office_name : {OFFICE_NAME}")
-        print(f"  로그인 이메일: {EMAIL}")
+        print("  로그인 이메일: [이메일 숨김] (관리자 계정 정보에서 확인)")
         print(f"  임시비밀번호 : {temp_pw}  (최초 로그인 후 변경 권장)")
         print(f"  slug        : {slug}  (/agent/{slug})")
     finally:

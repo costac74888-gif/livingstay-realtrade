@@ -483,7 +483,7 @@ def send_room_expiry_alerts(today=None):
                 stats["failed_count"] += 1
                 print(
                     f"[room-expiry] 이메일 후처리 기록 실패(room_id={target['room_id']}); "
-                    f"다음 실행에서 멱등 키로 재시도합니다: {exc}",
+                    f"다음 실행에서 멱등 키로 재시도합니다: {_redact(str(exc))}",
                     file=sys.stderr,
                 )
                 continue
@@ -491,7 +491,8 @@ def send_room_expiry_alerts(today=None):
                 stats["email_sent_count"] += 1
             else:
                 stats["failed_count"] += 1
-                print(f"[room-expiry] 이메일 발송 실패({email}): {email_message}")
+                from privacy_logging import redact_contact_data
+                print(f"[room-expiry] 이메일 발송 실패(log={alert_id}): {redact_contact_data(email_message)}")
         return stats
     finally:
         if acquired:
@@ -647,7 +648,8 @@ def send_permit_change_alerts():
                         stats["email_sent_count"] += 1
                     else:
                         stats["failed_count"] += 1
-                        print(f"[permit-alert] 이메일 발송 실패({recipient['email']}): {message}")
+                        from privacy_logging import redact_contact_data
+                        print(f"[permit-alert] 이메일 발송 실패(log={log_row['id']}): {redact_contact_data(message)}")
                 except Exception as exc:
                     conn.rollback()
                     stats["failed_count"] += 1
@@ -722,7 +724,8 @@ def _touch(status_key, run_id):
 
 
 def _redact(text):
-    return redact_env_secrets(
+    from privacy_logging import redact_contact_data
+    return redact_contact_data(redact_env_secrets(
         text,
         (
             SERVICE_KEY_ENV,
@@ -730,7 +733,7 @@ def _redact(text):
             "JUSO_API_KEY",
             "LODGING_SERVICE_KEY",
         ),
-    )
+    ))
 
 
 def _signal_stats_change():
