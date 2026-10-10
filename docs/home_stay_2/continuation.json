@@ -63,7 +63,10 @@
       {"id":"P14-A01","criterion":"Original 24consumer/23operator/12special first-party FAQ topics, unique complete answers,3guides/3policy notes, initial0%/separatePG/minimum stay/review-not-cash truth and existing legal documents preserved; real search/filters/no-store/unknown explicit","check":"phase14-help-content"},
       {"id":"P14-A02","criterion":"Actual59 FAQ DOM on desktop/mobile, server audience23/12 and search2/empty, answer accessibility, original terms/privacy links, nooverflow and server-error stale removal/input preservation","check":"phase14-help-ui"}
     ]},
-    {"id":15,"title":"Admin 확장","native_acceptance":["S16-A01","S16-A02"],"acceptance":null},
+    {"id":15,"title":"Admin 확장","native_acceptance":["S16-A01","S16-A02"],"acceptance":[
+      {"id":"P15-A01","criterion":"Same trusted signed admin resolver+CSRF/budget, no client identity; original submitted listing review; actual calendar/booking/financial ledgers+bounded/full counts; versioned five-kind CRUD/archive, immutable atomic audits, approved FAQ only, reviewed initial0% policy affects new terms only, no live money","check":"phase15-admin-db"},
+      {"id":"P15-A02","criterion":"Desktop/mobile SQL ledger+all five real admin forms create/approve, FAQ edit/archive/reload/public API reflection, original /admin kept, explicit sandbox/immutable/no-execution, safe text, nooverflow, revoked authority removes protected DOM","check":"phase15-admin-ui"}
+    ]},
     {"id":16,"title":"Mobile","native_acceptance":["S13-A02","S18-A01"],"acceptance":null},
     {"id":17,"title":"통합 Regression/Security/Payment Validation","native_acceptance":["S17-A01","S17-A02","S18-A01"],"acceptance":null},
     {"id":18,"title":"Cutover/Open","native_acceptance":["S18-A01","S18-A02"],"acceptance":null}

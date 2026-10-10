@@ -135,3 +135,4 @@
 - [노트북 impure 경계](durable-impure-boundaries.md) — 저장된 함수의 runtime wrapper가 낡았으면 인증 오류로 오판하지 말고 현재 skill 규칙으로 경계를 다시 만든다.
 - [금융 원장 잠금과 snapshot](financial-lock-snapshots.md) — 원장 행의 잠금 대기 후 JOIN 예약 상태가 최신이라고 가정하지 말고 새 문장에서 다시 조회한다.
 - [채팅 읽음 경계](chat-read-cursors.md) — 읽음은 화면에 전달된 마지막 메시지까지만; 조회 이후 도착한 메시지를 읽음으로 확대하지 않는다.
+- [격리 브라우저 HTTP](owned-browser-requests.md) — Playwright APIRequestContext는 Node 통신 차단 대상; 준비 요청도 고정 owned origin의 브라우저 fetch로 한다.

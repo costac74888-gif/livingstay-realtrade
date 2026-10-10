@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>관리자 업무실 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/admin/assets/admin.css">
+  <script src="/hs2/admin/assets/admin.js" defer></script>
+</head>
+<body>
+  <div class="admin-shell">
+    <header class="masthead">
+      <a class="brand" href="/hs2/consumer" aria-label="HOME &amp; STAY 홈">
+        <img src="/static/home_stay_share.png" alt="">
+        <span class="brand-copy"><span class="brand-name">홈앤스테이</span><span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span></span>
+      </a>
+      <div class="mast-actions">
+        <span class="admin-tag">관리자 업무실 · PHASE 15</span>
+        <a class="old-link" href="/admin">기존 관리자 화면</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div class="intro-copy">
+          <p class="eyebrow">HOME &amp; STAY <span aria-hidden="true">/</span> ADMINISTRATION · 15</p>
+          <h1 id="page-title">검토와 기록을<br>차분하게 정리합니다.</h1>
+          <p>운영 원장은 확인하고, 변경은 명시적으로 기록합니다. 이 화면의 승인은 관리자 검토 상태이며 고객 공개나 자금 실행을 의미하지 않습니다.</p>
+        </div>
+        <aside class="intro-aside">
+          <span>LIVE OPERATIONS / LOCKED</span>
+          <strong>결제·송금 제공자 실행은<br>승인되어 있지 않습니다.</strong>
+          <small>현재 초기 플랫폼 수수료 기준 0% · 기존 계약 조건은 보존됩니다.</small>
+        </aside>
+      </section>
+
+      <div id="admin-feedback" class="feedback" data-state="loading" role="status" aria-live="polite" aria-atomic="true">
+        <span id="admin-feedback-message">승인된 관리자 세션과 원장 데이터를 확인하고 있습니다.</span>
+        <button id="admin-refresh" class="retry-button" type="button">새로고침</button>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="main-column">
+          <section class="panel" aria-labelledby="record-editor-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">ADMIN RECORDS / DRAFT WORKFLOW</p><h2 id="record-editor-title">관리자 기록 작성</h2></div>
+              <span class="count-badge" id="record-count">0건</span>
+            </div>
+            <p class="subcopy">FAQ·정책·프로모션·내부 검토 기록을 작성합니다. 초안 편집과 승인, 보관은 변경 이력에 남습니다.</p>
+            <form id="admin-record-form">
+              <div class="form-grid">
+                <div class="field field-wide">
+                  <label for="admin-record-kind">기록 종류</label>
+                  <select id="admin-record-kind" name="kind" required>
+                    <option value="">종류를 불러오는 중…</option>
+                  </select>
+                </div>
+                <div id="admin-record-fields" class="form-grid field-wide" aria-live="polite"></div>
+              </div>
+              <div class="form-actions">
+                <button class="button button-primary" type="submit">초안 저장</button>
+                <button class="button button-quiet" id="admin-record-cancel" type="button" hidden>편집 취소</button>
+                <span id="admin-form-mode" class="form-mode">새 기록 · 초안으로 생성</span>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel" aria-labelledby="records-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">REVIEW NOTES / SQL RECORDS</p><h2 id="records-title">관리자 기록 원장</h2></div>
+            </div>
+            <p class="subcopy">보고서와 검토 메모는 개발 관리자 기록입니다. 고객 후기 게시나 실제 보고 결과로 오해하지 않도록 분리해 표시합니다.</p>
+            <div id="admin-records" class="record-list" aria-live="polite" aria-busy="true"><div class="skeleton skeleton-tall" aria-hidden="true"></div></div>
+          </section>
+
+          <section class="panel" aria-labelledby="registrations-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">LISTING APPLICATIONS / SQL LEDGER</p><h2 id="registrations-title">등록 신청 검토</h2></div>
+            </div>
+            <p class="subcopy">원본 신청과 현재 상태를 서버 원장에서 확인합니다. 승인·거절에는 검토 근거와 권리·고지 확인이 필요합니다.</p>
+            <div class="field field-wide">
+              <label for="admin-review-note">검토 메모 <span aria-hidden="true">*</span></label>
+              <textarea id="admin-review-note" class="review-note" maxlength="2000" required placeholder="결정 근거를 구체적으로 입력하세요."></textarea>
+            </div>
+            <div class="review-checks">
+              <label class="check-row"><input id="admin-rights" type="checkbox"><span>등록 내용에 대한 권리 및 이용 허용 여부를 확인했습니다.</span></label>
+              <label class="check-row"><input id="admin-disclosure" type="checkbox"><span>필수 고지와 제출 정보를 확인했습니다.</span></label>
+            </div>
+            <div id="admin-registrations" class="record-list" aria-live="polite" aria-busy="true"><div class="skeleton skeleton-tall" aria-hidden="true"></div></div>
+          </section>
+
+          <section class="panel" aria-labelledby="booking-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">BOOKINGS / SQL LEDGER</p><h2 id="booking-title">예약 원장</h2></div>
+            </div>
+            <div id="admin-bookings" class="data-table-wrap" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+
+          <section class="panel" aria-labelledby="finance-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">CONTRACTS &amp; EVENTS / SQL LEDGER</p><h2 id="finance-title">금융 계약과 이벤트</h2></div>
+            </div>
+            <p class="subcopy">계약 조건은 계약 생성 시점의 기록이며 불변입니다. 이벤트는 원장 증빙으로 실제 실행·정산·지급 완료를 뜻하지 않습니다.</p>
+            <div id="admin-finances" class="ledger-grid" aria-live="polite" aria-busy="true"><div class="skeleton skeleton-tall" aria-hidden="true"></div></div>
+          </section>
+
+          <section class="panel" aria-labelledby="audits-title">
+            <div class="panel-head">
+              <div><p class="section-kicker">ADMIN RECORD EVENTS / SQL LEDGER</p><h2 id="audits-title">변경 감사 기록</h2></div>
+            </div>
+            <div id="admin-audits" class="data-table-wrap" aria-live="polite" aria-busy="true"><div class="skeleton" aria-hidden="true"></div></div>
+          </section>
+        </div>
+
+        <aside class="side-column" aria-label="원장 안내와 안전 기준">
+          <section class="panel">
+            <p class="section-kicker">READ THE LEDGER</p>
+            <div class="guardrail">
+              <h3>기록과 실행은 다릅니다.</h3>
+              <p>화면에 표시되는 금융 계약·이벤트는 데이터베이스 원장 증빙입니다. 실제 결제 제공자, 환불, 송금, 정산은 실행하지 않습니다.</p>
+              <p>프로모션은 관리자 기록일 뿐 결제가 발생하거나 등록 정보를 게시·비게시하지 않습니다.</p>
+              <p>수수료·PG·보증금 정책은 명시한 값으로만 기록하며 플랫폼 수수료는 0%로 고정됩니다.</p>
+            </div>
+          </section>
+          <section class="panel">
+            <p class="section-kicker">SCOPE / RETENTION</p>
+            <div id="admin-summary" class="summary-strip" aria-live="polite" aria-busy="true">
+              <div class="skeleton skeleton-tall" aria-hidden="true"></div>
+            </div>
+            <p class="subcopy" id="admin-scope-note">최근 서버 원장 레코드 범위를 불러오는 중입니다.</p>
+          </section>
+          <section class="panel">
+            <p class="section-kicker">POLICY BOUNDARIES</p>
+            <h2 style="font-size:17px;line-height:1.35;letter-spacing:-.03em">정책 변경에도 기존 계약은 그대로</h2>
+            <p class="subcopy" style="margin:10px 0 0">새로 승인된 정책은 이후 미리보기 기준에 사용될 수 있습니다. 저장된 금융 계약의 역사적 약정 조건은 변경하지 않습니다.</p>
+          </section>
+        </aside>
+      </div>
+      <footer class="footer">
+        <strong>HOME &amp; STAY <span aria-hidden="true">/</span> ADMIN · 15</strong>
+        <span>인증된 관리자 세션 기준 · 데이터베이스 원장 표시 · 라이브 자금 작업 없음</span>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
