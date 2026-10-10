@@ -1710,6 +1710,14 @@
       "event": "WORK_REVIEW_PASS",
       "phase": 6,
       "status": "PASS"
+    },
+    {
+      "at": "2026-10-10T15:31:09.972856+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 6,
+      "status": "COMPLETE",
+      "head": "87580f8ebf946cf8f9a7f1cb0b7ac76158e6b2c6",
+      "tag": "hs2/phase-06/complete"
     }
   ],
   "current_user_phase": 6,
@@ -3770,11 +3778,11 @@
       }
     },
     "6": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase6/WORK_INSTRUCTION.md",
       "at": "2026-10-10T14:39:44.357323+00:00",
       "source_head": "fcf756eb8940656e7a80a86e7e782540c3a68357",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "policy_decisions": {
         "P06-PUBLICATION-TIMING": {
           "status": "RESOLVED",
@@ -4333,7 +4341,16 @@
         "reviewer": "internal Work; not external independent reviewer",
         "screenshot": ".local/hs2-harness/phase6-registration.jpg"
       },
-      "completed_scope": "Private persistent registration/review with original confirmed-reference workflow, private photos, revision/expiry/revocation and actual desktop/mobile SQL-backed browser flow; unmounted, no live operations"
+      "completed_scope": "Private persistent registration/review with original confirmed-reference workflow, private photos, revision/expiry/revocation and actual desktop/mobile SQL-backed browser flow; unmounted, no live operations",
+      "start": {
+        "head": "fcf756eb8940656e7a80a86e7e782540c3a68357",
+        "tag": "hs2/phase-06/start"
+      },
+      "end": {
+        "head": "87580f8ebf946cf8f9a7f1cb0b7ac76158e6b2c6",
+        "tag": "hs2/phase-06/complete",
+        "at": "2026-10-10T15:31:09.972825+00:00"
+      }
     }
   }
 }
