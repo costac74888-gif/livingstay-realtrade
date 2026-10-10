@@ -1754,6 +1754,14 @@
       "event": "WORK_REVIEW_PASS",
       "phase": 7,
       "status": "PASS"
+    },
+    {
+      "at": "2026-10-10T15:50:24.892361+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 7,
+      "status": "COMPLETE",
+      "head": "6930ba9673d17e931653c35859ee9893a498800b",
+      "tag": "hs2/phase-07/complete"
     }
   ],
   "current_user_phase": 7,
@@ -4398,11 +4406,11 @@
       }
     },
     "7": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase7/WORK_INSTRUCTION.md",
       "at": "2026-10-10T15:32:58.174784+00:00",
       "source_head": "2c8a61496f7c7ddf745210a5c4e329773a8ffc5d",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "verification": {
         "at": "2026-10-10T15:49:48.528556+00:00",
         "head": "2c8a61496f7c7ddf745210a5c4e329773a8ffc5d",
@@ -5011,7 +5019,16 @@
         "reviewer": "internal Work; not external independent reviewer",
         "screenshot": ".local/hs2-harness/phase7-calendar.jpg"
       },
-      "completed_scope": "Persistent private versioned nightly/weekday/date/week/month calendar; current approved safe selected-stay quotes linked to original consumer search; original FK-bound immutable price snapshot foundation; actual desktop/mobile PostgreSQL-backed UI; not confirmed Booking/live operations"
+      "completed_scope": "Persistent private versioned nightly/weekday/date/week/month calendar; current approved safe selected-stay quotes linked to original consumer search; original FK-bound immutable price snapshot foundation; actual desktop/mobile PostgreSQL-backed UI; not confirmed Booking/live operations",
+      "start": {
+        "head": "2c8a61496f7c7ddf745210a5c4e329773a8ffc5d",
+        "tag": "hs2/phase-07/start"
+      },
+      "end": {
+        "head": "6930ba9673d17e931653c35859ee9893a498800b",
+        "tag": "hs2/phase-07/complete",
+        "at": "2026-10-10T15:50:24.892337+00:00"
+      }
     }
   }
 }
