@@ -2174,6 +2174,14 @@
       "phase": 17,
       "passed": true,
       "fingerprint": "1890e1c300036aa8a45dc6e4f62f67b6e6ce5fd6d1b46b29cbc8207f2d2d40c9"
+    },
+    {
+      "at": "2026-10-10T19:32:35.178108+00:00",
+      "event": "WORK_PHASE_COMPLETE",
+      "phase": 17,
+      "status": "COMPLETE",
+      "head": "32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1",
+      "tag": "hs2/phase-17/complete"
     }
   ],
   "current_user_phase": 17,
@@ -13566,11 +13574,11 @@
       }
     },
     "17": {
-      "status": "PASS",
+      "status": "COMPLETE",
       "instruction": "docs/home_stay_2/phase17/WORK_INSTRUCTION.md",
       "at": "2026-10-10T19:06:33.576479+00:00",
       "source_head": "e18296291426d1b445e4dfea21b40d055cc15b5f",
-      "next_action": "Work review, commit evidence, checkpoint and verify development remote",
+      "next_action": "Verify development remote then issue next user phase; operational gates remain closed",
       "verification_attempt": {
         "at": "2026-10-10T19:26:52.822493+00:00",
         "fingerprint": "2b685387a452ccd3df5400f28efbec585a0be63415813d87a081af3f8f6fa6f4",
@@ -15660,6 +15668,15 @@
         "reviewer": "internal Work; not external independent reviewer",
         "screenshot": ".local/hs2-harness/phase17-preserved-home.jpg",
         "limitations": "Legacy privacy21 and smoke/api failures unresolved; live host/SDK/provider not verified; operational gates closed"
+      },
+      "start": {
+        "head": "e18296291426d1b445e4dfea21b40d055cc15b5f",
+        "tag": "hs2/phase-17/start"
+      },
+      "end": {
+        "head": "32ba9b0e0c3acf0bd5c3ed01fec56a49ace8cbf1",
+        "tag": "hs2/phase-17/complete",
+        "at": "2026-10-10T19:32:35.178074+00:00"
       }
     }
   }
