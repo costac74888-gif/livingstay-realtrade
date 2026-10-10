@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "work_route": "internal",
+  "stop_after_phase": 18,
+  "previous_checkpoint": "9475499964f2dd3f8a18bf8b79c050dc78e56bf4",
+  "directive": {
+    "file": "attached_assets/0_붙여넣은_텍스트(1)_1791638904988.txt",
+    "sha256": "16937ba9e09c90cc304a6639048a8360c7034b9762f741d63269e37d283ce416"
+  },
+  "manual_gates": ["production_migration", "live_pg_settlement", "production_publish"],
+  "phases": [
+    {"id":4,"title":"로그인/사용자·운영자 Mode 분리","native_acceptance":["S02-A01","S02-A02"],"acceptance":[
+      {"id":"P04-A01","criterion":"Trusted original account callbacks, signed session mode/approved context ownership, email proof, CSRF/expiry/revocation/logout and rate limits","check":"phase4-mode-contracts"},
+      {"id":"P04-A02","criterion":"Execute actual original email/Kakao/context/logout functions with owned PostgreSQL; no email-only merge, preserve prior history/memberships","check":"phase4-auth-db"},
+      {"id":"P04-A03","criterion":"Exact user directive/order, historical receipts/checks/native gates, fresh whole-registry receipts and independent remote checkpoint evidence","check":"phase4-continuation-gates"},
+      {"id":"P04-A04","criterion":"Actual private Chromium email login/multi-business switching/errors/logout; consumer Kakao entry, keyboard/desktop/mobile and safe rendering","check":"phase4-mode-ui"}
+    ]},
+    {"id":5,"title":"PC 소비자 Main","native_acceptance":["S11-A01","S11-A02"],"acceptance":null},
+    {"id":6,"title":"단기임대 매물등록","native_acceptance":["S04-A01","S04-A02","S05-A01","S05-A02","S06-A01","S06-A02"],"acceptance":null},
+    {"id":7,"title":"가격/Calendar Engine","native_acceptance":["S06-A01","S06-A02","S07-A01","S07-A02","S08-A01","S08-A02","S09-A01","S10-A01"],"acceptance":null},
+    {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":null},
+    {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":null},
+    {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":null},
+    {"id":11,"title":"Payment/Deposit/Settlement 기반","native_acceptance":["S17-A01","S17-A02"],"acceptance":null},
+    {"id":12,"title":"운영자 Dashboard","native_acceptance":["S16-A01"],"acceptance":null},
+    {"id":13,"title":"관심/Chat/Notification/My Booking","native_acceptance":["S15-A01","S15-A02"],"acceptance":null},
+    {"id":14,"title":"FAQ/이용 Guide/Policy","native_acceptance":[],"acceptance":null},
+    {"id":15,"title":"Admin 확장","native_acceptance":["S16-A01","S16-A02"],"acceptance":null},
+    {"id":16,"title":"Mobile","native_acceptance":["S13-A02","S18-A01"],"acceptance":null},
+    {"id":17,"title":"통합 Regression/Security/Payment Validation","native_acceptance":["S17-A01","S17-A02","S18-A01"],"acceptance":null},
+    {"id":18,"title":"Cutover/Open","native_acceptance":["S18-A01","S18-A02"],"acceptance":null}
+  ]
+}

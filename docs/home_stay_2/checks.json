@@ -15,5 +15,9 @@
   "phase3-registration-contracts": {"file":"tests/test_hs2_phase3_registration.py","kind":"python","role":"acceptance","reviewed_sha256":"849886d51909ec91a1cad7f781639836397d8724a0dbaac3f61fc1179f2caec3"},
   "phase3-registration-db": {"file":"tests/test_hs2_phase3_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"0d968d26f41bba0c2052a2b379b4b622853a3ed4e7bed198f12d9d5de6faead7"},
   "phase3-gate-contracts": {"file":"tests/test_hs2_phase3_gates.py","kind":"python","role":"acceptance","reviewed_sha256":"2046281720d3a56c5de3e7379f32a24c8e46efae51aa34324c3d85bed5a696e6"},
-  "phase3-registration-ui": {"file":"tests/hs2_phase3_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"65f002dcc248488faf2e90b1fef89da88afa6b123d38331bd67af64a69de94e6"}
+  "phase3-registration-ui": {"file":"tests/hs2_phase3_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"65f002dcc248488faf2e90b1fef89da88afa6b123d38331bd67af64a69de94e6"},
+  "phase4-mode-contracts": {"file":"tests/test_hs2_phase4_modes.py","kind":"python","role":"acceptance","reviewed_sha256":"29c705da20a470c375763a0f622b17824417262d771a996dda8321439e572935"},
+  "phase4-auth-db": {"file":"tests/test_hs2_phase4_auth_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"a63d28b7881281619e530715b909554b6c378831cae5f8e6c5fa465bbf7c2a32"},
+  "phase4-continuation-gates": {"file":"tests/test_hs2_phase4_continuation.py","kind":"python","role":"acceptance","reviewed_sha256":"3b16a3172ff77839d1d867c3f7f074891fdb4f0f465f65eed03ed4cb5ee33ad5"},
+  "phase4-mode-ui": {"file":"tests/hs2_phase4_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"c619f6dcb4d312736fd202e1ef53b38c27780dba1d8589a28a6d0dbc3ee84e15"}
 }

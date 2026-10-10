@@ -10,7 +10,10 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser();parser.add_argument("--port-file",required=True);parser.add_argument("--port",type=int,default=0)
     args=parser.parse_args();p=Path(args.port_file)
     if not str(p).startswith("/tmp/hs2-"):raise SystemExit("Owned temporary fixture only")
-    from hs2_registration.fixture_http import server
+    if os.environ.get("HS2_FIXTURE_SCREEN") == "mode":
+        from hs2_modes.fixture_http import server
+    else:
+        from hs2_registration.fixture_http import server
     with server(args.port) as http:
         p.write_text(str(http.server_port))
         http.serve_forever()

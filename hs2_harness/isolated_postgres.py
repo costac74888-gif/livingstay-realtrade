@@ -16,6 +16,7 @@ TEST_FILE = "tests/test_hs2_phase2_data.py"
 FIXTURE_CHECKS = {
     CHECK_ID: TEST_FILE,
     "phase3-registration-db": "tests/test_hs2_phase3_db.py",
+    "phase4-auth-db": "tests/test_hs2_phase4_auth_db.py",
 }
 
 

@@ -136,6 +136,8 @@ def configuration():
             ("phase2-data-contracts","tests/test_hs2_phase2_data.py"):("python","temporary-postgres"),
             ("phase3-registration-db","tests/test_hs2_phase3_db.py"):("python","temporary-postgres"),
             ("phase3-registration-ui","tests/hs2_phase3_ui_test.cjs"):("node","private-browser-fixture"),
+            ("phase4-auth-db","tests/test_hs2_phase4_auth_db.py"):("python","temporary-postgres"),
+            ("phase4-mode-ui","tests/hs2_phase4_ui_test.cjs"):("node","private-browser-fixture"),
         }
         if check.get("isolation") is not None and reviewed_isolation.get(
                 (name,check["file"])) != (check["kind"],check["isolation"]):

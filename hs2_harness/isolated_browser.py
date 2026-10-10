@@ -11,14 +11,21 @@ from . import core
 
 CHECK_ID="phase3-registration-ui"
 TEST_FILE="tests/hs2_phase3_ui_test.cjs"
+FIXTURE_CHECKS = {
+    CHECK_ID: (TEST_FILE, "registration"),
+    "phase4-mode-ui": ("tests/hs2_phase4_ui_test.cjs", "mode"),
+}
 
 
 def run_check(name,check,timeout):
-    if name!=CHECK_ID or check["file"]!=TEST_FILE:raise core.GateError("Unreviewed browser capability")
+    entry = FIXTURE_CHECKS.get(name)
+    if not entry or check["file"] != entry[0]:raise core.GateError("Unreviewed browser capability")
+    test_file, screen = entry
     core.GENERATED.mkdir(parents=True,exist_ok=True);log=core.GENERATED/f"{name}-{time.time_ns()}.log"
     start=time.monotonic();code=125
     with tempfile.TemporaryDirectory(prefix="hs2-browser-") as temp,log.open("w") as output:
         root=Path(temp);env=core.test_env(root);fixture=None;child=None
+        env["HS2_FIXTURE_SCREEN"] = screen
         try:
             chromium=shutil.which("chromium")
             if not chromium:raise core.GateError("Local Chromium unavailable")
@@ -34,7 +41,7 @@ def run_check(name,check,timeout):
             # Ordinary Node suite guard unchanged. Specialized guard permits ONLY
             # this parent's literal loopback and exact Chromium executable.
             env["NODE_OPTIONS"]="--require="+str(core.ROOT/"hs2_harness/isolated_guard/browser.cjs")
-            child=subprocess.Popen(["node",TEST_FILE],cwd=core.ROOT,env=env,stdout=output,
+            child=subprocess.Popen(["node",test_file],cwd=core.ROOT,env=env,stdout=output,
                                    stderr=subprocess.STDOUT,start_new_session=True)
             code=child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -50,6 +57,6 @@ def run_check(name,check,timeout):
             output.write("\nIsolation: owned loopback, synthetic HTTP, no DSNs/keys, external browser requests aborted, fixture stopped.\n")
     if code==0 and "HS2_UI_PASS" not in log.read_text():code=125
     return dict(id=name,status="PASS" if code==0 else "FAIL",exit_code=code,
-                seconds=round(time.monotonic()-start,3),command=["node",TEST_FILE],
-                test_sha256=core.digest(core.ROOT/TEST_FILE),log=str(log.relative_to(core.ROOT)),
+                seconds=round(time.monotonic()-start,3),command=["node",test_file],
+                test_sha256=core.digest(core.ROOT/test_file),log=str(log.relative_to(core.ROOT)),
                 log_sha256=core.digest(log),isolation="owned loopback synthetic HTTP + reviewed Chromium only")

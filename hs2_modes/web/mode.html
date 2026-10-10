@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>계정 모드 선택 · HOME &amp; STAY</title>
+  <link rel="stylesheet" href="/hs2/mode-assets/mode.css">
+  <script src="/hs2/mode-assets/mode.js" defer></script>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="HOME & STAY 홈으로">
+        <img class="brand-logo" src="/static/home_stay_share.png" alt="HOME &amp; STAY">
+        <span class="brand-copy">
+          <span class="brand-name">홈앤스테이</span>
+          <span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span>
+        </span>
+      </a>
+      <span class="private-label"><span class="private-dot" aria-hidden="true"></span>비공개 개발 확인</span>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <p class="eyebrow">HOME &amp; STAY · ACCOUNT</p>
+        <h1 id="pageTitle">어떤 계정으로<br><em>이용하시겠어요?</em></h1>
+        <p class="intro-copy">하나의 계정에서 일반회원과 승인된 사업장 이용을 전환할 수 있습니다. 전환할 때마다 현재 이용 범위를 확인하세요.</p>
+      </section>
+
+      <div class="notice" role="note">
+        <span class="notice-mark" aria-hidden="true">i</span>
+        <p><strong>개발 단계의 비공개 확인 화면입니다.</strong> 실제 운영 반영이나 서비스 공개 상태를 의미하지 않습니다.</p>
+      </div>
+
+      <section class="mode-card" aria-labelledby="accountHeading">
+        <div class="card-topline">
+          <div>
+            <p class="section-kicker">ACCOUNT ACCESS</p>
+            <h2 id="accountHeading">이용 계정</h2>
+          </div>
+          <span id="sessionBadge" class="session-badge" data-state="loading">확인 중</span>
+        </div>
+
+        <div id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+        <section id="emailAuthPanel" class="email-auth-panel" aria-labelledby="emailAuthTitle" hidden>
+          <div class="panel-heading">
+            <span class="panel-index">01 / BUSINESS EMAIL</span>
+            <h3 id="emailAuthTitle">승인된 사업자 로그인</h3>
+            <p id="emailAuthCopy">사업자용 이메일 계정으로 로그인합니다. 이메일만으로 다른 계정이나 사업장을 연결하지 않습니다.</p>
+          </div>
+          <form id="emailLoginForm" autocomplete="on" novalidate>
+            <div class="field">
+              <label for="loginEmail">이메일</label>
+              <input id="loginEmail" name="email" type="email" autocomplete="username" inputmode="email" required>
+            </div>
+            <div class="field">
+              <label for="loginPassword">비밀번호</label>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+            </div>
+            <button id="emailLoginButton" class="button button-primary login-button" type="submit" disabled>
+              <span>사업자 계정으로 로그인</span><span class="button-arrow" aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+
+        <section id="signedOutPanel" class="signed-out-panel" aria-label="일반회원 이용" hidden>
+          <div class="consumer-entry">
+            <div class="consumer-divider"><span>일반회원 이용</span></div>
+            <a id="kakaoLoginLink" class="button button-kakao" href="/auth/kakao/start">
+              <span class="kakao-mark" aria-hidden="true">K</span>
+              <span>카카오로 계속하기</span>
+              <span class="button-arrow" aria-hidden="true">→</span>
+            </a>
+            <p>일반회원 로그인은 카카오 인증을 통해 진행됩니다.</p>
+          </div>
+        </section>
+
+        <section id="signedInPanel" class="signed-in-panel" aria-labelledby="signedInTitle" hidden>
+          <div class="identity-row">
+            <div class="identity-monogram" aria-hidden="true">H</div>
+            <div class="identity-copy">
+              <span class="identity-label">현재 로그인</span>
+              <h3 id="signedInTitle"><span id="memberName"></span><span class="honorific">님</span></h3>
+            </div>
+            <button id="logoutButton" class="text-button" type="button">로그아웃</button>
+          </div>
+
+          <div class="current-context" aria-live="polite">
+            <span class="context-overline">현재 이용 중</span>
+            <div class="context-current-line">
+              <span id="currentModeMark" class="context-mark" aria-hidden="true"></span>
+              <div>
+                <strong id="currentModeName"></strong>
+                <span id="currentBusinessName" class="current-business"></span>
+              </div>
+              <span class="active-tag">사용 중</span>
+            </div>
+          </div>
+
+          <div class="switcher">
+            <div class="switcher-heading">
+              <div>
+                <p class="section-kicker">SWITCH CONTEXT</p>
+                <h3>이용 범위 전환</h3>
+              </div>
+              <span class="switcher-note">전환 전 내용을 확인하세요</span>
+            </div>
+            <div class="mode-options" role="group" aria-label="이용 모드 선택">
+              <button id="consumerModeButton" class="mode-option" type="button" aria-pressed="false" disabled>
+                <span class="option-top"><span class="option-glyph consumer-glyph" aria-hidden="true">01</span><span class="option-state" aria-hidden="true"></span></span>
+                <span class="option-title">일반회원</span>
+                <span class="option-description">숙박과 부동산 정보를 둘러보는 개인 이용</span>
+                <span class="option-action">일반회원으로 전환 <span aria-hidden="true">→</span></span>
+              </button>
+              <button id="operatorModeButton" class="mode-option" type="button" aria-pressed="false" disabled>
+                <span class="option-top"><span class="option-glyph operator-glyph" aria-hidden="true">02</span><span class="option-state" aria-hidden="true"></span></span>
+                <span class="option-title">사업자</span>
+                <span class="option-description">승인된 사업장 컨텍스트로 이용</span>
+                <span class="option-action">사업장 선택 <span aria-hidden="true">→</span></span>
+              </button>
+            </div>
+          </div>
+
+          <section id="businessSection" class="business-section" aria-labelledby="businessTitle" hidden>
+            <div class="business-heading">
+              <div>
+                <p class="section-kicker">APPROVED BUSINESS</p>
+                <h3 id="businessTitle">전환할 사업장</h3>
+              </div>
+              <span id="businessCount" class="business-count"></span>
+            </div>
+            <p id="businessUnavailable" class="unavailable-message" hidden>
+              <strong>사용 가능한 사업장이 없습니다.</strong>
+              <span>사업자 접근은 승인된 컨텍스트가 확인된 경우에만 가능합니다. 관리자에게 승인 상태를 확인해 주세요.</span>
+            </p>
+            <div id="businessList" class="business-list" role="group" aria-label="승인된 사업장 목록"></div>
+          </section>
+          <p id="modeHint" class="mode-hint">모드를 바꾸면 해당 이용 범위로 계정 세션이 전환됩니다.</p>
+        </section>
+
+        <section id="unavailablePanel" class="unavailable-panel" aria-labelledby="unavailableTitle" hidden>
+          <span class="unavailable-symbol" aria-hidden="true">!</span>
+          <div>
+            <h3 id="unavailableTitle">계정 정보를 불러올 수 없습니다</h3>
+            <p id="unavailableCopy">모드 확인 API에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.</p>
+            <button id="retryButton" class="button button-secondary" type="button">다시 확인</button>
+          </div>
+        </section>
+      </section>
+
+      <footer class="page-footer">
+        <span>머무는 곳을, 집처럼.</span>
+        <nav aria-label="주요 링크">
+          <a href="/">서비스 홈</a>
+          <a href="/mypage">마이페이지</a>
+        </nav>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

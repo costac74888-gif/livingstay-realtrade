@@ -3,7 +3,8 @@
 **최신 진행 원칙(2026-10-10):** [Work ↔ Replit 연속 진행](CONTINUOUS_HANDOFF.md).
 사용자가 Phase 3 종료 제한을 해제하고 PASS 검토 후 18까지 연속 진행하도록 지시했다.
 아래의 단계별 별도 지시·자동 연속 진행 금지 설명은 과거 인계 당시 기준이며,
-진행 승인에는 최신 원칙을 적용한다. 실제 Work 전달 경로는 아직 미확정이다.
+진행 승인에는 최신 원칙을 적용한다. Work는 Replit 내부 역할이며,
+[사용자 원문 단계 대응](USER_PHASE_MAPPING.md)을 따른다.
 
 **Work 인계 진입점:** [WORK_HANDOFF.md](WORK_HANDOFF.md).
 0.5 완료 이후 다음은 제품 1단계이며, 기계 상태 `current_stage=0`은 아직 제품
