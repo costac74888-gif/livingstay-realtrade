@@ -110,4 +110,7 @@ def create_fixture_app(initialize=True):
     app.fixture_repo = repo
     app.fixture_approved = approved
     app.fixture_reference_service = reference_service
+    app.fixture_context = context
+    app.fixture_check_csrf = csrf
+    app.fixture_csrf_token = lambda: session["fixture_csrf"]
     return app

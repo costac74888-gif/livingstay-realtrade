@@ -25,5 +25,8 @@
   "phase5-consumer-ui": {"file":"tests/hs2_phase5_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"bb5db795832fe45901aaf2da83c7b15d26436bdbc5ef1ec1d0efc8f9e19cfc86"},
   "phase6-validation": {"file":"tests/test_hs2_phase6_validation.py","kind":"python","role":"acceptance","reviewed_sha256":"32e8c02fa0602530ae5a9c6c7fe199f58d5a83c4e82d125dfbc28edd293200d4"},
   "phase6-listing-db": {"file":"tests/test_hs2_phase6_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"147c3af1ffb4bcabec2924febbb806142a0496aee653110842c879024c807e4f"},
-  "phase6-listing-ui": {"file":"tests/hs2_phase6_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"13a2827d71d7717f95e3a5c03660b8aa8b42b46e3667cff9c8a6581ec3d65469"}
+  "phase6-listing-ui": {"file":"tests/hs2_phase6_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"13a2827d71d7717f95e3a5c03660b8aa8b42b46e3667cff9c8a6581ec3d65469"},
+  "phase7-calendar-engine": {"file":"tests/test_hs2_phase7_engine.py","kind":"python","role":"acceptance","reviewed_sha256":"3e2cb2e059e9c34d17fa1f6fd8f0f1f86a7a9dd4204197a47fbc3c3194892cd8"},
+  "phase7-calendar-db": {"file":"tests/test_hs2_phase7_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"13605f55505f4fd31d5088670515a76e9750a535db5b356941b9d2eef40076c6"},
+  "phase7-calendar-ui": {"file":"tests/hs2_phase7_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"7a31166185cbc4d1c8047d0af9683d34cb5d20d489df99f64a074c66dd51fd5b"}
 }

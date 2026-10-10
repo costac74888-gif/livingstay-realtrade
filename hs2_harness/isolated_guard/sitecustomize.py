@@ -28,7 +28,7 @@ def fixture_only(dsn=None, *args, **kwargs):
     return native_connect(psycopg2.extensions.make_dsn(**expected))
 
 
-if os.environ.get("HS2_FIXTURE_TEST") not in {"test_hs2_phase2_data.py","test_hs2_phase3_db.py","test_hs2_phase4_auth_db.py","test_hs2_phase5_db.py","test_hs2_phase6_db.py"}:
+if os.environ.get("HS2_FIXTURE_TEST") not in {"test_hs2_phase2_data.py","test_hs2_phase3_db.py","test_hs2_phase4_auth_db.py","test_hs2_phase5_db.py","test_hs2_phase6_db.py","test_hs2_phase7_db.py"}:
     raise RuntimeError("HS2 isolated guard requires registered fixture suite")
 psycopg2.connect = fixture_only
 psycopg2._connect = fixture_only

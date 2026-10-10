@@ -17,6 +17,7 @@ FIXTURE_CHECKS = {
     "phase4-mode-ui": ("tests/hs2_phase4_ui_test.cjs", "mode"),
     "phase5-consumer-ui": ("tests/hs2_phase5_ui_test.cjs", "consumer"),
     "phase6-listing-ui": ("tests/hs2_phase6_ui_test.cjs", "listings"),
+    "phase7-calendar-ui": ("tests/hs2_phase7_ui_test.cjs", "calendar"),
 }
 
 
@@ -30,9 +31,10 @@ def run_check(name,check,timeout):
         root=Path(temp);env=core.test_env(root);fixture=None;child=None
         env["HS2_FIXTURE_SCREEN"] = screen
         try:
-            if screen == "listings":
+            if screen in {"listings", "calendar"}:
                 from .owned_cluster import owned_cluster
-                env = stack.enter_context(owned_cluster(env,output,"test_hs2_phase6_db.py"))
+                env = stack.enter_context(owned_cluster(env,output,
+                    "test_hs2_phase7_db.py" if screen == "calendar" else "test_hs2_phase6_db.py"))
                 env["PYTHONPATH"] = str(core.ROOT/"hs2_harness/isolated_guard")+os.pathsep+env["PYTHONPATH"]
             chromium=shutil.which("chromium")
             if not chromium:raise core.GateError("Local Chromium unavailable")

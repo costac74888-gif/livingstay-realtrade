@@ -11,7 +11,7 @@ from .core import GateError
 
 @contextmanager
 def owned_cluster(base_env, output, test_name):
-    if test_name != "test_hs2_phase6_db.py":
+    if test_name not in {"test_hs2_phase6_db.py", "test_hs2_phase7_db.py"}:
         raise GateError("Unreviewed combined DB capability")
     proc = None
     with tempfile.TemporaryDirectory(prefix="hs2-pg-", dir="/tmp") as temp:

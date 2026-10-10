@@ -25,7 +25,11 @@
       {"id":"P06-A02","criterion":"Persistent PostgreSQL CRUD/submission/review, original actor-owned address confirmation, scope/CSRF/revision/expiry/revocation, public privacy and preserved originals","check":"phase6-listing-db"},
       {"id":"P06-A03","criterion":"Actual PostgreSQL Chromium upload/save/re-entry/submission/admin publication/edit-unpublish/withdrawal, desktop/mobile DOM and blocked external network","check":"phase6-listing-ui"}
     ]},
-    {"id":7,"title":"가격/Calendar Engine","native_acceptance":["S06-A01","S06-A02","S07-A01","S07-A02","S08-A01","S08-A02","S09-A01","S10-A01"],"acceptance":null},
+    {"id":7,"title":"가격/Calendar Engine","native_acceptance":["S06-A01","S06-A02","S07-A01","S07-A02","S08-A01","S08-A02","S09-A01","S10-A01"],"acceptance":[
+      {"id":"P07-A01","criterion":"Local date/night/weekday override, exact whole-week and anchored calendar-month rates, cheapest exact composition, no partial proration/missing zero, immutable original price snapshot","check":"phase7-calendar-engine"},
+      {"id":"P07-A02","criterion":"Actual owned PostgreSQL append-only calendar/source revisions, scope/CSRF/inventory/publication revalidation, original immutable FK-bound snapshots and actual consumer selected-stay total adapter","check":"phase7-calendar-db"},
+      {"id":"P07-A03","criterion":"Actual desktop/mobile PostgreSQL-backed browser bulk/date/week/month changes, reload persistence, closed/open dates, total DOM and rejected stale writes; quote is not confirmed booking","check":"phase7-calendar-ui"}
+    ]},
     {"id":8,"title":"검색/Filter/Super Map","native_acceptance":["S11-A01","S11-A02","S12-A01","S12-A02","S13-A01","S13-A02","S14-A01","S14-A02"],"acceptance":null},
     {"id":9,"title":"매물 Detail + 예약 Panel","native_acceptance":["S10-A01","S11-A02"],"acceptance":null},
     {"id":10,"title":"Booking Engine","native_acceptance":["S09-A01","S09-A02","S10-A01","S10-A02"],"acceptance":null},

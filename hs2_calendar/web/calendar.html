@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>요금 및 예약 가능일 · HOME &amp; STAY</title>
+  <link rel="icon" href="/hs2/listings/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/hs2/calendar/assets/calendar.css">
+  <script src="/hs2/calendar/assets/calendar.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/hs2/listings/" aria-label="HOME &amp; STAY 숙소 목록 홈">
+        <span class="brand-mark" aria-hidden="true">H·S</span>
+        <span class="brand-copy"><span class="brand-name">HOME &amp; STAY</span><span class="brand-subtitle">사업자 전용 작업 공간</span></span>
+      </a>
+      <div class="header-actions">
+        <span class="private-label">사업자 전용 · 비공개</span>
+        <a class="subtle-link" href="/hs2/listings/">숙소 목록으로</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">PHASE 07 / RATEBOOK</p>
+          <h1 id="page-title">요금과 날짜, 예약 가능 여부</h1>
+          <p class="intro-copy">내 등록 건에 적용할 향후 요금을 설정하세요. 이 달력은 사업자가 입력한 요금을 기록할 뿐, 결제·재고 확보·예약 확정을 처리하지 않습니다.</p>
+        </div>
+        <aside class="intro-aside">날짜는 현지 달력 기준입니다. 숙박 기간에 퇴실일은 포함되지 않습니다. 요금은 원화(KRW)로 입력하고 표시합니다.</aside>
+      </section>
+
+      <div class="notice" role="note">
+        <span class="notice-mark" aria-hidden="true">i</span>
+        <p><strong>필수 운영 비용을 포함한 숙박 요금입니다.</strong> 표시 요금에는 사업자가 부담하는 필수 비용이 포함됩니다. 보증금은 포함되지 않으며, 이 화면에서는 실제 결제나 예약 확정이 이루어지지 않습니다.</p>
+      </div>
+
+      <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+      <div id="global-loading" class="panel loading-panel" aria-label="등록 목록 불러오는 중">
+        <div class="skeleton skeleton-heading"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+      <div id="fatal" class="panel empty-panel" hidden>
+        <h2>달력 작업 공간을 불러오지 못했습니다</h2>
+        <p id="fatal-copy">잠시 후 다시 시도해 주세요.</p>
+        <button class="button secondary" id="retry-meta" type="button">다시 시도</button>
+      </div>
+
+      <div id="workspace" hidden>
+        <div class="workspace-grid">
+          <aside class="panel operator-panel">
+            <div class="panel-head">
+              <div><p class="kicker">YOUR REGISTRATIONS</p><h2>등록 건 선택</h2></div>
+              <button class="icon-button" id="reload-meta" type="button" aria-label="등록 목록 새로고침" title="등록 목록 새로고침">↻</button>
+            </div>
+            <div class="panel-body">
+              <label class="field-label" for="listing-select">등록 건</label>
+              <select id="listing-select" class="reference-select"><option value="">등록 건을 선택하세요</option></select>
+              <div id="registration-status" class="registration-note">내 비공개 등록 건이 여기에 표시됩니다.</div>
+              <div class="privacy-card"><strong>비공개 화면</strong>내 등록 건만 선택할 수 있습니다. 아래 공개 견적 요청에는 공개 숙소 ID만 사용하며 개인 신원은 표시하지 않습니다.</div>
+            </div>
+          </aside>
+
+          <section class="panel calendar-panel" aria-labelledby="calendar-title">
+            <div class="panel-head calendar-panel-head">
+              <div><p class="kicker">CALENDAR EDITOR</p><h2 id="calendar-title">등록 건을 선택하세요</h2></div>
+              <div class="version-area">
+                <span id="version-label" class="version-chip">불러온 버전 없음</span>
+                <button id="reload-item" class="button secondary small-button" type="button" disabled>최신 내용 다시 불러오기</button>
+              </div>
+            </div>
+            <div id="stale-banner" class="stale-banner" hidden>
+              <strong>원본 등록 내용이 변경되었습니다.</strong> 이전에 저장한 요금은 새 등록 버전에 재사용되지 않습니다. 새 요금을 저장하기 전에 내용을 확인하고 필수 비용 포함 요금 안내를 다시 확인해 주세요.
+            </div>
+            <div id="editor-loading" class="panel-body loading" hidden aria-label="달력 불러오는 중"><div class="skeleton"></div><div class="skeleton"></div></div>
+            <div id="editor-content" hidden>
+              <div class="calendar-toolbar">
+                <button id="month-prev" class="month-arrow" type="button" aria-label="이전 달">←</button>
+                <h3 id="month-label" aria-live="polite"></h3>
+                <button id="month-next" class="month-arrow" type="button" aria-label="다음 달">→</button>
+                <span class="calendar-legend"><span class="legend-dot price-dot"></span> 요금 설정 <span class="legend-dot blocked-dot"></span> 이용 불가</span>
+              </div>
+              <div class="calendar-grid" role="grid" aria-label="요금 및 예약 가능 달력">
+                <div class="weekday" role="columnheader">월</div><div class="weekday" role="columnheader">화</div><div class="weekday" role="columnheader">수</div><div class="weekday" role="columnheader">목</div><div class="weekday" role="columnheader">금</div><div class="weekday" role="columnheader">토</div><div class="weekday" role="columnheader">일</div>
+                <div id="calendar-days" class="calendar-days"></div>
+              </div>
+              <p class="calendar-help">저장된 날짜별 요금은 각 날짜에 표시됩니다. 숙박업은 별도 요금이 없을 때 기본 요금이 적용될 수 있습니다. 비숙박업은 기간별 요금이 없으면 견적을 낼 수 없습니다.</p>
+              <div class="calendar-summary" id="calendar-summary" aria-live="polite"></div>
+
+              <div class="editor-divider"><span>향후 요금 변경</span></div>
+              <form id="price-form" novalidate>
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="range-start">시작일 <span class="required">*</span></label>
+                    <input id="range-start" name="start" type="date" required>
+                  </div>
+                  <div class="field">
+                    <label for="range-end">종료일 (미포함) <span class="required">*</span></label>
+                    <input id="range-end" name="end" type="date" required>
+                    <small class="hint">기간에 포함하지 않을 첫 날짜를 입력하세요. 하루만 변경하려면 다음 날을 종료일로 지정하세요.</small>
+                  </div>
+                </div>
+
+                <fieldset id="lodging-fields" class="rate-fields" hidden>
+                  <legend>1박 요금</legend>
+                  <div class="preset-row" aria-label="요일 선택 미리 설정">
+                    <button type="button" class="preset-button" data-preset="all">매일</button>
+                    <button type="button" class="preset-button" data-preset="weekdays">평일</button>
+                    <button type="button" class="preset-button" data-preset="weekend">금·토·일</button>
+                    <button type="button" class="preset-button" data-preset="friday">금요일</button>
+                    <button type="button" class="preset-button" data-preset="saturday">토요일</button>
+                    <button type="button" class="preset-button" data-preset="sunday">일요일</button>
+                  </div>
+                  <div class="weekday-picks">
+                    <label><input type="checkbox" name="weekday" value="0"> 월요일</label>
+                    <label><input type="checkbox" name="weekday" value="1"> 화요일</label>
+                    <label><input type="checkbox" name="weekday" value="2"> 수요일</label>
+                    <label><input type="checkbox" name="weekday" value="3"> 목요일</label>
+                    <label><input type="checkbox" name="weekday" value="4"> 금요일</label>
+                    <label><input type="checkbox" name="weekday" value="5"> 토요일</label>
+                    <label><input type="checkbox" name="weekday" value="6"> 일요일</label>
+                  </div>
+                  <div class="field amount-field">
+                    <label for="nightly-amount">1박 요금 (원) <span class="required">*</span></label>
+                    <input id="nightly-amount" type="number" inputmode="numeric" min="1" max="1000000000" step="1" placeholder="1원 이상의 정수 입력">
+                    <small class="hint">기간 안에서 선택한 요일에 같은 요금을 적용합니다. 특정 하루만 변경하려면 하루 범위로 설정하세요.</small>
+                  </div>
+                </fieldset>
+
+                <fieldset id="period-fields" class="rate-fields" hidden>
+                  <legend>비숙박 기간 요금</legend>
+                  <p class="field-explainer">정확히 맞는 전체 기간만 요금을 계산합니다. 최소 7일 이상이어야 하며, 7일 단위의 주 또는 체크인 기념일 기준 월 단위로 구성되어야 합니다. 월말은 해당 월의 마지막 날로 조정하며, 일부 기간을 일할 계산하지 않습니다.</p>
+                  <div class="period-inputs">
+                    <div class="field"><label for="weekly-amount">주간 요금 (7일, 원)</label><input id="weekly-amount" type="number" inputmode="numeric" min="1" max="1000000000" step="1" placeholder="변경하지 않음"><small class="hint">이 기간 요금을 사용하지 않으려면 ‘요금 지우기’를 선택하세요.</small><button type="button" class="clear-rate" data-clear="weekly">주간 요금 지우기</button></div>
+                    <div class="field"><label for="monthly-amount">월간 요금 (원)</label><input id="monthly-amount" type="number" inputmode="numeric" min="1" max="1000000000" step="1" placeholder="변경하지 않음"><small class="hint">최초 체크인 날짜의 기념일을 기준으로 월을 계산하며, 월말은 해당 월의 마지막 날로 조정합니다.</small><button type="button" class="clear-rate" data-clear="monthly">월간 요금 지우기</button></div>
+                  </div>
+                </fieldset>
+
+                <fieldset class="rate-fields availability-fields">
+                  <legend>예약 가능 여부</legend>
+                  <p class="field-explainer">향후 날짜 범위를 이용 불가로 설정하거나 다시 열 수 있습니다. 이용 가능 여부를 바꿔도 요금은 추가되거나 삭제되지 않습니다.</p>
+                  <div class="availability-actions">
+                    <button id="close-range" class="button danger" type="button">기간 이용 불가로 설정</button>
+                    <button id="open-range" class="button secondary" type="button">기간 다시 열기</button>
+                  </div>
+                </fieldset>
+
+                <div class="consent">
+                  <label for="inclusive-ack"><input id="inclusive-ack" type="checkbox"><span><strong>필수 비용이 포함된 숙박 요금임을 확인합니다.</strong> 입력한 요금에는 사업자의 필수 운영 비용이 포함되며, 보증금은 제외됩니다.</span></label>
+                  <p>변경할 때마다 확인해야 합니다. 원본 등록 버전이 바뀌면 새 버전에 요금을 입력하기 전에 다시 확인해 주세요.</p>
+                </div>
+                <div class="actions">
+                  <button id="save-rates" class="button primary" type="submit" disabled>요금 변경 저장</button>
+                  <span class="actions-note">예약이나 결제는 생성되지 않습니다.</span>
+                </div>
+              </form>
+            </div>
+            <div id="editor-empty" class="empty-state">등록 건을 선택하면 해당 달력을 확인할 수 있습니다.</div>
+          </section>
+        </div>
+
+        <section class="panel quote-panel" aria-labelledby="quote-title">
+          <div class="panel-head"><div><p class="kicker">PUBLIC LISTING CHECK</p><h2 id="quote-title">실제 숙박 견적 확인</h2></div><span class="quote-stamp">조회 전용 · 예약 아님</span></div>
+          <div class="quote-body">
+            <div class="quote-form">
+              <p>승인된 공개 숙소의 선택한 날짜에 대한 현재 견적을 요청합니다. 숙박업은 최소 1박, 비숙박업은 최소 7일이 필요합니다. 견적을 낼 수 없는 경우 예시 금액으로 대체하지 않습니다.</p>
+              <div class="form-grid quote-fields">
+                <div class="field"><label for="quote-check-in">체크인</label><input id="quote-check-in" type="date"></div>
+                <div class="field"><label for="quote-check-out">체크아웃</label><input id="quote-check-out" type="date"></div>
+              </div>
+              <button id="request-quote" class="button secondary" type="button" disabled>실제 견적 요청</button>
+            </div>
+            <div id="quote-result" class="quote-result" aria-live="polite">
+              <div class="quote-empty"><span class="quote-mark" aria-hidden="true">—</span><strong>요청한 견적이 없습니다</strong><span>현재 공개 중인 승인 숙소를 선택한 뒤 날짜를 지정하세요.</span></div>
+            </div>
+          </div>
+          <p class="quote-caveat">견적은 요금 미리보기일 뿐입니다. 예약, 재고 확보, 결제 요청 또는 예약 확정이 아니며 보증금은 포함되지 않습니다.</p>
+        </section>
+      </div>
+
+      <footer class="page-footer"><span>HOME &amp; STAY · 사업자 전용 요금 관리</span><span>원화 · 현지 날짜 기준 · 향후 날짜 범위만 변경</span></footer>
+    </main>
+  </div>
+</body>
+</html>

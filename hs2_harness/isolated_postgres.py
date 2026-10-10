@@ -19,6 +19,7 @@ FIXTURE_CHECKS = {
     "phase4-auth-db": "tests/test_hs2_phase4_auth_db.py",
     "phase5-consumer-db": "tests/test_hs2_phase5_db.py",
     "phase6-listing-db": "tests/test_hs2_phase6_db.py",
+    "phase7-calendar-db": "tests/test_hs2_phase7_db.py",
 }
 
 
