@@ -7,9 +7,9 @@
     "production_publish": {"automatic_execution": false, "requires": "owner approval, all gates PASS, release and recovery review"}
   },
   "stages": [
-    {"id":1,"title":"도메인 계약·보존 경계 확정","requirements":["PRESERVE-01","PRESERVE-02","HARNESS-01"],"regression":["lodging-status","lodging-types","auction-domain","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
-      {"id":"S01-A01","criterion":"숙박/비숙박 판정 계약에 영업분류·건축용도·채널 구분 및 Airbnb/농어촌/캠핑 숙박 후보 포함","check":null},
-      {"id":"S01-A02","criterion":"신규 등록 후보와 기존 숙박 master ID/원장을 분리한 도메인 계약·변경 영향 검증","check":null}]},
+    {"id":1,"title":"도메인 계약·보존 경계 확정","requirements":["PRESERVE-01","PRESERVE-02","HARNESS-01","PRESERVE-03","PRESERVE-04","BUILDING-01","BUILDING-02","STAY-01","STAY-02","PRICE-01","PRICE-02","BOOKING-01"],"regression":["lodging-status","lodging-types","auction-domain","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
+      {"id":"S01-A01","criterion":"숙박/비숙박 판정 계약에 영업분류·건축용도·채널 구분 및 Airbnb/농어촌/캠핑 숙박 후보 포함","check":"phase1-use-contracts"},
+      {"id":"S01-A02","criterion":"신규 등록 후보와 기존 숙박 master ID/원장을 분리한 도메인 계약·변경 영향 검증","check":"phase1-graph-contracts"}]},
     {"id":2,"title":"계정·로그인·복수 역할","requirements":["AUTH-01"],"regression":["lodging-status","relay","map-legacy","admin-scope","privacy-ui"],"acceptance":[
       {"id":"S02-A01","criterion":"이용자 카카오/운영자 이메일 진입·실패·로그아웃 및 비승인 역할 접근 거절","check":null},
       {"id":"S02-A02","criterion":"기존 회원 이력·복수 사업장 전환 보존, 이메일만으로 계정 자동 병합 금지","check":null}]},

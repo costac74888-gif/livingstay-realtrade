@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "current_stage": 0,
+  "current_stage": 1,
   "handoff": {
     "phase": "0.5",
     "status": "READY_FOR_WORK",
@@ -199,7 +199,12 @@
   },
   "stages": {
     "1": {
-      "status": "PENDING"
+      "status": "IN_PROGRESS",
+      "start": {
+        "head": "2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88",
+        "tag": "hs2/stage-01/start",
+        "at": "2026-10-10T10:25:25.890386+00:00"
+      }
     },
     "2": {
       "status": "PENDING"
@@ -788,6 +793,13 @@
         "preserved_routes": 616,
         "must_exist": 10
       }
+    },
+    {
+      "at": "2026-10-10T10:25:25.890427+00:00",
+      "event": "STAGE_START",
+      "stage": 1,
+      "head": "2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88",
+      "tag": "hs2/stage-01/start"
     }
   ]
 }

@@ -1,12 +1,12 @@
 # HOME & STAY 2.0 Harness 상태
 
 - 하네스 자체검사: **PASS**
-- 현재 개발 단계: **0** (0 = 아직 시작 전)
+- 현재 개발 단계: **1** (0 = 아직 시작 전)
 - 운영 migration / 실제 PG·정산 / 배포: 자동 실행 불가
 
 | 단계 | 상태 | 시작 Git | 완료 Git |
 | --- | --- | --- | --- |
-| 1 | PENDING | - | - |
+| 1 | IN_PROGRESS | 2f8ab20b3ef843a6b7d3e8f7abda8649ca986d88 | - |
 | 2 | PENDING | - | - |
 | 3 | PENDING | - | - |
 | 4 | PENDING | - | - |

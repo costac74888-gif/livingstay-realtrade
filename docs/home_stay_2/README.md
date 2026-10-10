@@ -5,6 +5,10 @@
 단계를 시작하지 않았다는 뜻이다. 원격 인계 브랜치·체크포인트·초기 검사·승인
 경계는 인계 문서를 먼저 확인한다.
 
+**Phase 1 설계 진입점:** [phase1/README.md](phase1/README.md).
+상단은 0.5 인계 당시의 설명이며 현재 단계는 state.json/stages 기준이다.
+새 지시 Phase 1과 기존 단계 순서를 혼동하지 않고, 후속 단계는 별도 지시 전까지 시작하지 않는다.
+
 이 하네스는 제품 기능 개발이나 운영 실행기를 대신하지 않는다.
 `MASTER_SPEC.md`(고정 요구사항), `stages.json`(18단계 및 acceptance 기준),
 `checks.json`(검토한 실행 검사), `preservation_baseline.json`(보존 기준),

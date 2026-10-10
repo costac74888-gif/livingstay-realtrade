@@ -7,5 +7,7 @@
   "relay": {"file":"tests/test_hs2_relay_contract.py","kind":"python","role":"regression","reviewed_sha256":"a50c384345d3d93d72b143bb3145457bb9e5f29d64db67119012488d8bf10606"},
   "map-legacy": {"file":"tests/auction_map_exclusive_test.cjs","kind":"node","role":"regression","reviewed_sha256":"3fc9217bb2ba64dab9dbe68be6144c6be254b87a882a01ebb49f590e0d18e6d0"},
   "admin-scope": {"file":"tests/admin_data_sync_scope_test.js","kind":"node","role":"regression","reviewed_sha256":"cc775704f4b22fa44f7addb0e6e35a74cb2cb38b7cb1806a7d70b52ed86a795c"},
-  "privacy-ui": {"file":"tests/listings_card_layout_test.js","kind":"node","role":"regression","reviewed_sha256":"1aa2c0f0d8f412e07f6765831af1627dc989ed24e4513b107febc8aa4e1068dd"}
+  "privacy-ui": {"file":"tests/listings_card_layout_test.js","kind":"node","role":"regression","reviewed_sha256":"1aa2c0f0d8f412e07f6765831af1627dc989ed24e4513b107febc8aa4e1068dd"},
+  "phase1-use-contracts": {"file":"tests/test_hs2_phase1_use_contracts.py","kind":"python","role":"acceptance","reviewed_sha256":"3f58c00b72d20dad6432ae7df36a0c5da174c02bd92306e0cae3c7791d241e96"},
+  "phase1-graph-contracts": {"file":"tests/test_hs2_phase1_graph_contracts.py","kind":"python","role":"acceptance","reviewed_sha256":"1d6c4ce3150185b90648537d099ee0e7d4e10b1a15317c909d808037af8b4c65"}
 }
