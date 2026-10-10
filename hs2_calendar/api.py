@@ -29,7 +29,8 @@ def create_blueprint(repo, *, resolve_context, csrf_token, check_csrf, allow_quo
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'self'"
-        return response
+        from hs2_design.security import harden
+        return harden(response)
 
     @bp.errorhandler(ContractError)
     def error(exc):

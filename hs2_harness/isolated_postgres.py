@@ -27,6 +27,7 @@ FIXTURE_CHECKS = {
     "phase12-dashboard-db": "tests/test_hs2_phase12_db.py",
     "phase13-workspace-db": "tests/test_hs2_phase13_db.py",
     "phase15-admin-db": "tests/test_hs2_phase15_db.py",
+    "phase17-integration-db": "tests/test_hs2_phase17_db.py",
 }
 
 

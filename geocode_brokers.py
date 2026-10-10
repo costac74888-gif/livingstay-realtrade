@@ -21,6 +21,7 @@ python geocode_brokers.py --limit 100 # 앞의 100건만 (파일럿용)
 """
 
 import argparse
+from secret_redaction import redact_exception
 import os
 import sys
 import threading
@@ -189,8 +190,7 @@ def main():
         updated, skipped, targets, with_coord, total_all = geocode_brokers(
             limit=args.limit, status_key=args.status_key, run_id=run_id)
     except Exception as e:
-        error = (str(e).replace(KAKAO_REST_API_KEY, "***")
-                 if KAKAO_REST_API_KEY else str(e))[:500]
+        error = redact_exception(e, ["KAKAO_REST_API_KEY"])[:500]
         print(f"[geocode_brokers] 실패: {error}", flush=True)
 
     if args.status_key and run_id is not None:

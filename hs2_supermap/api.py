@@ -22,7 +22,8 @@ def create_blueprint(repo, *, map_config, allow_request):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Referrer-Policy"] = "same-origin"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        return response
+        from hs2_design.security import harden
+        return harden(response)
 
     @bp.errorhandler(ContractError)
     def error(exc):

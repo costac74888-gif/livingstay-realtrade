@@ -79,7 +79,8 @@ def create_blueprint(*, current_user, get_contexts, email_login, member_logout,
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
-        return response
+        from hs2_design.security import harden
+        return harden(response)
 
     @bp.get("/hs2/mode")
     def mode_page():

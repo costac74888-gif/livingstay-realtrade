@@ -51,5 +51,7 @@
   "phase15-admin-db": {"file":"tests/test_hs2_phase15_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"aa69e39e78ad2858f0d23a39ed8d215148d89997a3e2c9d8984a14466a5f973e"},
   "phase15-admin-ui": {"file":"tests/hs2_phase15_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"625ea67ba5cbea4aa58947c22c3b6a342b994e0e0379b6d1b0ba284b3beab8d1"},
   "phase16-mobile-contracts": {"file":"tests/test_hs2_phase16_mobile.py","kind":"python","role":"acceptance","reviewed_sha256":"7bafdad644cc5588ac416f9d31de03477d2febe1fb3f87a0082e57f4c96af4ab"},
-  "phase16-mobile-ui": {"file":"tests/hs2_phase16_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"97574bc0885da5be722638425ada54a503464d2142f8ef544e7cba84d992266e"}
+  "phase16-mobile-ui": {"file":"tests/hs2_phase16_ui_test.cjs","kind":"node","role":"acceptance","isolation":"private-browser-fixture","reviewed_sha256":"97574bc0885da5be722638425ada54a503464d2142f8ef544e7cba84d992266e"},
+  "phase17-integration-db": {"file":"tests/test_hs2_phase17_db.py","kind":"python","role":"acceptance","isolation":"temporary-postgres","reviewed_sha256":"552b4521f92742f7050f4c72dcd8e98096c02751f09b19f5b2a84b28729fc143"},
+  "phase17-security": {"file":"tests/test_hs2_phase17_security.py","kind":"python","role":"acceptance","reviewed_sha256":"78f76fb0c5eb32efed687b82ccd361456d79644645c61ecf7f56f3e0d8c13c75"}
 }

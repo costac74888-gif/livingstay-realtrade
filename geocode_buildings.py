@@ -30,6 +30,7 @@ import requests
 
 from db import get_conn
 from stats_cache import mark_master_stats_invalidated
+from secret_redaction import redact_exception
 # 관리자 버튼용 상태 기록(run_id 펜싱 + 하트비트)은 sync_lodgings와 동일한 로직 재사용
 from sync_lodgings import _read_status, _write_status, _touch, _still_owner, HEARTBEAT_SEC
 
@@ -209,8 +210,7 @@ def main():
         updated, skipped, targets, with_coord, total_all = geocode_buildings(
             limit=args.limit, status_key=args.status_key, run_id=run_id)
     except Exception as e:
-        error = (str(e).replace(KAKAO_REST_API_KEY, "***")
-                 if KAKAO_REST_API_KEY else str(e))[:500]
+        error = redact_exception(e, ["KAKAO_REST_API_KEY"])[:500]
         print(f"[geocode] 실패: {error}")
 
     if args.status_key and run_id is not None:

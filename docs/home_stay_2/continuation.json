@@ -71,7 +71,10 @@
       {"id":"P16-A01","criterion":"Original HTML/controller/SDK/API shell reused, original desktop route unchanged, separate mobile presentation/no fake data, no-store, actual FAQ search entry route","check":"phase16-mobile-contracts"},
       {"id":"P16-A02","criterion":"Real320/390px SQL listing↔map single panes, ARIA, actual markers, original desktop panes/return choice, identical server rows; nonempty and nooverflow across consumer/listings/calendar/bookings/finance/dashboard/workspace/help/admin, no JS exception","check":"phase16-mobile-ui"}
     ]},
-    {"id":17,"title":"통합 Regression/Security/Payment Validation","native_acceptance":["S17-A01","S17-A02","S18-A01"],"acceptance":null},
+    {"id":17,"title":"통합 Regression/Security/Payment Validation","native_acceptance":["S17-A01","S17-A02","S18-A01"],"acceptance":[
+      {"id":"P17-A01","criterion":"Integrated SQL favorites/booking/participant chat/operator approval/admin-policy reacknowledgement/signed test payment replay/single confirmation/paid cancellation/immutable terms/atomic notifications/admin ledger; forged proof/foreign member rejected/no actual money, real composite hardening and CSRF","check":"phase17-integration-db"},
+      {"id":"P17-A02","criterion":"All additive response hardening calls, strict existing CSP/private preserved, parser not SQL executor, synthetic encoded-secret redaction/geocode use, vulnerable glob removed; three scanners reviewed honestly with legacy privacy/smoke/api/provider/host limitations not claimed clean or live","check":"phase17-security"}
+    ]},
     {"id":18,"title":"Cutover/Open","native_acceptance":["S18-A01","S18-A02"],"acceptance":null}
   ]
 }

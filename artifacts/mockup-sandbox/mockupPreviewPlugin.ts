@@ -1,12 +1,11 @@
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, writeFileSync } from 'fs';
 import path from 'path';
 import chokidar, { type FSWatcher } from 'chokidar';
-import glob from 'fast-glob';
 import type { Plugin } from 'vite';
 
 /**
  * Vite plugin that dynamically discovers mockup components and writes them to
- * a generated module under src/.generated. Uses fast-glob for initial
+ * a generated module under src/.generated. Uses bounded directory traversal for initial
  * discovery and a dedicated chokidar watcher (with awaitWriteFinish) for
  * reliable file monitoring.
  *
@@ -58,10 +57,21 @@ export function mockupPreviewPlugin(): Plugin {
   }
 
   async function discoverComponents(): Promise<Array<DiscoveredComponent>> {
-    const files = await glob(`${MOCKUPS_DIR}/**/*.tsx`, {
-      cwd: root,
-      ignore: ['**/_*/**', '**/_*.tsx'],
-    });
+    const files: string[] = [];
+    const dirs = existsSync(getMockupsAbsDir()) ? [getMockupsAbsDir()] : [];
+    while (dirs.length) {
+      const dir = dirs.pop()!;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('_') || entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        // Do not follow symlinks outside the owned component directory.
+        if (entry.isDirectory()) dirs.push(full);
+        else if (entry.isFile() && entry.name.endsWith('.tsx')) {
+          files.push(path.relative(root, full).split(path.sep).join('/'));
+        }
+      }
+    }
+    files.sort();
 
     return files.map((f) => ({
       globKey: './' + f.slice('src/'.length),

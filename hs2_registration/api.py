@@ -22,7 +22,8 @@ def create_blueprint(service, resolve_actor, check_csrf):
         response.headers["Cache-Control"]="no-store, private"
         response.headers["X-Content-Type-Options"]="nosniff"
         response.headers["Content-Security-Policy"]="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'"
-        return response
+        from hs2_design.security import harden
+        return harden(response)
 
     @bp.errorhandler(RegistrationError)
     def invalid(e):

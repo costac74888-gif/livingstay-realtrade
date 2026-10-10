@@ -158,6 +158,7 @@ def configuration():
             ("phase13-workspace-ui","tests/hs2_phase13_ui_test.cjs"):("node","private-browser-fixture"),
             ("phase14-help-ui","tests/hs2_phase14_ui_test.cjs"):("node","private-browser-fixture"),
             ("phase15-admin-db","tests/test_hs2_phase15_db.py"):("python","temporary-postgres"),
+            ("phase17-integration-db","tests/test_hs2_phase17_db.py"):("python","temporary-postgres"),
             ("phase15-admin-ui","tests/hs2_phase15_ui_test.cjs"):("node","private-browser-fixture"),
             ("phase16-mobile-ui","tests/hs2_phase16_ui_test.cjs"):("node","private-browser-fixture"),
         }
