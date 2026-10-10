@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "phase1_checkpoint": "dc72cd7257a1c1c8570ba3afbd0a364b9a1b05fc",
+  "user_phase": 2,
+  "scope": "Isolated development data extension; not native stage 2 authentication",
+  "stop_after_phase": 2,
+  "acceptance": [
+    {"id":"P02-A01","criterion":"Real isolated PostgreSQL additive structures, exact legacy links, scoped rights, limited DTO, immutable fixture prices, migration/rollback, legacy rows/sequence preservation","check":"phase2-data-contracts"},
+    {"id":"P02-A02","criterion":"Immutable Phase 1 receipt, unchanged native plan/gates, whole-registry verification, failed/stale/incomplete results block completion","check":"phase2-gate-contracts"}
+  ]
+}

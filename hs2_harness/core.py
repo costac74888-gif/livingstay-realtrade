@@ -132,6 +132,12 @@ def configuration():
         raise GateError("Duplicate check ID")
     for name, check in registry.items():
         path = ROOT / check["file"]
+        if check.get("isolation") is not None and (
+                name != "phase2-data-contracts"
+                or check["file"] != "tests/test_hs2_phase2_data.py"
+                or check["kind"] != "python"
+                or check["isolation"] != "temporary-postgres"):
+            raise GateError("Unreviewed isolated database capability")
         if (check["kind"] not in {"python", "node"}
                 or check["role"] not in {"regression", "acceptance", "harness"}
                 or not path.is_file()
@@ -180,6 +186,9 @@ def test_env(work):
 
 def run_check(name, check, timeout=120):
     """No shell; bounded process group; logs stay outside deployment/Git."""
+    if check.get("isolation") == "temporary-postgres":
+        from .isolated_postgres import run_check as isolated_check
+        return isolated_check(name, check, timeout)
     GENERATED.mkdir(parents=True, exist_ok=True)
     file = check["file"]
     command = ([sys.executable, "-m", "unittest", "discover", "-s",

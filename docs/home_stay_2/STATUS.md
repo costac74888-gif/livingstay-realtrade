@@ -24,3 +24,9 @@
 | 16 | PENDING | - | - |
 | 17 | PENDING | - | - |
 | 18 | PENDING | - | - |
+
+## 현재 사용자 Phase 2 — RUNNING
+
+격리 PostgreSQL 데이터 확장만 구현·검증 중. Phase 1 COMPLETE 기록 보존.
+저장소 2~18단계 PENDING; 운영 DB/PG/배포 금지. 원격: NOT_PUSHED.
+다음: 확장 구조·개발용 migration·복구 검사 후 전체 등록 검사.

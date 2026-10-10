@@ -1282,6 +1282,29 @@
       "stage": 1,
       "head": "0eeae945ed074aca7b4e26f0b7008b397105108b",
       "tag": "hs2/stage-01/complete"
+    },
+    {
+      "at": "2026-10-10T11:37:35.859366+00:00",
+      "event": "USER_PHASE_START",
+      "phase": 2,
+      "status": "RUNNING",
+      "scope": "Isolated PostgreSQL data extension only; native stages 2-18 remain PENDING"
     }
-  ]
+  ],
+  "current_user_phase": 2,
+  "user_phases": {
+    "2": {
+      "status": "RUNNING",
+      "scope": "Isolated PostgreSQL data extension only; native stages 2-18 remain PENDING",
+      "start": {
+        "head": "dc72cd7257a1c1c8570ba3afbd0a364b9a1b05fc",
+        "tag": "hs2/phase-02/start",
+        "at": "2026-10-10T11:37:35.859340+00:00"
+      },
+      "remote": {
+        "status": "NOT_PUSHED"
+      },
+      "next_action": "Implement additive fixture-only structures, migrations and recovery; run all registered checks"
+    }
+  }
 }
