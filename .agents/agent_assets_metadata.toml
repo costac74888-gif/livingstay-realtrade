@@ -836,3 +836,17 @@ mtime_ms = 1791669583383
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/2f224ea9-7239-4171-912d-10f48427e7f0/7fe2cb5c-852c-4242-8266-4858a86931d5"
 storage_version_token = "1791669585255879"
 content_type = "text/html"
+
+[[outputs]]
+id = "U7vLhYLw518itQOrkzF9G"
+uri = "file://generated-artifacts/preapproval-readiness.html"
+type = "html"
+title = "승인 전 검증 보고서"
+description = "등록 검사 58 PASS와 별도 경계 검사, API·범용 검사 실패, 실제 연동 미확인, 승인·백업·복구 범위를 구분한 보고서."
+logical_id = "b5b99b68-c6aa-4d5e-bd16-812dd76655e7"
+content_hash = "sha256:add565413e59f944bbc41b81b46ba5cc531abaa2a5894190d649892e4b0f98cf"
+size = 6117
+mtime_ms = 1791672404843
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/b5b99b68-c6aa-4d5e-bd16-812dd76655e7/b63e54dd-dfdc-495f-abc9-07e54659ab28"
+storage_version_token = "1791672406813818"
+content_type = "text/html"
