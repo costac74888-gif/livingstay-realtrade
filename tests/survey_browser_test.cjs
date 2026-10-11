@@ -7,7 +7,7 @@ const assert = require("node:assert/strict");
 const python = code => execFileSync("python", ["-c", code], {encoding:"utf8"}).trim();
 
 (async () => {
-  const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const id = Number(python(`from db import get_conn
 c=get_conn()
 try:

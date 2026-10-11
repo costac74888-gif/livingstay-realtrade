@@ -6,7 +6,12 @@ if os.environ.get("HOMENSTAY_OFFLINE_TESTS") == "1":
     import signal
     from urllib.parse import urlsplit
     import urllib.request
-    import requests
+    try:
+        import requests
+    except Exception:
+        # Python otherwise suppresses sitecustomize errors and executes the
+        # target without a guard. Missing guard dependencies must stop startup.
+        os._exit(78)
 
     _original_request = requests.sessions.Session.request
     _local_hosts = {"localhost", "127.0.0.1", "::1", os.environ.get("REPLIT_DEV_DOMAIN", "")}
@@ -62,3 +67,27 @@ if os.environ.get("HOMENSTAY_OFFLINE_TESTS") == "1":
         def _terminate_test(_signal, _frame):
             raise SystemExit("Offline test deadline/cancellation; cleaning up")
         signal.signal(signal.SIGTERM, _terminate_test)
+
+    # Nested builders/tests sometimes prepend this directory to PYTHONPATH.
+    # Do not lose the lowest-level DB/socket guard when that happens.
+    if os.environ.get("HOMENSTAY_LEGACY_SOCKET"):
+        import runpy
+        from pathlib import Path
+        try:
+            runpy.run_path(str(Path(__file__).parents[1] / "owned_legacy_guard/sitecustomize.py"))
+        except BaseException:
+            os._exit(78)
+    else:
+        try:
+            import psycopg2
+        except Exception:
+            os._exit(78)
+        import socket
+        def _deny_db(*args, **kwargs):
+            raise RuntimeError("OFFLINE_ISOLATION: owned DB capability required")
+        psycopg2.connect = psycopg2._connect = psycopg2._psycopg.connect = _deny_db
+        def _deny_socket(*args, **kwargs):
+            raise OSError("OFFLINE_ISOLATION: owned socket capability required")
+        socket.socket.connect = socket.socket.connect_ex = _deny_socket
+        socket.create_connection = _deny_socket
+        socket.getaddrinfo = _deny_socket

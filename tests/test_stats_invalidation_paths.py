@@ -1090,6 +1090,9 @@ class AppMutationInvalidationTests(unittest.TestCase):
         events = []
 
         def respond(sql, _params):
+            if sql.startswith("SELECT 1 FROM operators a"):
+                self.assertEqual(_params, (17, "operators"))
+                return {"exists": 1}  # approved synthetic legacy operator
             if sql.startswith("DELETE FROM operator_buildings"):
                 events.append("operator_building_delete_write")
                 return ("rowcount", 1)
@@ -1113,10 +1116,14 @@ class AppMutationInvalidationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         marker.assert_called_once()
 
-        missing = FakeConnection(FakeCursor(
-            lambda sql, _params: ("rowcount", 0)
-            if sql.startswith("DELETE FROM operator_buildings") else None
-        ))
+        def missing_response(sql, params):
+            if sql.startswith("SELECT 1 FROM operators a"):
+                self.assertEqual(params, (17, "operators"))
+                return {"exists": 1}
+            if sql.startswith("DELETE FROM operator_buildings"):
+                return ("rowcount", 0)
+            return None
+        missing = FakeConnection(FakeCursor(missing_response))
         with (
             patch.object(app_module, "get_conn", return_value=missing),
             patch.object(app_module, "mark_master_stats_invalidated") as marker,

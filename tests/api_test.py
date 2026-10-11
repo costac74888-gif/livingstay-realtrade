@@ -6666,8 +6666,11 @@ def _check_datalab_stats(client):
             "permit_count", "room_count", "closed_rate", "lodging_metric",
             "report_rate_numerator", "report_rate_denominator", "report_rate_basis",
         }
-        if not admin_rows or any(not admin_required <= set(row) for row in admin_rows):
-            failures.append("데이터랩 전국숙박업통계: 관리자 전체 통계 원본 컬럼이 사라짐")
+        from offline_support.admin_stats_contract import admin_stats_contract_errors
+        failures.extend(
+            "데이터랩 전국숙박업통계: " + error
+            for error in admin_stats_contract_errors(admin_rows, admin_required)
+        )
         public_rows = public_stats.get("rows") or []
         public_allowed = {
             "type", "building_count", "units", "biz_count", "room_count",

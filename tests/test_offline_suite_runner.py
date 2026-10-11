@@ -57,7 +57,13 @@ time.sleep(%s)
                 env=os.environ.copy(), timeout=timeout, logfile=folder / "output.log")
             child_pid = int((folder / "child.pid").read_text())
             proc = Path(f"/proc/{child_pid}/stat")
-            self.assertTrue(not proc.exists() or proc.read_text().split()[2] == "Z",
+            try:
+                child_state = proc.read_text().split()[2]
+            except (FileNotFoundError, ProcessLookupError):
+                # Kernel reaping can occur between an existence check and
+                # reading /proc. That proves cleanup, not a runner failure.
+                child_state = None
+            self.assertTrue(child_state in {None, "Z"},
                             "Descendant is still executing")
             self.assertFalse(Path((folder / "temp.path").read_text()).exists())
             self.assertTrue(result["process_group_cleaned"])

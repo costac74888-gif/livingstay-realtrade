@@ -26,7 +26,8 @@ class LodgingStatsUiTests(unittest.TestCase):
         self.assertIn(".datalab-table-wrap{overflow-x:hidden;", css)
         self.assertIn(".datalab-table{width:100%; min-width:0; table-layout:fixed;", css)
         main = (ROOT / "static" / "js" / "main.js").read_text(encoding="utf-8")
-        self.assertIn('class="datalab-head-stack">건물수(캠핑시설수)</span>', main)
+        self.assertIn('class="datalab-head-stack">건물수<small>(시설수)</small></span>', main)
+        self.assertIn('캠핑 행은 건물이 아닌 활성 시설 수입니다.', main)
         self.assertIn('class="datalab-head-stack">호실수<small>(사이트수)</small>', main)
 
 

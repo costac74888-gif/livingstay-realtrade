@@ -5,7 +5,7 @@ const {chromium}=require("playwright");
 const {execFileSync}=require("node:child_process");
 const assert=require("node:assert/strict");
 const python=code=>execFileSync("python",["-c",code],{encoding:"utf8"}).trim();
-const base=`https://${process.env.REPLIT_DEV_DOMAIN}`;
+const base=process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
 const json=async r=>{assert.equal(r.status(),200);return r.json()};
 

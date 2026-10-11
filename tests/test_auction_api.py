@@ -1,6 +1,7 @@
 """온비드 네트워크/알림을 발송하지 않는 공개 API·권한·노출기간 검사."""
 import json
 import unittest
+import os
 import uuid
 from unittest.mock import patch, MagicMock
 
@@ -175,12 +176,12 @@ class AuctionApiTest(unittest.TestCase):
             with conn.cursor() as cur:
                 cur.execute(f""" SELECT a.id,a.master_building_id,
                   ({VISIBLE_SQL}) AS publicly_visible FROM auction_items a
-                  WHERE a.source_item_id='2026-0500-027097' AND {ELIGIBLE_SQL}
+                  WHERE a.source_item_id=%s AND {ELIGIBLE_SQL}
                   AND a.raw->'list'->>'thnlImgUrlAdr' IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM auction_photos p
                     JOIN auction_items owner ON owner.id=p.auction_item_id
                     WHERE owner.source=a.source AND owner.source_item_id=a.source_item_id)
-                  LIMIT 1""")
+                  LIMIT 1""", [os.environ.get("TEST_LIST_ONLY_AUCTION_ID", "2026-0500-027097")])
                 row = cur.fetchone()
         self.assertIsNotNone(row, "Validate a real unmatched item with a list-only thumbnail")
         response = self.client.get("/api/auctions/" + str(row["id"]))
@@ -188,7 +189,8 @@ class AuctionApiTest(unittest.TestCase):
         data = response.get_json()
         self.assertIsNotNone(data["building"])
         self.assertEqual(data["building"]["id"], data["item"]["master_building_id"])
-        self.assertEqual(data["building"]["jibun_address"], "부산광역시 해운대구 중동 1124-8")
+        self.assertEqual(data["building"]["jibun_address"],
+                         os.environ.get("TEST_LIST_ONLY_JIBUN", "부산광역시 해운대구 중동 1124-8"))
         self.assertTrue(data["item"]["thumbnail_url"])
         self.assertEqual(data["photos"][0]["url"], data["item"]["thumbnail_url"])
         self.assertEqual(data["photos"][0]["source"], "auction")

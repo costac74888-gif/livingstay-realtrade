@@ -5,7 +5,7 @@ const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 (async () => {
-  const base = `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  const base = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
   const browser = await chromium.launch({ executablePath: execFileSync("which", ["chromium"], { encoding: "utf8" }).trim(), args: ["--no-sandbox"] });
   const context = await browser.newContext({ ignoreHTTPSErrors: true, userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36", viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();

@@ -21,7 +21,9 @@ def fixture():
            if k in {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONHOME", "PYTHONUSERBASE",
                     "LD_LIBRARY_PATH", "NIX_LD", "NIX_LD_LIBRARY_PATH"}}
     proc = None
-    with tempfile.TemporaryDirectory(prefix="homenstay-legacy-pg-") as name:
+    # Suite runners set TMPDIR for child artifacts. DB capability paths must
+    # remain rooted in /tmp, not inside that inherited artifact directory.
+    with tempfile.TemporaryDirectory(prefix="homenstay-legacy-pg-", dir="/tmp") as name:
         root = Path(name)
         sock = root / "socket"
         sock.mkdir(mode=0o700)
@@ -45,16 +47,18 @@ def fixture():
                         raise RuntimeError("Owned PostgreSQL startup failed")
                     time.sleep(.05)
                 env.update(
+                    HOME=str(root),
                     HOMENSTAY_LEGACY_SOCKET=str(sock),
                     DATABASE_URL=f"postgresql://legacy_fixture@/postgres?host={sock}&port=55438&sslmode=disable",
+                    PROD_DATABASE_URL=f"postgresql://legacy_fixture@/owned_baseline?host={sock}&port=55438&sslmode=disable",
                     DISABLE_EXTERNAL_NOTIFICATIONS="1", SKIP_APP_BOOT_TASKS="1",
                     SKIP_STARTUP_SCHEMA_INIT="0", FLASK_SECRET_KEY="owned-legacy-test-only",
                     KAKAO_JS_KEY="owned-test-sdk-placeholder",
                     HOMENSTAY_OFFLINE_TESTS="1",
-                    PYTHONPATH=str(ROOT / "tests" / "owned_legacy_guard") + ":" + str(ROOT),
+                    PYTHONPATH=os.pathsep.join(dict.fromkeys(
+                        [str(ROOT / "tests" / "owned_legacy_guard"), str(ROOT), str(ROOT / "tests")]
+                        + [p for p in sys.path if p and Path(p).is_dir()])),
                     NODE_OPTIONS="--require=" + str(ROOT / "tests" / "offline_support" / "browser_guard.cjs"))
-                env["PYTHONPATH"] += "".join(
-                    ":" + p for p in sys.path if p and "site-packages" in p and Path(p).is_dir())
                 work = root / "workspace"
                 work.mkdir()
                 for entry in ROOT.iterdir():
@@ -78,26 +82,22 @@ def fixture():
                         proc.wait()
                 print("Owned legacy PostgreSQL stopped and temporary data deleted.")
 
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("suite", choices=["smoke", "api"])
-    args = parser.parse_args()
-    child = None
-    with fixture() as env:
-        try:
-            # The frozen initializer assumes an existing legacy schema (some
-            # ALTERs precede CREATEs). Seed exact original literal CREATEs in
-            # dependency order, not live rows, before importing that initializer.
-            tree = ast.parse((ROOT / "db.py").read_text())
-            prerequisite = [node.args[0].value for node in ast.walk(tree)
-                            if isinstance(node, ast.Call) and node.args
-                            and isinstance(node.args[0], ast.Constant)
-                            and isinstance(node.args[0].value, str)
-                            and node.args[0].value.lstrip().startswith(
-                                "CREATE TABLE IF NOT EXISTS ")]
-            setup = """import os,psycopg2
+def prepare_fixture(env):
+    # The frozen initializer assumes an existing legacy schema (some ALTERs
+    # precede CREATEs). Seed its exact literal CREATEs in dependency order.
+    tree = ast.parse((ROOT / "db.py").read_text())
+    prerequisite = [node.args[0].value for node in ast.walk(tree)
+                    if isinstance(node, ast.Call) and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and node.args[0].value.lstrip().startswith(
+                        "CREATE TABLE IF NOT EXISTS ")]
+    setup = """import os,psycopg2
 c=psycopg2.connect(os.environ['DATABASE_URL'])
+c.autocommit=True
+c.cursor().execute('CREATE DATABASE owned_baseline')
+c.cursor().execute('ALTER DATABASE owned_baseline SET default_transaction_read_only=on')
+c.autocommit=False
 q=c.cursor()
 remaining=DDL
 while remaining:
@@ -127,17 +127,23 @@ q.executemany(
       '41150','의정부동',str(9000+i),20,'생활',
       37.5 if i<35 else 35.16,127.05 if i<35 else 129.05) for i in range(40)])
 c.commit()
-import sys
-sys.path.insert(0, TEST_HELPERS)
-from legacy_sample_fixture import seed
-seed(c)
 c.close()
-print('Synthetic regions/specimens seeded; no real property rows copied.')
-""".replace("remaining=DDL", f"remaining={prerequisite!r}").replace("TEST_HELPERS", repr(str(ROOT / "tests")))
-            prepared = subprocess.run([sys.executable, "-c", setup], cwd=ROOT, env=env,
-                                      timeout=60)
-            if prepared.returncode:
-                raise RuntimeError("Owned legacy schema/fixture bootstrap failed")
+print('Forty synthetic master buildings seeded; no real property rows copied.')
+from offline_support.seed_legacy import seed
+seed()
+""".replace("remaining=DDL", f"remaining={prerequisite!r}")
+    prepared = subprocess.run([sys.executable, "-c", setup], cwd=ROOT, env=env,
+                              timeout=60)
+    if prepared.returncode:
+        raise RuntimeError("Owned legacy schema/fixture bootstrap failed")
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("suite", choices=["smoke", "api"])
+    args = parser.parse_args()
+    child = None
+    with fixture() as env:
+        try:
+            prepare_fixture(env)
             child = subprocess.Popen(
                 [sys.executable, str(ROOT / "tests" / (args.suite + "_test.py"))],
                 cwd=env["HOMENSTAY_LEGACY_WORKSPACE"], env=env, start_new_session=True)
@@ -156,4 +162,7 @@ print('Synthetic regions/specimens seeded; no real property rows copied.')
 
 
 if __name__ == "__main__":
+    def terminate(_signal, _frame):
+        raise SystemExit("Owned legacy runner cancelled; cleaning up")
+    signal.signal(signal.SIGTERM, terminate)
     sys.exit(main())
