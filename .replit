@@ -175,7 +175,7 @@ build = ["npm", "run", "build:frontend"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 120000
+timeoutMs = 240000
 
 [[ports]]
 localPort = 5000
