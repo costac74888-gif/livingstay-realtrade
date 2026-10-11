@@ -196,6 +196,12 @@ def cleanup_old_releases(current_release: str) -> None:
 
 
 def main() -> None:
+    # Run before any release files/markers are created or promoted. This runner
+    # strips credentials and owns its DB; never import app with Publish secrets.
+    from scripts.hs2_production_preflight import run_probe
+    code, log = run_probe()
+    if code or "PRODUCTION_BOUNDARY_PASS" not in log:
+        raise SystemExit("Production wiring preflight failed; frontend release not created.")
     run_building_photo_selection_preflight()
     if not TERSER.is_file():
         raise SystemExit("Terser가 없습니다. 먼저 npm ci를 실행하세요.")

@@ -27,6 +27,10 @@ args = "smoke"
 task = "workflow.run"
 args = "api"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "hs2-production-boundary"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -244,3 +248,14 @@ args = 'env DATABASE_URL="$PROD_DATABASE_URL" nice -n 10 python -u scheduled_syn
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "hs2-production-boundary"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python tests/test_hs2_production_boundary.py -v"
+
+[workflows.workflow.metadata]
+isValidation = true

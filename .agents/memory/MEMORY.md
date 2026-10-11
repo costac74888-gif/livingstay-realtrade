@@ -146,3 +146,4 @@
 - [자산 전달과 소스 지문](asset-delivery-fingerprint.md) — Library 자동 메타데이터 변경은 기능 코드 변경과 구분하고 최종 지문·Git 저장 순서를 맞춘다.
 - [Python·DB 검사 가드](python-driver-test-guards.md) — connect 계층별 factory 인수 차이와 sitecustomize의 예외 무시를 고려해 격리 실패 시 실행을 중단한다.
 - [Git 상대 범위 검사](git-relative-scope-checks.md) — 자동 체크포인트로 HEAD 기준이 이동하므로 원래 기준 commit의 diff와 동결 보존 검사를 별도로 확인한다.
+- [운영 연결 객체 검사](production-wiring-inspection.md) — fixture 존재와 운영 실행 연결을 구분하고 객체 ID 재사용·요청 프록시·외부 패키지 탐색을 주의한다.
