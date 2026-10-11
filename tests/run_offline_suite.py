@@ -24,6 +24,7 @@ from hs2_harness.isolated_postgres import FIXTURE_CHECKS as DB_CHECKS
 from hs2_harness import core
 
 PURE_UNIT_CHECKS = {
+    "test_dev_workflow_boundary.py": "tests/test_dev_workflow_boundary.py",
     "test_building_detail_enrichment.py": "tests/test_building_detail_enrichment.py",
     # This module creates its own guarded DB capability; do not nest it under
     # the app integration process's preloaded driver capability.

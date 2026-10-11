@@ -56,18 +56,14 @@ expect(
   "실거래·농어촌민박·한옥 독립 예약 워크플로가 없습니다.",
 );
 
-const projectBlock = repl.slice(
-  repl.indexOf('name = "Project"'),
-  repl.indexOf('name = "Start application"'),
+// Read-only TOML graph policy, independent of collector/workflow names.
+const boundary = require("child_process").spawnSync(
+  "python", ["scripts/check_dev_workflow_boundary.py"], { encoding: "utf8" },
 );
 expect(
-  !projectBlock.includes('args = "Fast Sync"') &&
-    !projectBlock.includes('args = "Backfill Retry"') &&
-    !projectBlock.includes('args = "Fill PK"') &&
-    !projectBlock.includes('args = "Merge Dev→Prod (실제반영)"') &&
-    !projectBlock.includes('args = "Backfill General Lodging"') &&
-    !projectBlock.includes('args = "정기 API 통합 동기화"'),
-  "기본 Project 실행에 운영 데이터 작업이 남아 있습니다.",
+  !boundary.error && boundary.status === 0,
+  "기본 실행에 허용되지 않은 작업이 연결되어 있습니다: " +
+    (boundary.stderr || (boundary.error && boundary.error.message) || ""),
 );
 
 console.log("OK  관리자 정기 API 통합 동기화 구성");
