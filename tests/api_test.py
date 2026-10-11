@@ -6657,8 +6657,14 @@ def _check_datalab_stats(client):
             app_module._MASTER_STATS_CACHE.clear()
             app_module._MASTER_STATS_CACHE.update(saved_master_cache)
         app_module._rebuild_master_stats(force=True)
-        admin_stats = client.get("/api/admin/buildings/full-stats").get_json() or {}
-        total_row = next((row for row in admin_stats.get("rows") or [] if row.get("type") == "전체"), {})
+        with app_module.app.app_context():
+            lodging_source = copy.deepcopy(
+                app_module._lodging_full_stats_payload().get_json() or {}
+            )
+        admin_response = client.get("/api/admin/buildings/full-stats")
+        admin_stats = admin_response.get_json() or {}
+        if admin_response.status_code != 200:
+            failures.append("데이터랩 전국숙박업통계: 관리자 전체 통계 응답 실패")
         admin_rows = admin_stats.get("rows") or []
         admin_required = {
             "type", "building_count", "units", "favorites", "listing_requests",
@@ -6671,6 +6677,58 @@ def _check_datalab_stats(client):
             "데이터랩 전국숙박업통계: " + error
             for error in admin_stats_contract_errors(admin_rows, admin_required)
         )
+        # Compare every original lodging cell, including the total and rate
+        # inputs, rather than summing permits that intentionally deduplicate.
+        # Only the separately labelled auction count may be added to those rows.
+        def lodging_rows_without_auction_count(rows):
+            return [
+                {key: value for key, value in row.items()
+                 if key != "auction_building_count"}
+                for row in rows if row.get("type") != "공매"
+            ]
+
+        source_rows = lodging_source.get("rows") or []
+        if lodging_rows_without_auction_count(admin_rows) != source_rows:
+            failures.append("데이터랩 전국숙박업통계: 공매 참고행 추가가 숙박 유형·전체행 원본 수치를 변경함")
+
+        # Exercise both empty and nonempty auction data through the actual
+        # authenticated route. More items than buildings represents multiple
+        # properties on one building and unlinked items; neither is a lodging.
+        public_before_auction = app_module._public_lodging_stats_payload(lodging_source)
+        for auction_counts in (
+            {"count": 0, "item_count": 0, "by_type": {}},
+            {"count": 4, "item_count": 7, "by_type": {"생활": 3, "일반": 1}},
+        ):
+            with patch("auction_service.auction_building_stats", return_value=auction_counts):
+                response = client.get("/api/admin/buildings/full-stats")
+                rows = (response.get_json() or {}).get("rows") or []
+            failures.extend(
+                "데이터랩 공매 분리: " + error
+                for error in admin_stats_contract_errors(rows, admin_required)
+            )
+            reference = next((row for row in rows if row.get("type") == "공매"), {})
+            if (
+                response.status_code != 200
+                or reference.get("auction_item_count") != auction_counts["item_count"]
+                or reference.get("auction_building_count") != auction_counts["count"]
+                or lodging_rows_without_auction_count(rows) != source_rows
+                or any(
+                    row.get("auction_building_count") != (
+                        auction_counts["count"] if row.get("type") == "전체"
+                        else auction_counts["by_type"].get(row.get("type"), 0)
+                    )
+                    for row in rows if row.get("type") != "공매"
+                )
+            ):
+                failures.append("데이터랩 공매 분리: 물건수·연결건물수 또는 숙박 합계 격리가 잘못됨")
+            with app_module.app.app_context():
+                source_after_auction = app_module._lodging_full_stats_payload().get_json() or {}
+            if (
+                source_after_auction != lodging_source
+                or app_module._public_lodging_stats_payload(source_after_auction)
+                != public_before_auction
+            ):
+                failures.append("데이터랩 공매 분리: 숙박 원본 캐시·공개 통계가 변경됨")
         public_rows = public_stats.get("rows") or []
         public_allowed = {
             "type", "building_count", "units", "biz_count", "room_count",

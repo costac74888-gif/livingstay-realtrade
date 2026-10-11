@@ -10,6 +10,27 @@ python tests/api_test.py
 python tests/test_owned_offline_runtime.py
 ```
 
+공매 참고행 계약을 확인할 때는 두 진입 경로를 각각 실행한다.
+
+```sh
+python tests/api_test.py
+python tests/run_offline_suite.py --only api_test.py --only "Python pytest" \
+  --results .local/suite-audit/admin-stats-contract
+```
+
+API 검사는 숙박 유형행·전체행의 필수 컬럼과 기존 신고율 산식을 유지한다.
+공매는 `reference_only=True`인 별도 참고행으로 검사하며, 물건수와
+중복 제거된 연결 건물수는 음수가 아닌 정수여야 한다. 숙박 칸은 없는 형태
+또는 전체 칸을 0·`None`·`not_applicable`로 채운 호환 형태만 허용한다.
+일부 숙박 칸만 있거나 실제 숙박 수치가 들어가면 실패한다.
+
+실제 관리자 API에 공매 0건과 연결 건물 4개·물건 7건을 각각 모의 주입해,
+숙박 원본의 모든 유형행·전체행 수치와 신고율 입력값, 원본 캐시 및 공개
+통계가 변하지 않는지도 확인한다. 공매 수만 별도 참고 컬럼에 추가할 수
+있으며 숙박 합계에 더하지 않는다. 계약 단위 검사에서는 필수 컬럼 누락,
+참고 표식 오류, 잘못된 건수 및 숙박 수치 혼입이 계속 실패하는지 확인한다.
+실패 예외 목록이나 성공 처리로 검사를 우회하지 않는다.
+
 `--only`는 정확한 검사 이름으로 선택한다. 선택하지 않으면 Python 수집,
 독립 스크립트, JS/브라우저 검사, 등록된 격리 DB·브라우저 검사를 모두 실행한다.
 검사 실패는 원래 종료 코드로 남으며 전체 명령도 0이 아닌 코드로 끝난다.
