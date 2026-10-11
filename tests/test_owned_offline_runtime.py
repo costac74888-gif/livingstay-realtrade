@@ -117,7 +117,9 @@ with patch('requests.sessions.Session.request',side_effect=AssertionError('deliv
         script = r"""
 const assert=require('node:assert/strict');
 const http=require('node:http');
-const {chromium}=require('playwright');
+const engine=process.argv[2] || 'chromium';
+const browserType=engine==='webkit' ? require('playwright-webkit-compat').webkit :
+  require('playwright').chromium;
 const trap=process.argv[1];
 (async()=>{
   // This server is owned by the test and gets an explicit port capability.
@@ -127,7 +129,9 @@ const trap=process.argv[1];
   });
   await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));
   const origin='http://127.0.0.1:'+fixture.address().port;
-  const browser=await chromium.launch({executablePath:process.env.CHROMIUM,args:['--no-sandbox']});
+  const browser=await browserType.launch(engine==='webkit' ?
+    {executablePath:require('./tests/offline_support/webkit_runtime.cjs')} :
+    {executablePath:process.env.CHROMIUM,args:['--no-sandbox']});
   try {
     const page=await browser.newPage();
     await page.goto(origin);
@@ -148,10 +152,16 @@ const trap=process.argv[1];
         import shutil
         env = isolated_env()
         env["CHROMIUM"] = shutil.which("chromium") or ""
+        # Renderer library path only; no provider/delivery/DB capabilities.
+        if "__EGL_VENDOR_LIBRARY_FILENAMES" in os.environ:
+            env["__EGL_VENDOR_LIBRARY_FILENAMES"] = os.environ["__EGL_VENDOR_LIBRARY_FILENAMES"]
         try:
-            subprocess.run(["node", "-e", script, f"http://127.0.0.1:{server.server_port}/trap"],
-                           cwd=ROOT, env=env, check=True, timeout=40)
-            self.assertEqual(hits, [], "Browser/Node escaped owned-origin proxy")
+            for engine in ("chromium", "webkit"):
+                with self.subTest(engine=engine):
+                    subprocess.run(["node", "-e", script,
+                                    f"http://127.0.0.1:{server.server_port}/trap", engine],
+                                   cwd=ROOT, env=env, check=True, timeout=40)
+                    self.assertEqual(hits, [], "Browser/Node escaped owned-origin proxy")
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
     def test_incoming_https_capability_keeps_browser_and_preparation_owned(self):

@@ -19,7 +19,8 @@ def fixture():
     # Do not copy delivery/provider keys, PG defaults, service files or real DSNs.
     env = {k: v for k, v in os.environ.items()
            if k in {"PATH", "HOME", "LANG", "LC_ALL", "PYTHONHOME", "PYTHONUSERBASE",
-                    "LD_LIBRARY_PATH", "NIX_LD", "NIX_LD_LIBRARY_PATH"}}
+                    "LD_LIBRARY_PATH", "NIX_LD", "NIX_LD_LIBRARY_PATH",
+                    "__EGL_VENDOR_LIBRARY_FILENAMES"}}
     proc = None
     # Suite runners set TMPDIR for child artifacts. DB capability paths must
     # remain rooted in /tmp, not inside that inherited artifact directory.

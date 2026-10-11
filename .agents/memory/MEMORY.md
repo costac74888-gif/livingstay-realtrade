@@ -140,6 +140,7 @@
 - [격리 브라우저 HTTP](owned-browser-requests.md) — Playwright APIRequestContext는 Node 통신 차단 대상; 준비 요청도 고정 owned origin의 브라우저 fetch로 한다.
 - [브라우저 전송 경계](browser-egress-boundaries.md) — route.continue·리디렉션·APIRequestContext는 경로 모의 처리와 별도로 전송 계층에서 차단한다.
 - [슬라이더 터치 해제](slider-pointer-release.md) — 버튼 밖 해제·취소도 반복을 멈추고, 터치 후 detail=0 호환 클릭을 키보드 증가로 처리하지 않는다.
+- [격리 WebKit 검사 경계](webkit-isolation.md) — EGL 런타임 경로와 서비스 권한을 분리하고 네이티브 탭·DOM 취소 증거를 물리 iPhone 검증과 구분한다.
 - [팝업 로그인 화면 유지](modal-login-context.md) — 일반회원은 진행 중인 작업 화면에 머물고, 사업자 명시적 대시보드 이동과 구분한다.
 - [연락처 진단·보고 정책](contact-diagnostic-privacy.md) — 발송·동기화 원본은 보존하고 기본 로그만 마스킹; 관리자 원본 보고는 명시적 비공개 파일로 제한한다.
 - [자산 전달과 소스 지문](asset-delivery-fingerprint.md) — Library 자동 메타데이터 변경은 기능 코드 변경과 구분하고 최종 지문·Git 저장 순서를 맞춘다.

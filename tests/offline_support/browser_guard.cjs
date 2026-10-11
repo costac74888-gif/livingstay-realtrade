@@ -10,6 +10,7 @@ const https = require("node:https");
 const cp = require("node:child_process");
 const ports = new Set();
 const proxyPorts = new Set();
+const browserExecutables = new Set();
 const ownedOrigin = process.env.OWNED_REGRESSION_ORIGIN;
 const owned = ownedOrigin || process.env.HOMENSTAY_OWNED_ORIGIN;
 if (owned) {
@@ -94,7 +95,8 @@ net.Socket.prototype.connect = function(...args) {
 for (const method of ["spawn", "spawnSync", "execFile", "execFileSync"]) {
   const original = cp[method];
   cp[method] = function(file, args, ...rest) {
-    if (!["python", "python3", "node", "which", "sh", "chromium", "chromium-browser",
+    if (!browserExecutables.has(path.resolve(file)) &&
+        !["python", "python3", "node", "which", "sh", "chromium", "chromium-browser",
           "google-chrome", "npm", "terser", "git"].includes(path.basename(file))) return denied();
     if (path.basename(file) === "git" && !["show", "diff"].includes(args?.[0])) return denied();
     if (path.basename(file) === "sh" &&
@@ -143,9 +145,20 @@ const load = Module._load;
 const guarded = new WeakSet();
 Module._load = function(name, ...args) {
   const exports = load.call(this, name, ...args);
-  if (name !== "playwright" || guarded.has(exports.chromium)) return exports;
-  const {chromium} = exports;
+  if (!["playwright", "playwright-webkit-compat"].includes(name) ||
+      guarded.has(exports.chromium)) return exports;
+  const {chromium, webkit} = exports;
   guarded.add(chromium);
+  // Only the explicit WebKit runtime is granted a spawn capability. Node
+  // networking and the mandatory destination proxy remain unchanged.
+  browserExecutables.add(path.resolve(webkit.executablePath()));
+  const webkitPath = process.env.PLAYWRIGHT_WEBKIT_EXECUTABLE_PATH ||
+    require("./webkit_runtime.cjs");
+  if (webkitPath) {
+    if (!/^\/nix\/store\/[^/]+\/webkit-\d+\/pw_run\.sh$/.test(webkitPath))
+      throw Error("FIXTURE_SETUP: explicit Nix WebKit runtime required");
+    browserExecutables.add(path.resolve(webkitPath));
+  }
   const newRequestContext = exports.request.newContext.bind(exports.request);
   exports.request.newContext = async function(options = {}) {
     const server = await proxy();
@@ -154,15 +167,18 @@ Module._load = function(name, ...args) {
     if (ownedOrigin) requireOwnedURL(opts.baseURL);
     return guardAPI(await newRequestContext(opts), opts.baseURL);
   };
-  const launch = chromium.launch.bind(chromium);
-  chromium.launchPersistentContext = denied;
-  chromium.launch = async function(options = {}) {
+  for (const browserType of [chromium, webkit]) {
+  const launch = browserType.launch.bind(browserType);
+  browserType.launchPersistentContext = denied;
+  browserType.launch = async function(options = {}) {
     const server = await proxy();
     const browser = await launch({...options, proxy: {server, bypass: ""},
       args: [...(options.args || []).filter(a => !/^--proxy/.test(a)),
-        "--proxy-bypass-list=<-loopback>"]});
+        ...(browserType === chromium ? ["--proxy-bypass-list=<-loopback>"] : [])]});
     const contextOptions = params => ({
-      userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      ...(browserType === chromium ? {
+        userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      } : {}),
       ...(ownedOrigin ? {ignoreHTTPSErrors: true} : {}),
       ...params, proxy: {server, bypass: ""}, serviceWorkers: "block",
     });
@@ -218,5 +234,6 @@ Module._load = function(name, ...args) {
     };
     return browser;
   };
+  }
   return exports;
 };
