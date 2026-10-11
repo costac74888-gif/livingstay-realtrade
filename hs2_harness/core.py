@@ -146,6 +146,7 @@ def configuration():
     for name, check in registry.items():
         path = ROOT / check["file"]
         reviewed_isolation = {
+            ("preview-rates-db","tests/test_hs2_preview_rates_db.py"):("python","temporary-postgres"),
             ("phase2-data-contracts","tests/test_hs2_phase2_data.py"):("python","temporary-postgres"),
             ("phase3-registration-db","tests/test_hs2_phase3_db.py"):("python","temporary-postgres"),
             ("phase3-registration-ui","tests/hs2_phase3_ui_test.cjs"):("node","private-browser-fixture"),

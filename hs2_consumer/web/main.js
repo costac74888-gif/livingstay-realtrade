@@ -3,6 +3,7 @@
 
   const API_URL = "/hs2/api/consumer/search";
   const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
+  const rateDate = isSeongsuDemo ? window.HS2PreviewRateDate : null;
   const form = document.getElementById("searchForm");
   const listingList = document.getElementById("listingList");
   const statusMessage = document.getElementById("statusMessage");
@@ -34,6 +35,7 @@
   let consumerMap = null;
   let demoMapOverlays = [];
   let visibleItems = [];
+  let pendingCandidate = null;
 
   const inputs = {
     q: document.getElementById("q"),
@@ -219,6 +221,104 @@
     badge.textContent = "테스트용 가상 매물 · 실재/법적 운영 확인 아님";
     container.append(badge);
   }
+  function demoRates(item) {
+    if (!isSeongsuDemo || !rateDate) return null;
+    return rateDate.basePresentation(item.stay_kind, item.base_rates, item.quote,
+      checkIn.value, checkOut.value);
+  }
+  function updatePreviewAddress() {
+    if (!isSeongsuDemo) return;
+    const params = collectCriteria();
+    updateAddress(params);
+  }
+  function searchForPreviewPeriod(checkout) {
+    if (!isSeongsuDemo || !checkout) return;
+    checkOut.value = checkout;
+    updatePriceControls();
+    updatePreviewAddress();
+    search(collectCriteria());
+  }
+  function checkMissingCandidate(payload) {
+    if (!isSeongsuDemo || !pendingCandidate) return;
+    const candidate = pendingCandidate;
+    pendingCandidate = null;
+    if (payload.items.some(item => item.public_id === candidate.publicId)) return;
+    const url = new URL("/__development__/seongsu/quote-check", window.location.origin);
+    url.searchParams.set("public_id", candidate.publicId);
+    url.searchParams.set("check_in", checkIn.value);
+    url.searchParams.set("check_out", candidate.checkOut);
+    fetch(url, { credentials: "include", headers: { Accept: "application/json" } })
+      .then(response => response.json())
+      .then(result => {
+        const message = result.ok === true
+          ? "선택한 기간의 견적은 확인됐지만 현재 검색 필터와 맞는 목록에는 없습니다."
+          : (typeof result.message === "string" ? result.message
+            : "선택한 기간의 견적을 확인할 수 없습니다.");
+        setStatus(message, result.ok === true ? "ready" : "error");
+      })
+      .catch(() => setStatus("선택한 기간의 견적 확인에 실패했습니다. 검색 조건을 다시 확인해 주세요.", "error"));
+  }
+  function addPreviewDateHelpers() {
+    if (!isSeongsuDemo || !rateDate) return;
+    const row = form.querySelector(".search-row");
+    const bar = document.createElement("div");
+    bar.className = "preview-date-helpers";
+    bar.setAttribute("aria-label", "빠른 기간 선택");
+    row.after(bar);
+    const draw = () => {
+      bar.replaceChildren();
+      const label = document.createElement("span");
+      label.className = "preview-date-label";
+      label.textContent = "빠른 기간";
+      bar.append(label);
+      rateDate.quickPeriods(inputs.kind.value === "non_lodging" ? "non_lodging" : "lodging")
+        .forEach(period => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "preview-date-button";
+          button.textContent = period.label;
+          button.addEventListener("click", () => {
+            if (!checkIn.value) return;
+            searchForPreviewPeriod(rateDate.checkoutFor(checkIn.value, period));
+          });
+          bar.append(button);
+        });
+    };
+    draw();
+    inputs.kind.addEventListener("change", () => {
+      if (inputs.kind.value === "non_lodging" && checkIn.value) {
+        checkOut.value = rateDate.addDays(checkIn.value, 7);
+        updatePriceControls();
+        updatePreviewAddress();
+        search(collectCriteria());
+      }
+      draw();
+    });
+  }
+  function appendPreviewPeriodHidden(payload) {
+    if (!isSeongsuDemo) return;
+    const count = Number.isSafeInteger(payload.period_hidden_count) && payload.period_hidden_count > 0
+      ? payload.period_hidden_count : 0;
+    let line = statusMessage.querySelector(".preview-period-hidden");
+    if (!line) {
+      line = document.createElement("span");
+      line.className = "preview-period-hidden";
+      statusMessage.append(line);
+    }
+    line.replaceChildren();
+    if (!count) { line.hidden = true; return; }
+    line.hidden = false;
+    line.append(document.createTextNode(`주·월형 ${formatWon(count)}개는 7일 이상 선택 시 표시됩니다`));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "preview-week-toggle";
+    button.textContent = "1주로 보기";
+    button.addEventListener("click", () => {
+      inputs.kind.value = "non_lodging";
+      inputs.kind.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    line.append(button);
+  }
 
   function validDemoPoint(point) {
     return point && Number.isFinite(point.lat) && Number.isFinite(point.lng) &&
@@ -236,8 +336,16 @@
       const marker = document.createElement("button");
       marker.type = "button";
       marker.className = "consumer-demo-map-marker";
-      marker.textContent = typeof demo.name === "string" ? demo.name : "가상 체류 공간";
-      marker.setAttribute("aria-label", `${demo.neighborhood || "성수동"} 시뮬레이션 구역 · ${marker.textContent} · 테스트용 가상 매물`);
+      const rates = item.base_rates;
+      const rate = item.stay_kind === "lodging" && rateDate?.isRate(rates?.night)
+        ? `${rateDate.won(rates.night)}/박`
+        : item.stay_kind === "non_lodging" && rateDate?.isRate(rates?.week)
+          ? `${rateDate.won(rates.week)}/주`
+          : item.stay_kind === "non_lodging" && rateDate?.isRate(rates?.month)
+            ? `${rateDate.won(rates.month)}/월` : "기준 요금 비공개";
+      marker.textContent = rate;
+      marker.title = `${demo.name || "가상 체류 공간"} · ${rate}`;
+      marker.setAttribute("aria-label", `${demo.neighborhood || "성수동"} 시뮬레이션 구역 · ${rate} · 테스트용 가상 매물`);
       marker.addEventListener("click", () => window.location.assign(demoDetailUrl(item)));
       const overlay = new maps.CustomOverlay({
         content: marker,
@@ -276,6 +384,12 @@
 
     const copy = document.createElement("span");
     copy.className = "listing-copy";
+    if (demo && isSeongsuDemo) {
+      const type = document.createElement("span");
+      type.className = "preview-stay-type";
+      type.textContent = item.stay_kind === "lodging" ? "숙박형 단기임대" : "주·월 단기임대";
+      copy.append(type);
+    }
     const title = document.createElement("span");
     title.className = "listing-title";
     title.textContent = demo && typeof demo.name === "string" ? demo.name : item.stay_kind === "non_lodging" ? "비숙박 체류 항목" : "숙박 체류 항목";
@@ -296,12 +410,18 @@
     price.className = "listing-price";
     const priceLabel = document.createElement("span");
     priceLabel.className = "price-label";
-    priceLabel.textContent = "선택 기간 총액";
+    priceLabel.textContent = isSeongsuDemo ? "기준 요금" : "선택 기간 총액";
     price.append(priceLabel);
     const quoteValid = item.quote && Number.isSafeInteger(item.quote.total_krw) &&
       item.quote.total_krw >= 0 && item.quote.check_in === checkIn.value &&
       item.quote.check_out === checkOut.value && datesAreUsable();
-    if (quoteValid) {
+    const demoPrice = demoRates(item);
+    if (demo && demoPrice) {
+      const amount = document.createElement("span");
+      amount.className = "price-value";
+      amount.textContent = demoPrice.headline;
+      price.append(amount);
+    } else if (quoteValid) {
       const amount = document.createElement("span");
       amount.className = "price-value";
       amount.textContent = `${formatWon(item.quote.total_krw)}원`;
@@ -312,7 +432,7 @@
       noPrice.textContent = "기간 총액 견적 없음";
       price.append(noPrice);
     }
-    if (demo) {
+    if (demo && !isSeongsuDemo) {
       const base = document.createElement("span");
       base.className = "demo-base-price";
       if (item.stay_kind === "non_lodging") {
@@ -332,7 +452,48 @@
         window.location.assign(demoDetailUrl(item));
       } else selectItem(item);
     });
-    return button;
+    if (!demo || !isSeongsuDemo) return button;
+    const wrapper = document.createElement("div");
+    wrapper.className = "preview-card-wrap";
+    wrapper.append(button);
+    if (demoPrice?.quote) {
+      const quoteLine = document.createElement("span");
+      quoteLine.className = "preview-quote-line";
+      quoteLine.textContent = demoPrice.quote.text;
+      wrapper.append(quoteLine);
+    } else {
+      const quoteLine = document.createElement("span");
+      quoteLine.className = "preview-quote-line";
+      quoteLine.textContent = rateDate.quoteIssue(item)
+        ? "주·월 요금에 맞는 기간을 선택해 주세요" : "선택기간 견적 없음";
+      wrapper.append(quoteLine);
+    }
+    if (item.base_rate_notice) {
+      const notice = document.createElement("span");
+      notice.className = "preview-rate-notice";
+      notice.textContent = item.base_rate_notice;
+      wrapper.append(notice);
+    }
+    if (rateDate.quoteIssue(item)) {
+      const candidates = rateDate.candidateDates(item);
+      if (candidates.length) {
+        const choices = document.createElement("div");
+        choices.className = "preview-candidate-list";
+        candidates.forEach(date => {
+          const candidate = document.createElement("button");
+          candidate.type = "button";
+          candidate.className = "preview-candidate";
+          candidate.textContent = date;
+          candidate.addEventListener("click", () => {
+            pendingCandidate = { publicId: item.public_id, checkOut: date };
+            searchForPreviewPeriod(date);
+          });
+          choices.append(candidate);
+        });
+        wrapper.append(choices);
+      }
+    }
+    return wrapper;
   }
 
   function selectItem(item) {
@@ -466,6 +627,8 @@
     } else {
       setStatus("현재 조건으로 확인된 결과가 없습니다.", "empty");
     }
+    appendPreviewPeriodHidden(payload);
+    checkMissingCandidate(payload);
     updateMap(payload.map_config);
   }
 
@@ -510,6 +673,7 @@
       resultCount.textContent = "확인 필요";
       setStatus("검색에 실패했습니다. 조건은 유지되어 있습니다.", "error");
       updateMap(null);
+      checkMissingCandidate({ items: [] });
     } finally {
       if (currentRequest === requestSequence) {
         searchButton.disabled = false;
@@ -530,10 +694,20 @@
   });
   checkIn.addEventListener("change", updatePriceControls);
   checkOut.addEventListener("change", updatePriceControls);
+  checkIn.addEventListener("change", () => {
+    updatePriceControls();
+    updatePreviewAddress();
+  });
+  checkOut.addEventListener("change", updatePreviewAddress);
   retryButton.addEventListener("click", () => {
     if (lastCriteria) search(new URLSearchParams(lastCriteria));
   });
 
   restoreFromAddress();
+  addPreviewDateHelpers();
+  if (isSeongsuDemo) window.addEventListener("popstate", () => {
+    restoreFromAddress();
+    search(collectCriteria());
+  });
   search(collectCriteria());
 })();

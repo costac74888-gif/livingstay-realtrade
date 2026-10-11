@@ -14,6 +14,7 @@ from . import core
 CHECK_ID = "phase2-data-contracts"
 TEST_FILE = "tests/test_hs2_phase2_data.py"
 FIXTURE_CHECKS = {
+    "preview-rates-db": "tests/test_hs2_preview_rates_db.py",
     CHECK_ID: TEST_FILE,
     "phase3-registration-db": "tests/test_hs2_phase3_db.py",
     "phase4-auth-db": "tests/test_hs2_phase4_auth_db.py",

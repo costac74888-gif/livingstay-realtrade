@@ -1,0 +1,319 @@
+/* Preview-only HOME & STAY: approved olive accents, original logo, black ink. */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
+
+body[data-hs2-demo="seongsu"] {
+  --preview-brand: #596044;
+  --preview-brand-hover: #464d35;
+  --preview-brand-soft: #f0f2e9;
+  --preview-brand-line: #b8bea8;
+  --navy: var(--preview-brand);
+  --navy-deep: var(--preview-brand-hover);
+  --blue: var(--preview-brand);
+  --blue-soft: var(--preview-brand-soft);
+  color: #171717;
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+}
+body[data-hs2-demo="seongsu"] :is(input,textarea)::placeholder {
+  color: #171717 !important;
+  opacity: 1;
+}
+
+/* Shared brand containers keep their existing link and controls; only the
+   original wordmark is displayed in the header. */
+body[data-hs2-demo="seongsu"] .preview-brand-logo {
+  display: block;
+  width: clamp(142px, 15vw, 194px);
+  height: auto;
+  max-height: 34px;
+  object-fit: contain;
+  object-position: left center;
+}
+body[data-hs2-demo="seongsu"] .preview-brand-logo + .brand-wordmark,
+body[data-hs2-demo="seongsu"] .preview-brand-logo + .brand-copy,
+body[data-hs2-demo="seongsu"] .preview-brand-logo ~ .brand-copy {
+  display: none;
+}
+body[data-hs2-demo="seongsu"] .brand > img:not(.preview-brand-logo) { display: none; }
+body[data-hs2-demo="seongsu"] .preview-brand-logo ~ .brand-name { display: none; }
+body[data-hs2-demo="seongsu"] .preview-brand-logo ~ :is(.brand-mark,.mark) { display: none; }
+
+/* Replace former blue typography across owned Preview routes. Keep buttons,
+   alerts and status/warning semantics untouched for contrast and meaning. */
+body[data-hs2-demo="seongsu"] :is(
+  h1,h2,h3,h4,.brand-name,.brand-wordmark strong,.brand-subtitle,
+  .eyebrow,.kicker,.section-kicker,.field-label,.options-filter legend,
+  .account-link,.head-actions a,.header-action,.nav-link,.nav-back,
+  .back-link,.detail-back,.record-link,.link-list a,.quiet-button,
+  .listing-title,.listing-price,.listing-type,.listing-meta,
+  .detail-content h2,.detail-content p,.detail-content,
+  .amount,.metric-value,.money-copy strong,.record-title,.record-meta strong,
+  .fact dd,.section-heading h2,.stay-tools h2,.quote-total-row strong,
+  .demo-rate-list strong,.policy-list strong,.detail-tabs a,
+  .hero-index strong,.result-count,.map-status,.status-message:not([data-state="error"]),
+  .layer-button,.subway-tool,.option-checks label,.price-unit,
+  .search-field input,.search-field select,.filter-select select,
+  .unit-control input,.price-inputs input,.control input
+) {
+  color: #111 !important;
+}
+body[data-hs2-demo="seongsu"] :is(
+  .detail-main,.preview-dashboard-main,.panel-head h2,.aside-card h2,
+  .hero h1,.results-heading h1,.detail-content > h2
+) { color: #111 !important; }
+body[data-hs2-demo="seongsu"] :is(
+  .account-link,.head-actions a,.header-action,.nav-link,.nav-back,
+  .back-link,.detail-back,.record-link,.link-list a,.detail-tabs a
+) { color: #111 !important; }
+
+/* Avoid blue-accent typography in cards and form controls without restyling
+   alert/error/warning treatments or button labels. */
+body[data-hs2-demo="seongsu"] :is(
+  .detail-layout,.detail-main,.panel,.record-card,.metric,.reservation-card,
+  .listing-card,.selected-detail,.results-pane
+) { color: #171717; }
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar {
+  color: #171717;
+  background: #f3f3f1;
+  border-right: 1px solid #dededb;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .legacy .link-list a,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .truth-list li,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .truth-list b,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .links-panel .kicker,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card .kicker,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-connectivity-note {
+  color: #171717 !important;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-connectivity-note {
+  border-color: #d5d5d1;
+  background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a:hover {
+  color: #111 !important;
+  background: #e6e6e2;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a.preview-register-link {
+  color: #fff !important;
+}
+
+body[data-hs2-demo="seongsu"] :is(a,button,input,select):focus-visible {
+  outline-color: var(--preview-brand);
+}
+/* Scope to owned application actions, never provider tiles/attribution or
+   semantic warning/status/category colors. Keep disabled/pressed behavior. */
+body[data-hs2-demo="seongsu"] :is(
+  .search-submit,.search-button,.primary-button,.primary-action,.detail-primary,
+  .preview-register-link
+) {
+  background: var(--preview-brand);
+  border-color: var(--preview-brand);
+  color: #fff !important;
+}
+body[data-hs2-demo="seongsu"] :is(
+  .search-submit,.search-button,.primary-button,.primary-action,.detail-primary,
+  .preview-register-link
+):hover:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--preview-brand-hover);
+  border-color: var(--preview-brand-hover);
+}
+body[data-hs2-demo="seongsu"] :is(input,select,textarea) {
+  accent-color: var(--preview-brand);
+}
+body[data-hs2-demo="seongsu"] .nav-link-active::after {
+  background: var(--preview-brand);
+}
+body[data-hs2-demo="seongsu"] :is(
+  .listing-card[aria-pressed="true"],.listing-card.selected
+) {
+  background: var(--preview-brand-soft);
+  box-shadow: inset 3px 0 0 var(--preview-brand);
+}
+body[data-hs2-demo="seongsu"] :is(
+  .layer-button[aria-pressed="true"],.subway-tool[aria-pressed="true"],
+  .link-list a[aria-current="page"]
+) {
+  background: var(--preview-brand-soft);
+  border-color: var(--preview-brand-line);
+  color: #111 !important;
+}
+body[data-hs2-demo="seongsu"] .role-button[aria-pressed="true"] {
+  background: var(--preview-brand);
+  color: #fff !important;
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-shell { max-width: 1450px; }
+body[data-hs2-demo="seongsu"].detail-page .detail-layout {
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, .8fr);
+  align-items: start; gap: clamp(22px, 3vw, 42px);
+}
+body[data-hs2-demo="seongsu"].detail-page .privacy-pill {
+  white-space: normal; overflow-wrap: anywhere; max-width: 100%;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .shell {
+  width: 100%; max-width: none; min-height: 100dvh; margin: 0;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-dashboard-frame {
+  min-height: calc(100dvh - 70px);
+  display: grid; grid-template-columns: 254px minmax(0, 1fr);
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar {
+  align-content: start; align-self: stretch; gap: 17px; padding: 24px 16px 20px;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-dashboard-main {
+  min-width: 0; max-width: 1480px; padding: 24px clamp(18px, 3vw, 44px) 26px;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .layout { display: block; }
+
+/* Structural presentation retained from the original reference treatment:
+   photo-led detail, readable quote column, and the existing dashboard panels. */
+body[data-hs2-demo="seongsu"].detail-page .topbar {
+  border-color: #d9e3ee; background: #fff;
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-main-column { min-width: 0; }
+body[data-hs2-demo="seongsu"].detail-page .demo-gallery {
+  display: grid; grid-template-columns: repeat(3,minmax(0,1fr));
+  grid-template-rows: minmax(250px,min(31vw,390px)) 84px; gap: 8px; margin: 0;
+}
+body[data-hs2-demo="seongsu"].detail-page .demo-gallery-image {
+  min-width: 0; min-height: 0; display: grid; grid-template-rows: minmax(0,1fr) auto;
+  margin: 0; overflow: hidden; background: #edf2f8;
+}
+body[data-hs2-demo="seongsu"].detail-page .demo-gallery-image:first-child {
+  grid-column: 1 / -1; grid-row: 1;
+}
+body[data-hs2-demo="seongsu"].detail-page .demo-gallery-image img {
+  width: 100%; height: 100%; min-height: 0; display: block; object-fit: cover;
+}
+body[data-hs2-demo="seongsu"].detail-page .reservation-column { top: 16px; }
+body[data-hs2-demo="seongsu"].detail-page .reservation-card {
+  border-color: #cad9e9; border-radius: 6px; background: #fff;
+  box-shadow: 0 8px 24px rgba(25,57,98,.07);
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-tabs {
+  border-color: #d5e1ef; background: rgba(255,255,255,.97);
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-tabs a:first-child {
+  border-color: var(--preview-brand); color: #fff !important; background: var(--preview-brand);
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-layout a:focus-visible,
+body[data-hs2-demo="seongsu"].detail-page button:focus-visible,
+body[data-hs2-demo="seongsu"].detail-page input:focus-visible,
+body[data-hs2-demo="seongsu"].preview-dashboard a:focus-visible,
+body[data-hs2-demo="seongsu"].preview-dashboard button:focus-visible {
+  outline: 3px solid var(--preview-brand); outline-offset: 3px;
+}
+body[data-hs2-demo="seongsu"].detail-page .detail-footer,
+body[data-hs2-demo="seongsu"].detail-page .listing-intro,
+body[data-hs2-demo="seongsu"].detail-page .facts-section,
+body[data-hs2-demo="seongsu"].detail-page .location-section { border-color: #d3e0ef; }
+body[data-hs2-demo="seongsu"].detail-page .demo-rate-list,
+body[data-hs2-demo="seongsu"].detail-page .availability-card {
+  border-color: #d3dfed; background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .topbar {
+  height: 70px; padding: 0 clamp(18px,3.2vw,48px);
+  border-color: #dbe4ef; background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .head-actions { gap: 18px; }
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-dashboard-frame {
+  min-height: calc(100dvh - 70px);
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .links-panel,
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card {
+  min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list {
+  gap: 2px; margin-top: 9px;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a {
+  min-height: 43px; align-items: center; padding: 10px 11px; border: 0;
+  border-radius: 3px; background: transparent; font-size: 14px; font-weight: 650;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a::after {
+  color: #575757;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a.preview-register-link {
+  justify-content: center; margin: 6px 0 9px; color: #fff !important;
+  background: var(--preview-brand); font-weight: 800;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a.preview-register-link:hover {
+  background: var(--preview-brand-hover);
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a.preview-register-link::after {
+  color: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .legacy .link-list a {
+  min-height: 36px; padding: 7px 10px; font-size: 13px;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card {
+  margin-top: 2px; padding: 14px 12px; border: 1px solid #d5d5d1; background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card h2 {
+  margin: 8px 0 10px; color: #111; font-size: 16px; line-height: 1.45;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .truth-list li {
+  gap: 8px; padding: 9px 0; border-color: #dededb; font-size: 12px;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .preview-connectivity-note {
+  margin: 0; padding: 12px; border: 1px solid #d5d5d1;
+  font-size: 12px; line-height: 1.65;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .hero {
+  min-height: 155px; grid-template-columns: minmax(0,1fr) 230px; padding: 22px 28px;
+  border: 0; border-bottom: 1px solid #dbe5f0; border-radius: 0; background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .hero::after { display: none; }
+body[data-hs2-demo="seongsu"].preview-dashboard .hero h1 {
+  margin: 7px 0; color: #111; font-size: clamp(27px,3vw,38px);
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .layout { display: block; }
+body[data-hs2-demo="seongsu"].preview-dashboard .primary { gap: 14px; }
+body[data-hs2-demo="seongsu"].preview-dashboard .panel {
+  padding: 20px 22px; border-color: #d5e1ee; border-radius: 3px;
+  background: #fff; box-shadow: none;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .metric {
+  min-height: 94px; border-color: #dce6f1; border-radius: 3px; background: #f8fbff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .record-card {
+  border-color: #d8e3ef; border-left-color: #777; border-radius: 3px; background: #fff;
+}
+body[data-hs2-demo="seongsu"].preview-dashboard .footer {
+  border-color: #d3e0ef;
+}
+
+@media (max-width: 767px) {
+  body[data-hs2-demo="seongsu"] .preview-brand-logo { width: 142px; max-height: 28px; }
+  body[data-hs2-demo="seongsu"].detail-page .detail-layout { grid-template-columns: 1fr; }
+  body[data-hs2-demo="seongsu"].detail-page .demo-gallery {
+    grid-template-rows: minmax(190px,58vw) 70px; gap: 6px;
+  }
+  body[data-hs2-demo="seongsu"].detail-page .reservation-column { position: static; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-dashboard-frame {
+    grid-template-columns: minmax(0,1fr);
+  }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar {
+    position: static; gap: 10px; padding: 14px; max-height: 265px; overflow: auto;
+  }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card { display: none; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list {
+    grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px;
+  }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .link-list a {
+    min-height: 40px; padding: 8px; font-size: 13px;
+  }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-dashboard-main { padding: 15px 13px 22px; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .topbar { height: 66px; padding: 0 14px; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .head-actions { gap: 10px; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .operator-chip { display: none; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .preview-sidebar .aside-card { display: none; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .hero {
+    min-height: 0; grid-template-columns: minmax(0,1fr); padding: 10px 0 16px;
+  }
+  body[data-hs2-demo="seongsu"].preview-dashboard .hero-index { display: none; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .hero h1 { font-size: 29px; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .panel { padding: 17px 14px; }
+  body[data-hs2-demo="seongsu"].preview-dashboard .summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body[data-hs2-demo="seongsu"].preview-dashboard .metric { min-height: 84px; padding: 11px; }
+}

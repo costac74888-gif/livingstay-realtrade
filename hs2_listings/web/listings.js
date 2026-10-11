@@ -1,6 +1,8 @@
 (() => {
   "use strict";
   const API = "/hs2/listings";
+  const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
+  const rateDate = isSeongsuDemo ? window.HS2PreviewRateDate : null;
   const $ = (selector) => document.querySelector(selector);
   const form = $("#applicationForm");
   const feedback = $("#feedback");
@@ -113,7 +115,7 @@
       return value === "" ? null : Number(value);
     };
     const area = $("#area_m2").value.trim();
-    return {
+    const payload = {
       title: $("#title").value,
       space_label: $("#space_label").value,
       space_scope: $("#space_scope").value,
@@ -122,9 +124,6 @@
       area_m2: area === "" ? null : area,
       guests: intOrNull("guests"),
       options: [...form.querySelectorAll('input[name="options"]:checked')].map((input) => input.value),
-      nightly: intOrNull("nightly"),
-      weekly: intOrNull("weekly"),
-      monthly: intOrNull("monthly"),
       min_stay: intOrNull("min_stay"),
       instant: $("#instant").checked,
       discount: $("#discount").checked,
@@ -133,6 +132,75 @@
       public_summary: $("#public_summary").checked,
       disclosure: "limited"
     };
+    if (isSeongsuDemo) {
+      const kind = $("#stay_kind").value;
+      if (kind === "lodging") payload.nightly = intOrNull("nightly");
+      if (kind === "non_lodging") {
+        payload.weekly = intOrNull("weekly");
+        payload.monthly = intOrNull("monthly");
+      }
+    } else {
+      payload.nightly = intOrNull("nightly");
+      payload.weekly = intOrNull("weekly");
+      payload.monthly = intOrNull("monthly");
+    }
+    return payload;
+  }
+  function updatePreviewRates() {
+    if (!isSeongsuDemo || !rateDate) return;
+    const kind = $("#stay_kind").value;
+    const fields = {
+      nightly: $("#nightly").closest(".field"),
+      weekly: $("#weekly").closest(".field"),
+      monthly: $("#monthly").closest(".field")
+    };
+    const applicable = kind === "lodging" ? ["nightly"]
+      : kind === "non_lodging" ? ["weekly", "monthly"] : [];
+    Object.entries(fields).forEach(([key, field]) => {
+      const input = $(`#${key}`);
+      const shown = applicable.includes(key);
+      field.hidden = !shown;
+      input.disabled = !shown;
+      if (!shown) input.value = "";
+    });
+    let preview = $("#previewRateSummary");
+    if (!preview) {
+      preview = node("div", "preview-rate-summary");
+      preview.id = "previewRateSummary";
+      $(".price-grid").after(preview);
+    }
+    preview.replaceChildren();
+    preview.append(node("span", "preview-rate-notice", "이용자 화면 미리보기 · 사진·위치는 가상 표시입니다."));
+    const demoCard = node("div", "preview-input-card");
+    const demoImage = document.createElement("img");
+    demoImage.src = "/__development__/seongsu/assets/interior-1.jpg";
+    demoImage.alt = "가상 공간 이미지 · 등록한 비공개 사진이 아닙니다";
+    const demoCopy = node("div", "preview-input-copy");
+    demoCopy.append(node("span", "preview-stay-type",
+      kind === "lodging" ? "숙박형 단기임대" : kind === "non_lodging" ? "주·월 단기임대" : "운영 형태를 선택하세요"),
+      node("strong", "", "가상 공간"),
+      node("span", "preview-rate-notice", "가상 위치 · 실제 주소·건물명·등록 사진 비공개"));
+    demoCard.append(demoImage, demoCopy); preview.append(demoCard);
+    if (kind === "lodging") {
+      const rate = Number($("#nightly").value);
+      preview.append(node("strong", "preview-rate-headline",
+        rateDate.isRate(rate) && $("#nightly").value !== ""
+          ? `1박 ${rateDate.won(rate)}` : "기준 요금 비공개"));
+      if (rateDate.isRate(rate) && $("#nightly").value !== "")
+        preview.append(node("span", "preview-rate-notice", rateDate.NOTICE));
+      if ($("#nightly").value !== "") rateDate.rateWarnings("lodging", rate, null)
+        .forEach(message => preview.append(node("span", "preview-rate-warning", message)));
+    } else if (kind === "non_lodging") {
+      const weekText = $("#weekly").value.trim(), monthText = $("#monthly").value.trim();
+      const week = weekText === "" ? null : Number(weekText);
+      const month = monthText === "" ? null : Number(monthText);
+      const view = rateDate.basePresentation("non_lodging", {week, month});
+      preview.append(node("strong", "preview-rate-headline",
+        view.headline));
+      if (view.notice) preview.append(node("span", "preview-rate-notice", view.notice));
+      rateDate.rateWarnings("non_lodging", week, month).forEach(message =>
+        preview.append(node("span", "preview-rate-warning", message)));
+    }
   }
   function fillForm(payload = {}) {
     for (const key of ["title", "space_label", "space_scope", "stay_kind", "rooms", "area_m2", "guests", "nightly", "weekly", "monthly", "min_stay"]) {
@@ -144,6 +212,7 @@
     form.querySelectorAll('input[name="options"]').forEach((input) => { input.checked = selected.has(input.value); });
     photos = (payload.photos || []).map((id) => ({ id, url: `${API}/photos/${encodeURIComponent(id)}` }));
     renderPhotos();
+    updatePreviewRates();
   }
   function renderPhotos() {
     photoGrid.replaceChildren();
@@ -196,6 +265,7 @@
     form.reset();
     photos = [];
     renderPhotos();
+    updatePreviewRates();
     renderState();
     renderItems();
     say("새 등록을 시작합니다. 주소 확인 기록을 선택해 주세요.", "info");
@@ -336,5 +406,10 @@
   $("#newApplication").addEventListener("click", startNew);
   $("#photoFiles").addEventListener("change", uploadFiles);
   select.addEventListener("change", () => { if (!current) renderState(); });
+  if (isSeongsuDemo) {
+    $("#stay_kind").addEventListener("change", updatePreviewRates);
+    ["nightly", "weekly", "monthly"].forEach(id =>
+      $(`#${id}`).addEventListener("input", updatePreviewRates));
+  }
   initialize();
 })();

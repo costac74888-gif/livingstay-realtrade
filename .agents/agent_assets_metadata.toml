@@ -934,3 +934,115 @@ mtime_ms = 1791716699641
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/33c3ba73-0a70-496f-a253-631ebeeac259/9d79103d-175c-422e-9357-05109e3ced40"
 storage_version_token = "1791716742700425"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "BLw66gogUMDonBqBpe5Nv"
+uri = "file://generated-artifacts/seongsu-preview/real-map-pc.png"
+type = "image"
+title = "PC — 실제 지도 기반 메인"
+description = "흰색 바탕, 420px 사진 목록, 성수동 가상 물건 23개와 기존 카카오 지도 도구. 개발 HTTPS 화면 캡처."
+logical_id = "e84976b9-fe22-4b67-ba3d-991019a96c16"
+content_hash = "sha256:de9c01e3d2a3e60543373390bcd5c1ad218e1c7b7422ad654974dff721caf268"
+size = 1077839
+mtime_ms = 1791718994345
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/e84976b9-fe22-4b67-ba3d-991019a96c16/3caf4b14-ab0c-4c2b-91e9-012b80ae3018"
+storage_version_token = "1791719078103960"
+content_type = "image/png"
+
+[[outputs]]
+id = "Jyc1EjUNyaubLoCD9vLiw"
+uri = "file://generated-artifacts/seongsu-preview/real-map-mobile.png"
+type = "image"
+title = "모바일 — 사진 목록과 실제 지도"
+description = "390px 화면. 큰 글자와 펼칠 수 있는 조건 필터, 스크롤 가능한 우측 지도 도구."
+logical_id = "8a418af1-db6b-454b-a5c9-7162e87b0b7e"
+content_hash = "sha256:632feb86292f7af090a4420eebc7b5e45af91781fa7189d4e0862cf564651070"
+size = 185690
+mtime_ms = 1791719005525
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8a418af1-db6b-454b-a5c9-7162e87b0b7e/92daa497-d271-4315-89f4-759f340a5597"
+storage_version_token = "1791719079386247"
+content_type = "image/png"
+
+[[outputs]]
+id = "DwqVSusIeu1R8e484RPtW"
+uri = "file://generated-artifacts/seongsu-preview/real-map-mobile-open.png"
+type = "image"
+title = "모바일 — 목록을 닫은 지도"
+description = "목록을 닫아 실제 지도와 네 가지 물건 유형을 확인하는 화면."
+logical_id = "ceb94bc8-bf32-4bd7-b5e9-f5dd64701dc4"
+content_hash = "sha256:38ea9c5998543b4da30706e7202c646b6f37cca01429719955d896eb2e3eb245"
+size = 242994
+mtime_ms = 1791719007609
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/ceb94bc8-bf32-4bd7-b5e9-f5dd64701dc4/897b9f0b-de29-466b-84a6-8a196b6e5407"
+storage_version_token = "1791719080620371"
+content_type = "image/png"
+
+[[outputs]]
+id = "PRUXFzBDqGioFLO6tLUK9"
+uri = "file://generated-artifacts/seongsu-preview/preservation-review.html"
+type = "html"
+title = "HOME & STAY — 딥 올리브 적용 비교"
+description = "승인된 #596044를 주요 버튼·선택 상태에 적용한 PC·모바일 화면입니다. 원본 흑백 로고와 검정 글자를 유지했으며 개발 가상 Preview만 변경했습니다."
+logical_id = "1ee53413-6ccc-4ffe-911c-9b94d047d3c5"
+content_hash = "sha256:9e3c212abf6fc412fa638df85739d2f49e7b0cb58a08ac68c2e81ffddecb9475"
+size = 2297634
+mtime_ms = 1791725379395
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1ee53413-6ccc-4ffe-911c-9b94d047d3c5/0d3c88de-91ac-4248-a256-2c47d737104e"
+storage_version_token = "1791725409738298"
+content_type = "text/html"
+
+[[outputs]]
+id = "EINU6axRnRMolVgJsuRkK"
+uri = "file://generated-artifacts/seongsu-preview/review-map-1440.png"
+type = "image"
+title = "HOME & STAY 지도 메인 — 원본 로고·검정 글자"
+description = "실제 카카오 지도 배경과 기존 도구를 유지한 개발 화면입니다. 매물·가격·위치는 가상 체험 데이터입니다."
+logical_id = "152d92ac-cb37-4cd8-a2cd-0d787e95cbd8"
+content_hash = "sha256:b32f301bb49e3f9b8c35518d3ec6feb76049dd643c8258a1fbd475b759952bb1"
+size = 1060295
+mtime_ms = 1791723643519
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/152d92ac-cb37-4cd8-a2cd-0d787e95cbd8/34ecbfb0-85c2-41be-b169-3696a3f535a6"
+storage_version_token = "1791724333327623"
+content_type = "image/png"
+
+[[outputs]]
+id = "zubYN3BEG8hUWBO7mHtav"
+uri = "file://generated-artifacts/rate-ui/map-1440.png"
+type = "image"
+title = "기준요금·기간 선택 — PC 지도"
+description = "1440px 실제 HTTPS Preview. 주·월 기준요금, 선택기간 엔진 총액과 기존 Kakao 지도·우측 도구."
+logical_id = "8f542b58-2d39-424e-9db4-99c21feebe2b"
+content_hash = "sha256:1efc89f1c31b1ba4d464960479811cbd935cee03c120e029f949e95166044fa0"
+size = 913372
+mtime_ms = 1791727863323
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8f542b58-2d39-424e-9db4-99c21feebe2b/be6fff5e-efe0-4e17-8f16-d74570cdfe33"
+storage_version_token = "1791728176386080"
+content_type = "image/png"
+
+[[outputs]]
+id = "99Jps0u8bHQESS8UukV8O"
+uri = "file://generated-artifacts/rate-ui/map-390.png"
+type = "image"
+title = "기준요금·기간 선택 — 모바일 지도"
+description = "390px 실제 Preview. 유형 전환·달력 월 선택과 기존 모바일 지도/목록 배치."
+logical_id = "ec64c30c-a611-4cb6-9555-fc19b6fec08f"
+content_hash = "sha256:5205bfc5d11ee89b01302bd1c5f934fa89c9a06e05e88ec7248981936351abef"
+size = 108269
+mtime_ms = 1791727913184
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/ec64c30c-a611-4cb6-9555-fc19b6fec08f/c1524e3b-1683-430b-bac5-6b4e1c2d70bc"
+storage_version_token = "1791728177715377"
+content_type = "image/png"
+
+[[outputs]]
+id = "PbhqCOX3tgAy8MiuPt-5p"
+uri = "file://generated-artifacts/rate-ui/registration-1440.png"
+type = "image"
+title = "등록 요금 미리보기"
+description = "해당 유형 요금만 표시하며 사진·위치는 가상 이미지로 명시합니다. 숨긴 가격은 삭제하고 전송하지 않습니다."
+logical_id = "1420f367-2fcd-4b87-b198-9cbc7ad747af"
+content_hash = "sha256:6099ef80dbecb9c2be18908e3638955ff35287f9da2ce926ac8c31f4afa8516c"
+size = 510258
+mtime_ms = 1791727939963
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1420f367-2fcd-4b87-b198-9cbc7ad747af/fc9fd66b-089c-4ba9-ba78-2f1b8c35dc17"
+storage_version_token = "1791728179168905"
+content_type = "image/png"

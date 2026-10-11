@@ -1,5 +1,5 @@
-/* Explicitly owned synthetic Preview only. All requests run in same-origin
- * browser fetch. No provider keys, arbitrary origin or APIRequestContext. */
+/* Owned synthetic Preview. Actual read-only Kakao Maps/Places CDN is allowed;
+ * all booking/registration/payment requests remain owned same-origin only. */
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -17,7 +17,11 @@ async function main() {
     userAgent: "Mozilla/5.0 Chrome/138.0.0.0 Safari/537.36" });
   await context.route("**/*", route => {
     const u = new URL(route.request().url());
+    const maps = ["dapi.kakao.com", "map.kakao.com", "rv.map.kakao.com",
+      "fonts.googleapis.com", "fonts.gstatic.com"].includes(u.hostname)
+      || /\.daumcdn\.net$|\.kakaocdn\.net$/.test(u.hostname);
     if (u.origin === origin || ["data:", "blob:"].includes(u.protocol)) return route.continue();
+    if (u.protocol === "https:" && maps && ["GET", "HEAD"].includes(route.request().method())) return route.continue();
     blocked.push(u.origin);
     return route.abort();
   });
@@ -44,7 +48,7 @@ async function main() {
     return d.toISOString().slice(0, 10);
   }
   try {
-    await page.goto(origin + "/hs2/consumer");
+    await page.goto(origin + "/hs2/consumer?layers=stay");
     const status = await api("/__development__/status");
     assert.equal(status.database, "owned_ephemeral");
     assert.equal(status.synthetic_data_only, true);
@@ -53,6 +57,10 @@ async function main() {
     assert.equal(status.production_entrypoint, false);
     pass("Owned ephemeral / no actual Toss / no delivery / no production");
     const catalog = await api("/hs2/api/consumer/search?q=" + encodeURIComponent("성수"));
+    const ownedFixtures = await api("/__development__/seongsu/catalog");
+    assert.equal(ownedFixtures.synthetic, true);
+    assert.equal(ownedFixtures.actual_toss, false);
+    const fixtureById = new Map(ownedFixtures.items.map(row => [row.public_id, row]));
     assert.equal(catalog.items.length, 14);
     assert.equal(new Set(catalog.items.map(r => {
       const p = r.preview_demo.point; return `${p.lat},${p.lng}`;
@@ -62,7 +70,11 @@ async function main() {
       assert.equal(m.synthetic, true);
       assert(m.name.includes("가상") && m.description.includes("실제"));
       assert(m.photos.length && m.area_m2 > 0 && m.guests >= 2 && m.amenities.length);
-      assert(m.available_from < m.available_until);
+      const fixture = fixtureById.get(row.public_id);
+      assert(fixture.available_from < fixture.available_until);
+      for (const key of ["application_id", "blocked_dates", "nightly_krw", "weekly_krw", "monthly_krw",
+          "available_from", "available_until"]) assert(!Object.hasOwn(m,key));
+      assert(row.base_rates !== null);
     }
     pass("14 populated Seongsu stays at 14 distinct fictional coordinates");
     const all = await api("/hs2/search/api/results?layers=stay,sale,business,auction");
@@ -82,19 +94,19 @@ async function main() {
     assert(filtered.items.every(r => r.preview_demo.neighborhood === "성수동2가"
       && r.preview_demo.guests >= 4 && r.preview_demo.area_m2 >= 35));
     pass("Neighborhood / guests / area / amenities filters enforce source fields");
-    const closed = catalog.items.find(r => r.stay_kind === "lodging" && r.preview_demo.blocked_dates.length);
-    const blockedDate = closed.preview_demo.blocked_dates[0];
+    const closed = catalog.items.find(r => r.stay_kind === "lodging" && fixtureById.get(r.public_id).blocked_dates.length);
+    const blockedDate = fixtureById.get(closed.public_id).blocked_dates[0];
     const closedQuote = await api(`/hs2/details/api/items/${closed.public_id}/quote?check_in=${blockedDate}&check_out=${datePlus(blockedDate, 1)}&guests=2`,
       undefined, undefined, 400);
     assert.equal(closedQuote.ok, false);
-    const apartment = catalog.items.find(r => r.stay_kind === "non_lodging" && !r.preview_demo.blocked_dates.length);
-    const first = apartment.preview_demo.available_from;
+    const apartment = catalog.items.find(r => r.stay_kind === "non_lodging" && !fixtureById.get(r.public_id).blocked_dates.length
+        && r.base_rates.week > 0 && r.base_rates.month > 0);
+    const first = fixtureById.get(apartment.public_id).available_from;
     const weekly = await api(`/hs2/details/api/items/${apartment.public_id}/quote?check_in=${first}&check_out=${datePlus(first, 7)}&guests=2`);
-    assert.equal(weekly.quote.total_krw, apartment.preview_demo.weekly_krw);
-    const month = new Date(`${first}T00:00:00Z`);
-    month.setUTCMonth(month.getUTCMonth() + 1);
-    const monthly = await api(`/hs2/details/api/items/${apartment.public_id}/quote?check_in=${first}&check_out=${month.toISOString().slice(0, 10)}&guests=2`);
-    assert.equal(monthly.quote.total_krw, apartment.preview_demo.monthly_krw);
+    assert.equal(weekly.quote.total_krw, apartment.base_rates.week);
+    const month = require("./hs2_demo_assets/preview-rate-date.js").addMonthsClamped(first,1);
+    const monthly = await api(`/hs2/details/api/items/${apartment.public_id}/quote?check_in=${first}&check_out=${month}&guests=2`);
+    assert.equal(monthly.quote.total_krw, apartment.base_rates.month);
     await api(`/hs2/details/api/items/${apartment.public_id}/quote?check_in=${first}&check_out=${datePlus(first, 1)}&guests=2`,
       undefined, undefined, 400);
     pass("Closed dates blocked; exact weekly/calendar-month prices; non-lodging 1 night rejected");
@@ -102,7 +114,7 @@ async function main() {
     await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto(origin + "/hs2/consumer");
+      await page.goto(origin + "/hs2/consumer?layers=stay");
       await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
       // Exercise actual lazy-image loading, including below-fold mobile cards.
       for (const image of await page.locator("#listingList img").all())
@@ -116,8 +128,8 @@ async function main() {
       await page.goto(origin + (width === 390 ? "/hs2/search/mobile/" : "/hs2/search/"));
       await page.waitForSelector(".listing-card", { state: "attached" });
       if (width === 390) {
-        await page.locator("#mobile-map-btn").click();
-        assert.equal(await page.locator("#mobile-map-btn").getAttribute("aria-pressed"), "true");
+        await page.locator("#panelToggle").click();
+        assert.equal(await page.locator("#panelToggle").getAttribute("aria-expanded"), "false");
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.screenshot({ path: path.join(output, `map-${width}.png`), fullPage: true });
@@ -125,9 +137,9 @@ async function main() {
     }
     // Newly created quote, booking, operator approval, and financial contract.
     // Nothing is marked paid until explicit owned signed mock capture.
-    const lodging = catalog.items.find(r => r.stay_kind === "lodging");
-    let start = datePlus(lodging.preview_demo.available_from, 60);
-    while ([start, datePlus(start, 1)].some(d => lodging.preview_demo.blocked_dates.includes(d)))
+    const lodging = catalog.items.find(r => r.stay_kind === "lodging" && r.base_rates.night > 0);
+    let start = datePlus(fixtureById.get(lodging.public_id).available_from, 60);
+    while ([start, datePlus(start, 1)].some(d => fixtureById.get(lodging.public_id).blocked_dates.includes(d)))
       start = datePlus(start, 2);
     const end = datePlus(start, 2);
     const selection = { check_in: start, check_out: end, guests: 2 };
@@ -205,10 +217,8 @@ async function main() {
     await normal.close();
     pass("Normal shared template retains withheld photos/metadata and disabled protected filters");
     assert.deepEqual(errors, []);
-    assert.deepEqual(blocked.filter(host => ![
-      "https://fonts.googleapis.com", "https://fonts.gstatic.com"
-    ].includes(host)), []);
-    pass("No page errors; external font attempts blocked; no external provider traffic");
+    assert.deepEqual(blocked, []);
+    pass("No page errors; only read-only approved map/font hosts; no other outbound traffic");
     const summary = { status: "PASS", checks: results, actual_toss: false,
       actual_money_executed: false, production_data: false,
       blocked_font_requests: blocked.length };

@@ -1,5 +1,8 @@
 """Persistent synthetic preview. No inherited database, PG or delivery keys.
 
+Only the public browser Kakao Maps JS identifier is forwarded for the existing
+read-only map. Transactional/provider secrets remain excluded.
+
 Restarting destroys the private PostgreSQL cluster. This is a reviewed fixture
 application, not the production entrypoint or real-provider payment proof.
 """
@@ -49,6 +52,10 @@ def serve(port):
     seed_paid(app)
     from scripts.hs2_seongsu_preview import install
     install(app)
+    from scripts.hs2_real_map_preview import install as install_real_map
+    install_real_map(app)
+    from scripts.hs2_legacy_capabilities import install as install_capabilities
+    install_capabilities(app)
 
     @app.get("/")
     def index():
@@ -61,7 +68,11 @@ def serve(port):
             "payment_provider": "OwnedSandbox_mock", "actual_toss": False,
             "external_delivery": False, "production_entrypoint": False,
             "reset_on_restart": True,
-            "demo": "seongsu", "synthetic_stays": 14,
+            "demo": "seongsu", "initial_synthetic_stays": 14,
+            "synthetic_stays": sum(v.get("category") in {"lodging", "non_lodging"}
+                                   for v in app.fixture_demo_catalog.values()),
+            "map_provider": "existing_kakao_maps", "schematic_map": False,
+            "map_key_configured": bool(os.environ.get("HS2_PREVIEW_MAP_JS_KEY")),
             "synthetic_layers": {"sale": 3, "business": 3, "auction": 3},
         }
 
@@ -71,12 +82,12 @@ def serve(port):
             response.direct_passthrough = False
             text = response.get_data(as_text=True)
             banner = (
-                '<aside role="note" style="padding:12px;background:#fff3cd;'
-                'color:#332701;font:14px/1.5 sans-serif">'
+                '<aside role="note" style="padding:8px 16px;background:#fff;'
+                'border-bottom:1px solid #d8e1eb;color:#171717;'
+                'font:14px/1.5 \'Noto Sans KR\',sans-serif">'
                 '<b>개발용 가상 데이터 Preview</b> · 실제 개인정보를 입력하지 마세요.'
-                ' 결제는 OwnedSandbox 모의 처리이며 실제 토스가 아닙니다.'
-                ' 이메일·문자·지급은 차단됩니다. 재시작하면 데이터가 초기화됩니다.'
-                ' 로그인·신원은 검사 fixture이며 운영 인증을 대체하지 않습니다.'
+                ' 결제·로그인은 모의 처리이며 실제 토스·운영 인증이 아닙니다.'
+                ' 이메일·문자·지급은 차단됩니다. 재시작 시 데이터가 초기화됩니다.'
                 '</aside>'
             )
             import re
@@ -91,7 +102,7 @@ def serve(port):
 
     with make_server("0.0.0.0", port, app, server_class=PreviewServer,
                      handler_class=WSGIRequestHandler) as http:
-        print("Synthetic Preview ready; no production DSN or provider keys loaded.",
+        print("Synthetic Preview ready; no production/payment/delivery credentials; public map SDK only.",
               flush=True)
         http.serve_forever()
 
@@ -109,6 +120,9 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="hs2-preview-", dir="/tmp") as tmp:
         env = test_env(Path(tmp))
+        # Browser-exposed map identifier only; never forward the REST key,
+        # production database, payment, email, SMS or identity credentials.
+        env["HS2_PREVIEW_MAP_JS_KEY"] = os.environ.get("KAKAO_JS_KEY", "")
         with owned_cluster(env, sys.stdout, "test_hs2_phase15_db.py") as env:
             env["PYTHONPATH"] = str(ROOT / "hs2_harness/isolated_guard") + os.pathsep + env["PYTHONPATH"]
             child = subprocess.Popen(

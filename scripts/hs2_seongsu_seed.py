@@ -42,9 +42,10 @@ def seed_seongsu(app):
         values = dict(
             title=f"[가상] 성수 {NAMES[i]}", space_label=f"가상 공간 {i+1:02}",
             stay_kind=kind, rooms=1 + i % 3, area_m2=str(22 + i * 4),
-            guests=2 + i % 5, nightly=70000 + i * 9000 if kind == "lodging" else None,
-            weekly=260000 + i * 30000 if kind == "non_lodging" else None,
-            monthly=900000 + i * 110000 if kind == "non_lodging" else None,
+            guests=2 + i % 5, nightly=(178000 if i == 2 else 0 if i == 12 else
+                                     70000 + i * 9000) if kind == "lodging" else None,
+            weekly=260000 + i * 30000 if kind == "non_lodging" and i != 13 else None,
+            monthly=900000 + i * 110000 if kind == "non_lodging" and i != 3 else None,
             min_stay=1 if kind == "lodging" else 7, photos=[photo],
             options=["wifi"] + (["kitchen", "washer"] if i % 3 else ["parking"]),
             instant=i % 2 == 0, discount=i % 4 == 0,
@@ -68,8 +69,11 @@ def seed_seongsu(app):
                  else dict(weekly=p["weekly"], monthly=p["monthly"]))
         version = app.fixture_calendar.update(WHO, row["id"], state["version"],
             state["source_revision"], dict(start=start.isoformat(), end=end.isoformat(),
-                inclusive=True, action="nightly" if p["stay_kind"] == "lodging" else "periods",
-                values=rates))
+                inclusive=True, action=("open" if p["nightly"] == 0 else "nightly")
+                    if p["stay_kind"] == "lodging" else "periods",
+                # The frozen engine requires positive override/quote prices.
+                # Publish the legitimate zero BASE, never fabricate a zero quote.
+                values={} if p["stay_kind"] == "lodging" and p["nightly"] == 0 else rates))
         blocked = []
         if i % 3 == 0:
             closed_start, closed_end = start + timedelta(days=8), start + timedelta(days=11)
