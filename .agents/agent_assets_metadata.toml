@@ -1144,3 +1144,45 @@ mtime_ms = 1791742281603
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/64c1e22a-097c-461d-90fd-26683923c5b8/0f45741f-dd31-4bd1-8cad-19a459e52130"
 storage_version_token = "1791742348637691"
 content_type = "text/html"
+
+[[outputs]]
+id = "6GNESXty3TRtNmd6W942X"
+uri = "file://generated-artifacts/unified-preview/home-stay-unified-report.html"
+type = "html"
+title = "HOME & STAY 통합 Preview 검증 보고서"
+description = "목업 구성 비교, PC·모바일·상세·임대인·격리 관리자·채팅 스크린샷과 회귀 결과. 실제 토스 NOT_RUN 및 운영 계정 연결 미완료를 명시한 자체 포함 HTML."
+logical_id = "7877f052-6f0e-4938-98c9-2852b4d8fea9"
+content_hash = "sha256:beefabdc71e75829ba24f2e233d6924fc7d1bbd8308b5cc3e4754639a9377208"
+size = 2580158
+mtime_ms = 1791759290664
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/7877f052-6f0e-4938-98c9-2852b4d8fea9/863d3ae2-254f-425f-8bfd-e4b9aa0adcd8"
+storage_version_token = "1791759316898105"
+content_type = "text/html"
+
+[[outputs]]
+id = "B_j0D0hy1WcCK1rkPgzB5"
+uri = "file://generated-artifacts/unified-preview/consumer-1440.jpg"
+type = "image"
+title = "소비자 PC 1440px — 실제 카카오 지도"
+description = "사진 카드 2열, 더 넓은 지도, 원본 로고와 주·일·월 기준요금. HTTPS 개발 Preview 캡처."
+logical_id = "6af43b32-d9f5-471c-95c3-8fc2ebe92fad"
+content_hash = "sha256:615f8a2adfd33483330754c155a2bceec7d0714c10d36514ae821931922792a0"
+size = 310925
+mtime_ms = 1791759287086
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/6af43b32-d9f5-471c-95c3-8fc2ebe92fad/3baa4517-62eb-494b-8ef3-ff9e9a49c710"
+storage_version_token = "1791759318236876"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "_nSeBl80PqCCISq-2t1b0"
+uri = "file://generated-artifacts/unified-preview/consumer-390.jpg"
+type = "image"
+title = "소비자 모바일 390px"
+description = "넓은 사진 카드, 16px 이상 검은 글자, 지역·날짜·인원 검색. HTTPS 개발 Preview 캡처."
+logical_id = "4df11445-8579-4597-a4f1-52bf806c39b3"
+content_hash = "sha256:63228bac9405f19a146047b781d75dcfecd02bb2d054375094aaef57d94f0124"
+size = 75772
+mtime_ms = 1791759287103
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/4df11445-8579-4597-a4f1-52bf806c39b3/3ff13605-db26-4e96-937c-eaacc95d25a2"
+storage_version_token = "1791759319475639"
+content_type = "image/jpeg"
