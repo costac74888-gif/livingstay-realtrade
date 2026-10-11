@@ -16,7 +16,7 @@ from offline_support.source_preservation import new_run_directory, SourcePreserv
 def main():
     results = new_run_directory(ROOT / "generated-artifacts/analysis-capture-verification")
     print("ANALYSIS_CAPTURE_RUN_DIR:", results, flush=True)
-    with SourcePreservation(results):
+    with SourcePreservation(results) as preservation:
         with legacy_runtime(results / "fixture.log", browser=True) as env:
             env["SAVE_ANALYSIS_SCREENSHOTS"] = "1"
             env["HOMENSTAY_OFFLINE_ARTIFACT_DIR"] = str(results / "captures")
@@ -25,6 +25,7 @@ def main():
                 cwd=ROOT, env=env, timeout=180, logfile=results / "analysis.log")
         print((results / "analysis.log").read_text(), flush=True)
         if result["exit_code"]:
+            preservation.exit_code = result["exit_code"]
             return result["exit_code"]
         for mode in ("property", "rental", "operation"):
             for extension, signature in (("png", b"\x89PNG\r\n\x1a\n"), ("pdf", b"%PDF")):

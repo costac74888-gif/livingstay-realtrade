@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from .artifact_lifecycle import start_run, finish_run
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_ROOT = ROOT / "generated-artifacts"
@@ -14,7 +15,9 @@ def new_run_directory(parent=None):
     if not parent.is_relative_to(OUTPUT_ROOT) or parent == OUTPUT_ROOT:
         raise ValueError("Results must be inside generated-artifacts")
     parent.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="run-", dir=parent))
+    directory = Path(tempfile.mkdtemp(prefix="run-", dir=parent))
+    start_run(directory)
+    return directory
 
 
 def fingerprint(root=ROOT):
@@ -38,10 +41,13 @@ class SourcePreservation:
         self.directory = Path(directory)
         self.root = root
         self.changed = []
+        self.exit_code = 0
 
     def __enter__(self):
         self.before = fingerprint(self.root)
         self.directory.mkdir(parents=True, exist_ok=True)
+        if not (self.directory / ".artifact-run.json").exists():
+            start_run(self.directory)
         (self.directory / "source-before.json").write_text(
             json.dumps(self.before, indent=2, ensure_ascii=False))
         return self
@@ -57,5 +63,12 @@ class SourcePreservation:
             "files_checked": len(self.before),
             "changed": self.changed,
         }, indent=2, ensure_ascii=False))
+        failed = []
+        summary = self.directory / "summary.json"
+        if summary.exists():
+            failed = [entry["name"] for entry in json.loads(summary.read_text())
+                      if entry["exit_code"]]
         if self.changed:
+            finish_run(self.directory, 1, failed + ["source-preservation"])
             raise RuntimeError(f"Source/reference preservation failed: {self.changed}")
+        finish_run(self.directory, bool(_exc[0]) or self.exit_code or bool(failed), failed)

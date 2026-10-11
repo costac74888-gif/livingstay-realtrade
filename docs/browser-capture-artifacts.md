@@ -52,3 +52,69 @@ or update the approved-check registry.
 
 This capture-location change does not modify assertions or frozen baselines,
 and adds no automatic baseline-update mode.
+
+## Safe cleanup of old test runs
+
+Run the separate command from the project workspace:
+
+```sh
+# Default: report only; completed evidence older than 30 days is eligible.
+python scripts/cleanup_test_artifacts.py
+# Age-only policy:
+python scripts/cleanup_test_artifacts.py --keep-days 14
+# Size-only policy (MiB, oldest eligible runs first):
+python scripts/cleanup_test_artifacts.py --max-mib 2048
+# Combined policy: age expiry OR enough removals to meet the size budget:
+python scripts/cleanup_test_artifacts.py --keep-days 30 --max-mib 2048
+# Inspect the JSON report first, then explicitly authorize actual deletion:
+python scripts/cleanup_test_artifacts.py --keep-days 30 --max-mib 2048 --apply
+```
+
+No scheduled job is installed and no existing evidence is deleted when adding
+this command. `--dry-run` is also accepted explicitly; it cannot be combined
+with `--apply`. Reports show each whole run's action, keep/delete reason and
+logical file bytes before/after (not filesystem block usage). `bytes_after` is
+the projected size during dry-run. There is no arbitrary-path or force override.
+
+Only immediate run directories under `generated-artifacts/offline-suite`,
+`generated-artifacts/browser-checks`, and `generated-artifacts/post-merge` are
+considered. Nested captures/logs/PDFs/traces are removed only with their outer
+run, never selectively. Custom `--results` destinations outside these three
+trees and other generated output trees are deliberately not cleaned.
+
+New Python runs and Node captures write `.artifact-run.json` with completion
+state, producer, timestamps, and Linux process identity (PID, boot ID and start
+ticks). Source preservation failures, returned nonzero results and exceptions
+are failures, not successes. A successful run does **not** supersede the latest
+failure: the newest failed evidence for each check/producer in each tree stays
+protected, including failed nested captures and ties. A live owner, live nested
+capture, interrupted run or unrecognized/missing/corrupt metadata is kept.
+The suite and post-merge runner record each pending check before executing it,
+so even fixture/setup exceptions preserve the failing check's name. A failed
+generic Python run with no identifiable check is kept conservatively.
+**Older results created before this metadata existed are kept**; completion
+cannot safely be inferred from a PNG, log or source fingerprint. Review those
+manually rather than fabricating a success marker to make them deletable.
+
+The command never follows symlinks, deletes hard-linked evidence, or removes a
+run containing tracked files or paths named `frozen`/`baseline` (including names
+containing those words). Original `screenshots/`, source files and frozen
+baselines outside the allowlisted output trees are never traversed or deleted.
+Concurrent cleanup is locked; immediately before removal the command rechecks
+eligibility and file identities/modification times. A changed run aborts removal.
+Apply uses symlink-resistant fd-based directory removal and refuses platforms
+without that support. A dry-run report is never reused as deletion permission.
+
+Safety exclusions may prevent the requested budget being reached; the report
+then sets `limit_unmet`, with no protection override. Unsafe/unreadable runs
+whose size cannot be measured appear in `unmeasured_runs`; byte totals are a
+lower bound in that case. A size policy with unmeasured runs also reports the
+limit as unmet. Command/configuration or safety errors return a nonzero exit
+code; a safely reported unmet budget is not an execution error.
+
+Local regression checks (no production/database/email access):
+
+```sh
+python -m unittest discover -s tests -p 'test_artifact_cleanup.py' -v
+python -m unittest discover -s tests -p 'test_capture_artifacts.py' -v
+```

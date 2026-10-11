@@ -197,8 +197,9 @@ def main():
         entries = [(name, cmd) for name, cmd in entries if name in args.only]
     args.results = new_run_directory(args.results)
     print("SUITE_RUN_DIR: " + str(args.results), flush=True)
-    with SourcePreservation(args.results):
-        return execute_entries(entries, args)
+    with SourcePreservation(args.results) as preservation:
+        preservation.exit_code = execute_entries(entries, args)
+        return preservation.exit_code
 
 
 def execute_entries(entries, args):
@@ -206,12 +207,16 @@ def execute_entries(entries, args):
     for name, command in entries:
         print("RUN " + name, flush=True)
         logfile = args.results / (name.replace("/", "_") + ".log")
+        # Retain the failing check identity even if setup/execution raises.
+        results.append({"name": name, "exit_code": 1, "completed": False})
+        (args.results / "summary.json").write_text(
+            json.dumps(results, ensure_ascii=False, indent=2))
         result = execute(name, command, args.timeout, logfile)
         result.update(name=name, log=os.path.relpath(logfile, ROOT),
                       capture_dir=os.path.relpath(args.results / "captures" / name, ROOT),
                       deadline_seconds=args.timeout,
                       failure_kind=failure_kind(result, logfile))
-        results.append(result)
+        results[-1] = result
         (args.results / "summary.json").write_text(
             json.dumps(results, ensure_ascii=False, indent=2))
         label = "FAIL " if result["exit_code"] else (
