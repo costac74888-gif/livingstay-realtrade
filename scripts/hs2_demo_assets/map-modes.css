@@ -1,0 +1,351 @@
+/* HOME & STAY map modes: readable consumer search and owner facility layers.
+   Deliberately scoped to this map preview; provider-owned map labels are untouched. */
+body[data-hs2-demo="seongsu"] {
+  --map-olive: #596044;
+  --map-olive-soft: #eef0e7;
+  --map-olive-pale: #f5f6f1;
+  --map-olive-line: #c3c8b4;
+  --map-ink: #000;
+  --map-line: #d8dbd0;
+  --map-paper: #fff;
+  color: var(--map-ink);
+  background: var(--map-paper);
+}
+
+body[data-hs2-demo="seongsu"] .map-mode-nav {
+  position: relative;
+  z-index: 60;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 24px;
+  border-bottom: 1px solid var(--map-line);
+  background: var(--map-olive-pale);
+}
+body[data-hs2-demo="seongsu"] .map-mode-label {
+  margin-right: 4px;
+  color: var(--map-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+body[data-hs2-demo="seongsu"] .map-mode-nav a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 13px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--map-ink);
+  background: transparent;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+}
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] #consumerModeLink,
+body[data-hs2-demo="seongsu"][data-map-mode="owner"] #ownerModeLink {
+  border-color: var(--map-olive-line);
+  background: var(--map-olive-soft);
+  box-shadow: inset 0 -2px 0 var(--map-olive);
+}
+body[data-hs2-demo="seongsu"] .map-mode-nav a:hover { background: var(--map-olive-soft); }
+
+body[data-hs2-demo="seongsu"] .map-app {
+  height: calc(100dvh - 110px - var(--warning-banner-height, 0px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--map-ink);
+}
+body[data-hs2-demo="seongsu"] .search-dock {
+  height: auto;
+  min-height: 168px;
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  border-color: var(--map-line);
+  background: var(--map-paper);
+  box-shadow: 0 2px 9px rgba(48, 52, 37, .08);
+}
+body[data-hs2-demo="seongsu"] #searchForm { height: auto; }
+body[data-hs2-demo="seongsu"] .map-workspace {
+  height: auto;
+  min-height: 230px;
+  flex: 1 1 auto;
+  background: var(--map-paper);
+}
+body[data-hs2-demo="seongsu"] .map-canvas { background: var(--map-paper); }
+body[data-hs2-demo="seongsu"] :is(
+  .site-nav,.search-dock,.results-pane,.results-top,.listing-list,.selected-detail,
+  .layer-tools,.subway-tool,.map-toolbar,.map-tool-btn,.facility-directory
+) { background-color: var(--map-paper); }
+
+/* Strong black ink, generous readable type, and no sub-16px UI labels. */
+body[data-hs2-demo="seongsu"] :is(
+  .header-action,.nav-back,.field-label,.options-filter legend,.option-checks label,
+  .price-unit,.search-field input,.search-field select,.filter-select select,
+  .unit-control input,.unit-control > span,.price-inputs input,.mobile-filter-group > summary,
+  .eyebrow,.results-heading h1,.result-count,.map-status,.status-message,.map-error,
+  .listing-type,.listing-title,.listing-meta,.listing-price,.demo-warning,.detail-back,
+  .detail-content,.detail-content h2,.detail-content p,.detail-primary,
+  .layer-button,.layer-name,.layer-counter,.subway-tool,.subway-tool span,
+  .map-tool-label,.map-measure-panel,.map-measure-panel button,.roadview-hint,
+  .facility-directory,.facility-directory label,.facility-directory summary,
+  .facility-directory input,.facility-directory button,.facility-status,
+  .facility-directory-results,.facility-pagination
+) {
+  color: var(--map-ink) !important;
+  font-size: max(16px, 1em);
+}
+body[data-hs2-demo="seongsu"] :is(
+  .site-nav,.map-mode-nav,.search-dock,.results-pane,.map-tool-rail
+) :not(.sr-only):not(svg):not(path) {
+  font-size: max(16px, 1em);
+}
+body[data-hs2-demo="seongsu"] :is(input,select,textarea)::placeholder {
+  color: #111 !important;
+  opacity: .72;
+}
+body[data-hs2-demo="seongsu"] .eyebrow { font-size: 16px; }
+body[data-hs2-demo="seongsu"] .results-heading h1,
+body[data-hs2-demo="seongsu"] .detail-content > h2 { color: var(--map-ink); }
+body[data-hs2-demo="seongsu"] .search-field input,
+body[data-hs2-demo="seongsu"] .search-field select,
+body[data-hs2-demo="seongsu"] .filter-select select,
+body[data-hs2-demo="seongsu"] .unit-control,
+body[data-hs2-demo="seongsu"] .price-inputs input,
+body[data-hs2-demo="seongsu"] .facility-directory input {
+  min-height: 44px;
+  border-color: var(--map-line);
+  border-radius: 4px;
+  color: var(--map-ink);
+  background: var(--map-paper);
+  font-size: 16px;
+}
+body[data-hs2-demo="seongsu"] .search-submit,
+body[data-hs2-demo="seongsu"] .detail-content .detail-primary,
+body[data-hs2-demo="seongsu"] .facility-directory-form button {
+  min-height: 44px;
+  border: 1px solid var(--map-olive-line);
+  border-radius: 4px;
+  color: var(--map-ink) !important;
+  background: var(--map-olive-soft);
+  font-size: 16px;
+  font-weight: 750;
+}
+body[data-hs2-demo="seongsu"] .search-submit:hover,
+body[data-hs2-demo="seongsu"] .detail-content .detail-primary:hover,
+body[data-hs2-demo="seongsu"] .facility-directory-form button:hover {
+  background: #e4e7d9;
+}
+body[data-hs2-demo="seongsu"] .listing-card[aria-pressed="true"],
+body[data-hs2-demo="seongsu"] .listing-card.selected {
+  background: var(--map-olive-soft);
+  box-shadow: inset 4px 0 0 var(--map-olive);
+}
+body[data-hs2-demo="seongsu"] .listing-price { color: var(--map-ink); font-size: 20px; font-weight: 850; }
+body[data-hs2-demo="seongsu"] .listing-type {
+  min-height: 28px;
+  border-color: var(--map-olive-line);
+  border-radius: 4px;
+  background: var(--map-olive-pale);
+}
+body[data-hs2-demo="seongsu"] .result-count {
+  border-color: var(--map-olive-line);
+  border-radius: 4px;
+  background: var(--map-olive-pale);
+}
+body[data-hs2-demo="seongsu"] .pane-toggle,
+body[data-hs2-demo="seongsu"] .detail-back,
+body[data-hs2-demo="seongsu"] .layer-button,
+body[data-hs2-demo="seongsu"] .subway-tool,
+body[data-hs2-demo="seongsu"] .map-tool-btn,
+body[data-hs2-demo="seongsu"] .facility-pagination button {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: var(--map-line);
+  color: var(--map-ink);
+  background: var(--map-paper);
+}
+body[data-hs2-demo="seongsu"] .layer-button[aria-pressed="true"],
+body[data-hs2-demo="seongsu"] .subway-tool[aria-pressed="true"] {
+  border: 1px solid var(--map-olive-line);
+  background: var(--map-olive-soft);
+}
+body[data-hs2-demo="seongsu"] .layer-button[aria-pressed="false"] { opacity: .72; }
+body[data-hs2-demo="seongsu"] .layer-tools {
+  width: 112px;
+  border-color: var(--map-line);
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(39, 43, 29, .13);
+}
+body[data-hs2-demo="seongsu"] .layer-button {
+  min-height: 56px;
+  grid-template-columns: 13px minmax(0, 1fr);
+  grid-template-rows: 22px 20px;
+  column-gap: 7px;
+  padding: 6px 7px;
+}
+body[data-hs2-demo="seongsu"] .layer-name,
+body[data-hs2-demo="seongsu"] .layer-counter { font-size: 16px; }
+body[data-hs2-demo="seongsu"] .layer-counter { align-self: center; }
+body[data-hs2-demo="seongsu"] .layer-facility { --layer-color: #596044; }
+body[data-hs2-demo="seongsu"] .layer-facility .layer-mark { background: var(--layer-color); }
+body[data-hs2-demo="seongsu"] .map-tool-rail { width: 76px; }
+body[data-hs2-demo="seongsu"] .map-tool-rail .layer-tools { width: 72px !important; }
+body[data-hs2-demo="seongsu"] .map-tool-rail .map-tool-label,
+body[data-hs2-demo="seongsu"] .map-tool-rail #subwayTool span { font-size: 16px; }
+body[data-hs2-demo="seongsu"] .real-map-marker {
+  min-height: 44px;
+  color: var(--map-ink);
+  background: var(--map-paper);
+  border: 2px solid var(--map-olive);
+  font-size: 16px;
+  box-shadow: 0 2px 7px rgba(20, 24, 12, .2);
+}
+
+/* Consumer mode is exclusively short-stay inventory. */
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] .layer-button[data-layer="sale"],
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] .layer-button[data-layer="business"],
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] .layer-button[data-layer="auction"],
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] .layer-button[data-layer="facility"],
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] #facilityDirectory,
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] #facilityStatus { display: none !important; }
+body[data-hs2-demo="seongsu"][data-map-mode="consumer"] .layer-tools { width: 104px; }
+body[data-hs2-demo="seongsu"][data-map-mode="owner"] #kind,
+body[data-hs2-demo="seongsu"][data-map-mode="owner"] .kind-filter { display: none; }
+
+body[data-hs2-demo="seongsu"] .facility-directory {
+  flex: 0 0 auto;
+  max-height: 36%;
+  overflow: auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--map-line);
+  background: var(--map-olive-pale);
+}
+body[data-hs2-demo="seongsu"] .facility-directory summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 750;
+}
+body[data-hs2-demo="seongsu"] .facility-directory-form { display: grid; gap: 7px; padding: 4px 0; }
+body[data-hs2-demo="seongsu"] .facility-query-row { display: grid; grid-template-columns: minmax(0,1fr) 72px; gap: 8px; }
+body[data-hs2-demo="seongsu"] .facility-status { margin: 8px 0; line-height: 1.45; }
+body[data-hs2-demo="seongsu"] .facility-directory-results { display: block; }
+body[data-hs2-demo="seongsu"] .facility-pagination { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; }
+body[data-hs2-demo="seongsu"] .facility-pagination button {
+  flex: 1;
+  border: 1px solid var(--map-olive-line);
+  border-radius: 4px;
+  background: var(--map-olive-soft);
+}
+
+@media (max-width: 900px) {
+  body[data-hs2-demo="seongsu"] .map-mode-nav { padding-right: 14px; padding-left: 14px; }
+  body[data-hs2-demo="seongsu"] .search-dock { padding-right: 12px; padding-left: 12px; }
+  body[data-hs2-demo="seongsu"] .map-app { height: calc(100dvh - 110px - var(--warning-banner-height, 0px)); }
+}
+
+@media (max-width: 767px) {
+  body[data-hs2-demo="seongsu"] .site-nav {
+    height: 58px;
+    min-height: 58px;
+  }
+  body[data-hs2-demo="seongsu"] .map-mode-nav {
+    min-height: 42px;
+    gap: 5px;
+    padding: 2px 9px;
+  }
+  body[data-hs2-demo="seongsu"] .map-mode-label { margin-right: auto; font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .map-mode-nav a { min-height: 40px; padding: 5px 9px; }
+  body[data-hs2-demo="seongsu"] .map-app {
+    height: calc(100dvh - 100px - var(--warning-banner-height, 0px));
+    min-height: 0;
+  }
+  body[data-hs2-demo="seongsu"] .search-dock {
+    height: auto;
+    min-height: 0;
+    padding: 8px 9px;
+  }
+  body[data-hs2-demo="seongsu"] #searchForm { gap: 6px; }
+  body[data-hs2-demo="seongsu"] .search-primary-row { min-height: 0; }
+  body[data-hs2-demo="seongsu"] .search-submit { min-height: 44px; }
+  body[data-hs2-demo="seongsu"] .mobile-filter-group > summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    color: var(--map-ink);
+  }
+  body[data-hs2-demo="seongsu"] .mobile-filter-group:not([open]) > .search-filter-row { display: none; }
+  body[data-hs2-demo="seongsu"] .mobile-filter-group[open] > .search-filter-row { display: grid; }
+  body[data-hs2-demo="seongsu"] .map-workspace { min-height: 190px; }
+  body[data-hs2-demo="seongsu"] .results-pane {
+    right: 58px;
+    width: auto;
+    height: min(46dvh, 420px);
+    max-height: calc(100% - 18px);
+  }
+  body[data-hs2-demo="seongsu"] .panel-toggle-floating {
+    right: 62px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + min(46dvh,420px) - 48px);
+  }
+  body[data-hs2-demo="seongsu"] .layer-tools {
+    right: 50px;
+    width: 68px;
+    gap: 2px;
+    padding: 4px;
+  }
+  body[data-hs2-demo="seongsu"] .map-tool-rail {
+    width: 76px;
+    right: 5px;
+  }
+  /* Keep the full owner layer stack inside the visible map workspace on phones.
+     The taller preview safety banner reduces workspace height, so retain a
+     small bottom inset rather than the legacy 74px control clearance. */
+  body[data-hs2-demo="seongsu"][data-map-mode="owner"] .map-tool-rail {
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  body[data-hs2-demo="seongsu"] .map-tool-rail .layer-button {
+    min-height: 64px;
+    grid-template-columns: 1fr;
+    grid-template-rows: 12px auto 20px;
+    justify-items: center;
+    gap: 2px;
+    padding: 5px 1px;
+    text-align: center;
+  }
+  body[data-hs2-demo="seongsu"] .map-tool-rail .layer-mark { grid-row: 1; }
+  body[data-hs2-demo="seongsu"] .map-tool-rail .layer-name { grid-row: 2; font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .map-tool-rail .layer-counter { grid-row: 3; font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .map-tool-rail #subwayTool {
+    min-height: 54px;
+    font-size: 16px;
+  }
+  body[data-hs2-demo="seongsu"] .map-toolbar { right: 5px; }
+  body[data-hs2-demo="seongsu"] .map-tool-btn { width: 44px; height: 44px; }
+  body[data-hs2-demo="seongsu"] .listing-card { grid-template-columns: 96px minmax(0,1fr); }
+  body[data-hs2-demo="seongsu"] .listing-card > img { width: 96px; height: 96px; }
+  body[data-hs2-demo="seongsu"] .listing-title { font-size: 18px; }
+  body[data-hs2-demo="seongsu"] .listing-meta { font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .listing-type { font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .status-message { font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .facility-directory { max-height: 42%; }
+}
+
+@media (max-width: 390px) {
+  body[data-hs2-demo="seongsu"] .map-mode-nav { padding-right: 7px; padding-left: 7px; gap: 3px; }
+  body[data-hs2-demo="seongsu"] .map-mode-label { font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .map-mode-nav a { padding-right: 7px; padding-left: 7px; font-size: 16px; }
+  body[data-hs2-demo="seongsu"] .search-dock { padding-right: 7px; padding-left: 7px; }
+  body[data-hs2-demo="seongsu"] .search-primary-row { gap: 6px 5px; }
+  body[data-hs2-demo="seongsu"] .search-field input,
+  body[data-hs2-demo="seongsu"] .search-field select { padding-right: 3px; padding-left: 3px; }
+  body[data-hs2-demo="seongsu"] .listing-card { grid-template-columns: 88px minmax(0,1fr); gap: 7px; }
+  body[data-hs2-demo="seongsu"] .listing-card > img { width: 88px; height: 88px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-hs2-demo="seongsu"] *, body[data-hs2-demo="seongsu"] *::before,
+  body[data-hs2-demo="seongsu"] *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

@@ -73,7 +73,8 @@ const out="generated-artifacts/seongsu-preview";
   assert.deepEqual(errors,[]);
   const report={ok:true,registration:{draft:"draft",submitted:"submitted",approved:"approved",new_public_listing_visible:true},
    miniature_map:"real_sdk_fictional_position",desktop_mobile_detail_dashboard:"PASS",roadview,
-   matrix:"source_retained_is_not_integration",actual_toss:false,production_data:false,errors};
+    matrix:"source_retained_is_not_integration",actual_toss:false,production_writes:false,
+    private_production_data:false,public_facility_source:status.public_facility_snapshot.source,errors};
   fs.writeFileSync(out+"/completion-checks.json",JSON.stringify(report,null,2));console.log(JSON.stringify(report));
  }finally{await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

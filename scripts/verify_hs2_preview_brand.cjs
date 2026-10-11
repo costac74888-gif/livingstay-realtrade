@@ -66,13 +66,13 @@ const out="generated-artifacts/seongsu-preview";
     assert.equal(state.overflow,false,path+" overflow");
     assert.equal(state.brand,"#596044",path+" approved main color");
     for(const button of state.primary){
-     assert.equal(button.background,"rgb(89, 96, 68)",path+" olive action "+button.label);
-     assert.equal(button.color,"rgb(255, 255, 255)",path+" white action label "+button.label);
+     assert.equal(button.background,"rgb(229, 234, 214)",path+" approved accessible pale olive action "+button.label);
+     assert.equal(button.color,"rgb(0, 0, 0)",path+" black action label "+button.label);
     }
     if(mode==="map"){
      await page.locator(".search-submit").hover();
      await page.waitForTimeout(250);
-     assert.equal(await page.locator(".search-submit").evaluate(e=>getComputedStyle(e).backgroundColor),"rgb(70, 77, 53)");
+     assert.equal(await page.locator(".search-submit").evaluate(e=>getComputedStyle(e).backgroundColor),"rgb(229, 234, 214)");
      await page.mouse.move(0,0);
      await page.waitForTimeout(200);
     }

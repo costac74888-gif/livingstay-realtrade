@@ -3,7 +3,7 @@ import html
 import os
 from pathlib import Path
 from urllib.parse import urlencode
-from flask import Response, jsonify, send_from_directory
+from flask import Response, jsonify, send_from_directory, request
 from scripts.hs2_seongsu_seed import require_owned
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,11 +57,14 @@ window.HS2LegacyMapTools={
             url = "https://dapi.kakao.com/v2/maps/sdk.js?" + urlencode({
                 "appkey": key, "autoload": "false", "libraries": "services"})
             sdk = '<script defer src="' + html.escape(url, quote=True) + '"></script>'
+        mode = "owner" if request.path == "/hs2/owner-map/" else "consumer"
+        text = text.replace('data-map-mode="consumer"', f'data-map-mode="{mode}"')
         return Response(text.replace("<!--LEGACY_MAP_TOOLS-->", toolbar)
                         .replace("<!--REAL_MAP_SDK-->", sdk), mimetype="text/html")
 
     # Development-only override: production/shared consumer template untouched.
     app.view_functions["hs2_private_consumer.page"] = page
+    app.add_url_rule("/hs2/owner-map/", "preview_owner_map", page)
     # Resolve blueprint endpoint names explicitly instead of assuming aliases.
     for rule in app.url_map.iter_rules():
         if rule.rule in {"/hs2/consumer", "/hs2/search/", "/hs2/search/mobile/"}:
@@ -82,6 +85,8 @@ window.HS2LegacyMapTools={
             "preview-presentation.js": ("scripts/hs2_demo_assets", "preview-presentation.js"),
             "preview-rate-date.js": ("scripts/hs2_demo_assets", "preview-rate-date.js"),
             "rate-preview.css": ("scripts/hs2_demo_assets", "rate-preview.css"),
+            "map-modes.css": ("scripts/hs2_demo_assets", "map-modes.css"),
+            "preview-readability.css": ("scripts/hs2_demo_assets", "preview-readability.css"),
             "detail-map.js": ("scripts", "hs2_detail_real_map.js"),
             "demo-role.js": ("scripts/hs2_demo_assets", "demo-role.js"),
             "map.js": ("scripts", "hs2_real_map.js"),

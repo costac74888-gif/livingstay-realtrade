@@ -54,6 +54,8 @@ def serve(port):
     install(app)
     from scripts.hs2_real_map_preview import install as install_real_map
     install_real_map(app)
+    from scripts.hs2_map_modes import install as install_map_modes
+    install_map_modes(app)
     from scripts.hs2_legacy_capabilities import install as install_capabilities
     install_capabilities(app)
 
@@ -64,7 +66,9 @@ def serve(port):
     @app.get("/__development__/status")
     def status():
         return {
-            "synthetic_data_only": True, "database": "owned_ephemeral",
+            "synthetic_data_only": not bool(app.fixture_facility_snapshot.rows),
+            "database": "owned_ephemeral",
+            "dataset_provenance": "synthetic_transactions_and_public_facility_snapshot",
             "payment_provider": "OwnedSandbox_mock", "actual_toss": False,
             "external_delivery": False, "production_entrypoint": False,
             "reset_on_restart": True,
@@ -74,6 +78,8 @@ def serve(port):
             "map_provider": "existing_kakao_maps", "schematic_map": False,
             "map_key_configured": bool(os.environ.get("HS2_PREVIEW_MAP_JS_KEY")),
             "synthetic_layers": {"sale": 3, "business": 3, "auction": 3},
+            "transaction_data_synthetic_only": True,
+            "public_facility_snapshot": app.fixture_facility_snapshot.status(),
         }
 
     @app.after_request
@@ -85,7 +91,9 @@ def serve(port):
                 '<aside role="note" style="padding:8px 16px;background:#fff;'
                 'border-bottom:1px solid #d8e1eb;color:#171717;'
                 'font:14px/1.5 \'Noto Sans KR\',sans-serif">'
-                '<b>개발용 가상 데이터 Preview</b> · 실제 개인정보를 입력하지 마세요.'
+                '<b>개발용 Preview</b> · 매물·예약·채팅은 가상 데이터입니다.'
+                ' 임대인 시설은 검증된 공개 스냅샷이며 실시간 운영 연결이 아닙니다.'
+                ' 실제 개인정보를 입력하지 마세요.'
                 ' 결제·로그인은 모의 처리이며 실제 토스·운영 인증이 아닙니다.'
                 ' 이메일·문자·지급은 차단됩니다. 재시작 시 데이터가 초기화됩니다.'
                 '</aside>'

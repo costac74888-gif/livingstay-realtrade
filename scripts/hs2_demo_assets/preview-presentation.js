@@ -6,8 +6,7 @@
     const body = document.body;
     if (!body || body.dataset.hs2Demo !== "seongsu") return;
 
-    // Native modules also emit inline and async blue text. Normalize only that
-    // hue; preserve white button labels, neutral grays and red/orange warnings.
+    // Final Preview decision: all application text black, including async text.
     // Never recolor the provider's map, tiles, logos or attribution.
     if (!window.HS2PreviewInk) {
       const overrides = new Map();
@@ -25,10 +24,10 @@
           const hasText = [...element.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
           if (!hasText && !element.matches("input,select,textarea")) continue;
           const rgb = getComputedStyle(element).color.match(/[\d.]+/g);
-          if (!rgb || +rgb[2] <= +rgb[0] + 18 || +rgb[2] <= +rgb[1] + 8) continue;
+          if (!rgb || rgb.slice(0,3).every(v => +v === 0)) continue;
           overrides.set(element, {value:element.style.getPropertyValue("color"),
                                   priority:element.style.getPropertyPriority("color")});
-          element.style.setProperty("color", "#171717", "important");
+          element.style.setProperty("color", "#000", "important");
         }
       };
       const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(normalize); } };

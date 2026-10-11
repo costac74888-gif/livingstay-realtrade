@@ -23,9 +23,10 @@ description: Why the Kakao Maps JS SDK fails to load in the browser even with a 
   area as **plain white** across multiple restarts/retries. So the map area rendering blank in the agent
   screenshot is a **headless-capture limitation** (tiles/overlays don't paint in time), NOT proof the map
   is broken. Do NOT keep retrying screenshots to verify map framing/overlays; it wastes turns. Verify
-  instead via: sdk.js returns 200 for the dev Referer + the marker-count log firing, then ask the USER
-  to confirm framing in their own browser (they see tiles fine). For pure map-framing/visual-tuning tasks
-  the user is the only reliable visual verifier here.
+   instead via the registered HTTPS dev origin in a normal browser session, the completed Maps
+   initialization, marker count and successfully loaded tile images. A manual Chromium capture
+   through that HTTPS origin can render real tiles even when the Screenshot tool's localhost
+   capture cannot. Do not ask the user to perform checks the owned browser can complete.
 
 ## 컨트롤 위치 이동 시 offsetParent 함정
 Kakao 컨트롤(ZoomControl 등)의 absolute 래퍼는 offsetParent가 높이 0인 요소일 수 있어
@@ -44,3 +45,17 @@ Kakao 컨트롤(ZoomControl 등)의 absolute 래퍼는 offsetParent가 높이 0�
 
 **How to apply:** 초기화 콜백을 microtask로 예약하고 동기·비동기 SDK 두
 경우를 모두 검사한다. 기다리는 시간만 늘려서 해결하지 않는다.
+
+## SDK 응답과 하위 리소스 완료 구분
+
+SDK 진입 스크립트의 HTTP 200은 실제 지도 초기화 완료가 아니다. SDK가 추가로
+불러오는 현재 CDN과 프로토콜이 CSP에 허용되어야 하며, 지도 생성과 타일 로드를
+별도로 확인한다.
+
+**Why:** 개발 도메인 SDK는 200인데 CSP가 현재 Kakao CDN의 하위 스크립트를
+차단해 초기화 콜백이 끝나지 않았다. 또 HTTPS 개발 화면은 정상인 반면 HTTP
+localhost 캡처에서는 SDK가 HTTP 리소스를 선택해 HTTPS-only CSP에 막혔다.
+
+**How to apply:** SDK 실패를 키·도메인 문제로 단정하거나 무작정 대기하지
+말고 브라우저의 CSP·실패 요청 호스트를 확인한다. 허용 범위는 지도 전용으로
+제한하며, HTTPS에서 얻은 실제 지도 증거와 localhost 캡처 실패를 구분한다.

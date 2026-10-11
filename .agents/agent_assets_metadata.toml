@@ -1046,3 +1046,87 @@ mtime_ms = 1791727939963
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/1420f367-2fcd-4b87-b198-9cbc7ad747af/fc9fd66b-089c-4ba9-ba78-2f1b8c35dc17"
 storage_version_token = "1791728179168905"
 content_type = "image/png"
+
+[[outputs]]
+id = "opyEiK6UkAGI2MfR0sMmM"
+uri = "file://generated-artifacts/map-modes/map-modes-report.html"
+type = "html"
+title = "개발 지도 분리 · 최종 검증 보고서"
+description = "접속·전환 방법, 실제 시설 수, 원복 기준, 보존·회귀 결과, 미확인 범위와 최종 화면 4장을 포함합니다."
+logical_id = "652210b4-f184-498d-afc2-361ed861fb5c"
+content_hash = "sha256:cb31df1992d8060d64daefa208501b31239b8e19b39200134c0ad7999ef8e3c8"
+size = 1792620
+mtime_ms = 1791731193619
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/652210b4-f184-498d-afc2-361ed861fb5c/59593b5f-fa81-4200-bf61-563bc6985d9f"
+storage_version_token = "1791731230688224"
+content_type = "text/html"
+
+[[outputs]]
+id = "_u846eZKehHttCgPPjR2L"
+uri = "file://generated-artifacts/map-modes/consumer-1440.png"
+type = "image"
+title = "소비자 지도 · 1440px"
+description = "HTTPS 개발 Preview에서 캡처한 최종 화면입니다. 운영 게시 화면이 아닙니다."
+logical_id = "93c9857e-2a9f-459e-9873-1c6e83ceb5f7"
+content_hash = "sha256:a525bcb0ad99809e2e60a25c474642512a789333cac94a9b08eaa7c8502040fc"
+size = 771882
+mtime_ms = 1791731114607
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/93c9857e-2a9f-459e-9873-1c6e83ceb5f7/7acb6f65-333b-449b-bd23-2d61010ce0bf"
+storage_version_token = "1791731231948409"
+content_type = "image/png"
+
+[[outputs]]
+id = "inD-QBpFkYXb_MHrR09UK"
+uri = "file://generated-artifacts/map-modes/consumer-390.png"
+type = "image"
+title = "소비자 지도 · 390px"
+description = "HTTPS 개발 Preview에서 캡처한 최종 화면입니다. 운영 게시 화면이 아닙니다."
+logical_id = "fb6ba7a3-9479-406c-be5b-ab7b0709a2a8"
+content_hash = "sha256:9dd642d1cb000dd87ba68a3757eacd9f3ca3c8f4266fff07dcad95e6737bbfbf"
+size = 107149
+mtime_ms = 1791731150655
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/fb6ba7a3-9479-406c-be5b-ab7b0709a2a8/3763601e-c98d-46d0-95b6-f28ec6bc6b55"
+storage_version_token = "1791731233363527"
+content_type = "image/png"
+
+[[outputs]]
+id = "cxhtYX2InhWEX4Llb5unp"
+uri = "file://generated-artifacts/map-modes/owner-1440.png"
+type = "image"
+title = "임대인 지도 · 1440px"
+description = "HTTPS 개발 Preview에서 캡처한 최종 화면입니다. 운영 게시 화면이 아닙니다."
+logical_id = "ed738868-9b8f-4b85-b2e3-e90661fb4a28"
+content_hash = "sha256:d1ad23f9f627333ba8a6bbff6ccc585263adccb363240fe85ee6af2a4e92b326"
+size = 339428
+mtime_ms = 1791731121907
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/ed738868-9b8f-4b85-b2e3-e90661fb4a28/07128a8f-db0b-48f3-afa8-75816708fff4"
+storage_version_token = "1791731234619887"
+content_type = "image/png"
+
+[[outputs]]
+id = "zOy0jyMgxYQxpoXmdBc3B"
+uri = "file://generated-artifacts/map-modes/owner-390.png"
+type = "image"
+title = "임대인 지도 · 390px"
+description = "HTTPS 개발 Preview에서 캡처한 최종 화면입니다. 운영 게시 화면이 아닙니다."
+logical_id = "c4d12e6b-ccd6-4853-aafb-2202f98b7d18"
+content_hash = "sha256:4ffc0fbfd0d8869d2ca14163ce4ddc0f232e0e90424946dd3b67f5f87cb300e8"
+size = 120209
+mtime_ms = 1791731157235
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/c4d12e6b-ccd6-4853-aafb-2202f98b7d18/5c282d6c-f648-41e3-a31f-484e28812b3d"
+storage_version_token = "1791731236032259"
+content_type = "image/png"
+
+[[outputs]]
+id = "KXrN0QgXBw8uRKXBss8CS"
+uri = "file://generated-artifacts/prepublish-delivery/home-stay-prepublish-qa-2026-10-12.html"
+type = "html"
+title = "운영 게시 전 검사 결과 — 개발 검증 완료·운영 게시 보류"
+description = "163개 검사 최종 결과, 예약·양방향 채팅·모의 결제 화면 근거와 실제 계정·토스·운영 승인 차단 조건을 담은 자체 포함 HTML 보고서입니다."
+logical_id = "db42c242-183d-4ad9-b3e4-8ca021807633"
+content_hash = "sha256:7fde55a705cebfd60a7bccecb841899ccf4fbe979c5ae97be641b41b8e71777b"
+size = 1308943
+mtime_ms = 1791737052431
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/db42c242-183d-4ad9-b3e4-8ca021807633/893f6134-64db-4f6b-93f5-c2ce81089fa0"
+storage_version_token = "1791737071092211"
+content_type = "text/html"

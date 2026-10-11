@@ -62,10 +62,19 @@ finally:c.close()
       const errors=[];page.on("pageerror",e=>errors.push(e.message));
       page.on("dialog",d=>d.accept());
       await page.goto(base+"/membership");
+      // Finish initial guest rendering and the shared auth check before the
+      // login action. A visible button alone is not initialization completion.
+      await page.locator("#membershipApp [data-login]").waitFor();
+      await page.evaluate(()=>window.livingstayRefreshAuth());
       await page.click("[data-login]");
       await page.fill("#authEmail",fixtures.members[index].email);
       await page.fill("#authPassword",fixtures.members[index].password);
+      const loginResponse=page.waitForResponse(r=>
+        new URL(r.url()).pathname==="/api/auth/login"&&r.request().method()==="POST");
       await page.click("#authSubmit");
+      const loginResult=await loginResponse;
+      assert.equal(loginResult.status(),200,"Owned login response");
+      assert.equal((await loginResult.json()).ok,true,"Owned login must succeed");
       await page.locator("#memberDepositor").waitFor().catch(async error=>{
         console.error("Owned membership login diagnostic",await page.evaluate(()=>({
           pathname:location.pathname,

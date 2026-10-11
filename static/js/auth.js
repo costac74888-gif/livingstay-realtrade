@@ -390,10 +390,14 @@
     } catch (e) { /* CustomEvent 미지원 → 무시 */ }
   }
 
+  var authRefreshEpoch = 0;
   function refreshMe() {
-    fetch("/api/auth/me", { credentials: "same-origin" })
+    var epoch = ++authRefreshEpoch;
+    return fetch("/api/auth/me", { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
+        // A pre-login/logout request must not overwrite a newer session check.
+        if (epoch !== authRefreshEpoch) return;
         if (d && d.logged_in) {
           renderLoggedIn(d);
 
@@ -432,7 +436,10 @@
           emitAuthChange(false, null);
         }
       })
-      .catch(function () { window.__livingstayLoggedIn = false; window.__livingstayAccountType = null; renderLoggedOut(); emitAuthChange(false, null); });
+      .catch(function () {
+        if (epoch !== authRefreshEpoch) return;
+        window.__livingstayLoggedIn = false; window.__livingstayAccountType = null; renderLoggedOut(); emitAuthChange(false, null);
+      });
   }
 
   // 헤더 밖 페이지(마이페이지 등)에서 로그아웃/로그인 후 헤더+상태를 다시 맞추도록 노출.

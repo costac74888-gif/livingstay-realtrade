@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/__development__/seongsu/map-assets/map.css">
   <link rel="stylesheet" href="/__development__/seongsu/map-assets/reference.css">
   <link rel="stylesheet" href="/__development__/seongsu/map-assets/rate-preview.css">
+  <link rel="stylesheet" href="/__development__/seongsu/map-assets/map-modes.css">
   <script defer src="/__development__/seongsu/map-assets/icons.js"></script>
   <script defer src="/__development__/seongsu/map-assets/legacy-tools.js"></script>
   <script defer src="/__development__/seongsu/map-assets/preview-rate-date.js"></script>
@@ -16,7 +17,7 @@
   <script defer src="/__development__/seongsu/map-assets/map.js"></script>
   <script defer src="/__development__/seongsu/map-assets/preview-presentation.js"></script>
 </head>
-<body data-hs2-demo="seongsu">
+<body data-hs2-demo="seongsu" data-map-mode="consumer">
   <header class="site-nav">
     <a class="brand" href="/__development__/seongsu/" aria-label="HOME &amp; STAY 개발 미리보기">
       <img class="preview-brand-logo" src="/__development__/seongsu/map-assets/brand-logo.png" alt="HOME &amp; STAY">
@@ -37,14 +38,19 @@
     </nav>
     <a class="nav-back" href="/__development__/legacy-capabilities/">기존 기능·연결표</a>
   </header>
+  <nav class="map-mode-nav" aria-label="지도 사용 모드">
+    <span class="map-mode-label">지도 모드</span>
+    <a id="consumerModeLink" href="/hs2/consumer" aria-current="page">숙박 찾기</a>
+    <a id="ownerModeLink" href="/hs2/owner-map/">시설·운영 관리</a>
+  </nav>
 
   <main class="map-app">
-    <section class="search-dock" aria-label="매물 검색 및 필터">
+    <section class="search-dock" aria-label="숙박 검색 및 필터">
       <form id="searchForm">
         <div class="search-primary-row">
           <label class="search-field query-field">
-            <span class="field-label">지역 · 매물</span>
-            <input id="q" name="q" type="search" placeholder="지역, 역, 매물명 검색" autocomplete="off">
+            <span class="field-label">지역 · 숙소</span>
+            <input id="q" name="q" type="search" placeholder="지역, 역, 숙소명 검색" autocomplete="off">
           </label>
           <label class="search-field date-field">
             <span class="field-label">체크인</span>
@@ -70,9 +76,9 @@
           <summary>상세 필터</summary>
           <div class="search-filter-row">
           <label class="filter-select kind-filter">
-            <span class="field-label">매물 구분</span>
+            <span class="field-label">숙소 유형</span>
             <select id="kind" name="kind">
-              <option value="all">전체 매물</option>
+              <option value="all">전체 숙소</option>
               <option value="lodging">숙박시설</option>
               <option value="non_lodging">단기 임대</option>
             </select>
@@ -120,28 +126,28 @@
       </form>
     </section>
 
-    <section class="map-workspace" aria-label="매물 지도">
-      <div id="mapCanvas" class="map-canvas" aria-label="매물 위치 지도"></div>
+    <section class="map-workspace" aria-label="지도 탐색">
+      <div id="mapCanvas" class="map-canvas" aria-label="단기 숙박 위치 지도"></div>
 
-      <aside id="resultsPane" class="results-pane" aria-label="검색 결과">
+      <aside id="resultsPane" class="results-pane" aria-label="숙박 검색 결과">
         <div class="results-top">
           <div class="results-heading">
             <div>
               <p class="eyebrow">HOME &amp; STAY · MAP SEARCH</p>
-              <h1>지도에서 찾기</h1>
+              <h1>단기 숙박 찾기</h1>
             </div>
           </div>
           <div class="results-meta">
-            <span id="resultCount" class="result-count" aria-live="polite">매물 확인 중</span>
+            <span id="resultCount" class="result-count" aria-live="polite">숙소 확인 중</span>
             <span id="mapStatus" class="map-status"><i aria-hidden="true"></i>지도를 불러오는 중</span>
           </div>
           <p id="statusMessage" class="status-message" data-state="loading" role="status">
-            <span class="status-dot" aria-hidden="true"></span>주변 매물을 확인하고 있습니다.
+            <span class="status-dot" aria-hidden="true"></span>주변 숙소를 확인하고 있습니다.
           </p>
           <div id="mapError" class="map-error" role="alert" hidden></div>
         </div>
 
-        <div id="listingList" class="listing-list" aria-label="매물 목록" aria-live="polite">
+        <div id="listingList" class="listing-list" aria-label="단기 숙박 목록" aria-live="polite">
           <div class="listing-skeleton" aria-hidden="true"><i></i><span><b></b><b></b><b></b></span></div>
           <div class="listing-skeleton" aria-hidden="true"><i></i><span><b></b><b></b><b></b></span></div>
           <div class="listing-skeleton" aria-hidden="true"><i></i><span><b></b><b></b><b></b></span></div>
@@ -151,13 +157,35 @@
           <button id="detailBack" class="detail-back" type="button"><span aria-hidden="true">←</span> 검색 결과</button>
           <div class="detail-content"></div>
         </section>
+        <details id="facilityDirectory" class="facility-directory">
+          <summary>시설 디렉터리</summary>
+          <form id="facilityDirectoryForm" class="facility-directory-form">
+            <label for="facilityQuery">시설명·유형·지역 검색</label>
+            <label for="facilityCoordinates">지도 좌표</label>
+            <select id="facilityCoordinates" name="coordinates">
+              <option value="all">전체 시설</option>
+              <option value="located">좌표 확인</option>
+              <option value="missing">좌표 미확인 · 목록에서 탐색</option>
+            </select>
+            <div class="facility-query-row">
+              <input id="facilityQuery" name="facilityQuery" type="search" autocomplete="off" placeholder="시설명·유형·지역">
+              <button type="submit">검색</button>
+            </div>
+          </form>
+          <p id="facilityStatus" class="facility-status" role="status" aria-live="polite"></p>
+          <output id="facilityDirectoryResults" class="facility-directory-results" aria-live="polite"></output>
+          <div class="facility-pagination" role="group" aria-label="시설 검색 페이지">
+            <button id="facilityPrev" type="button">이전</button>
+            <button id="facilityNext" type="button">다음</button>
+          </div>
+        </details>
       </aside>
       <button id="panelToggle" class="pane-toggle panel-toggle-floating" type="button" aria-label="검색 결과 접기" aria-expanded="true">
         <span aria-hidden="true">‹</span>
       </button>
 
       <div class="map-tool-rail" role="group" aria-label="지도 도구">
-      <div class="layer-tools" role="group" aria-label="매물 레이어">
+      <div id="mapLegend" class="layer-tools" role="group" aria-label="지도 범례 및 표시 레이어">
         <button type="button" class="layer-button layer-stay" data-layer="stay" aria-pressed="true">
           <span class="layer-mark" aria-hidden="true"></span><span class="layer-name">숙박</span>
           <span class="layer-counter" data-layer-count="stay">—</span>
@@ -173,6 +201,10 @@
         <button type="button" class="layer-button layer-auction" data-layer="auction" aria-pressed="true">
           <span class="layer-mark" aria-hidden="true"></span><span class="layer-name">공매</span>
           <span class="layer-counter" data-layer-count="auction">—</span>
+        </button>
+        <button type="button" class="layer-button layer-facility" data-layer="facility" aria-pressed="true">
+          <span class="layer-mark" aria-hidden="true"></span><span class="layer-name">시설</span>
+          <span class="layer-counter" data-layer-count="facility">—</span>
         </button>
       </div>
 

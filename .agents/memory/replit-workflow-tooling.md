@@ -3,6 +3,16 @@ name: Replit workflow tooling quirks
 description: Non-obvious workflow lifecycle and isolated mockup-preview routing behaviors.
 ---
 
+- A workspace/server disconnect can leave an owned Preview child orphaned while its
+  managed workflow is no longer running. Workflow state alone is not evidence that
+  the preview port is free.
+  **Why:** an isolated Preview restart failed with address-in-use despite the workflow
+  being stopped; the surviving listener was the earlier synthetic server.
+  **How to apply:** verify the listener's exact process identity and owned/synthetic
+  status before stopping it. Never kill every process on the port or assume that a
+  running original-service process is a disposable Preview. Restart once after
+  resolving the verified conflict.
+
 - `configureWorkflow({autoStart:false})` on an already-running workflow does NOT stop the
   running process. It only reconfigures the definition; the current run keeps going.
   **How to apply:** to actually STOP a running workflow, call `removeWorkflow` (it stops +

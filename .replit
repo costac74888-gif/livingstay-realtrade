@@ -31,10 +31,6 @@ args = "api"
 task = "workflow.run"
 args = "hs2-production-boundary"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "github-backup-resume"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"

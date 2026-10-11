@@ -164,6 +164,7 @@ def install(app):
             import re
             text = re.sub(r"(<body\b)", r'\1 data-hs2-demo="seongsu"', text, count=1)
             text = text.replace('href="/hs2/mode"', 'href="/__development__/seongsu/"')
+            text = text.replace("</head>", '<link rel="stylesheet" href="/__development__/seongsu/map-assets/preview-readability.css"></head>')
             response.set_data(text)
         if response.is_json and response.status_code == 200:
             data = response.get_json()

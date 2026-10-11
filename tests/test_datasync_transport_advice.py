@@ -208,6 +208,13 @@ class AdviceTests(unittest.TestCase):
             "nice -n 10 python -u backfill_title_info.py --status-key title_info_sync_status --sleep 0.05",
             "nice -n 19 python -u backfill_building_details.py --continuous --batch-limit 1000 --sleep 1.0",
         )
+        # Manual GitHub validation must not run from the default Project.
+        # Keep the full config comparison, including its standalone definition,
+        # all production collectors, schedules and ports.
+        expected_config = expected_config.replace(
+            '[[workflows.workflow.tasks]]\ntask = "workflow.run"\n'
+            'args = "github-backup-resume"\n\n', '')
+        self.assertIn('name = "github-backup-resume"', expected_config)
         self.assertEqual(Path(".replit").read_text(), expected_config)
         from datasync_controls import RUN_HANDLERS
         # 전체 app.py를 금지하면 무관한 범례·통계 변경까지 실패한다.

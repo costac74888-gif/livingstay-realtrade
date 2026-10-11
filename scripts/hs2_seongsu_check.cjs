@@ -8,7 +8,8 @@ const { chromium } = require("playwright");
 async function main() {
   assert(process.env.REPLIT_DEV_DOMAIN, "Development domain required");
   const origin = `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  const output = path.resolve("generated-artifacts/seongsu-preview");
+  const output = path.resolve(process.env.HS2_PREVIEW_ARTIFACT_DIR || "generated-artifacts/seongsu-preview");
+  assert(output.startsWith(path.resolve("generated-artifacts") + path.sep), "Generated output only");
   await fs.mkdir(output, { recursive: true });
   const browser = await chromium.launch({ executablePath: process.env.HS2_CHROMIUM,
     headless: true, args: ["--no-sandbox", "--disable-gpu"] });
@@ -26,6 +27,7 @@ async function main() {
     return route.abort();
   });
   const page = await context.newPage();
+  const navigate = url => page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   page.on("pageerror", error => errors.push(error.message));
   async function api(url, body, token, status = 200) {
     const response = await page.evaluate(async ({ url, body, token }) => {
@@ -41,21 +43,23 @@ async function main() {
     assert.equal(response.status, status, `${url}: ${response.data.code || response.status}`);
     return response.data;
   }
-  function pass(name) { results.push({ name, status: "PASS" }); }
+  function pass(name) { results.push({ name, status: "PASS" }); console.log("PASS", name); }
   function datePlus(value, n) {
     const d = new Date(`${value}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().slice(0, 10);
   }
   try {
-    await page.goto(origin + "/hs2/consumer?layers=stay");
+    await navigate(origin + "/hs2/consumer?layers=stay");
     const status = await api("/__development__/status");
     assert.equal(status.database, "owned_ephemeral");
-    assert.equal(status.synthetic_data_only, true);
+    assert.equal(status.synthetic_data_only, false);
+    assert.equal(status.transaction_data_synthetic_only, true);
+    assert.equal(status.public_facility_snapshot.synthetic, false);
     assert.equal(status.actual_toss, false);
     assert.equal(status.external_delivery, false);
     assert.equal(status.production_entrypoint, false);
-    pass("Owned ephemeral / no actual Toss / no delivery / no production");
+    pass("Owned ephemeral transactions / no actual Toss / no delivery / no production writes");
     const catalog = await api("/hs2/api/consumer/search?q=" + encodeURIComponent("성수"));
     const ownedFixtures = await api("/__development__/seongsu/catalog");
     assert.equal(ownedFixtures.synthetic, true);
@@ -114,7 +118,7 @@ async function main() {
     await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.goto(origin + "/hs2/consumer?layers=stay");
+      await navigate(origin + "/hs2/consumer?layers=stay");
       await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
       // Exercise actual lazy-image loading, including below-fold mobile cards.
       for (const image of await page.locator("#listingList img").all())
@@ -125,7 +129,7 @@ async function main() {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       assert.equal(await page.locator("#guests").isDisabled(), false);
       await page.screenshot({ path: path.join(output, `consumer-${width}.png`), fullPage: true });
-      await page.goto(origin + (width === 390 ? "/hs2/search/mobile/" : "/hs2/search/"));
+      await navigate(origin + (width === 390 ? "/hs2/search/mobile/" : "/hs2/search/"));
       await page.waitForSelector(".listing-card", { state: "attached" });
       if (width === 390) {
         await page.locator("#panelToggle").click();
@@ -138,13 +142,22 @@ async function main() {
     // Newly created quote, booking, operator approval, and financial contract.
     // Nothing is marked paid until explicit owned signed mock capture.
     const lodging = catalog.items.find(r => r.stay_kind === "lodging" && r.base_rates.night > 0);
-    let start = datePlus(fixtureById.get(lodging.public_id).available_from, 60);
-    while ([start, datePlus(start, 1)].some(d => fixtureById.get(lodging.public_id).blocked_dates.includes(d)))
-      start = datePlus(start, 2);
+    let start;
+    for (let offset = 60; offset < 150; offset += 3) {
+      const candidate = datePlus(fixtureById.get(lodging.public_id).available_from, offset);
+      const url = `/hs2/details/api/items/${lodging.public_id}/quote?check_in=${candidate}&check_out=${datePlus(candidate, 2)}&guests=2`;
+      const available = await page.evaluate(async url => {
+        const r = await fetch(url); return { status: r.status, data: await r.json() };
+      }, url);
+      if (available.status === 400 && available.data.code === "INVENTORY_UNAVAILABLE") continue;
+      assert.equal(available.status, 200, "Availability probe: " + available.data.code);
+      start = candidate; break;
+    }
+    assert(start, "No vacant synthetic two-night interval");
     const end = datePlus(start, 2);
     const selection = { check_in: start, check_out: end, guests: 2 };
     const detailPath = `/hs2/details/?public_id=${lodging.public_id}&check_in=${start}&check_out=${end}&guests=2`;
-    await page.goto(origin + detailPath);
+    await navigate(origin + detailPath);
     await page.waitForSelector(".demo-gallery img");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: path.join(output, "detail-390.png"), fullPage: true });
@@ -171,11 +184,35 @@ async function main() {
     }, finance.consumer_csrf)).contract;
     assert.equal(contract.status, "awaiting_payment");
     pass("Detail quote → persisted receipt → booking → operator approval → financial terms");
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await navigate(origin + "/hs2/workspace/?booking_id=" + booking.booking_id);
+    await page.waitForFunction(() => document.querySelector("#workspace-feedback")?.dataset.state === "ready");
+    await page.locator(".entry-action").click();
+    await page.waitForFunction(() => document.querySelector("#workspace-feedback")?.textContent.includes("대화가 서버에서 확인"));
+    const threads = await api("/hs2/workspace/api/threads?view=consumer");
+    const thread = threads.items.find(t => t.booking_id === booking.booking_id);
+    assert(thread, "New reservation must have a participant chat");
+    await page.locator(`[data-thread-id="${thread.thread_id}"]`).click();
+    const message = "[가상] 예약자 질문 " + crypto.randomUUID();
+    await page.locator("#message-body").fill(message); await page.click("#send-message");
+    await page.waitForFunction(m => document.querySelector("#messages-list")?.textContent.includes(m), message);
+    await navigate(origin + "/hs2/workspace/?view=operator&thread_id=" + thread.thread_id);
+    await page.waitForFunction(m => document.querySelector("#messages-list")?.textContent.includes(m), message);
+    const reply = "[가상] 운영자 답변 " + crypto.randomUUID();
+    await page.locator("#message-body").fill(reply); await page.click("#send-message");
+    await page.waitForFunction(m => document.querySelector("#messages-list")?.textContent.includes(m), reply);
+    await page.screenshot({ path: path.join(output, "operator-booking-chat-390.png"), fullPage: true });
+    await navigate(origin + "/hs2/workspace/?view=consumer&thread_id=" + thread.thread_id);
+    await page.waitForFunction(m => document.querySelector("#messages-list")?.textContent.includes(m), reply);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(m => document.querySelector("#messages-list")?.textContent.includes(m), reply);
+    await page.screenshot({ path: path.join(output, "consumer-booking-chat-390.png"), fullPage: true });
+    pass("New reservation chat: consumer sends, operator replies, consumer reload retains reply");
     await api(`/__development__/seongsu/payments/${contract.contract_id}/capture`,
       { acknowledged: true }, "invalid", 403);
     await api(`/__development__/seongsu/payments/${contract.contract_id}/capture`,
       { acknowledged: false }, finance.consumer_csrf, 400);
-    await page.goto(origin + `/hs2/finance/?contract_id=${contract.contract_id}`);
+    await navigate(origin + `/hs2/finance/?contract_id=${contract.contract_id}`);
     const card = page.locator(`[data-contract-id="${contract.contract_id}"]`).first();
     await card.waitFor();
     const capture = card.getByRole("button", { name: /모의 결제 진행/ });
@@ -194,9 +231,9 @@ async function main() {
     assert.equal(again.contract.events.filter(e => e.kind === "capture").length, 1);
     const mine = await api("/hs2/bookings/api/consumer");
     assert(mine.bookings.some(b => b.booking_id === booking.booking_id && b.status === "confirmed"));
-    await page.goto(origin + "/hs2/bookings/");
+    await navigate(origin + "/hs2/bookings/");
     await page.waitForSelector(`[data-booking-id="${booking.booking_id}"]`);
-    await page.goto(origin + "/hs2/dashboard/");
+    await navigate(origin + "/hs2/dashboard/");
     await page.waitForFunction(() => document.querySelector("#dashboard-feedback")?.dataset.state === "ready");
     assert(await page.locator("#dashboard-bookings").innerText());
     assert(await page.locator("#dashboard-contracts [data-contract-id]").count() >= 2);
@@ -208,7 +245,7 @@ async function main() {
     assert(!template.includes('data-hs2-demo="seongsu"'));
     await normal.route("**/hs2/consumer", route =>
       route.fulfill({ status: 200, contentType: "text/html", body: template }));
-    await normal.goto(origin + "/hs2/consumer");
+    await normal.goto(origin + "/hs2/consumer", { waitUntil: "domcontentloaded", timeout: 60000 });
     await normal.waitForSelector("#listingList .listing-card");
     assert.equal(await normal.locator("#listingList img").count(), 0);
     assert.equal(await normal.locator("#guests").isDisabled(), true);
@@ -220,7 +257,9 @@ async function main() {
     assert.deepEqual(blocked, []);
     pass("No page errors; only read-only approved map/font hosts; no other outbound traffic");
     const summary = { status: "PASS", checks: results, actual_toss: false,
-      actual_money_executed: false, production_data: false,
+      actual_money_executed: false, production_writes: false,
+      private_production_data: false,
+      public_facility_source: status.public_facility_snapshot.source,
       blocked_font_requests: blocked.length };
     await fs.writeFile(path.join(output, "summary.json"), JSON.stringify(summary, null, 2));
     console.log(JSON.stringify(summary));

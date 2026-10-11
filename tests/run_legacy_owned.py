@@ -34,9 +34,11 @@ def fixture():
                 initdb, postgres = shutil.which("initdb"), shutil.which("postgres")
                 if not initdb or not postgres:
                     raise RuntimeError("Local PostgreSQL missing; no external fallback")
+                # Disposable /tmp cluster only: omit initdb's filesystem sync.
+                # This does not change the server's transactional/fsync policy.
                 subprocess.run([initdb, "-D", str(root / "data"), "-U", "legacy_fixture",
                                 "--auth-local=trust", "--auth-host=reject", "--no-locale",
-                                "-E", "UTF8"], env=env, stdout=output,
+                                "-E", "UTF8", "--no-sync"], env=env, stdout=output,
                                stderr=subprocess.STDOUT, check=True, timeout=30)
                 proc = subprocess.Popen(
                     [postgres, "-D", str(root / "data"), "-h", "", "-k", str(sock),

@@ -23,7 +23,9 @@ async function main(){
   await page.click("#send-message");
   await page.waitForFunction(n=>document.querySelectorAll("#messages-list [data-message-id]").length>n,before);
   ok(await page.locator("#messages-list img").count()===0,"Message rendered text only");
-  await page.reload();
+   // Nonessential resource load is not workspace readiness. The assertions
+   // below still require ready API state and the persisted message after reload.
+   await page.reload({waitUntil:"domcontentloaded"});
   await page.waitForFunction(()=>document.querySelector("#workspace-feedback")?.dataset.state==="ready");
   await page.locator("#threads-list [data-thread-id]").first().click();
   await page.waitForFunction(()=>document.querySelector("#messages-list")?.textContent.includes("브라우저 실제 저장"));

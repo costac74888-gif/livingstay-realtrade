@@ -15,6 +15,9 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Direct CLI execution starts sys.path in scripts/, not the project root.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 STATIC = ROOT / "static"
 JS_SOURCE = STATIC / "js"
 DIST = STATIC / "dist"

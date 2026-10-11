@@ -77,6 +77,28 @@ def check_failed_build_keeps_release(module) -> None:
 
 
 def check_distribution(builder) -> None:
+    # The offline runner adds ROOT to PYTHONPATH; a real CLI does not.
+    # Exercise only the CLI import bootstrap in a fresh interpreter, retaining
+    # transport guards but removing inherited project-root search paths.
+    cli_import = """
+import sys
+from pathlib import Path
+p = Path(sys.argv[1]).resolve()
+root = p.parent.parent
+sys.path = [s for s in sys.path if s and Path(s).resolve() != root]
+sys.modules.pop("scripts", None)
+sys.modules.pop("scripts.hs2_production_preflight", None)
+__file__ = str(p)
+prefix = p.read_text().split('STATIC = ROOT / "static"', 1)[0]
+exec(compile(prefix, str(p), "exec"))
+from scripts.hs2_production_preflight import run_probe
+assert callable(run_probe)
+print("OK direct frontend CLI imports without runner-injected ROOT")
+"""
+    subprocess.run(
+        [sys.executable, "-c", cli_import, str(ROOT / "scripts/build_frontend.py")],
+        cwd=builder.ROOT, check=True, timeout=30,
+    )
     builder.main()
     release_id, release_dir = current_release()
     minified = sorted((release_dir / "js").glob("*.min.js"))
