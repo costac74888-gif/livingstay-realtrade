@@ -1,4 +1,5 @@
 const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
+const { prepareCaptureFont } = require("./offline_support/capture_font.cjs");
 const fs = require("fs");
 const { execFileSync } = require("child_process");
 const { chromium } = require("playwright");
@@ -8,20 +9,6 @@ const SELECTED_ID = 101;
 
 function expect(condition, message) {
   if (!condition) throw new Error(message);
-}
-
-async function prepareCaptureFont(page) {
-  if (process.env.SAVE_ANALYSIS_SCREENSHOTS !== "1") return;
-  const installed = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("style")).some((style) =>
-      style.textContent.includes("fonts.googleapis.com/css2?family=Noto+Sans+KR")));
-  if (!installed) {
-    await page.addStyleTag({ content: '@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700");' });
-  }
-  await page.evaluate(async () => {
-    await document.fonts.load('12px "Noto Sans KR"', "한글 계산 기준 숙박운영");
-    await document.fonts.ready;
-  });
 }
 
 async function expectSinglePageReport(page, mode, titleText, graphRequired) {
@@ -237,10 +224,8 @@ async function run() {
   let maxRecentAnalysisPostInFlight = 0;
   let analysisBuildingPhotoCalls = 0;
   page.on("pageerror", (error) => errors.push(error.message));
-  if (process.env.SAVE_ANALYSIS_SCREENSHOTS !== "1") {
-    await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
-    await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
-  }
+  await page.route("https://fonts.googleapis.com/**", (route) => route.abort());
+  await page.route("https://fonts.gstatic.com/**", (route) => route.abort());
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/auth/me") return json(route, currentAuth);

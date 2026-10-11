@@ -118,7 +118,7 @@
 - [최근 분석 재진입 정책](recent-analysis-policy.md) — 마지막 모드를 기록하되 최근 건물을 선택할 때 현재 탭 유지; 최신 자료로 재계산하고 계정·건물 간 가정을 격리한다.
 - [분석 보고서 인쇄 그리드 잘림](analysis-print-grid-overflow.md) — A4 고정 그리드에서 100% 높이는 클리핑 해결이 아닐 수 있어 실제 자식·부모 경계를 비교한다.
 - [숙박자산분석 공통 선택](analysis-common-selection.md) — 건물·면적은 탭 밖에서 공유, 목록의 최소 면적 자동 선택·유효한 직접/공유 면적 보존; 임대 초기화와 추이 면적은 독립.
-- [Headless 한글 PDF 캡처](headless-korean-pdf-captures.md) — Nix Chromium은 한글 기본 글꼴이 없으므로 캡처 시 웹폰트 로딩을 허용하고 준비 완료 뒤 PDF를 생성한다.
+- [Headless 한글 PDF 캡처](headless-korean-pdf-captures.md) — 격리 전송 차단을 유지하고 로컬 한글 fixture를 쓰되 운영 글꼴의 레이아웃 검증과 구분한다.
 - [세 분석 보고서 화면 위계](analysis-report-layout.md) — 세 모드의 종합평가는 각 우측 결과 열 맨 위, 보고서 작업은 하단; 세부 근거는 접힌 영역.
 - [실시간 계산 중 직접입력 보존](live-slider-editor.md) — 슬라이더 계산·기준 갱신이 편집 중인 숫자 입력창을 교체하지 않게 한다.
 - [데스크톱 분석 조건 밀도](desktop-analysis-condition-density.md) — 조건 슬라이더를 여러 열로 압축할 때 내부 최소폭·조작 영역과 결과 열 하단 정렬을 함께 확인한다.
