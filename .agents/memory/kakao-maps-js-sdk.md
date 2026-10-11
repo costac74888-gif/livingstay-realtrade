@@ -33,3 +33,14 @@ Kakao 컨트롤(ZoomControl 등)의 absolute 래퍼는 offsetParent가 높이 0�
 **How to apply:** 위치 조정은 `bottom` 대신 지도 `getBoundingClientRect()` 기준으로 `top`을 직접 계산하고,
 적용 후 `getBoundingClientRect()` 실측을 콘솔에 남겨 화면 안인지 확인한다. 스크린샷 도구 환경은
 카카오 타일/스프라이트 CDN을 못 불러와 지도가 회백색으로 나오므로 시각 확인 대신 rect 로그로 검증.
+
+## 캐시된 SDK 초기화 순서
+
+이미 로드된 SDK의 maps.load 콜백은 동기 실행될 수 있으므로 지도 초기화는
+현재 스크립트 평가가 끝난 뒤로 미룬다.
+
+**Why:** 동기 콜백이 뒤쪽 let/const 상태 선언보다 먼저 실행되면 초기화 전
+접근 오류가 발생한다. 네트워크 로드가 느린 경우에는 이 오류가 숨겨진다.
+
+**How to apply:** 초기화 콜백을 microtask로 예약하고 동기·비동기 SDK 두
+경우를 모두 검사한다. 기다리는 시간만 늘려서 해결하지 않는다.

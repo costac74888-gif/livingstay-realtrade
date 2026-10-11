@@ -36,6 +36,10 @@ NORMAL_HS2 = {key: check for key, check in core.load(core.CHECKS).items()
 def test_environment():
     # No inherited live DSNs, PG defaults, provider/delivery keys or dev origin.
     env = {key: os.environ[key] for key in ("PATH", "LANG") if key in os.environ}
+    # WebKit's renderer requires its public Nix EGL manifest even when all
+    # provider, database and notification capabilities are stripped.
+    if "__EGL_VENDOR_LIBRARY_FILENAMES" in os.environ:
+        env["__EGL_VENDOR_LIBRARY_FILENAMES"] = os.environ["__EGL_VENDOR_LIBRARY_FILENAMES"]
     env.update({
         "HOMENSTAY_OFFLINE_TESTS": "1", "DISABLE_EXTERNAL_NOTIFICATIONS": "1",
         "SKIP_STARTUP_SCHEMA_INIT": "1", "SKIP_APP_BOOT_TASKS": "1",

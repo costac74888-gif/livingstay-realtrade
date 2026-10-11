@@ -865,6 +865,12 @@ async function run() {
     const touchBox = await touchButton.boundingBox();
     const touchSession = await page.context().newCDPSession(page);
     await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    await page.evaluate(() => {
+      window.__rentalTouchReleaseValue = null;
+      window.addEventListener("pointerup", () => {
+        window.__rentalTouchReleaseValue = Number(document.getElementById("rentalMonthlyRent").value);
+      }, {capture:true, once:true});
+    });
     await touchSession.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ x: touchBox.x + touchBox.width / 2, y: touchBox.y + touchBox.height / 2, id: 1 }],
@@ -872,10 +878,12 @@ async function run() {
     await page.waitForTimeout(850);
     const touchHeldValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
     await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForFunction(() => window.__rentalTouchReleaseValue !== null);
+    const touchReleaseBaseline = await page.evaluate(() => window.__rentalTouchReleaseValue);
     await page.waitForTimeout(250);
     const touchReleasedValue = Number(await page.locator("#rentalMonthlyRent").inputValue());
-    expect(touchHeldValue >= 103 && touchReleasedValue === touchHeldValue,
-      `모바일 실제 터치 길게 누르기가 반복·해제되지 않았습니다: 100→${touchHeldValue}→${touchReleasedValue}`);
+    expect(touchHeldValue >= 103 && touchReleaseBaseline >= touchHeldValue && touchReleasedValue === touchReleaseBaseline,
+      `모바일 실제 터치 길게 누르기가 반복·해제되지 않았습니다: 100→${touchHeldValue}→release ${touchReleaseBaseline}→${touchReleasedValue}`);
     await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: false });
     await touchSession.detach();
     await setValueFromLabel(page, "rentalMonthlyRent", 30);

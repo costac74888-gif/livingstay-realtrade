@@ -21,6 +21,13 @@ class OwnedOfflineRuntimeTests(unittest.TestCase):
             env = isolated_env()
         for name in ("PROD_DATABASE_URL", "RESEND_API_KEY", "REPLIT_DEV_DOMAIN", "PGSERVICE"):
             self.assertNotIn(name, env)
+        with patch.dict(os.environ, {
+                "__EGL_VENDOR_LIBRARY_FILENAMES": "/nix/store/synthetic-renderer.json",
+                "RESEND_API_KEY": "do-not-inherit"}):
+            renderer_env = isolated_env()
+        self.assertEqual(renderer_env["__EGL_VENDOR_LIBRARY_FILENAMES"],
+                         "/nix/store/synthetic-renderer.json")
+        self.assertNotIn("RESEND_API_KEY", renderer_env)
 
     def test_full_collection_dispatches_every_isolated_db_module_once(self):
         from hs2_harness.isolated_postgres import FIXTURE_CHECKS

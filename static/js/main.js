@@ -3121,7 +3121,9 @@ window.toggleFavFromInfo = function(btn){
 //   · SDK가 main.js 실행 전 이미 로드(캐시 히트 등) → __kakaoSdkLoaded 플래그 즉시 확인
 window.__onKakaoSdkLoad = function() {
   if (window.kakao && window.kakao.maps) {
-    kakao.maps.load(initMap);
+    // A cached SDK may call back synchronously while later state declarations
+    // are still in their temporal dead zone. Start only after script evaluation.
+    kakao.maps.load(() => queueMicrotask(initMap));
   } else {
     console.warn("[MAP] 카카오맵 SDK가 로드되지 않았습니다 — appkey/도메인 등록 상태를 확인하세요.");
   }
