@@ -54,8 +54,10 @@ def write_record(handle, record):
 
 
 @contextmanager
-def audit_lock(root):
-    """Hold a separate scheduler lock; manual cleanup keeps its own deletion lock."""
+def audit_lock(root, *, lock_name=".scheduler.lock"):
+    """Lock one audit writer; evidence scans use cleanup's separate deletion lock."""
+    if lock_name not in (".scheduler.lock", ".capacity.lock"):
+        raise ValueError("Unknown audit writer lock")
     root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     generated_fd = audit_fd = None
     try:
@@ -71,7 +73,7 @@ def audit_lock(root):
             pass
         audit_fd = os.open(AUDIT_TREE, os.O_RDONLY | os.O_DIRECTORY |
                            os.O_NOFOLLOW, dir_fd=generated_fd)
-        with checked_file(audit_fd, ".scheduler.lock", os.O_CREAT | os.O_RDWR) as lock:
+        with checked_file(audit_fd, lock_name, os.O_CREAT | os.O_RDWR) as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             yield audit_fd
     finally:

@@ -30,3 +30,14 @@ but protected evidence remains even if the budget cannot be met.
 
 **How to apply:** Keep future defaults consistent with these choices unless
 the operator changes them; a changed policy requires a fresh dry-run review.
+
+Capacity warnings for workspace-only evidence belong in local console/status
+reporting, not the production administrator email outbox. Report actual current
+usage separately from a cleanup plan's projected remaining usage.
+
+**Why:** The administrator event system operates against production business
+records, whereas evidence lives only in the development workspace. A dry-run
+projection cannot establish that the workspace is currently under its limit.
+
+**How to apply:** Keep monitoring read-only for evidence, preserve uncertainty
+as a warning, and require explicit separate approval for any deletion.

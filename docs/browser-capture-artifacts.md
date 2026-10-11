@@ -203,3 +203,65 @@ environment that actually owns these local artifact directories.
 ```sh
 python -m unittest discover -s tests -p 'test_scheduled_artifact_cleanup.py' -v
 ```
+
+### Read-only capacity warnings
+
+For read-only periodic monitoring, run in a Shell:
+
+```sh
+python -u scripts/check_test_artifact_capacity.py --watch
+```
+
+It checks the approved policy (`docs/test-artifact-retention-policy.json`:
+2048 MiB, every 24 hours) while the process and workspace are awake. Restarting
+displays the last known summary without repeating its warning; the persisted
+clock prevents restart loops. This is not an always-on production monitor, and
+does not schedule or authorize deletion. A dedicated console workflow could not
+be registered because the workspace already exceeds its workflow registration
+limit; no existing workflow was removed or repurposed. Periodic execution is
+therefore opt-in via the command above, not automatically enabled.
+
+For an immediate check, ignoring the interval:
+
+```sh
+python scripts/check_test_artifact_capacity.py
+```
+
+This reports **current measured bytes**, not the estimated size after a proposed
+cleanup. It warns when current bytes exceed the limit, any run cannot be measured,
+or the scan fails. Unmeasured runs mean the measured number is only a lower bound;
+do not treat it as proof that usage is within budget. `limit_unmet` also identifies
+whether the conservative cleanup plan would still leave the budget unmet.
+Only the three evidence trees are counted; the audit tree, original screenshots,
+and other workspace files are outside this approved budget.
+
+The human-readable console summary is the operator notification channel. A
+machine-readable current status and last warning/recovery transition are atomically
+saved to `generated-artifacts/artifact-cleanup-audit/capacity-status.json`.
+Same-condition warnings are suppressed across process restarts, regardless of
+small byte/count changes. A changed condition or policy raises a new warning;
+returning to fully measured, within-limit usage prints `정상 복구`. Every due
+check still prints its current summary, including when a repeat alert is suppressed.
+One-shot exit codes: `0` healthy, `2` over-limit/unmeasured/scan failure, `1` monitor
+setup/state error. Watch mode stays running for capacity/scan warnings but stops
+on unsafe state, lock, or changed policy.
+
+The existing administrator action centre uses production DB events and an email
+outbox. Workspace-only test evidence is intentionally **not** sent there: this
+monitor imports neither the app nor DB/email/SMS modules, and never sends external
+notifications. It always calls the cleanup planner with `apply=False`; protected,
+active, unknown, latest-failure and reference evidence remain untouched. State
+writes and lock files are limited to the local audit/cleanup control area. A
+separate `.capacity.lock` serializes monitor state updates, so the monitor can
+run alongside the scheduler's long-lived `.scheduler.lock`. Both still use the
+cleaner's per-scan `.artifact-cleanup.lock`; an overlapping deletion/scan produces
+a check-error warning, never a false healthy result. A malformed or linked status
+file is refused instead of silently resetting alert
+history; inspect it before restarting. Audit files are never automatically pruned.
+
+Regression checks use owned temporary Git roots, block socket connections,
+disable external email/SMS, and fail on any attempted evidence deletion:
+
+```sh
+python -m unittest discover -s tests -p 'test_artifact_capacity.py' -v
+```
