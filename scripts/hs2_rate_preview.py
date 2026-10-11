@@ -178,6 +178,7 @@ class PreviewRateSearch:
 def install(app):
     require_owned(app)
     adapter = PreviewRateSearch(app.fixture_supermap)
+    app.preview_rate_adapter = adapter
     app.fixture_supermap.search = adapter.search
 
     from flask import jsonify, request

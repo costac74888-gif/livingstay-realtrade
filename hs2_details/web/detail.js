@@ -272,22 +272,37 @@
     const rates = document.createElement("div");
     rates.className = "demo-rate-list";
     const entries = demo.category === "non_lodging"
-      ? [["주 단위 기준", demo.weekly_krw], ["달력 1개월 기준", demo.monthly_krw]]
-      : [["기준 1박", demo.nightly_krw]];
+      ? [["/주", demo.weekly_krw], ["/월", demo.monthly_krw]]
+      : [["/일", demo.nightly_krw]];
     entries.forEach(([label, value]) => {
+      if (!Number.isSafeInteger(value) || value < 0) return;
       const row = document.createElement("div");
       const term = document.createElement("span");
-      term.textContent = label;
+      term.textContent = "기준 요금";
       const amount = document.createElement("strong");
-      amount.textContent = Number.isSafeInteger(value) ? money(value) : "요금 정보 없음";
+      amount.textContent = money(value) + label;
       row.append(term, amount);
       rates.append(row);
     });
+    if (!rates.childElementCount) rates.textContent = "요금 비공개";
+    const display = window.HS2PreviewRateDate?.displayRate(demo.category, demo.display_base_rates);
+    if (display) {
+      let headline = document.getElementById("reservation-base-rate");
+      if (!headline) {
+        headline = document.createElement("p");
+        headline.id = "reservation-base-rate";
+        headline.className = "detail-price";
+        document.querySelector(".reservation-card")?.prepend(headline);
+      }
+      headline.textContent = display.text;
+      headline.dataset.kind = demo.category;
+      headline.dataset.rateUnit = display.unit || "";
+    }
     const rateNote = document.createElement("p");
     rateNote.className = "demo-rate-note";
     rateNote.textContent = demo.category === "non_lodging"
       ? "비숙박 매물은 주 단위와 입실일 기념일 기준 달력 1개월 요금으로 표시합니다. 1박 환산 금액은 제공하지 않습니다."
-      : "기준 1박 금액은 참고 정보입니다. 선택 기간 총액은 예약 조건에서 서버 견적으로 확인하세요.";
+      : "/일 표시는 1박 기준 요금입니다. 숙박 박수와 선택 기간 총액은 기존 서버 견적으로 계산합니다.";
     rates.append(rateNote);
     overview.append(copy, rates);
     const amenitySection = document.createElement("div");

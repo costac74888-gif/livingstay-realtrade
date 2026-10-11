@@ -13,7 +13,7 @@
 - [Untracking files on Replit](git-untrack-on-replit.md) — agent is blocked from `git rm --cached` (even in a project task); adding .gitignore does NOT untrack already-committed files; the USER must run `git rm -r --cached . && git add .` in the Shell.
 - [GitHub 이력 보존 동기화](github-history-preservation.md) — Git 전송 인증과 연결 인증은 별개이며 대체 동기화도 빈 커밋·원래 해시·비강제 갱신을 보존한다.
 - [Postgres ON CONFLICT + partial index](postgres-on-conflict-partial-index.md) — ON CONFLICT can't infer a partial unique index unless you restate its WHERE; for nullable dedup cols use a FULL unique index (NULLs are distinct).
-- [Screenshotting auth-gated admin](screenshot-admin-preview.md) — headless screenshot tool has no session cookie → /admin redirects to login; to verify visually, drop a temp static HTML in static/ that inlines the real API JSON + same render code, screenshot, then delete.
+- [관리자 화면 캡처](screenshot-admin-preview.md) — 인증·비공개 데이터 경계를 유지하며 격리 로그인 증빙과 실제 운영 계정 검증을 구분한다.
 - [legal docs (terms/privacy) DB CMS](legal-documents-cms.md) — 약관/개인정보처리방침은 legal_documents 테이블에서; /api/legal/<type>(공개) + /api/admin/legal/<type>(관리자 upsert); 시드 ON CONFLICT DO NOTHING(수정본 보존); content는 관리자 신뢰 HTML로 innerHTML 주입.
 - [header/auth shared architecture](header-auth-architecture.md) — header rendered once in header.js; load order header.js→(main.js)→auth.js; index logo in-place via HEADER_BRAND_INPLACE; auth state single-source via `livingstay:auth` CustomEvent + window.livingstayRefreshAuth.
 - [인증 응답 순서](auth-response-ordering.md) — 초기 익명 조회나 옛 계정 응답이 늦게 도착해도 최신 로그인·로그아웃·사업자 상태를 되돌리지 않는다.

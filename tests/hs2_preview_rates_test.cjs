@@ -1,5 +1,14 @@
 const test=require("node:test"),assert=require("node:assert/strict");
 const ui=require("../scripts/hs2_demo_assets/preview-rate-date.js");
+test("display-only daily/weekly/monthly units never manufacture rates",()=>{
+ assert.deepEqual(ui.displayRate("lodging",{night:178000}),{kind:"lodging",unit:"day",text:"178,000원/일"});
+ assert.equal(ui.displayRate("non_lodging",{week:null,month:1200000}).text,"1,200,000원/월");
+ assert.equal(ui.displayRate("non_lodging",{week:300000,month:1200000}).text,"300,000원/주");
+ for(const rates of [null,{}, {night:null},{night:"0"},{night:178000,week:1}]){
+  assert.equal(ui.displayRate("lodging",rates).text,"요금 비공개");
+ }
+ assert.equal(ui.nightsBetween("2027-01-01","2027-01-03"),2);
+});
 test("strict base display, missing versus real zero",()=>{
  assert.equal(ui.basePresentation("lodging",{night:0}).headline,"1박 0원");
  assert.equal(ui.basePresentation("lodging",null).headline,"기준 요금 비공개");

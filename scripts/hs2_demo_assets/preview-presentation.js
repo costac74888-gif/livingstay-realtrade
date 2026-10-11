@@ -5,6 +5,10 @@
   const start = () => {
     const body = document.body;
     if (!body || body.dataset.hs2Demo !== "seongsu") return;
+    window.HS2PreviewRole = Object.freeze({
+      is_admin: body.dataset.adminAuthenticated === "true"
+    });
+    if (location.pathname.startsWith("/__development__/")) body.classList.add("development-inspection");
 
     // Final Preview decision: all application text black, including async text.
     // Never recolor the provider's map, tiles, logos or attribution.
@@ -23,6 +27,9 @@
           if (!(element instanceof HTMLElement) || element.closest(excluded)) continue;
           const hasText = [...element.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
           if (!hasText && !element.matches("input,select,textarea")) continue;
+          if (parseFloat(getComputedStyle(element).fontSize) < 16) {
+            element.style.setProperty("font-size", "16px", "important");
+          }
           const rgb = getComputedStyle(element).color.match(/[\d.]+/g);
           if (!rgb || rgb.slice(0,3).every(v => +v === 0)) continue;
           overrides.set(element, {value:element.style.getPropertyValue("color"),
@@ -60,6 +67,56 @@
       brand.prepend(image);
     };
     injectBrandLogo();
+
+    // Keep route destinations and controller hooks intact while presenting the
+    // guest/operator distinction in HOME & STAY's established vocabulary.
+    const consumerModeLink = document.getElementById("consumerModeLink");
+    const ownerModeLink = document.getElementById("ownerModeLink");
+    if (consumerModeLink) consumerModeLink.textContent = "이용자 숙소 찾기";
+    if (ownerModeLink) ownerModeLink.textContent = "임대인 운영";
+    const dashboardAction = document.querySelector('.header-action[href="/hs2/dashboard/"]');
+    const dashboardLabel = dashboardAction?.querySelector(".header-label");
+    if (dashboardLabel) dashboardLabel.textContent = "임대인 모드";
+
+    // Admin navigation is never public. The server-provided role flag is the
+    // sole source of authority for rendering this link.
+    if (window.HS2PreviewRole?.is_admin === true &&
+        !document.querySelector('.header-action[href="/hs2/admin/"]')) {
+      const actions = document.querySelector(".site-nav .header-actions");
+      if (actions) {
+        const link = document.createElement("a");
+        link.className = "header-action";
+        link.href = "/hs2/admin/";
+        link.setAttribute("aria-label", "관리자");
+        const label = document.createElement("span");
+        label.className = "header-label";
+        label.textContent = "관리자";
+        link.append(label);
+        actions.append(link);
+      }
+    }
+    if (window.HS2PreviewRole.is_admin) {
+      const actions = document.querySelector(".header-actions,.head-actions,.topbar");
+      if (actions && !document.getElementById("preview-admin-logout")) {
+        const logout = document.createElement("button");
+        logout.id = "preview-admin-logout"; logout.type = "button";
+        logout.textContent = "관리자 로그아웃";
+        logout.addEventListener("click", async () => {
+          logout.disabled = true;
+          try {
+            const metaResponse = await fetch("/hs2/listings/admin/meta");
+            const meta = await metaResponse.json();
+            if (!metaResponse.ok || !meta.csrf) throw new Error("ADMIN_REQUIRED");
+            const response = await fetch("/hs2/admin/logout", {
+              method:"POST", headers:{"X-HS2-CSRF":meta.csrf}
+            });
+            if (!response.ok) throw new Error("LOGOUT_FAILED");
+            location.assign("/hs2/consumer");
+          } catch (_) { logout.textContent = "로그아웃 다시 시도"; logout.disabled = false; }
+        });
+        actions.append(logout);
+      }
+    }
 
     const detail = document.getElementById("detail-content");
     if (detail) {

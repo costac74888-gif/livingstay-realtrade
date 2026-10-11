@@ -24,7 +24,7 @@
         const map = new kakao.maps.Map(canvas, {center:point,level:4});
         const label = document.createElement("button");
         label.textContent = "이 가상 매물"; label.type = "button";
-        label.style.cssText = "padding:8px 12px;background:#075bff;color:white;border:0;border-radius:6px;font-size:14px";
+        label.style.cssText = "padding:8px 12px;background:#eef0e7;color:black;border:2px solid #596044;border-radius:999px;font-size:16px";
         label.addEventListener("click", () => location.assign("/hs2/consumer?q=" + encodeURIComponent("성수")));
         new kakao.maps.CustomOverlay({map,position:point,content:label,yAnchor:1.2});
         window.HS2DetailMap = {ready:true,provider:"existing_kakao_maps",synthetic:true};

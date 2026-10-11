@@ -106,7 +106,17 @@
       warnings.push("월 요금이 주 요금의 2배보다 작습니다. 금액을 확인해 주세요.");
     return warnings;
   }
+  // Display only: night remains the source tariff and quotes still count nights.
+  // Do not convert calendar months to weeks, or null/withheld rates to zero.
+  function displayRate(kind, rates) {
+    const valid = basePresentation(kind, rates).notice !== null;
+    if (!valid) return {text: "요금 비공개", unit: null, kind};
+    if (kind === "lodging") return {text: `${won(rates.night)}/일`, unit: "day", kind};
+    if (isRate(rates.week)) return {text: `${won(rates.week)}/주`, unit: "week", kind};
+    if (isRate(rates.month)) return {text: `${won(rates.month)}/월`, unit: "month", kind};
+    return {text: "요금 비공개", unit: null, kind};
+  }
   return { NOTICE, MAX_RATE, isRate, won, isoParts, addDays, addMonthsClamped,
     nightsBetween, quickPeriods, checkoutFor, validQuote, quoteNights,
-    basePresentation, quoteIssue, candidateDates, rateWarnings };
+     basePresentation, quoteIssue, candidateDates, rateWarnings, displayRate };
 });

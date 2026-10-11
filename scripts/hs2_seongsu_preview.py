@@ -17,6 +17,8 @@ def install(app):
     catalog = seed_seongsu(app)
     from scripts.hs2_rate_preview import install as install_rate_preview
     install_rate_preview(app)
+    from scripts.hs2_preview_admin_auth import install as install_admin_auth
+    install_admin_auth(app)
 
     @app.before_request
     def include_new_owned_registrations():
@@ -162,9 +164,15 @@ def install(app):
             response.direct_passthrough = False
             text = response.get_data(as_text=True)
             import re
+            authenticated = "true" if app.preview_admin_authorized() else "false"
+            text = re.sub(r"(<body\b)", r'\1 data-admin-authenticated="' + authenticated + '"',
+                          text, count=1, flags=re.IGNORECASE)
             text = re.sub(r"(<body\b)", r'\1 data-hs2-demo="seongsu"', text, count=1)
             text = text.replace('href="/hs2/mode"', 'href="/__development__/seongsu/"')
-            text = text.replace("</head>", '<link rel="stylesheet" href="/__development__/seongsu/map-assets/preview-readability.css"></head>')
+            assets = '<link rel="stylesheet" href="/__development__/seongsu/map-assets/preview-readability.css">'
+            if 'map-assets/preview-rate-date.js' not in text:
+                assets += '<script defer src="/__development__/seongsu/map-assets/preview-rate-date.js"></script>'
+            text = text.replace("</head>", assets + "</head>")
             response.set_data(text)
         if response.is_json and response.status_code == 200:
             data = response.get_json()
@@ -183,6 +191,15 @@ def install(app):
                     key = value.get("public_id")
                     if key in catalog and not ("total_krw" in value and "check_in" in value):
                         meta = dict(catalog[key])
+                        if request.path.startswith("/hs2/details/api/items/"):
+                            source = app.preview_rate_adapter.source({
+                                "public_id": key, "stay_kind": meta["category"]})
+                            rates = source[2] if source is not None else None
+                            meta["display_base_rates"] = rates
+                            # Current approved calendar, not the initial demo seed.
+                            meta["nightly_krw"] = rates.get("night") if rates else None
+                            meta["weekly_krw"] = rates.get("week") if rates else None
+                            meta["monthly_krw"] = rates.get("month") if rates else None
                         meta["blocked_dates"] = sorted(
                             set(meta["blocked_dates"]) | occupied.get(key, set()))
                         if request.path.startswith(("/hs2/api/consumer/", "/hs2/search/api/")):

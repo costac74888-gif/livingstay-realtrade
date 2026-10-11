@@ -76,6 +76,7 @@ window.HS2LegacyMapTools={
             return Response(wrapper + tools + icons + bridge,
                             mimetype="application/javascript")
         targets = {
+            "admin-login.js": ("scripts/hs2_demo_assets", "admin-login.js"),
             "brand-logo.png": ("attached_assets", "HOME_STAY_logo_3_BlackWhite_OnBlack_1791718519754.png"),
             "brand-icon.png": ("attached_assets", "앱로고home_stay_share_1791718522426.png"),
             "icons.js": ("static/js", "icons.js"),

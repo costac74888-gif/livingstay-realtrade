@@ -110,14 +110,8 @@
     modeSave();
   }
   function rateHeadline(row) {
-    const rates = row.base_rates;
-    if (row.layer !== "stay" || !rates) return "기준 요금 비공개";
-    if (row.stay_kind === "lodging" && rateDate?.isRate(rates.night))
-      return `1박 ${rateDate.won(rates.night)}`;
-    if (row.stay_kind === "non_lodging") {
-      return rateDate.basePresentation(row.stay_kind, rates).headline;
-    }
-    return "기준 요금 비공개";
+    return row.layer === "stay" && rateDate
+      ? rateDate.displayRate(row.stay_kind, row.base_rates).text : "요금 비공개";
   }
   function appendCandidates(container, row) {
     if (!rateDate) return;
@@ -217,8 +211,6 @@
   }
   function price(row) {
     if (isDemo && row.layer === "stay" && rateDate) {
-      const view = presentation(row);
-      if (view?.quote) return view.quote.text;
       return rateHeadline(row);
     }
     const meta = row.preview_demo;
@@ -279,6 +271,8 @@
       if (meta?.synthetic !== true) throw new Error("가상 데이터 외에는 표시하지 않습니다.");
       const card = text("button", "listing-card", ""); card.type = "button";
       card.dataset.publicId = row.public_id; card.dataset.layer = row.layer;
+      card.dataset.kind = row.stay_kind || "";
+      card.dataset.rateUnit = rateDate?.displayRate(row.stay_kind, row.base_rates).unit || "";
       const image = new Image(); setSyntheticPhoto(image, meta); image.loading = "lazy";
       const copy = text("span", "listing-card-copy", "");
       const tag = text("span", "listing-type", names[row.layer]); tag.style.background = colors[row.layer];
@@ -312,7 +306,8 @@
       const bounds = new kakao.maps.LatLngBounds();
       items.forEach(row => bounds.extend(new kakao.maps.LatLng(
         row.preview_demo.point.lat, row.preview_demo.point.lng)));
-      map.setBounds(bounds, 40, 90, 35, window.innerWidth > 760 ? 450 : 35);
+      map.setBounds(bounds, 40, 90, 35, window.innerWidth > 760
+        ? Math.ceil(byId("resultsPane").getBoundingClientRect().width) + 24 : 35);
       framed = true;
     }
     if (mode === "owner" && map.getLevel() >= 7 && items.length) {
@@ -341,22 +336,19 @@
       const p = row.preview_demo.point;
       let bubble = compactMoney(row.preview_demo.test_asking_krw);
       if (isDemo && row.layer === "stay") {
-        const rates = row.base_rates;
-        bubble = row.stay_kind === "lodging" && rateDate?.isRate(rates?.night)
-          ? `${rateDate.won(rates.night)}/박`
-          : row.stay_kind === "non_lodging" && rateDate?.isRate(rates?.week)
-            ? `${rateDate.won(rates.week)}/주`
-            : row.stay_kind === "non_lodging" && rateDate?.isRate(rates?.month)
-              ? `${rateDate.won(rates.month)}/월` : "기준 요금 비공개";
+        bubble = rateHeadline(row);
       } else if (row.layer === "stay") {
         const amount = row.quote?.total_krw ?? row.preview_demo.weekly_krw ?? row.preview_demo.nightly_krw;
         bubble = compactMoney(amount);
       }
       const content = text("button", "real-map-marker", bubble);
       content.type = "button"; content.style.background = colors[row.layer];
+      if (row.layer === "stay") content.style.removeProperty("background");
       content.title = `${row.preview_demo.name} · ${names[row.layer]} · ${
         isDemo && row.layer === "stay" ? rateHeadline(row) : price(row)} · 가상 물건`;
       content.dataset.publicId = row.public_id; content.dataset.layer = row.layer;
+      content.dataset.kind = row.stay_kind || "";
+      content.dataset.rateUnit = rateDate?.displayRate(row.stay_kind, row.base_rates).unit || "";
       content.setAttribute("aria-label", row.preview_demo.name + " · " + bubble + " 지도에서 선택");
       content.addEventListener("click", () => select(row));
       const overlay = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(p.lat, p.lng),

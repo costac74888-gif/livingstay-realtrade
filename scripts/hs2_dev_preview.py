@@ -88,15 +88,14 @@ def serve(port):
             response.direct_passthrough = False
             text = response.get_data(as_text=True)
             banner = (
-                '<aside role="note" style="padding:8px 16px;background:#fff;'
-                'border-bottom:1px solid #d8e1eb;color:#171717;'
-                'font:14px/1.5 \'Noto Sans KR\',sans-serif">'
+                '<aside role="note" class="preview-demo-notice"><details>'
+                '<summary>개발 Preview · 가상 예약 · 실제 결제·발송 없음</summary><p>'
                 '<b>개발용 Preview</b> · 매물·예약·채팅은 가상 데이터입니다.'
                 ' 임대인 시설은 검증된 공개 스냅샷이며 실시간 운영 연결이 아닙니다.'
                 ' 실제 개인정보를 입력하지 마세요.'
                 ' 결제·로그인은 모의 처리이며 실제 토스·운영 인증이 아닙니다.'
                 ' 이메일·문자·지급은 차단됩니다. 재시작 시 데이터가 초기화됩니다.'
-                '</aside>'
+                '</p></details></aside>'
             )
             import re
             text = re.sub(r"(<body\b[^>]*>)", r"\1" + banner, text, count=1,
@@ -131,6 +130,9 @@ def main():
         # Browser-exposed map identifier only; never forward the REST key,
         # production database, payment, email, SMS or identity credentials.
         env["HS2_PREVIEW_MAP_JS_KEY"] = os.environ.get("KAKAO_JS_KEY", "")
+        # Dedicated development administrator password only; never PG/host keys.
+        if os.environ.get("HS2_PREVIEW_ADMIN_PASSWORD"):
+            env["HS2_PREVIEW_ADMIN_PASSWORD"] = os.environ["HS2_PREVIEW_ADMIN_PASSWORD"]
         with owned_cluster(env, sys.stdout, "test_hs2_phase15_db.py") as env:
             env["PYTHONPATH"] = str(ROOT / "hs2_harness/isolated_guard") + os.pathsep + env["PYTHONPATH"]
             child = subprocess.Popen(
