@@ -85,6 +85,18 @@
     }catch(error){body.innerHTML=`<div class="membership-error">${esc(error.message)}<button class="membership-btn secondary" type="button" data-dialog-retry>다시 시도</button></div>`;body.querySelector("[data-dialog-retry]")?.addEventListener("click",()=>{close();openCheckDialog(property)})}})();
   }
   window.openMembershipCheck=openCheckDialog;
-  window.addEventListener("livingstay:auth",()=>{closeDialog(document.querySelector(".membership-dialog-backdrop"));if(host){snapshot=null;host.innerHTML='<div class="membership-loading"><span></span> 계정 상태를 갱신하고 있습니다.</div>';load()}});
+  let authIdentity=null;
+  window.addEventListener("livingstay:auth",event=>{
+    const detail=event.detail||{},user=detail.user||{};
+    const next=detail.loggedIn?JSON.stringify([
+      user.account_type||"user",user.id??null,user.active_role??null,
+      user.active_business_table??null,user.active_business_id??null,
+    ]):"signed-out";
+    const changed=authIdentity!==null&&authIdentity!==next;
+    const initial=authIdentity===null;
+    authIdentity=next;
+    if(!detail.loggedIn||changed)closeDialog(document.querySelector(".membership-dialog-backdrop"));
+    if(host&&(initial||changed)){snapshot=null;host.innerHTML='<div class="membership-loading"><span></span> 계정 상태를 갱신하고 있습니다.</div>';load()}
+  });
   if(host)load();
 })();

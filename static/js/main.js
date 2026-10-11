@@ -6410,7 +6410,8 @@ function _renderApprovedRosterOperatingInfo(b){
     body.innerHTML=`<div class="side-card-title">공식 영업·운영 정보</div><p class="b-ops-source-note">현재 이 건물에 연결된 상세 공식 기록이 없습니다.</p>
       <div class="b-membership-notice"><button type="button" data-membership-building-check>이번 달 포함 확인 신청</button> <a href="/membership">이용 내역</a></div>`;
     body.querySelector("[data-membership-building-check]")?.addEventListener("click",()=>{
-      window.openMembershipCheck?.({building_id:Number(b.id),title:b.building_name,address:b.road_address||b.jibun_address});
+      const buildingId=b.id??b.building_id??window.__openBuildingId;
+      window.openMembershipCheck?.({building_id:Number(buildingId),title:b.building_name,address:b.road_address||b.jibun_address});
     });
     card.style.display="";return;
   }

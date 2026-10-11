@@ -103,7 +103,14 @@ finally:c.close()
       assert.equal(detail.membership_access.required,false);
       if(detail.operating_records.length)assert.ok(await page.locator("#bApprovedRosterOperatingBody dl").count()>0);
       await requestButton.click();
-      await page.locator("#memberCheckForm").waitFor();
+      await page.locator("#memberCheckForm").waitFor().catch(async error=>{
+        console.error("Owned membership dialog diagnostic",await page.evaluate(()=>({
+          handler:typeof window.openMembershipCheck,
+          building:window.__openBuildingId,
+          dialog:document.querySelector(".membership-dialog-body")?.textContent||null,
+        })),errors);
+        throw error;
+      });
       await page.locator('#memberCheckForm textarea').fill("서류·전화 확인 요청 / 자동검증");
       await page.locator('#memberCheckForm [name="agree_terms"]').check();
       assert.ok(await page.locator(".membership-dialog").evaluate(n=>getComputedStyle(n).position!=="static"||n.closest(".membership-dialog-backdrop")&&getComputedStyle(n.closest(".membership-dialog-backdrop")).position==="fixed"));

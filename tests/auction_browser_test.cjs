@@ -140,11 +140,15 @@ const fs = require("node:fs");
   assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
   console.log("PASS grouped selection: switching between matched/unmatched items updates panel, tab scope and deep link");
   const unmatched=Number(execFileSync("python",["-c",
-    "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute('SELECT id FROM auction_items WHERE master_building_id IS NULL ORDER BY id LIMIT 1');print(q.fetchone()['id'])"
+    // A legacy NULL-id row can still resolve by address. The owned browser
+    // seed reserves this address namespace for genuinely unmatched items.
+    "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute(\"SELECT id FROM auction_items WHERE master_building_id IS NULL AND address_road LIKE '%미등록가상로%' ORDER BY id LIMIT 1\");print(q.fetchone()['id'])"
   ],{encoding:"utf8"}).trim());
   await page.goto(base+"/auctions/"+unmatched+"/survey");
+  console.log("Owned unmatched survey entry:",page.url());
   await page.locator(".auction-panel-general").waitFor();
-  assert.ok(page.url().endsWith("/?auction="+unmatched));
+  assert.ok(page.url().endsWith("/?auction="+unmatched),
+    "Unmatched survey deep link changed: "+page.url());
   assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
   assert.equal(await page.locator(".survey-analysis-link").count(),0);
   await page.screenshot({path:"attached_assets/auction-integrated/unmatched-desktop.png"});
@@ -157,9 +161,13 @@ const fs = require("node:fs");
   }
   console.log("PASS matched building: auction header badge and auction history panel");
   const noHistoryId=Number(execFileSync("python",["-c",
-    "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute('SELECT b.id FROM master_buildings b WHERE NOT EXISTS(SELECT 1 FROM auction_items a WHERE a.master_building_id=b.id) ORDER BY b.id LIMIT 1');print(q.fetchone()['id'])"
+    // The public history also resolves legacy rows by address. Exclude both
+    // direct links and matching owned addresses when selecting an empty case.
+    "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute('SELECT b.id FROM master_buildings b WHERE NOT EXISTS(SELECT 1 FROM auction_items a WHERE a.master_building_id=b.id OR a.address_road=b.road_address OR a.address_jibun=b.jibun_address) ORDER BY b.id LIMIT 1');print(q.fetchone()['id'])"
   ],{encoding:"utf8"}).trim());
   await page.evaluate(id => window.openBuildingDetail(id), noHistoryId);
+  await page.locator("#bTabAuctions").waitFor({state:"visible"});
+  await page.locator("#bTabAuctions").click();
   await page.waitForSelector(".b-auction-empty", { timeout: 30000 });
   assert.ok((await page.locator(".b-auction-empty").textContent()).includes("공매 이력 없음"));
   assert.ok((await page.locator(".b-auction-empty a").getAttribute("href")).includes("courtauction.go.kr"));
