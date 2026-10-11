@@ -66,7 +66,18 @@ finally:c.close()
       await page.fill("#authEmail",fixtures.members[index].email);
       await page.fill("#authPassword",fixtures.members[index].password);
       await page.click("#authSubmit");
-      await page.locator("#memberDepositor").waitFor();
+      await page.locator("#memberDepositor").waitFor().catch(async error=>{
+        console.error("Owned membership login diagnostic",await page.evaluate(()=>({
+          pathname:location.pathname,
+          loggedIn:window.__livingstayLoggedIn,
+          accountType:window.__livingstayAccountType,
+          authError:document.getElementById("authError")?.textContent,
+          memberState:document.querySelector(".member-state")?.textContent,
+          memberError:document.querySelector(".membership-error")?.textContent,
+          modalVisible:!!document.querySelector("#authModal.open"),
+        })),errors);
+        throw error;
+      });
       const me=async()=>browserJSON(page,"/api/membership/me");
       assert.equal((await me()).status,"inactive");
       await page.fill("#memberDepositor","멤버십 자동검증");

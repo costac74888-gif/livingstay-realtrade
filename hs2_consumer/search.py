@@ -9,7 +9,7 @@ OPTIONS = {"wifi", "kitchen", "parking", "washer"}
 MAX_KRW = 1_000_000_000
 
 
-def query(values):
+def parse_search_filters(values):
     if set(values) - FIELDS:
         raise ContractError("UNKNOWN_FILTER")
     out = {"q": values.get("q", "").strip(), "kind": values.get("kind", "all"),
@@ -50,6 +50,11 @@ def query(values):
         raise ContractError("INVALID_OPTIONS")
     out["options"] = sorted(options)
     return out
+
+
+# Compatibility for callers of the original filter-parser interface. This
+# function parses a dict; it does not execute or construct a database query.
+query = parse_search_filters
 
 
 def search(values, source):

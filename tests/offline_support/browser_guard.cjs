@@ -196,6 +196,11 @@ Module._load = function(name, ...args) {
         if (url.hostname === "cdnjs.cloudflare.com" && /\/Chart\.js\/.*chart\.umd/.test(url.pathname))
           return route.fulfill({contentType: "text/javascript",
             body: fs.readFileSync(require.resolve("chart.js/auto").replace(/auto[/\\]auto\.cjs$/, "dist/chart.umd.js"), "utf8")});
+        if (url.hostname === "cdn.jsdelivr.net" &&
+            url.pathname === "/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js")
+          return route.fulfill({contentType: "text/javascript",
+            body: fs.readFileSync(require.resolve("chartjs-plugin-datalabels")
+              .replace(/chartjs-plugin-datalabels\.js$/, "chartjs-plugin-datalabels.min.js"), "utf8")});
         return allowed(url) ? route.continue() : route.abort("blockedbyclient");
       });
     }

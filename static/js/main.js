@@ -202,9 +202,15 @@ window.refreshFavoritesUI = async function(){
 // livingstay:auth 이벤트 — 이미 로그인된 상태로 페이지에 진입할 때도 관심키를 로드한다.
 // auth.js가 window.dispatchEvent()로 발생시키므로 리스너도 window에 등록해야 함.
 // (document.addEventListener는 window 이벤트를 수신하지 못함 — 타깃 불일치 버그 수정)
+let buildingPanelAuthInitialized = false;
 window.addEventListener("livingstay:auth", async function(){
+  // The initial detail request already uses the current session cookie.
+  // Re-rendering on the first auth notification can copy the default property
+  // tab before an auction deep link has finished selecting its requested tab.
+  const refreshPanel = buildingPanelAuthInitialized;
+  buildingPanelAuthInitialized = true;
   const openId=window.__openBuildingId;
-  if(openId&&typeof renderBuildingPanel==="function"){
+  if(refreshPanel&&openId&&typeof renderBuildingPanel==="function"){
     const card=document.getElementById("bApprovedRosterOperatingBody");
     if(card)card.textContent="계정 이용 상태를 확인하고 있습니다.";
     renderBuildingPanel(openId,{

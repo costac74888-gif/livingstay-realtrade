@@ -15,8 +15,11 @@ async function main(){
   await page.waitForSelector('.hs2-marker-toggle[data-layer="stay"]');
   const pressed=await page.locator("#mobile-map-btn").getAttribute("aria-pressed");ok(pressed==="true","Accessible pane state");
   await page.setViewportSize({width:1280,height:920});
+  await page.waitForFunction(()=>!document.querySelector(".results-pane").hidden&&!document.querySelector(".map-pane").hidden);
   ok(await page.locator(".map-pane").isVisible()&&await page.locator(".results-pane").isVisible(),"Desktop restores both original panes");
   await page.setViewportSize({width,height:920});
+  // Viewport protocol completion precedes the asynchronous matchMedia handler.
+  await page.waitForFunction(()=>document.querySelector(".results-pane").hidden&&!document.querySelector(".map-pane").hidden);
   ok(await page.locator(".map-pane").isVisible()&&!await page.locator(".results-pane").isVisible(),"Mobile choice survives breakpoint");
   await page.locator("#mobile-list-btn").click();
   const after=await page.evaluate(()=>fetch("/hs2/search/api/results").then(r=>r.json()).then(r=>r.items.map(x=>[x.layer,x.id])));

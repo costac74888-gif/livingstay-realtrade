@@ -166,8 +166,8 @@ const fs = require("node:fs");
     "from db import get_conn\nwith get_conn() as c:\n with c.cursor() as q:\n  q.execute('SELECT b.id FROM master_buildings b WHERE NOT EXISTS(SELECT 1 FROM auction_items a WHERE a.master_building_id=b.id OR a.address_road=b.road_address OR a.address_jibun=b.jibun_address) ORDER BY b.id LIMIT 1');print(q.fetchone()['id'])"
   ],{encoding:"utf8"}).trim());
   await page.evaluate(id => window.openBuildingDetail(id), noHistoryId);
-  await page.locator("#bTabAuctions").waitFor({state:"visible"});
-  await page.locator("#bTabAuctions").click();
+  // With no history, the watch entry belongs to the ordinary property panel;
+  // an empty auction tab is intentionally not offered.
   await page.waitForSelector(".b-auction-empty", { timeout: 30000 });
   assert.ok((await page.locator(".b-auction-empty").textContent()).includes("공매 이력 없음"));
   assert.ok((await page.locator(".b-auction-empty a").getAttribute("href")).includes("courtauction.go.kr"));

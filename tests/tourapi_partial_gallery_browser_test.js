@@ -163,6 +163,18 @@ async function run() {
   async function openScenario(nextScenario) {
     scenario = nextScenario;
     await page.evaluate(() => localStorage.clear());
+    // The owned runtime intentionally strips provider credentials. Supply only
+    // synthetic browser configuration so mocked provider responses are reached,
+    // rather than silently taking the "key unavailable" branch.
+    await page.evaluate(() => {
+      let meta = document.querySelector('meta[name="livingstay-tour-api-service-key"]');
+      if (!meta) {
+        meta = document.createElement("meta");
+        meta.name = "livingstay-tour-api-service-key";
+        document.head.append(meta);
+      }
+      meta.content = "fixture-only-not-a-provider-key";
+    });
     await page.evaluate((id) => openBuildingDetail(id), BUILDING_ID);
     await page.locator("#photoCounter").waitFor({ state: "visible" });
     await page.waitForTimeout(150);
@@ -184,6 +196,7 @@ async function run() {
     expect(await page.locator(".bld-photo-slide img").getAttribute("src") === REPRESENTATIVE, "추가 이미지 0건 뒤 대표사진 URL이 바뀌었습니다.");
 
     await openScenario("success");
+    await page.waitForFunction(()=>document.querySelectorAll(".bld-photo-slide").length===2);
     expect(await page.locator(".bld-photo-slide").count() === 2, "기존 사진과 새 사진이 중복 없이 합쳐지지 않았습니다.");
     expect(await page.locator("#photoCounter").textContent() === "1 / 2", "병합된 사진 수가 카운터에 반영되지 않았습니다.");
     await page.locator(".photo-next").click();

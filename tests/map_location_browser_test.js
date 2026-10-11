@@ -319,6 +319,9 @@ async function run() {
     await favoriteChip.click();
     await page.waitForURL(`**/building/${BUILDING_ID}`);
     await page.locator("#bMapBtn").waitFor({ state: "visible" });
+    // Selecting a favorite legitimately collapses the search panel on mobile.
+    // Establish this scenario's open-panel precondition without toggling blindly.
+    await openSearchPanel();
 
     expect(
       !(await page.locator(".map-searchbar").evaluate((element) => element.classList.contains("collapsed"))),

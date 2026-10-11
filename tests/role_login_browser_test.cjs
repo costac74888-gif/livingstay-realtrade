@@ -88,6 +88,11 @@ const server = http.createServer(async(req,res) => {
       await page.fill("#authEmail","test@example.test");
       await page.fill("#authPassword"," shared-pass-123 ");
       await page.locator('#authForm button[type="submit"]').click();
+      await page.locator("#authModal").waitFor({state:"hidden"});
+      await page.locator(".auth-active-context").waitFor({state:"attached"});
+      assert.equal(new URL(page.url()).pathname,"/","General popup login keeps the current page");
+      // Account management is an explicit navigation, not a login redirect.
+      await page.goto(base+"/mypage");
       await page.waitForURL("**/mypage");
       assert.equal(calls.findLast(c=>c.path==="/api/auth/login").body.role,"general");
       assert.equal(calls.findLast(c=>c.path==="/api/auth/login").body.password," shared-pass-123 ");
