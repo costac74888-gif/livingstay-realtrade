@@ -42,6 +42,8 @@
   let pageIdentity = publicId;
   let workspaceCsrf = "";
   let isFavorite = false;
+  const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
+  let calendarMonth = new Date();
 
   function setFeedback(message, state) {
     feedbackCopy.textContent = message;
@@ -112,6 +114,225 @@
     return summary && typeof summary === "object" && !Array.isArray(summary) ? summary : {};
   }
 
+  function appendDemoBadge(parent) {
+    const badge = document.createElement("span");
+    badge.className = "demo-test-badge";
+    badge.textContent = "테스트용 가상 매물 · 실재/법적 운영 확인 아님";
+    parent.append(badge);
+  }
+
+  function demoPhotoUrl(value) {
+    return typeof value === "string" && value.startsWith("/__development__/seongsu/assets/") ? value : null;
+  }
+
+  function localDateString(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function renderDemoCalendar(demo, section) {
+    const calendar = document.createElement("section");
+    calendar.className = "availability-card";
+    calendar.setAttribute("aria-labelledby", "demo-calendar-title");
+    const heading = document.createElement("div");
+    heading.className = "availability-heading";
+    const title = document.createElement("div");
+    title.innerHTML = '<p class="section-kicker">READ-ONLY AVAILABILITY</p><h3 id="demo-calendar-title">월간 가능 일정</h3>';
+    const controls = document.createElement("div");
+    controls.className = "calendar-controls";
+    const previous = document.createElement("button");
+    previous.type = "button";
+    previous.setAttribute("aria-label", "이전 달");
+    previous.textContent = "이전";
+    const next = document.createElement("button");
+    next.type = "button";
+    next.setAttribute("aria-label", "다음 달");
+    next.textContent = "다음";
+    controls.append(previous, next);
+    heading.append(title, controls);
+    const monthLabel = document.createElement("strong");
+    monthLabel.className = "calendar-month-label";
+    const grid = document.createElement("div");
+    grid.className = "availability-grid";
+    grid.setAttribute("role", "grid");
+    const weekdays = document.createElement("div");
+    weekdays.className = "availability-weekdays";
+    ["일", "월", "화", "수", "목", "금", "토"].forEach((day) => {
+      const node = document.createElement("span");
+      node.textContent = day;
+      weekdays.append(node);
+    });
+    const days = document.createElement("div");
+    days.className = "availability-days";
+    grid.append(weekdays, days);
+    const note = document.createElement("p");
+    note.className = "availability-note";
+    note.textContent = "달력은 미리보기 일정이며 최종 예약 가능 여부는 실제 견적에서 다시 확인됩니다.";
+    const legend = document.createElement("div");
+    legend.className = "availability-legend";
+    [["is-open", "가능"], ["is-closed", "마감"]].forEach(([state, label]) => {
+      const entry = document.createElement("span");
+      const swatch = document.createElement("i");
+      swatch.className = `availability-swatch ${state}`;
+      const copy = document.createElement("span");
+      copy.textContent = label;
+      entry.append(swatch, copy);
+      legend.append(entry);
+    });
+    const blocked = new Set(Array.isArray(demo.blocked_dates) ? demo.blocked_dates : []);
+
+    function draw() {
+      monthLabel.textContent = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(calendarMonth);
+      days.replaceChildren();
+      const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+      const monthDays = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+      for (let gap = 0; gap < first.getDay(); gap += 1) {
+        const blank = document.createElement("span");
+        blank.className = "availability-day is-blank";
+        blank.setAttribute("aria-hidden", "true");
+        days.append(blank);
+      }
+      for (let day = 1; day <= monthDays; day += 1) {
+        const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day);
+        const key = localDateString(date);
+        const inWindow = key >= demo.available_from && key <= demo.available_until;
+        const closed = !inWindow || blocked.has(key);
+        const cell = document.createElement("span");
+        cell.className = `availability-day ${closed ? "is-closed" : "is-open"}`;
+        cell.setAttribute("role", "gridcell");
+        cell.setAttribute("aria-label", `${key} · ${closed ? "마감" : "가능"}`);
+        cell.textContent = String(day);
+        days.append(cell);
+      }
+    }
+    previous.addEventListener("click", () => {
+      calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+      draw();
+    });
+    next.addEventListener("click", () => {
+      calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+      draw();
+    });
+    calendar.append(heading, monthLabel, grid, legend, note);
+    section.append(calendar);
+    draw();
+  }
+
+  function renderDemoContent(data, summary) {
+    const demo = data.preview_demo;
+    if (!isSeongsuDemo || !demo || demo.synthetic !== true) return false;
+    const gallery = document.createElement("div");
+    gallery.className = "demo-gallery";
+    gallery.setAttribute("aria-label", "가상 공간 사진 갤러리");
+    (Array.isArray(demo.photos) ? demo.photos : []).slice(0, 4).forEach((photo, index) => {
+      const src = demoPhotoUrl(photo);
+      if (!src) return;
+      const figure = document.createElement("figure");
+      figure.className = "demo-gallery-image";
+      const image = document.createElement("img");
+      image.src = src;
+      image.alt = `${demo.name || "가상 숙소"}의 가상 공간 이미지 ${index + 1}`;
+      image.loading = index === 0 ? "eager" : "lazy";
+      image.decoding = "async";
+      const caption = document.createElement("figcaption");
+      caption.textContent = "가상 공간 이미지";
+      figure.append(image, caption);
+      gallery.append(figure);
+    });
+    appendDemoBadge(gallery);
+    const priorGallery = $(".demo-gallery");
+    if (priorGallery) priorGallery.remove();
+    const placeholder = $(".photo-withheld");
+    if (placeholder) placeholder.replaceWith(gallery);
+    const introCopy = $("#detail-summary-copy");
+    introCopy.textContent = demo.description || "성수 단기 체류를 위한 테스트용 가상 숙소 정보입니다.";
+    const stayType = $("#stay-type");
+    stayType.textContent = demo.category === "non_lodging" ? "주·월 단기 체류" : "숙박형 단기 체류";
+    const safeRooms = Number.isSafeInteger(demo.rooms) && demo.rooms >= 0 ? demo.rooms : summary.rooms;
+    factText($("#rooms-value"), Number.isSafeInteger(safeRooms) ? safeRooms === 0 ? "원룸·스튜디오" : `${safeRooms}개` : "미공개");
+    factText($("#capacity"), Number.isSafeInteger(demo.guests) && demo.guests > 0 ? `${demo.guests}명` : "미공개");
+    factText($("#area-value"), typeof demo.area_m2 === "number" && demo.area_m2 > 0 ? `${demo.area_m2.toLocaleString("ko-KR")}㎡` : "미공개");
+    const amenities = { wifi: "와이파이", kitchen: "주방", parking: "주차", washer: "세탁기" };
+    factText($("#options-value"), Array.isArray(demo.amenities)
+      ? demo.amenities.filter((entry) => amenities[entry]).map((entry) => amenities[entry]).join(" · ") || "공개된 정보 없음"
+      : "공개된 정보 없음");
+    factText($("#location-copy"), `${demo.neighborhood || "성수동"} 주변의 시뮬레이션 구역입니다. 지도 위치와 사진은 모두 가상 자료이며 실제 주소가 아닙니다.`);
+    const privacy = $(".privacy-pill");
+    if (privacy) privacy.textContent = "가상 구역 · 정확한 주소 없음";
+
+    const overview = document.createElement("section");
+    overview.className = "demo-overview";
+    overview.setAttribute("aria-label", "가상 매물 소개와 기준 요금");
+    const copy = document.createElement("div");
+    copy.className = "demo-description";
+    const title = document.createElement("h2");
+    title.textContent = "이 공간에 대해";
+    const description = document.createElement("p");
+    description.textContent = demo.description || "성수에서 머물 계획을 세우는 과정을 살펴보기 위한 가상 공간입니다.";
+    copy.append(title, description);
+    const rates = document.createElement("div");
+    rates.className = "demo-rate-list";
+    const entries = demo.category === "non_lodging"
+      ? [["주 단위 기준", demo.weekly_krw], ["달력 1개월 기준", demo.monthly_krw]]
+      : [["기준 1박", demo.nightly_krw]];
+    entries.forEach(([label, value]) => {
+      const row = document.createElement("div");
+      const term = document.createElement("span");
+      term.textContent = label;
+      const amount = document.createElement("strong");
+      amount.textContent = Number.isSafeInteger(value) ? money(value) : "요금 정보 없음";
+      row.append(term, amount);
+      rates.append(row);
+    });
+    const rateNote = document.createElement("p");
+    rateNote.className = "demo-rate-note";
+    rateNote.textContent = demo.category === "non_lodging"
+      ? "비숙박 매물은 주 단위와 입실일 기념일 기준 달력 1개월 요금으로 표시합니다. 1박 환산 금액은 제공하지 않습니다."
+      : "기준 1박 금액은 참고 정보입니다. 선택 기간 총액은 예약 조건에서 서버 견적으로 확인하세요.";
+    rates.append(rateNote);
+    overview.append(copy, rates);
+    const amenitySection = document.createElement("div");
+    amenitySection.className = "demo-amenities";
+    const amenityTitle = document.createElement("h3");
+    amenityTitle.textContent = "공간 편의";
+    const amenityList = document.createElement("div");
+    amenityList.className = "demo-amenity-list";
+    (Array.isArray(demo.amenities) ? demo.amenities : []).filter((entry) => amenities[entry]).forEach((entry) => {
+      const chip = document.createElement("span");
+      chip.textContent = amenities[entry];
+      amenityList.append(chip);
+    });
+    amenitySection.append(amenityTitle, amenityList);
+    overview.append(amenitySection);
+    renderDemoCalendar(demo, overview);
+    const stayTools = $(".stay-tools");
+    if (stayTools) stayTools.before(overview);
+    if (validDate(demo.available_from)) {
+      checkInInput.min = demo.available_from;
+      checkOutInput.min = demo.available_from;
+    }
+    if (validDate(demo.available_until)) {
+      checkInInput.max = demo.available_until;
+      checkOutInput.max = demo.available_until;
+    }
+    if (demo.booking_supported !== true) {
+      const quoteHeading = $(".reservation-head p:last-child");
+      if (quoteHeading) quoteHeading.textContent = "이 가상 매물은 예약 견적 흐름을 지원하지 않습니다.";
+      quoteButton.disabled = true;
+      quoteButton.textContent = "예약 견적 미지원";
+    }
+    const seoulToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
+    }).format(new Date());
+    const tomorrow = new Date(`${seoulToday}T00:00:00Z`);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const next = new Date(tomorrow);
+    next.setUTCDate(next.getUTCDate() + 1);
+    if (!params.has("check_in")) checkInInput.value = tomorrow.toISOString().slice(0, 10);
+    if (!params.has("check_out")) checkOutInput.value = next.toISOString().slice(0, 10);
+    guestsInput.max = String(Math.max(1, Math.min(Number.isSafeInteger(demo.guests) ? demo.guests : 100, 100)));
+    return true;
+  }
+
   function factText(container, value) {
     container.textContent = value;
   }
@@ -125,7 +346,8 @@
     const summary = safePublicSummary(data.summary);
     const nonLodging = data.stay_kind === "non_lodging";
     $("#stay-type").textContent = nonLodging ? "비숙박형 단기임대" : "숙박형 단기임대";
-    $("#detail-title").textContent = displayTitle(data.title);
+    const isDemoItem = isSeongsuDemo && data.preview_demo?.synthetic === true;
+    $("#detail-title").textContent = displayTitle(isDemoItem && data.preview_demo.name || data.title);
     $("#detail-summary-copy").textContent = nonLodging
       ? "운영자가 공개한 비숙박형 단기임대 요약입니다. 숙박 예약 상품이 아닙니다."
       : "운영자가 공개에 동의한 숙박 요약만 표시합니다. 정확한 이름·주소와 등록 사진은 공개하지 않습니다.";
@@ -162,6 +384,15 @@
     guestsInput.max = String(Math.max(1, Math.min(summaryGuests, 100)));
     updateReturnLinks();
     itemSection.hidden = false;
+    if (isDemoItem) {
+      const demo = data.preview_demo;
+      const existingBadge = $(".demo-test-badge");
+      if (existingBadge) existingBadge.remove();
+      appendDemoBadge($(".listing-intro"));
+      renderDemoContent(data, summary);
+      if (!params.has("guests") && Number.isSafeInteger(demo.guests)) guestsInput.value = String(Math.min(2, demo.guests));
+      if (nonLodging) $("#minimum-stay").textContent = "주·월 기준";
+    }
   }
 
   function clearReceiptStorage() {

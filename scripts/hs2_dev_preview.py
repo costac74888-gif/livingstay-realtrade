@@ -47,6 +47,8 @@ def serve(port):
 
     app = create_fixture_app(app_factory=workspace_app)
     seed_paid(app)
+    from scripts.hs2_seongsu_preview import install
+    install(app)
 
     @app.get("/")
     def index():
@@ -59,6 +61,8 @@ def serve(port):
             "payment_provider": "OwnedSandbox_mock", "actual_toss": False,
             "external_delivery": False, "production_entrypoint": False,
             "reset_on_restart": True,
+            "demo": "seongsu", "synthetic_stays": 14,
+            "synthetic_layers": {"sale": 3, "business": 3, "auction": 3},
         }
 
     @app.after_request

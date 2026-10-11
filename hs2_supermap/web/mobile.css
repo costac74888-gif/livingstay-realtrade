@@ -213,6 +213,20 @@
 }
 
 @media (max-width: 760px) {
+  body[data-hs2-demo="seongsu"] .supermap-workspace .listing-card.has-demo-photo {
+    grid-template-columns: 72px 32px minmax(0,1fr) auto;
+  }
+}
+@media (max-width: 390px) {
+  body[data-hs2-demo="seongsu"] .supermap-workspace .listing-card.has-demo-photo {
+    grid-template-columns: 56px 26px minmax(0,1fr);
+  }
+  body[data-hs2-demo="seongsu"] .supermap-workspace .listing-card.has-demo-photo .listing-price {
+    grid-column: 3;
+  }
+}
+
+@media (max-width: 760px) {
   body[data-mobile-experience="true"] .mobile-panel-switch {
     border-color: #ccd9e9; border-radius: 8px; background: rgba(244,248,253,.97);
     box-shadow: 0 4px 14px rgba(25,57,98,.08);

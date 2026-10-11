@@ -878,3 +878,59 @@ mtime_ms = 1791685321150
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/17106d9b-0ec9-4d1d-b97a-28e77b065447/31b2b5fe-4eb9-4dec-ae9a-e165030e6c06"
 storage_version_token = "1791685350296334"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "4ioMRrilhjqid5Vtk4gEh"
+uri = "file://generated-artifacts/mockup-comparison/mockup-comparison.html"
+type = "html"
+title = "HOME & STAY 목업 반영 전·후 비교"
+description = "참고 이미지와 PC·모바일 메인, 지도 검색, 상세 캡처를 한 문서에 담았습니다. 기능 PASS와 남은 디자인 차이는 따로 기록했습니다."
+logical_id = "7a125d6c-ffb2-4f4a-8f3b-93472b71ea17"
+content_hash = "sha256:658ae076d7105c00a7c7adf1c94b65407ae0907f3d0923a22fa0bbcba3c5b625"
+size = 2763424
+mtime_ms = 1791713600808
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/7a125d6c-ffb2-4f4a-8f3b-93472b71ea17/38c36caf-869f-44b7-90e1-692ac138474a"
+storage_version_token = "1791713621784681"
+content_type = "text/html"
+
+[[outputs]]
+id = "9k-ACJs-5XTdAQtUGupC0"
+uri = "file://generated-artifacts/seongsu-preview/consumer-desktop.jpg"
+type = "image"
+title = "성수동 가상 매물 · PC Preview"
+description = "사진과 기간 총액이 채워진 14개 가상 매물 및 서로 다른 가상 위치."
+logical_id = "4b16eaac-5a4d-4619-91d1-933b689c1a0d"
+content_hash = "sha256:392f7a335443a971f5ea482d1f9bf265eec4944c7319c8070c42302fea76d9c8"
+size = 147657
+mtime_ms = 1791716461818
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/4b16eaac-5a4d-4619-91d1-933b689c1a0d/621c8608-d9fe-4cd7-a7a1-e9a00bc17dfc"
+storage_version_token = "1791716740167226"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "W-U0_bF8k1tllvVEB1daE"
+uri = "file://generated-artifacts/seongsu-preview/mobile-list.jpg"
+type = "image"
+title = "성수동 가상 매물 · 모바일 Preview"
+description = "390px 모바일의 필터·목록↔지도 전환·가상 매물 사진 카드."
+logical_id = "8c663b00-3fe5-41f2-8b6d-e9daef737933"
+content_hash = "sha256:460f594fdabf3b9900d4df774246067fb77b2df91f5926f1aaa8266b4e76a63a"
+size = 84290
+mtime_ms = 1791716621821
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8c663b00-3fe5-41f2-8b6d-e9daef737933/eed5b118-be61-42b0-97cc-3cf225e3dedb"
+storage_version_token = "1791716741414908"
+content_type = "image/jpeg"
+
+[[outputs]]
+id = "gACH-2wgtEscSv1uhtjqN"
+uri = "file://generated-artifacts/seongsu-preview/detail-desktop.jpg"
+type = "image"
+title = "가상 매물 상세 · 사진·가격·편의시설·달력"
+description = "운영 가능성 확인이 아닌 가상 공간의 상세와 실제 테스트 견적 진입 화면."
+logical_id = "33c3ba73-0a70-496f-a253-631ebeeac259"
+content_hash = "sha256:07151a5aa2370437f5d618392f2ad7543c171dd0c19ff9b175b7f68b258d66ab"
+size = 118016
+mtime_ms = 1791716699641
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/33c3ba73-0a70-496f-a253-631ebeeac259/9d79103d-175c-422e-9357-05109e3ced40"
+storage_version_token = "1791716742700425"
+content_type = "image/jpeg"

@@ -2,6 +2,7 @@
   "use strict";
 
   const API_URL = "/hs2/api/consumer/search";
+  const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
   const form = document.getElementById("searchForm");
   const listingList = document.getElementById("listingList");
   const statusMessage = document.getElementById("statusMessage");
@@ -30,6 +31,9 @@
   let lastCriteria = null;
   let selectedId = null;
   let mapScriptUrl = null;
+  let consumerMap = null;
+  let demoMapOverlays = [];
+  let visibleItems = [];
 
   const inputs = {
     q: document.getElementById("q"),
@@ -37,6 +41,9 @@
     check_out: checkOut,
     min_total: minTotal,
     max_total: maxTotal,
+    rooms: document.getElementById("rooms"),
+    min_area: document.getElementById("min_area"),
+    guests: document.getElementById("guests"),
     kind: document.getElementById("kind"),
     sort: document.getElementById("sort")
   };
@@ -83,6 +90,15 @@
       appendIf(params, "min_total", inputs.min_total.value);
       appendIf(params, "max_total", inputs.max_total.value);
     }
+    if (isSeongsuDemo) {
+      appendIf(params, "rooms", inputs.rooms.value);
+      appendIf(params, "min_area", inputs.min_area.value);
+      appendIf(params, "guests", inputs.guests.value);
+      const options = [...document.querySelectorAll('input[name="options"]:checked')].map((input) => input.value);
+      appendIf(params, "options", options.join(","));
+      appendIf(params, "instant", document.getElementById("instant").checked ? "1" : "0");
+      appendIf(params, "discount", document.getElementById("discount").checked ? "1" : "0");
+    }
     appendIf(params, "kind", inputs.kind.value || "all");
     params.set("sort", inputs.sort.value === "total_asc" ? "total_asc" : "id");
     return params;
@@ -111,6 +127,32 @@
     if (!datesAreUsable()) {
       minTotal.value = "";
       maxTotal.value = "";
+    }
+    if (isSeongsuDemo) {
+      ["rooms", "min_area", "guests"].forEach((id) => { document.getElementById(id).disabled = false; });
+      document.querySelectorAll('input[name="options"], #instant, #discount').forEach((input) => { input.disabled = false; });
+      ["rooms", "guests"].forEach((id) => {
+        const value = params.get(id);
+        const select = document.getElementById(id);
+        if (/^\d{1,3}$/.test(value || "") && [...select.options].some((option) => option.value === value)) select.value = value;
+      });
+      if (/^\d{1,6}$/.test(params.get("min_area") || "")) inputs.min_area.value = params.get("min_area");
+      const options = (params.get("options") || "").split(",");
+      document.querySelectorAll('input[name="options"]').forEach((input) => { input.checked = options.includes(input.value); });
+      document.getElementById("instant").checked = params.get("instant") === "1";
+      document.getElementById("discount").checked = params.get("discount") === "1";
+      if (!checkIn.value) {
+        const seoulToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+        const tomorrow = new Date(`${seoulToday}T00:00:00Z`);
+        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+        checkIn.value = tomorrow.toISOString().slice(0, 10);
+        const nextDay = new Date(tomorrow);
+        // A full week includes both lodging and non-lodging demo inventory.
+        // A one-night default hid every 7-day-minimum synthetic apartment.
+        nextDay.setUTCDate(nextDay.getUTCDate() + 7);
+        if (!checkOut.value) checkOut.value = nextDay.toISOString().slice(0, 10);
+      }
+      updatePriceControls();
     }
   }
 
@@ -143,6 +185,72 @@
     container.append(item);
   }
 
+  function demoDetailUrl(item) {
+    const url = new URL("/hs2/details/", window.location.origin);
+    url.searchParams.set("public_id", item.public_id);
+    for (const key of ["check_in", "check_out"]) if (inputs[key].value) url.searchParams.set(key, inputs[key].value);
+    if (inputs.guests.value) url.searchParams.set("guests", inputs.guests.value);
+    url.searchParams.set("return", `${window.location.pathname}${window.location.search}`);
+    return `${url.pathname}${url.search}`;
+  }
+
+  function appendDemoPhoto(container, demo, className) {
+    if (!isSeongsuDemo || !demo || !Array.isArray(demo.photos) || !demo.photos.length) return;
+    const raw = demo.photos[0];
+    if (typeof raw !== "string" || !raw.startsWith("/__development__/seongsu/assets/")) return;
+    const wrap = document.createElement("span");
+    wrap.className = "demo-photo-wrap";
+    const image = document.createElement("img");
+    image.className = className;
+    image.src = raw;
+    image.alt = "가상 공간 이미지";
+    image.loading = "lazy";
+    image.decoding = "async";
+    const caption = document.createElement("span");
+    caption.className = "demo-photo-caption";
+    caption.textContent = "가상 공간 이미지";
+    wrap.append(image, caption);
+    container.append(wrap);
+  }
+
+  function appendDemoBadge(container) {
+    const badge = document.createElement("span");
+    badge.className = "demo-test-badge";
+    badge.textContent = "테스트용 가상 매물 · 실재/법적 운영 확인 아님";
+    container.append(badge);
+  }
+
+  function validDemoPoint(point) {
+    return point && Number.isFinite(point.lat) && Number.isFinite(point.lng) &&
+      point.lat >= -90 && point.lat <= 90 && point.lng >= -180 && point.lng <= 180;
+  }
+
+  function renderConsumerDemoMarkers() {
+    const maps = window.kakao && window.kakao.maps;
+    if (!isSeongsuDemo || !consumerMap || !maps || typeof maps.CustomOverlay !== "function") return;
+    demoMapOverlays.forEach((overlay) => overlay.setMap(null));
+    demoMapOverlays = [];
+    visibleItems.forEach((item) => {
+      const demo = item.preview_demo;
+      if (!demo || demo.synthetic !== true || !validDemoPoint(demo.point)) return;
+      const marker = document.createElement("button");
+      marker.type = "button";
+      marker.className = "consumer-demo-map-marker";
+      marker.textContent = typeof demo.name === "string" ? demo.name : "가상 체류 공간";
+      marker.setAttribute("aria-label", `${demo.neighborhood || "성수동"} 시뮬레이션 구역 · ${marker.textContent} · 테스트용 가상 매물`);
+      marker.addEventListener("click", () => window.location.assign(demoDetailUrl(item)));
+      const overlay = new maps.CustomOverlay({
+        content: marker,
+        position: new maps.LatLng(demo.point.lat, demo.point.lng),
+        map: consumerMap,
+        xAnchor: 0.5,
+        yAnchor: 1,
+        clickable: true
+      });
+      demoMapOverlays.push(overlay);
+    });
+  }
+
   function validItem(item) {
     return item && typeof item === "object" &&
       typeof item.public_id === "string" && item.public_id.length > 0 &&
@@ -157,6 +265,9 @@
     button.dataset.publicId = item.public_id;
     button.setAttribute("aria-pressed", item.public_id === selectedId ? "true" : "false");
 
+    const demo = isSeongsuDemo && item.preview_demo && item.preview_demo.synthetic === true ? item.preview_demo : null;
+    if (demo) button.classList.add("has-demo-photo", "synthetic-demo-card");
+    appendDemoPhoto(button, demo, "demo-card-photo");
     const glyph = document.createElement("span");
     glyph.className = "stay-glyph";
     glyph.dataset.kind = item.stay_kind === "non_lodging" ? "non_lodging" : "lodging";
@@ -167,17 +278,19 @@
     copy.className = "listing-copy";
     const title = document.createElement("span");
     title.className = "listing-title";
-    title.textContent = item.stay_kind === "non_lodging" ? "비숙박 체류 항목" : "숙박 체류 항목";
+    title.textContent = demo && typeof demo.name === "string" ? demo.name : item.stay_kind === "non_lodging" ? "비숙박 체류 항목" : "숙박 체류 항목";
     copy.append(title);
 
     const meta = document.createElement("span");
     meta.className = "listing-meta";
     addMeta(meta, "위치 비공개");
+    if (demo && demo.neighborhood) addMeta(meta, demo.neighborhood);
     const reference = document.createElement("span");
     reference.className = "public-reference";
     reference.textContent = `항목 ${item.public_id}`;
     meta.append(reference);
     copy.append(meta);
+    if (demo) appendDemoBadge(copy);
 
     const price = document.createElement("span");
     price.className = "listing-price";
@@ -199,9 +312,26 @@
       noPrice.textContent = "기간 총액 견적 없음";
       price.append(noPrice);
     }
+    if (demo) {
+      const base = document.createElement("span");
+      base.className = "demo-base-price";
+      if (item.stay_kind === "non_lodging") {
+        const week = Number.isSafeInteger(demo.weekly_krw) ? `${formatWon(demo.weekly_krw)}원/주` : "주 요금 미설정";
+        const month = Number.isSafeInteger(demo.monthly_krw) ? `${formatWon(demo.monthly_krw)}원/월` : "월 요금 미설정";
+        base.textContent = `${week} · 달력 1개월 ${month}`;
+      } else {
+        base.textContent = Number.isSafeInteger(demo.nightly_krw) ? `기준 ${formatWon(demo.nightly_krw)}원/박` : "기준 요금 미설정";
+      }
+      price.append(base);
+    }
 
     button.append(glyph, copy, price);
-    button.addEventListener("click", () => selectItem(item));
+    button.addEventListener("click", () => {
+      if (demo) {
+        selectItem(item);
+        window.location.assign(demoDetailUrl(item));
+      } else selectItem(item);
+    });
     return button;
   }
 
@@ -209,13 +339,16 @@
     selectedId = item.public_id;
     const title = document.createElement("strong");
     title.className = "summary-title";
-    title.textContent = item.stay_kind === "non_lodging" ? "비숙박 체류 항목" : "숙박 체류 항목";
+    const demo = item.preview_demo && item.preview_demo.synthetic === true ? item.preview_demo : null;
+    title.textContent = demo && demo.name || (item.stay_kind === "non_lodging" ? "비숙박 체류 항목" : "숙박 체류 항목");
     const overline = document.createElement("span");
     overline.className = "summary-overline";
     overline.textContent = "선택한 항목 · 안전 요약";
     const summary = document.createElement("p");
     summary.className = "summary-copy";
-    summary.textContent = `항목 ${item.public_id} · 정확한 위치와 보호 메타데이터는 표시하지 않습니다.`;
+    summary.textContent = demo
+      ? `${demo.neighborhood || "성수동"} · 테스트용 가상 매물 · 상세에서 실제 견적 흐름을 확인해 보세요.`
+      : `항목 ${item.public_id} · 정확한 위치와 보호 메타데이터는 표시하지 않습니다.`;
     selectedSummary.replaceChildren(overline, title, summary);
     selectedSummary.hidden = false;
     listingList.querySelectorAll(".listing-card").forEach((card) => {
@@ -267,14 +400,28 @@
       showMapUnavailable("지도를 연결할 수 없습니다.", "지도 엔진을 사용할 수 없습니다.");
       return;
     }
+    if (isSeongsuDemo && consumerMap) {
+      renderConsumerDemoMarkers();
+      return;
+    }
     try {
       kakao.maps.load(() => {
         try {
           mapCanvas.replaceChildren();
           mapCanvas.classList.add("is-live");
-          // Deliberately omit fabricated coordinates and markers for withheld locations.
-          new kakao.maps.Map(mapCanvas, {});
-          mapStatus.textContent = "지도 연결됨 · 보호된 위치는 표시하지 않음";
+          if (isSeongsuDemo) {
+            const point = visibleItems.find((item) =>
+              item.preview_demo?.synthetic === true && validDemoPoint(item.preview_demo.point))?.preview_demo.point;
+            const options = point ? { center: new kakao.maps.LatLng(point.lat, point.lng), level: 5 } : {};
+            consumerMap = new kakao.maps.Map(mapCanvas, options);
+            renderConsumerDemoMarkers();
+            mapMessage.textContent = "성수동 시뮬레이션 지도";
+            mapDetail.textContent = "가상 위치로 배치한 테스트 매물입니다. 실제 지도 좌표가 아닙니다.";
+          } else {
+            // Deliberately omit fabricated coordinates and markers for withheld locations.
+            new kakao.maps.Map(mapCanvas, {});
+          }
+          mapStatus.textContent = isSeongsuDemo ? "시뮬레이션 구역 지도 연결됨 · 가상 위치" : "지도 연결됨 · 보호된 위치는 표시하지 않음";
           mapFooter.dataset.state = "ready";
         } catch (_error) {
           showMapUnavailable("지도를 표시할 수 없습니다.", "지도 엔진 연결 또는 설정을 확인해 주세요.");
@@ -305,6 +452,7 @@
       throw new Error("공개 매물 응답 형식이 올바르지 않습니다.");
     }
     listingList.replaceChildren();
+    visibleItems = items;
     items.forEach((item) => listingList.append(renderItem(item)));
     selectedSummary.hidden = true;
     selectedId = null;
@@ -349,6 +497,10 @@
       renderResponse(payload);
     } catch (error) {
       if (error.name === "AbortError" || currentRequest !== requestSequence) return;
+      visibleItems = [];
+      demoMapOverlays.forEach((overlay) => overlay.setMap(null));
+      demoMapOverlays = [];
+      consumerMap = null;
       listingList.replaceChildren();
       emptyPanel.hidden = true;
       errorPanel.hidden = false;

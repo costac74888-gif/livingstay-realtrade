@@ -1,4 +1,5 @@
 @charset "UTF-8";
+body:not([data-hs2-demo="seongsu"]) a[href^="/__development__/seongsu/"] { display: none; }
 :root {
   color-scheme: light;
   --ink: #203a3b;
@@ -275,6 +276,57 @@ h1 em { color: var(--teal); font-style: normal; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* Synthetic Seongsu preview: same navy / porcelain / brass reference language. */
+body[data-hs2-demo="seongsu"] .header-right { gap: 12px; }
+body[data-hs2-demo="seongsu"] .limited-data-note { color: #607796; background: #f1f6fc; border-color: #d7e2ef; }
+body[data-hs2-demo="seongsu"] .limited-data-note strong { color: #244b7c; }
+.listing-card.has-demo-photo {
+  grid-template-columns: 102px 42px minmax(0,1fr) minmax(116px,auto);
+  min-height: 110px; gap: 11px; padding: 9px;
+}
+.demo-photo-wrap { position: relative; align-self: stretch; min-height: 90px; overflow: hidden; border-radius: 5px; background: #dce7f2; }
+.demo-card-photo { width: 100%; height: 100%; min-height: 90px; display: block; object-fit: cover; }
+.demo-photo-caption {
+  position: absolute; right: 5px; bottom: 5px; padding: 3px 5px; border-radius: 3px;
+  color: #fff; background: rgba(24,54,95,.82); font-size: 8px; line-height: 1.15;
+}
+.demo-test-badge {
+  width: fit-content; max-width: 100%; display: inline-flex; align-items: center;
+  padding: 4px 6px; border: 1px solid #d8c99e; border-radius: 3px;
+  color: #765b1e; background: #f7f1df; font-size: 8px; font-weight: 800;
+  line-height: 1.35; white-space: normal;
+}
+.synthetic-demo-card .listing-meta::after { display: none; }
+.synthetic-demo-card .listing-copy { align-content: center; }
+.synthetic-demo-card .listing-meta { flex-wrap: wrap; }
+.synthetic-demo-card .listing-title { font-size: 13px; line-height: 1.45; }
+.demo-base-price { max-width: 190px; color: #6e8198; font-size: 9px; line-height: 1.45; }
+.synthetic-demo-card .listing-price { gap: 5px; }
+.synthetic-demo-card .price-label { color: #98762a; }
+.synthetic-demo-card .price-value { color: #193f73; }
+.consumer-demo-map-marker {
+  max-width: 172px; min-height: 30px; padding: 6px 9px; border: 1px solid #b28a31;
+  border-radius: 4px; color: #18365f; background: #fffaf0;
+  box-shadow: 0 3px 9px rgba(25,57,98,.18); font-size: 9px; font-weight: 800;
+  line-height: 1.25; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
+  cursor: pointer; transform: translateY(-4px);
+}
+.consumer-demo-map-marker:hover { background: #f7f1df; }
+@media (max-width: 767px) {
+  body[data-hs2-demo="seongsu"] .header-right { gap: 8px; }
+  body[data-hs2-demo="seongsu"] .private-label { display: none; }
+  body[data-hs2-demo="seongsu"] .header-right .account-link { font-size: 9px; }
+  .listing-card.has-demo-photo { grid-template-columns: 78px 34px minmax(0,1fr) auto; min-height: 96px; gap: 8px; padding: 8px; }
+  .demo-photo-wrap, .demo-card-photo { min-height: 78px; }
+  .synthetic-demo-card .listing-title { font-size: 11px; }
+  .demo-base-price { font-size: 8px; }
+}
+@media (max-width: 390px) {
+  .listing-card.has-demo-photo { grid-template-columns: 62px 29px minmax(0,1fr); }
+  .listing-card.has-demo-photo .listing-price { grid-column: 3; align-items: start; text-align: left; }
+  .demo-photo-wrap, .demo-card-photo { min-height: 75px; }
 }
 
 /* HOME & STAY reference restoration — navy, pale blue and restrained brass. */

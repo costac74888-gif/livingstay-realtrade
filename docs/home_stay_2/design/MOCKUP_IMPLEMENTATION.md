@@ -1,5 +1,9 @@
 # HOME & STAY mockup restoration — private Preview
 
+**추가 범위:** 이후 사용자 요청으로 성수동 가상 매물 직접 테스트 기능을 추가했다.
+아래는 최초 복원 작업의 역사적 기록이며, 최신 사진·JS·개발 seed·모의 결제 범위와
+새 검증은 [SEONGSU_PREVIEW.md](SEONGSU_PREVIEW.md)를 따른다.
+
 ## Reference identity and provenance
 
 - The image used for this restoration is the **confirmed available reference**, not a confirmed final/approved product identity:

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>성수동 가상 매물 체험 · HOME &amp; STAY</title>
+<style>
+body{margin:0;background:#edf4fc;color:#18365f;font:16px/1.7 "Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+main{max-width:1000px;margin:auto;padding:28px}h1{font-size:30px;line-height:1.3}
+section{padding:22px;background:white;border:1px solid #d3e0ef;border-radius:10px;margin:18px 0}
+.links{display:flex;flex-wrap:wrap;gap:12px}a{color:#1d4d8a}
+.links a{padding:12px 18px;background:#1d4d8a;color:white;border-radius:6px;text-decoration:none}
+.links a:first-child{background:#b28a31}strong{color:#153b70}code{overflow-wrap:anywhere}
+li{margin:8px 0}.notice{border-left:4px solid #b28a31} @media(max-width:600px){main{padding:14px}section{padding:16px}}
+</style>
+<main><p>HOME &amp; STAY / SEONGSU DEMO</p><h1>성수동 가상 매물로<br>직접 테스트해 보세요.</h1>
+<section class="notice"><strong>모든 매물·사진·위치·요금은 테스트용 가상 데이터입니다.</strong>
+<p>실재 매물, 소유자, 연락처, 영업신고, 실제 공매 사건 또는 법적 운영 가능성의 확인이 아닙니다.
+사진은 가상 공간 이미지입니다. 운영 데이터와 실제 숙박 통계에는 반영되지 않습니다.</p></section>
+<section><h2>체험 화면</h2><div class="links">
+<a href="/hs2/consumer">PC 메인 · 14개 매물</a><a href="/hs2/search/mobile/">모바일 목록↔지도</a>
+<a href="/hs2/search/">지도 · 매매/양도/공매 레이어</a>
+<a href="/hs2/bookings/">내 예약 · 운영자 예약 승인</a>
+<a href="/hs2/dashboard/">운영자 대시보드</a>
+<a href="/hs2/calendar/">운영자 가격·달력</a>
+<a href="/hs2/workspace/">관심 · 문의 · 내 활동</a>
+</div></section>
+<section><h2>테스트 계정 제공 방법</h2>
+<p><strong>가상 체험 계정 101이 자동 연결됩니다. 비밀번호 입력은 필요 없습니다.</strong>
+소비자와 운영자 역할은 같은 격리 체험 계정에 미리 연결되어 있습니다.
+실제 회원 로그인·휴대폰/사업자 본인확인 검증을 대체하지 않습니다.
+실제 이메일·전화번호·소유자 정보를 입력하지 마세요.</p>
+<p>이 Preview는 체험자 간 같은 데이터를 공유합니다. 새로고침해도 예약 변경은 유지되지만
+서버가 재시작하면 매물·예약은 처음 상태로 초기화됩니다.</p></section>
+<section><h2>테스트 순서</h2><ol>
+<li>메인에서 성수동1가·2가의 가상 매물 사진, 면적, 인원, 편의시설과 기준 요금을 비교합니다.</li>
+<li>지역에 <b>성수</b>를 입력하고 방·면적·인원·옵션·유형을 바꿔 검색합니다.
+숙박은 1박부터, 비숙박 단기임대는 7일 또는 달력 월 단위입니다.</li>
+<li>입실·퇴실을 선택하면 실제 테스트 가격 원장으로 기간 총액을 계산합니다.
+주·월 금액을 임의로 1박 가격으로 환산하지 않습니다. 일부 가상 매물은 다음주 3일이 마감되어 있습니다.</li>
+<li>매물을 선택해 상세 사진·설명·달력·기간 총액을 확인하고 견적 확인 → 예약 신청을 진행합니다.
+마감 날짜, 최소 체류기간, 인원 초과, 만료된 견적도 테스트하세요.</li>
+<li>내 예약에서 신청 상태를 확인합니다. 같은 화면의 운영자 모드에서 해당 신청을 승인합니다.</li>
+<li>승인된 예약의 결제 조건 확인 → 모의 결제를 진행합니다.
+내 예약과 운영자 대시보드에서 상태를 비교합니다. 미리 생성된 모의 결제 예약도 1개 있습니다.</li>
+<li>지도 검색에서 매매·영업권 양도·공매 레이어를 켜 각 3개 항목의 상세 요약을 비교합니다.
+이 항목들은 숙박 예약 대상이나 실제 계약/사건이 아닙니다.</li>
+</ol></section>
+<section><h2>결제와 미완료 범위</h2>
+<p><strong>현재 결제는 OwnedSandbox 모의 처리입니다. 실제 토스 테스트 API가 아닙니다.</strong>
+이 개발 서버는 토스 키를 받지 않고 외부 전송을 차단합니다. 작업공간에 키가 있다는 사실만으로
+토스 테스트 연결 성공이라고 표시하지 않습니다. 실제 결제·정산·환불 지급·문자·이메일은 실행하지 않습니다.</p>
+<p>지도는 외부 타일이 없는 성수동 가상 배치도입니다. 실제 GPS·주소·지도 정확도 검증은 아닙니다.
+매매·양도·공매는 레이어와 상세 요약 체험만 제공하며 실제 거래/입찰을 제공하지 않습니다.
+최종 승인 목업의 정확한 글꼴·사진과 동일하다고 주장하지 않습니다.</p>
+</section><p><a href="/__development__/status">격리·결제 상태 확인</a> · <a href="/__development__/seongsu/catalog">가상 매물 원본 확인</a></p></main></html>

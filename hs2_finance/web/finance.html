@@ -16,7 +16,11 @@
         <img class="brand-logo" src="/static/home_stay_share.png" alt="">
         <span class="brand-copy"><span class="brand-name">홈앤스테이</span><span class="brand-subtitle">대한민국 숙박부동산 데이터 플랫폼</span></span>
       </a>
-      <nav class="header-right" aria-label="주요 메뉴"><a class="account-link" href="/hs2/mode">모드 선택</a></nav>
+      <nav class="header-right" aria-label="주요 메뉴">
+        <a id="demo-bookings-link" class="account-link demo-only-link" href="/hs2/bookings/" hidden>내 예약</a>
+        <a id="demo-operator-link" class="account-link demo-only-link" href="/hs2/dashboard/" hidden>운영자 대시보드</a>
+        <a class="account-link" href="/hs2/mode">모드 선택</a>
+      </nav>
     </header>
     <main class="finance-main">
       <a class="back-link" href="/hs2/bookings/"><span aria-hidden="true">←</span> 예약 현황으로</a>

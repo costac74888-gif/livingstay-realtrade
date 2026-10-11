@@ -2,6 +2,7 @@
   "use strict";
 
   const form = document.getElementById("searchForm");
+  const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
   const list = document.getElementById("listingList");
   const status = document.getElementById("statusMessage");
   const statusCopy = status.querySelector("span:last-child");
@@ -155,17 +156,26 @@
   }
 
   function itemTitle(item) {
+    if (isSeongsuDemo && item.preview_demo?.synthetic === true && typeof item.preview_demo.name === "string") return item.preview_demo.name;
     if (item.layer === "stay") return item.stay_kind === "non_lodging" ? "주·월 단기임대" : "숙박형 단기임대";
     return typeof item.title === "string" && item.title ? item.title : ({ sale: "매매 매물", business: "영업권 양도", auction: "공매 물건" })[item.layer];
   }
 
   function quoteText(item) {
-    if (item.layer !== "stay") return {value:"공개 요약",label:layerNames[item.layer]+" 정보"};
+    const demo = isSeongsuDemo && item.preview_demo?.synthetic === true ? item.preview_demo : null;
+    if (item.layer !== "stay") {
+      if (demo && item.layer === "sale") return { value: "가상 안내 정보", label: "테스트용 매매 레이어" };
+      return {value:"공개 요약",label:layerNames[item.layer]+" 정보"};
+    }
     const quote = item.quote;
     if (!datesAreUsable()) return { value: "날짜 선택", label: "기간 총액" };
     if (quote && Number.isSafeInteger(quote.total_krw) && quote.total_krw >= 0) {
       return { value: `${formatWon(quote.total_krw)}원`, label: "선택 기간 총액" };
     }
+    if (demo) return {
+      value: "기간 총액은 상세에서 확인",
+      label: demo.category === "non_lodging" ? "주간·달력 1개월 기준" : "선택 기간 총액"
+    };
     return { value: "기간 총액 견적 없음", label: "선택 기간 총액" };
   }
 
@@ -180,6 +190,31 @@
     controller.select(item.layer, item.public_id);
   }
 
+  function demoDetailsHref(item) {
+    const url = new URL("/hs2/details/", window.location.origin);
+    url.searchParams.set("public_id", item.public_id);
+    for (const key of ["check_in", "check_out", "guests"]) {
+      const value = key === "guests" ? document.getElementById("guests").value : document.getElementById(key).value;
+      if (value) url.searchParams.set(key, value);
+    }
+    url.searchParams.set("restoredReturn", `${window.location.pathname}${window.location.search}`);
+    return `${url.pathname}${url.search}`;
+  }
+
+  function demoPhoto(item) {
+    const demo = isSeongsuDemo && item.preview_demo?.synthetic === true ? item.preview_demo : null;
+    if (!demo || !Array.isArray(demo.photos)) return null;
+    const source = demo.photos.find((photo) => typeof photo === "string" && photo.startsWith("/__development__/seongsu/assets/"));
+    return source || null;
+  }
+
+  function addDemoBadge(parent) {
+    const badge = document.createElement("span");
+    badge.className = "demo-test-badge";
+    badge.textContent = "테스트용 가상 매물 · 실재/법적 운영 확인 아님";
+    parent.append(badge);
+  }
+
   function renderCard(item, selected) {
     const button = document.createElement("button");
     button.type = "button";
@@ -188,6 +223,24 @@
     button.dataset.publicId = item.public_id;
     button.setAttribute("aria-pressed", selected ? "true" : "false");
     button.setAttribute("aria-label", `${layerNames[item.layer]} · ${itemTitle(item)} · 항목 ${item.public_id}`);
+    const photoUrl = demoPhoto(item);
+    if (photoUrl) {
+      button.classList.add("has-demo-photo", "synthetic-demo-card");
+      const photoWrap = document.createElement("span");
+      photoWrap.className = "demo-photo-wrap";
+      const image = document.createElement("img");
+      image.className = "demo-card-photo";
+      image.src = photoUrl;
+      image.alt = "가상 공간 이미지";
+      image.loading = "lazy";
+      image.decoding = "async";
+      const caption = document.createElement("span");
+      caption.className = "demo-photo-caption";
+      caption.textContent = "가상 공간 이미지";
+      photoWrap.append(image, caption);
+      button.append(photoWrap);
+    }
+    if (isSeongsuDemo && item.preview_demo?.synthetic === true) button.classList.add("synthetic-demo-card");
 
     const glyph = document.createElement("span");
     glyph.className = "stay-glyph";
@@ -203,12 +256,15 @@
     title.textContent = itemTitle(item);
     const meta = document.createElement("span");
     meta.className = "listing-meta";
-    addMeta(meta, item.point ? (item.point.precision === "approx" ? "대략적 위치" : "공개 위치") : "위치 비공개");
+    const demo = isSeongsuDemo && item.preview_demo?.synthetic === true ? item.preview_demo : null;
+    addMeta(meta, demo ? "가상 구역 위치" : item.point ? (item.point.precision === "approx" ? "대략적 위치" : "공개 위치") : "위치 비공개");
+    if (demo?.neighborhood) addMeta(meta, demo.neighborhood);
     const reference = document.createElement("span");
     reference.className = "public-reference";
     reference.textContent = `항목 ${item.public_id}`;
     meta.append(reference);
     copy.append(type, title, meta);
+    if (isSeongsuDemo && item.preview_demo?.synthetic === true) addDemoBadge(copy);
 
     const price = document.createElement("span");
     price.className = "listing-price";
@@ -220,8 +276,24 @@
     amount.className = item.quote && datesAreUsable() && Number.isSafeInteger(item.quote.total_krw) ? "price-value" : "price-unavailable";
     amount.textContent = pricing.value;
     price.append(label, amount);
+    if (demo && item.layer === "stay") {
+      const basis = document.createElement("span");
+      basis.className = "demo-base-price";
+      if (demo.category === "non_lodging") {
+        const week = Number.isSafeInteger(demo.weekly_krw) ? `${formatWon(demo.weekly_krw)}원/주` : "주 요금 미설정";
+        const month = Number.isSafeInteger(demo.monthly_krw) ? `${formatWon(demo.monthly_krw)}원/월` : "월 요금 미설정";
+        basis.textContent = `${week} · 달력 1개월 ${month}`;
+      } else {
+        basis.textContent = Number.isSafeInteger(demo.nightly_krw) ? `기준 ${formatWon(demo.nightly_krw)}원/박` : "기준 요금 미설정";
+      }
+      price.append(basis);
+    }
     button.append(glyph, copy, price);
-    button.addEventListener("click", () => selectItem(item));
+    button.addEventListener("click", () => {
+      if (isSeongsuDemo && item.layer === "stay" && item.preview_demo?.synthetic === true) {
+        window.location.assign(demoDetailsHref(item));
+      } else selectItem(item);
+    });
     return button;
   }
 
@@ -249,6 +321,19 @@
       return;
     }
     const summary = document.createElement("div");
+    const demo = isSeongsuDemo && item.preview_demo?.synthetic === true ? item.preview_demo : null;
+    if (demo) {
+      addDemoBadge(summary);
+      if (demo.photos?.length && typeof demo.photos[0] === "string" &&
+          demo.photos[0].startsWith("/__development__/seongsu/assets/")) {
+        const image = document.createElement("img");
+        image.className = "demo-inline-photo";
+        image.src = demo.photos[0];
+        image.alt = "가상 공간 이미지";
+        image.loading = "lazy";
+        summary.append(image);
+      }
+    }
     if (item.layer === "stay") {
       const link = document.createElement("a");
       link.className = "detail-open-link";
@@ -269,7 +354,9 @@
     title.textContent = itemTitle(item);
     const info = document.createElement("p");
     info.className = "summary-copy";
-    info.textContent = `${item.point ? item.point.label || "공개 위치" : "위치 비공개"} · 항목 ${item.public_id}. 거래 또는 예약 확정 정보가 아닙니다.`;
+    info.textContent = demo
+      ? `${demo.neighborhood || "성수동"} · 테스트용 가상 자료입니다. 실재 매물 또는 법적 운영 상태를 확인한 정보가 아닙니다.`
+      : `${item.point ? item.point.label || "공개 위치" : "위치 비공개"} · 항목 ${item.public_id}. 거래 또는 예약 확정 정보가 아닙니다.`;
     summary.append(overline, title, info);
     const facts = document.createElement("div");
     facts.className = "summary-facts";
@@ -489,7 +576,9 @@
     mapPlaceholder.hidden = true;
     mapCanvas.classList.add("is-live");
     mapFooter.dataset.state = "ready";
-    mapStatus.textContent = "지도 표시 중 · 보호 위치는 약 500m 범위";
+    mapStatus.textContent = isSeongsuDemo
+      ? "성수동 시뮬레이션 지도 · 가상 좌표"
+      : "지도 표시 중 · 보호 위치는 약 500m 범위";
   }
 
   function readBounds() {
@@ -691,6 +780,16 @@
       delete params.max_total;
     }
     if (params.q) params.q = params.q.slice(0, 100);
+    if (isSeongsuDemo && !params.check_in) {
+      const seoulToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const tomorrow = new Date(`${seoulToday}T00:00:00Z`);
+      tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+      params.check_in = tomorrow.toISOString().slice(0, 10);
+      const nextDay = new Date(tomorrow);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 7);
+      params.check_out = nextDay.toISOString().slice(0, 10);
+      params.guests = "2";
+    }
     const validLayers = ["stay", "sale", "business", "auction"];
     const requested = (query.has("layers") ? query.get("layers") : "stay").split(",").filter((layer) => validLayers.includes(layer));
     const layers = [...new Set(requested)];

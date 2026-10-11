@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap");
+body:not([data-hs2-demo="seongsu"]) a[href^="/__development__/seongsu/"] { display: none; }
 
 :root {
   --ink: #233d3b;
@@ -107,6 +108,22 @@ button:disabled { opacity:.46; cursor:not-allowed; }
 .action-button { min-height:34px; padding:0 11px; }
 .action-button.secondary { border:1px solid #cbd8cc; color:#46675c; background:#f6f7f0; }
 .action-button.secondary:hover:not(:disabled) { background:#eaf0e7; }
+.demo-only-link { color:#8a6825; }
+.demo-capture-panel {
+  display:grid; gap:10px; margin-top:14px; padding:14px;
+  border:1px solid #dfcf9d; border-radius:7px; background:#faf6e9;
+}
+.demo-capture-consent { display:flex; align-items:flex-start; gap:9px; color:#5d5946; font-size:10px; line-height:1.65; cursor:pointer; }
+.demo-capture-consent input { width:16px; height:16px; flex:0 0 16px; margin:1px 0 0; accent-color:#9a762b; }
+.demo-capture-warning { margin:0; padding:9px 10px; border-left:2px solid #b28a31; color:#735d2d; background:#f5efd9; font-size:9px; line-height:1.65; }
+.demo-capture-button {
+  min-height:40px; padding:0 14px; border:1px solid #9b7728; border-radius:5px;
+  color:#fffdf6; background:#a47e28; font-size:10px; font-weight:800;
+  transition:background-color .18s ease,transform .18s ease,opacity .18s ease;
+}
+.demo-capture-button:hover:not(:disabled) { background:#80621e; }
+.demo-capture-button:active:not(:disabled) { transform:translateY(1px); }
+.contract-card[data-status="captured"] .evidence { border:1px solid #d7e4cf; color:#43644d; background:#edf4e9; }
 .aside-card { position:sticky; top:18px; padding:22px 20px; border:1px solid #d3ded2; border-radius:10px; background:#edf3e9; }
 .aside-card h2 { margin:7px 0 18px; color:#294744; font:700 22px/1.32 var(--font-display); letter-spacing:-.05em; }
 .truth-list { display:grid; gap:0; margin:0; padding:0; list-style:none; }

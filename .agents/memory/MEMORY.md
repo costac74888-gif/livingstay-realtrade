@@ -149,3 +149,4 @@
 - [운영 연결 객체 검사](production-wiring-inspection.md) — fixture 존재와 운영 실행 연결을 구분하고 객체 ID 재사용·요청 프록시·외부 패키지 탐색을 주의한다.
 - [검사 결과 안전 보관](test-artifact-retention.md) — 완료·소유권이 불명확한 결과와 최신 실패는 보존하고, 용량 한도를 맞추려고 보호를 해제하지 않는다.
 - [목업 디자인 기준](mockup-design-governance.md) — 제공 목업을 디자인 기준으로 유지하고 제품 구조 충돌만 최소 조정하며 기능 PASS와 디자인 검수를 분리한다.
+- [성수동 직접 테스트 Preview](seongsu-preview-policy.md) — 최소 12개 가상 매물로 체험을 유지하며 운영·실제 개인정보·실제 결제·일반 공개 계약과 분리한다.

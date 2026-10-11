@@ -14,6 +14,7 @@
   const roleNote = $("#finance-role-note");
   const providerState = $("#provider-state");
   const params = new URLSearchParams(window.location.search);
+  const isSeongsuDemo = document.body.dataset.hs2Demo === "seongsu";
   const bookingId = (params.get("booking_id") || "").trim();
   const selectedId = (params.get("contract_id") || "").trim();
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -344,7 +345,11 @@
       facts.append(fact);
     });
     card.append(facts);
-    const stateCopy = c.actual_money_executed === false
+    const hasMockCaptureEvent = isSeongsuDemo && c.sandbox &&
+      c.events.some((event) => event.kind === "capture" && event.payload && event.payload.sandbox === true);
+    const stateCopy = hasMockCaptureEvent
+      ? "모의 결제 이벤트 기록 · OwnedSandbox_mock · 토스 미사용 · 실제 돈 이동 없음"
+      : c.actual_money_executed === false
       ? `실행 내역 없음 · ${c.sandbox ? "샌드박스 기록" : "실제 실행은 승인되지 않음"} · 결제 증빙은 ${c.payment_verified ? "서버 수신" : "미확인"}`
       : "실행 여부를 확인할 수 없습니다.";
     card.append(textElement("div", "evidence", stateCopy));
@@ -355,7 +360,10 @@
     } else {
       c.events.forEach((event) => {
         const row = document.createElement("li");
-        row.append(textElement("span", "", eventLabels[event.kind] || "서버 금융 이벤트"),
+        const eventLabel = isSeongsuDemo && c.sandbox && event.kind === "capture" && event.payload?.sandbox === true
+          ? "모의 결제 증빙 · OwnedSandbox_mock (토스 아님)"
+          : eventLabels[event.kind] || "서버 금융 이벤트";
+        row.append(textElement("span", "", eventLabel),
           textElement("strong", "", `${won(event.amount_krw, c.terms.currency)} · ${event.at}`));
         events.append(row);
       });
@@ -372,6 +380,29 @@
     const payoutFact = due.children[1];
     payoutFact.replaceChildren(textElement("span", "", "정산 검토 기준일"), textElement("strong", "", c.payout_review_on || "서버 확인 불가"));
     card.append(due);
+    if (canOfferDemoCapture(c, role)) {
+      const capturePanel = document.createElement("div");
+      capturePanel.className = "demo-capture-panel";
+      const captureLabel = document.createElement("label");
+      captureLabel.className = "demo-capture-consent";
+      const consent = document.createElement("input");
+      consent.type = "checkbox";
+      consent.className = "demo-capture-ack";
+      const consentCopy = document.createElement("span");
+      consentCopy.textContent = "이 서버 금액으로 모의 결제를 요청합니다. 실제 돈은 사용되지 않고 토스 결제 API도 호출되지 않음을 확인했습니다.";
+      captureLabel.append(consent, consentCopy);
+      const warning = textElement("p", "demo-capture-warning",
+        `모의 제공자 OwnedSandbox_mock · ${won(c.terms.payable_krw, c.terms.currency)} · 돈이 지출되지 않으며 실제 토스 API를 사용하지 않습니다.`);
+      const captureButton = textElement("button", "demo-capture-button", "모의 결제 진행 (토스 아님)");
+      captureButton.type = "button";
+      captureButton.disabled = !consent.checked || pending.has(c.contract_id);
+      consent.addEventListener("change", () => {
+        captureButton.disabled = !consent.checked || pending.has(c.contract_id);
+      });
+      captureButton.addEventListener("click", () => captureDemoPayment(c, consent, captureButton));
+      capturePanel.append(captureLabel, warning, captureButton);
+      card.append(capturePanel);
+    }
     const actions = document.createElement("div");
     actions.className = "card-actions";
     if (role === "consumer" && c.payment_verified && c.status !== "refund_review" && !c.booking_cancelled) {
@@ -383,6 +414,62 @@
     if (actions.childElementCount) card.append(actions);
     if (selectedId === c.contract_id) card.setAttribute("aria-current", "true");
     return card;
+  }
+
+  function canOfferDemoCapture(contract, role) {
+    return isSeongsuDemo && session && session.preview_demo_capture_available === true &&
+      session.sandbox === true && role === "consumer" && authorized("consumer") &&
+      contract.status === "awaiting_payment" && contract.sandbox === true &&
+      contract.actual_money_executed === false && contract.payment_verified === false &&
+      contract.booking_cancelled === false && pending.has(contract.contract_id) === false;
+  }
+
+  function validDemoCaptureResult(result, contract) {
+    const updated = result && result.contract;
+    const mockEvent = updated && Array.isArray(updated.events) && updated.terms && updated.events.find((event) =>
+      event.kind === "capture" && event.amount_krw === updated.terms.payable_krw &&
+      event.payload && event.payload.sandbox === true);
+    return result && result.provider === "OwnedSandbox_mock" && result.actual_toss === false &&
+      result.actual_money_executed === false && validContract(updated) &&
+      updated.contract_id === contract.contract_id && updated.booking_id === contract.booking_id &&
+      updated.status === "captured" && updated.payment_verified === true &&
+      updated.booking_confirmed === true && updated.booking_cancelled === false &&
+      updated.actual_money_executed === false && !!mockEvent;
+  }
+
+  async function captureDemoPayment(contract, consent, button) {
+    if (!canOfferDemoCapture(contract, "consumer") || !consent.checked || pending.has(contract.contract_id)) {
+      say("성수 미리보기 샌드박스와 별도 모의 결제 동의가 필요합니다.", "error");
+      return;
+    }
+    pending.add(contract.contract_id);
+    const operation = generation;
+    button.disabled = true;
+    say("OwnedSandbox_mock에 모의 결제를 요청하고 있습니다. 실제 돈과 토스 API는 사용되지 않습니다.", "loading");
+    try {
+      const result = await api(`/__development__/seongsu/payments/${encodeURIComponent(contract.contract_id)}/capture`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": session.consumer_csrf
+        },
+        body: JSON.stringify({ acknowledged: true })
+      });
+      if (!current(operation, "consumer")) return;
+      if (!validDemoCaptureResult(result, contract)) {
+        throw new Error("모의 결제 응답의 계약 상태, 제공자 또는 이벤트 증빙을 검증하지 못했습니다.");
+      }
+      consent.checked = false;
+      providerState.textContent = "OwnedSandbox_mock · 토스 미사용 · 실제 금전 이동 없음. 서버의 모의 결제 이벤트만 기록되었습니다.";
+      await loadList();
+      say("모의 결제 이벤트가 기록되었습니다. 예약 상태는 서버 기록에서 확정으로 갱신되었습니다. 실제 돈은 사용되지 않았습니다.", "ready");
+    } catch (error) {
+      if (operation !== generation || error.name === "AbortError") return;
+      button.disabled = false;
+      say(error.message || "모의 결제 기록을 확인하지 못했습니다. 서버 기록을 새로고침해 주세요.", "error");
+    } finally {
+      pending.delete(contract.contract_id);
+    }
   }
 
   function render(contracts, role) {
@@ -589,6 +676,10 @@
 
   async function initialize() {
     setSwitch();
+    if (isSeongsuDemo) {
+      $("#demo-bookings-link").hidden = false;
+      $("#demo-operator-link").hidden = false;
+    }
     termsNode.textContent = bookingId && uuid.test(bookingId)
       ? "예약을 조회하고 서버 검토 조건을 확인합니다. 조건 요청은 실제 결제나 송금이 아닙니다."
       : "예약을 선택하거나 금융 계약을 불러오면 서버가 반환한 조건이 여기에 표시됩니다. 추정 금액은 표시하지 않습니다.";
@@ -602,9 +693,17 @@
       const result = await api("/hs2/finance/api/session");
       if (typeof result.can_consumer !== "boolean" || typeof result.can_operator !== "boolean" ||
           typeof result.sandbox !== "boolean" || typeof result.provider_available !== "boolean" ||
-          result.actual_execution_available !== false) throw new Error("인증 및 결제 실행 상태 응답을 검증할 수 없습니다.");
+          result.actual_execution_available !== false ||
+          ("preview_demo_capture_available" in result && typeof result.preview_demo_capture_available !== "boolean")) {
+        throw new Error("인증 및 결제 실행 상태 응답을 검증할 수 없습니다.");
+      }
       session = result;
-      providerState.textContent = `${result.sandbox ? "샌드박스 모드" : "실제 제공자 모드"} · 결제 제공자 ${result.provider_available ? "사용 가능" : "사용 불가"} · 실제 실행 승인 없음. 제공자 이벤트는 서버 증빙으로만 반영되며 이 화면에서 실행하지 않습니다.`;
+      const demoCaptureReady = isSeongsuDemo && result.preview_demo_capture_available === true && result.sandbox === true;
+      providerState.textContent = `${result.sandbox ? "샌드박스 모드" : "실제 제공자 모드"} · 결제 제공자 ${result.provider_available ? "사용 가능" : "사용 불가"} · 실제 실행 승인 없음. 제공자 이벤트는 서버 증빙으로만 반영되며 이 화면에서 실행하지 않습니다.${demoCaptureReady ? " 미리보기 제공자 OwnedSandbox_mock은 토스가 아닙니다." : ""}`;
+      if (demoCaptureReady) {
+        $(".hero-copy > p:last-child").textContent = "성수 미리보기에서는 별도 동의 후 OwnedSandbox_mock 기록을 남길 수 있습니다. 실제 돈은 사용되지 않으며 토스 결제 API는 호출되지 않습니다.";
+        $(".truth-list li:first-child span").textContent = "성수 미리보기의 명시적 모의 결제 버튼만 서버 샌드박스 기록을 남깁니다. 실제 금전 이동이나 토스 API 호출은 없습니다.";
+      }
       ack.disabled = !authorized("consumer");
       await loadList();
     } catch (error) {
