@@ -250,6 +250,21 @@ async function ready(page) {
   });
 }
 
+// Read on the browser's release boundary, not in a separate host round trip
+// before dispatching release: another valid held-repeat can run in that gap.
+async function armStepRelease(page, type) {
+  await page.evaluate((eventType) => {
+    window.__stepReleaseValue = null;
+    window.addEventListener(eventType, () => {
+      window.__stepReleaseValue = Number(document.getElementById("operationOcc").value);
+    }, { capture: true, once: true });
+  }, type);
+}
+
+async function stepReleaseValue(page) {
+  return page.evaluate(() => window.__stepReleaseValue);
+}
+
 async function awaitScreenshotFonts(page) {
   const fontState = await page.evaluate(async () => {
     await document.fonts.ready;
@@ -430,15 +445,49 @@ async function run() {
     const holdStart = Number(await page.locator("#operationOcc").inputValue());
     await occStepPlus.scrollIntoViewIfNeeded();
     const holdBox = await occStepPlus.boundingBox();
+    await armStepRelease(page, "pointerup");
     await page.mouse.move(holdBox.x + holdBox.width / 2, holdBox.y + holdBox.height / 2);
     await page.mouse.down();
     await page.waitForTimeout(850);
-    const heldOcc = Number(await page.locator("#operationOcc").inputValue());
     await page.mouse.up();
+    const heldOcc = await stepReleaseValue(page);
     await page.waitForTimeout(250);
     const stoppedOcc = Number(await page.locator("#operationOcc").inputValue());
     expect(heldOcc >= holdStart + 3 && stoppedOcc === heldOcc,
       `운영 슬라이더 길게 누르기 반복 또는 release 중단이 잘못되었습니다: ${holdStart}→${heldOcc}→${stoppedOcc}`);
+    await valueFromLabel(page, "occ", 66);
+    await occStepPlus.hover();
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.move(5, 5);
+    const outsideOcc = Number(await page.locator("#operationOcc").inputValue());
+    await page.waitForTimeout(500);
+    await page.mouse.up();
+    expect(outsideOcc >= 68 && Number(await page.locator("#operationOcc").inputValue()) === outsideOcc,
+      "데스크톱 버튼 밖 이탈·해제 후 반복 증가가 멈추지 않았습니다.");
+    for (const exitEvent of ["blur", "pagehide"]) {
+      await valueFromLabel(page, "occ", 66);
+      await occStepPlus.hover();
+      await page.mouse.down();
+      await page.waitForTimeout(650);
+      const exitOcc = await page.evaluate((type) => {
+        window.dispatchEvent(new Event(type));
+        return Number(document.getElementById("operationOcc").value);
+      }, exitEvent);
+      await page.waitForTimeout(500);
+      await page.mouse.up();
+      expect(exitOcc >= 68 && Number(await page.locator("#operationOcc").inputValue()) === exitOcc,
+        `${exitEvent} 화면 이탈 후 반복 증가가 멈추지 않았습니다.`);
+    }
+    await valueFromLabel(page, "occ", 66);
+    await occRange.scrollIntoViewIfNeeded();
+    const rangeBox = await occRange.boundingBox();
+    await page.mouse.move(rangeBox.x + rangeBox.width * 0.575, rangeBox.y + rangeBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rangeBox.x + rangeBox.width * 0.8, rangeBox.y + rangeBox.height / 2, { steps: 8 });
+    await page.mouse.up();
+    expect(Number(await page.locator("#operationOcc").inputValue()) > 75,
+      "데스크톱 OCC 슬라이더 실제 드래그가 유지되지 않았습니다.");
     await valueFromLabel(page, "occ", 66);
 
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
@@ -595,14 +644,27 @@ async function run() {
     const mobileOccBox = await mobileOccPlus.boundingBox();
     const touchSession = await page.context().newCDPSession(page);
     await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    for (const expected of [67, 68, 69]) {
+      await touchSession.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: mobileOccBox.x + mobileOccBox.width / 2,
+          y: mobileOccBox.y + mobileOccBox.height / 2, id: 1 }],
+      });
+      await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await page.waitForTimeout(450);
+      expect(Number(await page.locator("#operationOcc").inputValue()) === expected,
+        `모바일 일반 탭은 정확히 한 번만 증가해야 합니다: 예상 ${expected}`);
+    }
+    await valueFromLabel(page, "occ", 66);
+    await armStepRelease(page, "touchend");
     await touchSession.send("Input.dispatchTouchEvent", {
       type: "touchStart",
       touchPoints: [{ x: mobileOccBox.x + mobileOccBox.width / 2,
         y: mobileOccBox.y + mobileOccBox.height / 2, id: 1 }],
     });
     await page.waitForTimeout(850);
-    const mobileHeldOcc = Number(await page.locator("#operationOcc").inputValue());
     await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    const mobileHeldOcc = await stepReleaseValue(page);
     await page.waitForTimeout(250);
     const mobileReleasedOcc = Number(await page.locator("#operationOcc").inputValue());
     expect(mobileHeldOcc >= 69 && mobileReleasedOcc === mobileHeldOcc,
@@ -620,9 +682,30 @@ async function run() {
     expect(cancelledOcc >= 69 &&
       Number(await page.locator("#operationOcc").inputValue()) === cancelledOcc,
       "모바일 실제 touchCancel 이후 반복 증가가 멈추지 않았습니다.");
+    await valueFromLabel(page, "occ", 66);
+    await occRange.scrollIntoViewIfNeeded();
+    const touchRangeBox = await occRange.boundingBox();
+    const rangeY = touchRangeBox.y + touchRangeBox.height / 2;
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: touchRangeBox.x + touchRangeBox.width * 0.575, y: rangeY, id: 3 }],
+    });
+    for (const fraction of [0.65, 0.72, 0.8]) {
+      await touchSession.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: touchRangeBox.x + touchRangeBox.width * fraction, y: rangeY, id: 3 }],
+      });
+    }
+    await touchSession.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    expect(Number(await page.locator("#operationOcc").inputValue()) > 75,
+      "모바일 OCC 슬라이더 실제 터치 드래그가 유지되지 않았습니다.");
     await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: false });
     await touchSession.detach();
     await valueFromLabel(page, "occ", 66);
+    await mobileOccPlus.press("Enter");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 67);
+    await occStepMinus.press("Space");
+    await page.waitForFunction(() => window.__operationAnalysisState?.occ === 66);
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
       await awaitScreenshotFonts(page);
       await page.screenshot({ path: path.join(screenshotDir, "operation-mobile-360.png"), fullPage: true });

@@ -124,17 +124,22 @@
     });
   }
 
-  var activeStepStops = new Set();
+  var activeStepStops = new Map();
   var releaseBound = false;
   function stopActiveSteps() {
     activeStepStops.forEach(function (stop) { stop(); });
+  }
+  function stopStepButtons(container) {
+    activeStepStops.forEach(function (stop, button) {
+      if (container && container.contains(button)) stop();
+    });
   }
   function bindStepButtons(container, onStep) {
     if (!container) return;
     if (!releaseBound) {
       releaseBound = true;
       // The release may target another element or a replacement DOM node.
-      ["pointerup", "pointercancel", "touchend", "touchcancel", "blur"].forEach(function (type) {
+      ["pointerup", "pointercancel", "touchend", "touchcancel", "blur", "pagehide"].forEach(function (type) {
         window.addEventListener(type, stopActiveSteps, true);
       });
       document.addEventListener("visibilitychange", function () {
@@ -149,17 +154,24 @@
         window.clearInterval(repeatTimer);
         delayTimer = repeatTimer = 0;
         repeating = false;
-        activeStepStops.delete(stopRepeating);
+        activeStepStops.delete(button);
       }
       function step() {
-        if (button.disabled || onStep(button) === false) stopRepeating();
+        // A calculation may replace the controls, or a tab may hide them,
+        // while the pointer is still down. Detached/hidden controls cannot
+        // keep changing the current scenario.
+        if (!button.isConnected || !button.getClientRects().length || button.disabled) {
+          stopRepeating();
+          return;
+        }
+        if (onStep(button) === false) stopRepeating();
       }
       button.addEventListener("pointerdown", function (event) {
-        if (event.button != null && event.button !== 0) return;
-        stopRepeating();
+        if (event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+        stopActiveSteps();
         pointerActivation = true;
         repeating = true;
-        activeStepStops.add(stopRepeating);
+        activeStepStops.set(button, stopRepeating);
         step();
         if (!repeating || button.disabled) return;
         delayTimer = window.setTimeout(function () {
@@ -202,6 +214,7 @@
     mappedTicks: mappedTicks,
     adjacentTick: adjacentTick,
     syncStepButtons: syncStepButtons,
+    stopStepButtons: stopStepButtons,
     bindStepButtons: bindStepButtons,
   });
 }(window));

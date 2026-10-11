@@ -396,6 +396,7 @@
     history.replaceState({}, "", "/analysis" + (params.toString() ? "?" + params.toString() : ""));
   }
   function resetOperationScenarioForBuildingChange(id) {
+    sliderUtils.stopStepButtons($("operationSliders"));
     uploadSequence += 1;
     sliderCommitGeneration += 1;
     window.clearTimeout(sliderCommitTimer);
@@ -647,6 +648,7 @@
   function syncOperationSliders() {
     var host = $("operationSliders");
     if (!host) return;
+    sliderUtils.stopStepButtons(host);
     computeSliderBounds();
     var dayBasis = monthlyDayBasis();
     var baseline = regionalBaseline();
@@ -1765,6 +1767,7 @@
       var button = event.target.closest("[data-analysis-mode]");
       if (!button) return;
       var targetMode = button.dataset.analysisMode;
+      if (targetMode !== "operation") sliderUtils.stopStepButtons($("operationSliders"));
       if (targetMode === "rental") {
         // Run before the rental tab calculation so both rental inputs recalculate immediately.
         crossRent();
@@ -2007,6 +2010,7 @@
     setTimeout(function () { setModeClass(); if ($("operationTab").getAttribute("aria-selected") === "true") load(); }, 0);
   });
   window.addEventListener("livingstay:analysis-reset", function () {
+    sliderUtils.stopStepButtons($("operationSliders"));
     $("operationOcc").value = "";
     $("operationAdr").value = "";
     assumed = { adr: true, occ: true, opexRatio: true, mgmtFeeRatio: true, purchasePrice: true, compareRent: true };

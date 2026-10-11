@@ -37,6 +37,24 @@ API 검사는 숙박 유형행·전체행의 필수 컬럼과 기존 신고율 �
 
 ## 격리 경계
 
+운영분석 ± 버튼 회귀 검사는 같은 소유 fixture에서 별도로 실행할 수 있다.
+
+```sh
+python tests/run_offline_suite.py --only operation_redesign_browser_test.js \
+  --only slider_release_boundary_test.js --only analysis_slider_step_controls_test.js \
+  --only slider_utils_test.js --results .local/suite-audit/slider-release
+```
+
+브라우저 검사는 데스크톱 클릭·길게 누르기·버튼 밖 해제, Enter/Space·방향키,
+직접입력, 실제 마우스 드래그와 360px 화면의 CDP 실제 터치 탭·반복·해제·취소·
+드래그를 확인한다. blur/pagehide도 반복 중 확인한다. 해제 시점의 값은
+브라우저의 해제 이벤트 capture listener에서 기록한다. 해제 명령을 보내기
+**전** 별도 호스트 왕복으로 읽으면 그 사이 정상적인 누름 반복이 실행될 수
+있으므로 해제 뒤 증가로 오판한다. 최소 반복 횟수와 해제 후 정확한 값 일치
+assertion은 유지한다. 단위 검사는 문서 숨김, 분리·숨긴 버튼, DOM 교체 전
+명시적 중단, 보조 터치 무시와 detail=0 호환 클릭도 검사한다.
+이 Chromium 검사는 Safari 검증을 대신하지 않는다.
+
 - 상위 환경의 운영 DB URL, 서비스 인증값, 실제 연락처·배포 호스트를
   전달하지 않는다. Python 설치 경로 등 실행에 필요한 값만 허용한다.
 - 임시 PostgreSQL은 TCP를 열지 않는다. 드라이버의 공개·내부·네이티브
