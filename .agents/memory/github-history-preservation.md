@@ -38,3 +38,13 @@ Git Data API에 원본 commit message의 마지막 줄바꿈도 그대로 전달
 
 **How to apply:** git cat-file의 message 바이트를 보존하고 rstrip으로
 정규화하지 않는다. 해시 불일치가 나면 원격 ref는 변경하지 않는다.
+
+Git Data API의 `force:false`는 expected-old-SHA 원자 비교가 아니다.
+
+**Why:** 마지막 ref 조회와 PATCH 사이에 다른 작업자가 목표 tip의 조상으로 ref를
+변경하면 GitHub는 여전히 fast-forward로 허용할 수 있다. 조회 전후 검증만으로
+정확한 동시 쓰기 배제까지 보장한다고 설명하면 안 된다.
+
+**How to apply:** 승인된 백업 시간에는 다른 push를 중지하고 개발 ref만 갱신한다.
+ref 갱신 의도를 먼저 영속 저장하며 응답 유실 뒤에는 재PATCH보다 현재 ref와 main을
+먼저 검증한다. 예상값이 달라졌다고 자동으로 기준을 바꾸거나 force로 우회하지 않는다.
