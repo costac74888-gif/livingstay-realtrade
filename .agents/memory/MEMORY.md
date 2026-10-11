@@ -148,3 +148,4 @@
 - [Git 상대 범위 검사](git-relative-scope-checks.md) — 자동 체크포인트로 HEAD 기준이 이동하므로 원래 기준 commit의 diff와 동결 보존 검사를 별도로 확인한다.
 - [운영 연결 객체 검사](production-wiring-inspection.md) — fixture 존재와 운영 실행 연결을 구분하고 객체 ID 재사용·요청 프록시·외부 패키지 탐색을 주의한다.
 - [검사 결과 안전 보관](test-artifact-retention.md) — 완료·소유권이 불명확한 결과와 최신 실패는 보존하고, 용량 한도를 맞추려고 보호를 해제하지 않는다.
+- [목업 디자인 기준](mockup-design-governance.md) — 제공 목업을 디자인 기준으로 유지하고 제품 구조 충돌만 최소 조정하며 기능 PASS와 디자인 검수를 분리한다.

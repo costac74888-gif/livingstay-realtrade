@@ -151,3 +151,75 @@
 @media (prefers-reduced-motion: reduce) {
   .hs2-marker-choice, .layer-toggle { transition: none; }
 }
+
+/* Super Map stays visually subordinate to short stays; layers remain independent. */
+:root {
+  --map-ink: #18365f;
+  --map-paper: #edf4fc;
+  --map-teal: #1d4d8a;
+  --map-ochre: #b28a31;
+}
+.supermap-main { color: #18365f; }
+.supermap-search .eyebrow, .supermap-search .section-kicker { color: #3b679d; }
+.supermap-search .search-button { border-color: #b28a31; background: #b28a31; }
+.supermap-search .search-button:hover:not(:disabled) { background: #987328; }
+.supermap-search .filter-row { background: #f8fbff; }
+.supermap-workspace {
+  grid-template-columns: minmax(360px,.86fr) minmax(510px,1.14fr);
+  border-top: 1px solid #d7e2ef;
+}
+.supermap-workspace .results-pane { padding-right: 18px; }
+.supermap-workspace .listing-list { padding: 1px 4px 1px 1px; }
+.listing-card {
+  min-height: 76px; grid-template-columns: 42px minmax(0,1fr) auto;
+  padding: 10px 11px; border-radius: 6px; background: #fff;
+}
+.listing-card:hover { border-color: #94afd0; background: #fbfdff; }
+.listing-card[aria-pressed="true"] { border-color: #315f99; background: #edf4fc; }
+.listing-card[data-layer="sale"] .stay-glyph,
+.listing-card[data-layer="business"] .stay-glyph,
+.listing-card[data-layer="auction"] .stay-glyph,
+.listing-card[data-layer="stay"] .stay-glyph {
+  width: 42px; height: 42px; border: 1px solid #d3dfed; border-radius: 5px;
+}
+.listing-card[data-layer="sale"] .stay-glyph { color: #8a6a2d; background: #f5f0e4; }
+.listing-card[data-layer="business"] .stay-glyph { color: #4d6890; background: #eaf0f8; }
+.listing-card[data-layer="auction"] .stay-glyph { color: #985451; background: #f7eeee; }
+.listing-card[data-layer="stay"] .stay-glyph { color: #315f99; background: #e8f0fa; }
+.listing-type { color: #436a9a; }
+.summary-fact { border-color: #d1deed; color: #45658d; background: #f7faff; }
+.layer-controls { border-color: #d3dfed; border-radius: 7px; background: #f8fbff; }
+.layer-heading { color: #577395; }
+.layer-toggle { color: #365981; }
+.layer-toggle:hover { background: #eaf1fa; }
+.layer-stay .layer-symbol { color: #315f99; }
+.layer-sale .layer-symbol { color: #b28a31; }
+.layer-business .layer-symbol { color: #526f9b; }
+.layer-auction .layer-symbol { color: #985451; }
+.layer-footnote { color: #7d8fa7; }
+.map-canvas, .map-canvas.is-live { border-color: #cad8e9; background: #e5effa; }
+.map-placeholder {
+  background: radial-gradient(ellipse at 50% 45%,rgba(250,252,255,.94),rgba(233,241,250,.88) 57%,rgba(222,234,247,.8));
+}
+.map-emblem { border-color: #c8d8e9; background: #f8fbff; }
+.map-emblem::before { color: #315f99; }
+.map-footer[data-state="ready"] { color: #315f99; }
+.map-footer[data-state="ready"] .map-status-dot { background: #315f99; }
+.hs2-marker-toggle { border-color: #afc1d7; color: #345980; background: #fff; box-shadow: 0 2px 7px rgba(25,57,98,.16); }
+.hs2-marker-toggle[data-layer="stay"] { border-color: #1d4d8a; color: #fff; background: #1d4d8a; }
+.hs2-marker-toggle[data-layer="sale"] { border-color: #b28a31; color: #806323; }
+.hs2-marker-toggle[data-layer="business"] { border-color: #627da4; color: #4e678c; }
+.hs2-marker-toggle[data-layer="auction"] { border-color: #985451; color: #985451; }
+.hs2-marker-shape[data-layer="sale"] { background: #b28a31; }
+.hs2-marker-shape[data-layer="business"] { background: #627da4; }
+.hs2-marker-shape[data-layer="auction"] { background: #985451; }
+.hs2-marker-shape[data-layer="stay"] { background: #1d4d8a; }
+.hs2-marker-choices { border-color: #c6d5e7; background: #fff; box-shadow: 0 5px 16px rgba(25,57,98,.16); }
+.hs2-marker-choice { color: #345980; }
+.hs2-marker-choice:hover, .hs2-marker-choice:focus-visible { background: #1d4d8a; }
+@media (max-width: 1050px) {
+  .supermap-workspace { grid-template-columns: minmax(310px,.9fr) minmax(430px,1.1fr); }
+}
+@media (max-width: 767px) {
+  .supermap-workspace { border-top: 0; }
+}

@@ -211,3 +211,18 @@
 @media (prefers-reduced-motion: reduce) {
   body[data-mobile-experience="true"] .mobile-panel-switch button { transition: none; }
 }
+
+@media (max-width: 760px) {
+  body[data-mobile-experience="true"] .mobile-panel-switch {
+    border-color: #ccd9e9; border-radius: 8px; background: rgba(244,248,253,.97);
+    box-shadow: 0 4px 14px rgba(25,57,98,.08);
+  }
+  body[data-mobile-experience="true"] .mobile-panel-switch button { color: #607796; }
+  body[data-mobile-experience="true"] .mobile-panel-switch button[aria-pressed="true"] {
+    border-color: #1d4d8a; color: #fff; background: #1d4d8a; box-shadow: none;
+  }
+  body[data-mobile-experience="true"] .supermap-workspace .listing-card {
+    border-radius: 6px; background: #fff;
+  }
+  body[data-mobile-experience="true"] .layer-controls { background: #f8fbff; }
+}
