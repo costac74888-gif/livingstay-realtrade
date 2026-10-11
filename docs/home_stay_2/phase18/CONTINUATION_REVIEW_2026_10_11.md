@@ -2,6 +2,7 @@
 
 검증일: 2026-10-11. **PARTIAL / NOT_ACCEPTED / 운영 전환 승인 전**.
 이 문서는 실제 토스 연동·Phase18 완료·운영 복구 성공을 증명하지 않는다.
+소스 저장 후 pytest 통과 및 GitHub 백업 확인은 `FINAL_VERIFICATION_APPENDIX.md` 참조.
 
 ## 안전 경계
 

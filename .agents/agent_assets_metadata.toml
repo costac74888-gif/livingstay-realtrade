@@ -850,3 +850,31 @@ mtime_ms = 1791672404843
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/b5b99b68-c6aa-4d5e-bd16-812dd76655e7/b63e54dd-dfdc-495f-abc9-07e54659ab28"
 storage_version_token = "1791672406813818"
 content_type = "text/html"
+
+[[outputs]]
+id = "xIfmYE6pfeXxoS5Icu_dR"
+uri = "file://docs/home_stay_2/phase18/CONTINUATION_REVIEW_2026_10_11.md"
+type = "text"
+title = "개발 검증·운영 전환 준비 보고서"
+description = "가상 검사 결과, 실제 토스 미수행, 남은 회귀 및 승인 전 백업·복원 계획. 운영준비 완료 보고서는 아닙니다."
+logical_id = "4d1e79c2-67b3-47d7-8144-4c9f9808a98c"
+content_hash = "sha256:b2f333c81bed2db8850e8e455621bf04c46a24163cbdfa8eab9eebb6a5153fd7"
+size = 11045
+mtime_ms = 1791684833816
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/4d1e79c2-67b3-47d7-8144-4c9f9808a98c/0eb04caf-ae54-4c03-bf88-9742416ab66d"
+storage_version_token = "1791684862885553"
+content_type = "text/markdown"
+
+[[outputs]]
+id = "txo539TCvBGmygRcXlBPk"
+uri = "file://docs/home_stay_2/phase18/FINAL_VERIFICATION_APPENDIX.md"
+type = "text"
+title = "최종 개발 검증·GitHub 백업 확인"
+description = "Python 1066개·하위 244개 통과, 개발 브랜치 해시 확인 및 main 보존. 실제 토스와 남은 UI 오류는 미완료로 명시합니다."
+logical_id = "17106d9b-0ec9-4d1d-b97a-28e77b065447"
+content_hash = "sha256:79d7289f7de14e0059340e06a26d8899d1617645b4679879c3c03899eceec8a9"
+size = 2629
+mtime_ms = 1791685321150
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/17106d9b-0ec9-4d1d-b97a-28e77b065447/31b2b5fe-4eb9-4dec-ae9a-e165030e6c06"
+storage_version_token = "1791685350296334"
+content_type = "text/markdown"

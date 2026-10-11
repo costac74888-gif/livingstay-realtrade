@@ -19,6 +19,18 @@ Git 전송 인증 실패를 기존 GitHub 연결의 인증 실패와 동일시�
 바이너리는 원래 바이트로 전송한다. tree/commit SHA 일치를 계속 검사하고, 429에는
 제한된 대기·재시도를 적용한다. 실패 시 원격 ref를 바꾸거나 force로 우회하지 않는다.
 
+큰 inline tree 요청이나 긴 단일 전송이 실패하면, 인증 실패로 단정하지 말고
+base64 blob을 작은 묶음으로 전송한 뒤 SHA 참조만으로 tree를 구성한다.
+
+**Why:** ref 읽기와 작은 쓰기는 성공하는 연결에서도 일괄 inline 요청은
+403/비JSON 응답을 냈고, 긴 개별-object 전송은 연결이 끊겼다. 작은 base64
+묶음으로 나누자 원래 tree·commit SHA 및 비강제 ref 갱신이 모두 검증됐다.
+오류의 근본 원인을 특정한 것은 아니다.
+
+**How to apply:** 부분 성공한 commit/object와 현재 ref를 먼저 조회한다.
+재전송은 content-addressed object에만 적용하고 묶음 크기·동시 요청을 제한한다.
+모든 SHA가 맞고 갱신 전 ref가 예상값일 때만 최종 ref를 바꾼다.
+
 Git Data API에 원본 commit message의 마지막 줄바꿈도 그대로 전달한다.
 
 **Why:** tree·부모·작성자·시각이 같아도 message의 마지막 LF를 제거하자
