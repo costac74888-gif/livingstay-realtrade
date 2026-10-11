@@ -1130,3 +1130,17 @@ mtime_ms = 1791737052431
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/db42c242-183d-4ad9-b3e4-8ca021807633/893f6134-64db-4f6b-93f5-c2ce81089fa0"
 storage_version_token = "1791737071092211"
 content_type = "text/html"
+
+[[outputs]]
+id = "q0gL72fZ0B7XosJ3xIh4k"
+uri = "file://generated-artifacts/night-candidate-delivery/home-stay-night-candidate-2026-10-12.html"
+type = "html"
+title = "HOME & STAY 아침 확인용 후보 보고서"
+description = "개발 Preview·가상 계정·체험 순서·목업 비교·84,954개 공개 시설 전체 검증·정확한 회귀검사 결과·GitHub 코드 백업·게시 차단 사유·복귀 절차. 운영 게시 미실행."
+logical_id = "64c1e22a-097c-461d-90fd-26683923c5b8"
+content_hash = "sha256:a2a07f77d2b6b742697f1ace4c8a22fa3060f756bb611ca453269752c77a5ea1"
+size = 1231516
+mtime_ms = 1791742281603
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/64c1e22a-097c-461d-90fd-26683923c5b8/0f45741f-dd31-4bd1-8cad-19a459e52130"
+storage_version_token = "1791742348637691"
+content_type = "text/html"

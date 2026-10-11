@@ -33,6 +33,16 @@ base64 blob을 작은 묶음으로 전송한 뒤 SHA 참조만으로 tree를 구
 
 Git Data API에 원본 commit message의 마지막 줄바꿈도 그대로 전달한다.
 
+원격에 이미 있는 object도 전체 로컬 dependency 검증에서 임의로 제거하지 않는다.
+
+**Why:** 원격 tree에서 확인한 기존 object를 export에서 삭제하자 부모 tree의
+dependency 순서 검증이 실패했다. 원격 존재와 로컬 완전성 증명은 별개다.
+
+**How to apply:** 완전한 export의 원본 바이트·해시 검증을 유지하고,
+인증된 현재 원격 tree로 확인한 object만 재개 상태에서 완료 처리한다.
+큰 export는 노트북 반환값으로 옮기지 않고 impure 파일 작업 안에서 읽으며
+작은 진행 요약만 반환한다. 검증 실패 때는 ref를 바꾸지 않는다.
+
 **Why:** tree·부모·작성자·시각이 같아도 message의 마지막 LF를 제거하자
 다른 커밋 SHA가 생성됐다. 마지막 LF를 포함해 전송하면 원본 SHA와 일치했다.
 
