@@ -18,3 +18,15 @@ even when both checks were launched by the same aggregate runner.
 **How to apply:** Retention changes should preserve unknown historical runs and
 report unmet budgets plainly. Any scheduler should retain the same exclusions
 and require an explicit operational choice before enabling actual deletion.
+
+The operator approved a 30-day / 2048-MiB / 24-hour periodic policy. This is
+policy approval, not blanket permission to apply deletions or change limits.
+Require an inspected, successful dry-run and explicit apply opt-in. Audit logs
+remain outside evidence cleanup; their automatic pruning needs separate consent.
+
+**Why:** The operator selected these exact limits and cadence after being told
+that size pressure may remove eligible results still within the age window,
+but protected evidence remains even if the budget cannot be met.
+
+**How to apply:** Keep future defaults consistent with these choices unless
+the operator changes them; a changed policy requires a fresh dry-run review.

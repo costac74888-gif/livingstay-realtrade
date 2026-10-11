@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "keep_days": 30,
+  "max_mib": 2048,
+  "interval_hours": 24
+}

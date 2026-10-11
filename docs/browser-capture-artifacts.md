@@ -70,8 +70,8 @@ python scripts/cleanup_test_artifacts.py --keep-days 30 --max-mib 2048
 python scripts/cleanup_test_artifacts.py --keep-days 30 --max-mib 2048 --apply
 ```
 
-No scheduled job is installed and no existing evidence is deleted when adding
-this command. `--dry-run` is also accepted explicitly; it cannot be combined
+The separate command does not install or enable any scheduled job.
+`--dry-run` is also accepted explicitly; it cannot be combined
 with `--apply`. Reports show each whole run's action, keep/delete reason and
 logical file bytes before/after (not filesystem block usage). `bytes_after` is
 the projected size during dry-run. There is no arbitrary-path or force override.
@@ -117,4 +117,89 @@ Local regression checks (no production/database/email access):
 ```sh
 python -m unittest discover -s tests -p 'test_artifact_cleanup.py' -v
 python -m unittest discover -s tests -p 'test_capture_artifacts.py' -v
+```
+
+## Opt-in periodic cleanup (disabled by default)
+
+The operator explicitly selected **30 days, 2048 MiB, every 24 hours**.
+The versioned policy is `docs/test-artifact-retention-policy.json`. The age and
+size rules combine with OR, exactly as in the separate command above. A size
+budget is not permission to weaken any safety exclusion.
+
+`scripts/scheduled_artifact_cleanup.py` delegates all eligibility and removal
+to the existing cleanup command; it never imports the app, accesses a database
+or sends notifications. No auto-start, deployment hook or Project run-button
+task is installed. The workspace's existing workflow count exceeds its new
+registration limit, so no dedicated workflow was added and none was removed
+or repurposed. Run the watcher from a terminal, or register it as a separate
+console workflow when capacity is available. Its default command has no
+`--enable` and exits without cleaning even if started on workspace wake.
+
+### Inspect, then enable
+
+```sh
+# Disabled: no scan, deletion, or audit directory creation.
+python scripts/scheduled_artifact_cleanup.py
+# Explicit preview: bypasses the interval, deletes nothing, saves a receipt.
+python scripts/scheduled_artifact_cleanup.py --enable --dry-run
+```
+
+Inspect the returned JSON `report.runs`, keep/delete reasons, `limit_unmet` and
+`unmeasured_runs`. Every attempt has a unique receipt and a private, fsynced log
+under `generated-artifacts/artifact-cleanup-audit/<receipt>.json`. Read the
+actual dry-run log before granting deletion approval. There is no automatic
+approval. Receipts remain valid only for exactly the same policy (including
+interval); changes require a new preview and explicit confirmation.
+
+To monitor without deleting, run this command (or use it as a future dedicated
+console workflow command):
+
+```sh
+python -u scripts/scheduled_artifact_cleanup.py --enable --watch --dry-run
+```
+
+To authorize actual periodic removal after inspecting a successful dry-run,
+replace `RECEIPT` with its 32-character receipt ID and explicitly start:
+
+```sh
+python -u scripts/scheduled_artifact_cleanup.py --enable --watch --apply --confirm-dry-run RECEIPT
+```
+
+For a one-shot due check, omit `--watch`. Apply without a valid successful
+dry-run receipt for the exact policy fails closed. The receipt confirms policy
+review, **not a frozen deletion list**: every invocation recomputes the plan,
+and the underlying cleaner rechecks each run immediately before removal.
+No command in this change has applied cleanup to existing workspace evidence.
+
+### Timing, stopping, and audit safety
+
+- The first attempt in each mode/policy is due immediately; later attempts
+  are due 24 hours after the last start. Dry-run and apply have separate clocks.
+- The watcher polls once a minute. It holds a nonblocking scheduler lock for
+  its lifetime; duplicate schedulers/preview commands refuse to run. The
+  underlying cleanup lock also excludes concurrent manual removal.
+- Logs persist across restarts, including error and interrupted (`running`)
+  attempts; these count toward the interval to avoid rapid retries. Errors
+  stop the watcher with a nonzero exit; no retry loop hides safety failures.
+- A policy edit during watching stops the process. Stop the workflow, edit the
+  policy, create/inspect a new preview, and update its receipt before restarting.
+- To disable a terminal watcher, press Ctrl-C. If registered as a workflow,
+  **stop** it, then restore its default command without `--enable`. Merely
+  changing its command does not stop a running process.
+- Symlinked audit roots/files and hard-linked audit files are refused. The
+  log is saved before deletion starts, with policy, mode, start/end times,
+  confirmation receipt and the full report (or error). Audit logs are outside
+  the cleaner's allowlist and are not automatically pruned. Abrupt termination
+  leaves a `running` log; it is not evidence of successful completion.
+- Byte budgets cover only the three result trees, not retained audit logs.
+  Safely unmet budgets remain visible in each log and never enable a force mode.
+
+This watcher runs **only while the workspace is awake**. It does not promise
+overnight or production scheduling, and does not alter the website deployment.
+On restart it performs at most one overdue attempt, never a catch-up burst.
+For fully unattended execution, separately configure scheduling in the
+environment that actually owns these local artifact directories.
+
+```sh
+python -m unittest discover -s tests -p 'test_scheduled_artifact_cleanup.py' -v
 ```
