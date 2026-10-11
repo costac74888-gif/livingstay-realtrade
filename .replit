@@ -27,18 +27,6 @@ args = "smoke"
 task = "workflow.run"
 args = "api"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Backfill Retry"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Fill PK"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Fast Sync"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"

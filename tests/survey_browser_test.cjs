@@ -28,9 +28,21 @@ finally: c.close()`));
       const errors = [];
       page.on("pageerror", e=>errors.push(e.message));
       await page.goto(`${base}/auctions/${id}`);
-      await page.locator(".survey-check-state").first().waitFor();
-      assert.equal(await page.locator(".survey-check-state").count(), 3);
-      assert.equal(await page.locator('.survey-analysis-link').count(), 3);
+      // The public announcement stays public; survey/operating details moved
+      // behind membership. Never inject a paid identity or mock this API.
+      await page.locator("#bAuctionPanel .auction-membership-zone").waitFor();
+      assert.equal(await page.locator(".survey-check-state").count(), 0);
+      assert.equal(await page.locator('.survey-analysis-link').count(), 0);
+      assert.equal(await page.locator("#bAuctionPanel .b-membership-preview dt").count(), 13);
+      const masks=await page.locator("#bAuctionPanel .b-membership-preview dd").allTextContents();
+      assert.ok(masks.every(text=>text.trim()==="멤버십 회원 전용"));
+      const protectedInfo=await page.evaluate(async auctionId=>{
+        const response=await fetch(`/api/auctions/${auctionId}/survey-info`);
+        return {status:response.status,body:await response.json()};
+      },id);
+      assert.equal(protectedInfo.body.membership_access.required,true);
+      assert.ok(!protectedInfo.body.analysis_links?.length);
+      assert.ok(!protectedInfo.body.checklist?.length);
       assert.equal(await page.locator('.auction-panel-general h4').count(), 1);
       assert.ok((await page.locator("#bAuctionPanel").textContent()).includes("온비드"));
       assert.ok((await page.locator("#bAuctionPanel").textContent()).includes("회차"));
@@ -44,45 +56,14 @@ finally: c.close()`));
       if(overflow.scrollWidth>width+1)await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/overflow-${label}.png`)});
       assert.ok(overflow.scrollWidth<=width+1,JSON.stringify(overflow));
       await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/detail-${label}.png`),fullPage:true});
-      await page.click(".survey-apply");
-      await page.locator("#surveyRequestForm").waitFor();
-      const sizes=await page.locator(".survey-report-item span").evaluateAll(nodes=>nodes.map(node=>({
-        size:getComputedStyle(node).fontSize,align:getComputedStyle(node).textAlign
-      })));
-      assert.equal(new Set(sizes.map(node=>node.size)).size,1);
-      assert.ok(sizes.every(node=>node.align==="right"));
-      assert.equal((await page.locator("#surveyTotalPrice").textContent()).replace(/,/g,""),"79000원");
-      await page.check('[name="survey_type"][value="visit"]');
-      assert.equal((await page.locator("#surveyTotalPrice").textContent()).replace(/,/g,""),"178000원");
-      assert.ok((await page.locator("#auctionSurveyDrawerContent").textContent()).includes("24시간"));
-      assert.ok((await page.locator("#auctionSurveyDrawerContent").textContent()).includes("3일"));
-      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-      await page.evaluate(()=>document.fonts.ready);
-      await page.locator(".survey-drawer-content").evaluate(node=>{node.scrollTop=0;});
-      await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/form-${label}.png`),fullPage:true});
-      await page.locator(".survey-report-items").screenshot({path:artifactPath(`attached_assets/auction-phase2/scope-${label}.png`)});
-      let posted = null;
-      await page.route(`**/api/auctions/${id}/survey-requests`, async route=>{
-        posted=route.request().postDataJSON();
-        await route.fulfill({status:label==="mobile"?200:201,contentType:"application/json",body:JSON.stringify({ok:true,receipt:{
-          request_no:"SV-BROWSER-TEST",base_fee:79000,visit_fee:99000,total_fee:178000,
-          payment_deadline:new Date(Date.now()+86400000).toISOString(),
-          bank_name:"농협",bank_account:"테스트 계좌",bank_holder:"자동검증"}})});
-      });
-      await page.fill("#surveyApplicant","자동검증");
-      await page.fill("#surveyPhone","01000000000");
-      await page.fill("#surveyDepositor","자동검증");
-      await page.click("#surveySubmit");
-      assert.equal(posted, null); // Required consents prevent any submission.
-      for(const key of ["agree_terms","agree_refund","agree_privacy"]) await page.check(`[name="${key}"]`);
-      await page.click("#surveySubmit");
-      await page.locator(".survey-receipt-no").waitFor();
-      assert.equal(posted.survey_type,"visit");
-      assert.ok(posted.config_version && posted.request_token);
-      assert.ok(!("total_fee" in posted));
-      assert.equal(await page.locator(".survey-receipt-no").textContent(),"SV-BROWSER-TEST");
+      const cta=page.locator("#bAuctionPanel .b-membership-cta");
+      assert.equal(new URL(await cta.getAttribute("href"),base).pathname,"/membership");
+      assert.equal(await page.locator("#surveyRequestForm").count(),0);
+      await cta.click();
+      await page.waitForURL(url=>url.pathname==="/membership");
+      await page.locator("main.membership-page").waitFor();
       assert.deepEqual(errors,[]);
-      console.log(`PASS ${width}px real detail/form, no overflow/JS errors, consent gates and ${label==="mobile"?"retry 200":"created 201"} receipt (intercepted submission)`);
+      console.log(`PASS ${width}px public announcement, server-side membership privacy, 13 masked fields and membership navigation; no auth/API bypass`);
       await context.close();
     }
     // Authenticate a temporary staff account via the real login UI, then remove it.
@@ -122,9 +103,8 @@ finally:c.close()`));
     await page.locator("#as-base_fee").waitFor();
     assert.equal(await page.locator("#as-base_fee").inputValue(),"79000");
     assert.equal(await page.locator("#as-promo_end_date").getAttribute("type"),"date");
-    // Nix Chromium lacks a Korean system font. This is capture-only, not an
-    // application/auth change; the public survey pages already load this font.
-    await page.addStyleTag({url:"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap"});
+    // Capture-only styling must not request a real CDN. Font asset completeness
+    // is handled separately; this check verifies auth, privacy and admin flows.
     await page.addStyleTag({content:"body,input,textarea,button{font-family:'Noto Sans KR',sans-serif!important}"});
     await page.evaluate(()=>document.fonts.ready);
     await page.screenshot({path:artifactPath("attached_assets/auction-phase2/admin-settings-desktop.png"),fullPage:true});
@@ -142,7 +122,7 @@ finally:c.close()`));
     assert.equal(payload.base_fee,81000);
     assert.equal(typeof payload.visit_fee,"number");
     assert.equal(payload.promo_enabled,false);
-    assert.equal(payload.bank_name,"농협");
+    assert.equal(payload.bank_name,"가상은행"); // Owned fixture; never a real payout account.
     const transitions={received:["paid","canceled"],paid:["investigating","refunded"],investigating:["reported","refunded"],reported:["refunded"],canceled:["refunded"],refunded:[]};
     const fixture={id:999999999,request_no:"SV-BROWSER-TEST",created_at:new Date().toISOString(),
       status:"received",auction_title:"자동검증 공매",applicant_name:"자동검증",phone:"01000000000",

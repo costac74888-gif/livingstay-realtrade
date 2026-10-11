@@ -7029,7 +7029,10 @@ async function loadBuildingHeader(id){
   if (kakaoMap && Number.isFinite(detailLat) && Number.isFinite(detailLng)) {
     const targetBuildingId = Number(b.building_id ?? id);
     if (Number.isInteger(targetBuildingId) && targetBuildingId > 0) {
-      setMapLocationTarget(targetBuildingId);
+      // Opening a detail consumes the map-location highlight. Keep automatic
+      // centering separate from the explicit "지도위치" return-to-map action;
+      // otherwise this async detail response re-highlights a clicked marker.
+      clearMapLocationTarget();
       kakaoMap.setLevel(3);
       kakaoMap.setCenter(new kakao.maps.LatLng(detailLat, detailLng));
       const detailMapFilters = Object.assign({}, mapFiltersFromState());

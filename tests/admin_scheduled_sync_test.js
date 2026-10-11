@@ -30,18 +30,21 @@ expect(
 );
 
 expect(
-  admin.includes('id="dsSecScheduled"') &&
-    admin.includes('id="scheduledSyncStages"') &&
-    admin.includes("실패·중단 단계 재시도") &&
-    admin.includes("지금 수집") &&
-    admin.includes("Scheduled Deployment") &&
-    admin.includes('id="manualSyncDetails"') &&
-    admin.includes('id="quotaSummary"') &&
-    admin.includes("function renderQuotaBars(stages)") &&
-    admin.includes("function renderCollectionProgress(stage, visuallyRunning)") &&
-    admin.includes("최근 오류 ${errorLines.length}건") &&
-    admin.includes("앞 수집 완료 후 자동 시작"),
-  "관리자 통합 동기화 카드 또는 수동 보완 접기 영역이 없습니다.",
+  admin.includes('id="dsBoard"') &&
+    admin.includes("function renderDataSyncBoardRow(row)") &&
+    admin.includes("function runDataSyncBoardAction(row)") &&
+    admin.includes("function startDataSyncBoardUpdates()") &&
+    admin.includes("row.last_error_summary") &&
+    admin.includes("row.today_calls") &&
+    admin.includes("row.daily_limit") &&
+    admin.includes("row.last_success_at") &&
+    admin.includes("dataSyncBoardBusy.has") &&
+    admin.includes('"/api/admin/datasync-board/action"') &&
+    admin.includes("실패·오래됨·일시중단") &&
+    admin.includes("다시 실행") &&
+    ["is-done","is-running","is-waiting","is-stale","is-failed","is-paused","is-unknown"]
+      .every(state => admin.includes(state)),
+  "현재 통합 동기화 보드의 상태·한도·최근 오류·중복 실행 방지·재실행 기능이 없습니다.",
 );
 
 expect(
@@ -59,6 +62,8 @@ const projectBlock = repl.slice(
 );
 expect(
   !projectBlock.includes('args = "Fast Sync"') &&
+    !projectBlock.includes('args = "Backfill Retry"') &&
+    !projectBlock.includes('args = "Fill PK"') &&
     !projectBlock.includes('args = "Merge Dev→Prod (실제반영)"') &&
     !projectBlock.includes('args = "Backfill General Lodging"') &&
     !projectBlock.includes('args = "정기 API 통합 동기화"'),

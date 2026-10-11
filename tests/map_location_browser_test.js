@@ -319,14 +319,13 @@ async function run() {
     await favoriteChip.click();
     await page.waitForURL(`**/building/${BUILDING_ID}`);
     await page.locator("#bMapBtn").waitFor({ state: "visible" });
-    // Selecting a favorite legitimately collapses the search panel on mobile.
-    // Establish this scenario's open-panel precondition without toggling blindly.
-    await openSearchPanel();
-
+    // The mobile detail owns the viewport. Its search toggle is intentionally
+    // hidden; reopening it is not an available user action in this state.
     expect(
-      !(await page.locator(".map-searchbar").evaluate((element) => element.classList.contains("collapsed"))),
-      "지도위치 클릭 전 검색 패널을 열지 못했습니다.",
+      await page.locator(".map-searchbar").evaluate((element) => element.classList.contains("collapsed")),
+      "관심단지 선택 후 상세 화면의 검색 패널이 접히지 않았습니다.",
     );
+    expect(!(await page.locator("#btnToggleSearch").isVisible()), "모바일 상세 화면에서 검색 토글이 숨겨지지 않았습니다.");
 
     await page.locator("#bMapBtn").click();
     await page.waitForURL((url) => url.pathname === "/");
@@ -339,6 +338,11 @@ async function run() {
       "지도위치 클릭 후 검색 패널이 닫히지 않았습니다.",
     );
     const targetMarker = page.locator(`.map-location-target[data-map-building-id="${BUILDING_ID}"]`);
+    // A layer swap briefly keeps the fading old overlay alongside the new one.
+    // Wait for its removal, not just the first appearance of a target class.
+    await page.waitForFunction((buildingId) =>
+      document.querySelectorAll(`.map-location-target[data-map-building-id="${buildingId}"]`).length === 1,
+    BUILDING_ID);
     await targetMarker.waitFor({ state: "visible" });
     await page.locator('[data-map-building-id="202"]').waitFor({ state: "visible" });
     expect(
@@ -349,6 +353,7 @@ async function run() {
     await targetMarker.click();
     await page.waitForURL(`**/building/${BUILDING_ID}`);
     await page.locator("#bHeaderCard").getByText(BUILDING_NAME).waitFor({ state: "visible" });
+    await page.waitForFunction(() => document.querySelectorAll(".map-location-target").length === 0);
     expect(
       await page.locator(".map-location-target").count() === 0,
       "점멸 포인트 클릭 후 지도위치 강조가 해제되지 않았습니다.",
@@ -360,7 +365,11 @@ async function run() {
       document.querySelectorAll(`.map-location-target[data-map-building-id="${buildingId}"]`).length === 1,
     BUILDING_ID);
     await page.locator(`.map-location-target[data-map-building-id="${BUILDING_ID}"]`)
+      .first()
       .waitFor({ state: "visible" });
+    await page.waitForFunction((buildingId) =>
+      document.querySelectorAll(`.map-location-target[data-map-building-id="${buildingId}"]`).length === 1,
+    BUILDING_ID);
 
     await openSearchPanel();
     const recentChip = page.locator("#recentChips .recent-search-chip").filter({ hasText: BUILDING_NAME });

@@ -25,3 +25,13 @@ point disappear and leaves users without visual context or an easy way back.
 **How to apply:** Center and zoom to the selected coordinates, reload the normal
 viewport marker set without the text-search term, then apply selection styling
 by building ID. Never use a target-only buildings-geo request for this action.
+
+Map-location highlighting ends when the user opens the selected detail.
+Automatic detail centering must not restart that highlight.
+
+**Why:** A late detail response can otherwise undo the marker click's clear
+action and leave the selected point blinking behind the reopened detail.
+
+**How to apply:** Keep explicit return-to-map highlighting separate from
+automatic centering. Browser checks must await layer-swap removal before exact
+marker counts: fading old and replacement overlays temporarily coexist.
