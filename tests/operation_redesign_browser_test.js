@@ -1,6 +1,9 @@
 const { chromium } = require("playwright");
 const { execFileSync } = require("child_process");
 const fs = require("fs");
+const path = require("path");
+const screenshotDir = process.env.HOMENSTAY_OFFLINE_ARTIFACT_DIR ||
+  path.resolve(".local/suite-audit/operation-screenshots");
 
 const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:5000";
 const BUILDING_ID = 101;
@@ -439,12 +442,12 @@ async function run() {
     await valueFromLabel(page, "occ", 66);
 
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
-      fs.mkdirSync("screenshots", { recursive: true });
+      fs.mkdirSync(screenshotDir, { recursive: true });
       await awaitScreenshotFonts(page);
-      await page.screenshot({ path: "screenshots/operation-desktop-1280.png", fullPage: true });
-      await page.locator("#operationSliders").screenshot({ path: "screenshots/operation-slider-controls-1280.png" });
+      await page.screenshot({ path: path.join(screenshotDir, "operation-desktop-1280.png"), fullPage: true });
+      await page.locator("#operationSliders").screenshot({ path: path.join(screenshotDir, "operation-slider-controls-1280.png") });
       await page.locator(".operation-results-column").screenshot({
-        path: "screenshots/slider-operation-verdict-1280.png",
+        path: path.join(screenshotDir, "slider-operation-verdict-1280.png"),
       });
     }
     const adrTrack = page.locator('[data-operation-slider="adr"]');
@@ -604,13 +607,26 @@ async function run() {
     const mobileReleasedOcc = Number(await page.locator("#operationOcc").inputValue());
     expect(mobileHeldOcc >= 69 && mobileReleasedOcc === mobileHeldOcc,
       `모바일 실제 터치에서 + 반복·해제가 되지 않았습니다: 66→${mobileHeldOcc}→${mobileReleasedOcc}`);
+    await valueFromLabel(page, "occ", 66);
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: mobileOccBox.x + mobileOccBox.width / 2,
+        y: mobileOccBox.y + mobileOccBox.height / 2, id: 2 }],
+    });
+    await page.waitForTimeout(750);
+    await touchSession.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+    const cancelledOcc = Number(await page.locator("#operationOcc").inputValue());
+    await page.waitForTimeout(400);
+    expect(cancelledOcc >= 69 &&
+      Number(await page.locator("#operationOcc").inputValue()) === cancelledOcc,
+      "모바일 실제 touchCancel 이후 반복 증가가 멈추지 않았습니다.");
     await touchSession.send("Emulation.setTouchEmulationEnabled", { enabled: false });
     await touchSession.detach();
     await valueFromLabel(page, "occ", 66);
     if (process.env.SKIP_OPERATION_SCREENSHOTS !== "1") {
       await awaitScreenshotFonts(page);
-      await page.screenshot({ path: "screenshots/operation-mobile-360.png", fullPage: true });
-      await page.locator("#operationSliders").screenshot({ path: "screenshots/operation-slider-controls-360.png" });
+      await page.screenshot({ path: path.join(screenshotDir, "operation-mobile-360.png"), fullPage: true });
+      await page.locator("#operationSliders").screenshot({ path: path.join(screenshotDir, "operation-slider-controls-360.png") });
     }
 
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());

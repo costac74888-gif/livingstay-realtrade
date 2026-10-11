@@ -124,15 +124,32 @@
     });
   }
 
+  var activeStepStops = new Set();
+  var releaseBound = false;
+  function stopActiveSteps() {
+    activeStepStops.forEach(function (stop) { stop(); });
+  }
   function bindStepButtons(container, onStep) {
     if (!container) return;
+    if (!releaseBound) {
+      releaseBound = true;
+      // The release may target another element or a replacement DOM node.
+      ["pointerup", "pointercancel", "touchend", "touchcancel", "blur"].forEach(function (type) {
+        window.addEventListener(type, stopActiveSteps, true);
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) stopActiveSteps();
+      });
+    }
     Array.prototype.forEach.call(container.querySelectorAll("[data-slider-step]"), function (button) {
       var delayTimer = 0, repeatTimer = 0, repeating = false;
+      var pointerActivation = false;
       function stopRepeating() {
         window.clearTimeout(delayTimer);
         window.clearInterval(repeatTimer);
         delayTimer = repeatTimer = 0;
         repeating = false;
+        activeStepStops.delete(stopRepeating);
       }
       function step() {
         if (button.disabled || onStep(button) === false) stopRepeating();
@@ -140,7 +157,9 @@
       button.addEventListener("pointerdown", function (event) {
         if (event.button != null && event.button !== 0) return;
         stopRepeating();
+        pointerActivation = true;
         repeating = true;
+        activeStepStops.add(stopRepeating);
         step();
         if (!repeating || button.disabled) return;
         delayTimer = window.setTimeout(function () {
@@ -154,10 +173,18 @@
       ["pointerup", "pointerleave", "pointercancel", "lostpointercapture"].forEach(function (type) {
         button.addEventListener(type, stopRepeating);
       });
+      button.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") pointerActivation = false;
+      });
       button.addEventListener("click", function (event) {
-        // Pointer activation already stepped on pointerdown. detail === 0 is
-        // the native keyboard activation path (Enter/Space).
-        if (event.detail === 0) step();
+        // Touch compatibility clicks can also have detail === 0. They must
+        // not add a second increment after the already handled pointer press.
+        if (pointerActivation) {
+          pointerActivation = false;
+          return;
+        }
+        if (event.detail === 0 && !event.pointerType &&
+            !(event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents)) step();
       });
     });
   }

@@ -20,7 +20,22 @@ main 병합·운영 게시는 승인 범위 밖이며 기존 Gate를 유지한�
 
 수정 전 기존 브라우저 검사도 이번 실행에서는 PASS였다.
 과거 터치 해제 오류를 항상 재현되는 제품 결함이라고 단정하지 않는다.
-취소·화면 이탈·터치 후 호환 클릭을 포함한 추가 검증과 수정은 진행 중이다.
+추가한 결정적 검사에서는 수정 전 터치 호환 클릭이 1→2로 중복 증가했고,
+버튼 밖 해제·취소 이후 타이머가 2→4로 증가했다.
+
+- 포인터 활성화와 키보드 활성화를 분리해 터치 호환 클릭의 추가 증가를
+  차단했다. detail=0만으로 키보드 클릭이라고 판단하지 않는다.
+- 버튼 자체뿐 아니라 전역 pointerup/cancel, touchend/cancel, blur,
+  문서 숨김에서 활성 반복을 종료한다. 전역 listener는 한 번만 등록하고
+  종료된 버튼의 반복 callback은 활성 목록에서 제거한다.
+- 새 7개 경계 검사 PASS. 기존 운영분석 브라우저 검사에 실제 CDP
+  touchCancel 뒤 400ms 값 유지 검증을 추가했다. 기존 touchEnd·PC
+  반복·키보드·직접입력·슬라이더 assertion은 유지했다.
+- 실행: `python tests/run_offline_suite.py --only operation_redesign_browser_test.js --only slider_utils_test.js --only analysis_slider_step_controls_test.js --only slider_release_boundary_test.js --results .local/suite-audit/approved-mobile-fixed`
+- 결과: 네 체크 PASS. 수정 전 실패 로그와 수정 후 로그를 모두 보존했다.
+- 캡처를 `.local` 검사 산출물로 분리했다. 저장소의 원래 PNG 기준선을
+  덮어쓰지 않는다. 화면의 계정·자료·SDK는 가상 fixture이며 실제
+  소셜 로그인·공급자 연동 검증으로 해석하지 않는다.
 
 ## 3. 전체 회귀·통합 Preview·Toss
 
