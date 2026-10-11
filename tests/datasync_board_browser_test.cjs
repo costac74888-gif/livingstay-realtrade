@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Exercise the real new admin block offline; no auth bypass or provider calls. */
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
@@ -104,8 +105,8 @@ fixture.rows[0].last_error_summary = '<script>window.BAD=1</script>';
       assert.ok((await page.evaluate(()=>window.intervals)).every(i=>i.ms>=60000));
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1), false);
       assert.ok(await page.locator(".ds-board-scroll").evaluate(n=>n.scrollWidth>=n.clientWidth));
-      if (width===1280) await page.screenshot({path:"/tmp/datasync-board-desktop.jpg",type:"jpeg",quality:75});
-      if (width===390) await page.screenshot({path:"/tmp/datasync-board-mobile.jpg",type:"jpeg",quality:75});
+      if (width===1280) await page.screenshot({path:artifactPath("/tmp/datasync-board-desktop.jpg"),type:"jpeg",quality:75});
+      if (width===390) await page.screenshot({path:artifactPath("/tmp/datasync-board-mobile.jpg"),type:"jpeg",quality:75});
       await page.locator(".ds-board-refresh").click();
       await page.evaluate(()=>window.requests.shift()({ok:false,status:503}));
       await page.locator(".ds-board-error.is-visible").waitFor();

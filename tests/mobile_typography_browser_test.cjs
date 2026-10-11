@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Real page rendering with read-only intercepted fixture APIs; never collect,
  * log in, send notifications, or persist test data. */
 const { chromium } = require("playwright");
@@ -99,7 +100,7 @@ async function main() {
     executablePath: execFileSync("which", ["chromium"], { encoding: "utf8" }).trim(),
     args: ["--no-sandbox"],
   });
-  fs.mkdirSync("screenshots/mobile-typography", { recursive: true });
+  fs.mkdirSync(artifactPath("screenshots/mobile-typography"), { recursive: true });
   try {
     for (const width of [360, 390, 430, 1280]) {
       const page = await browser.newPage({
@@ -141,7 +142,7 @@ async function main() {
       if (width === 390) {
         await page.evaluate(() => document.fonts.ready);
         await page.screenshot({
-          path: "screenshots/mobile-typography/auction-list-390.png", fullPage: true,
+          path: artifactPath("screenshots/mobile-typography/auction-list-390.png"), fullPage: true,
         });
       }
       await addressToggle.focus();
@@ -173,7 +174,7 @@ async function main() {
         if (width === 390) {
           await page.evaluate(() => document.fonts.ready);
           await page.waitForTimeout(250);
-          await page.screenshot({ path: `screenshots/mobile-typography/${panel}-390.png` });
+          await page.screenshot({ path: artifactPath(`screenshots/mobile-typography/${panel}-390.png`) });
         }
       }
       if (width < 768) {

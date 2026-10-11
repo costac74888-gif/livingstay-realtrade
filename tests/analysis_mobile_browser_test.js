@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 const fs = require("fs");
 const { execFileSync } = require("child_process");
 const { chromium } = require("playwright");
@@ -28,7 +29,7 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
   await page.emulateMedia({ media: "print" });
   if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
-    await page.locator("#printReport").screenshot({ path: `screenshots/analysis-report-${mode}.png` });
+    await page.locator("#printReport").screenshot({ path: artifactPath(`screenshots/analysis-report-${mode}.png`) });
   }
   const report = await page.evaluate((mode) => ({
     display: getComputedStyle(document.getElementById("printReport")).display,
@@ -68,13 +69,13 @@ async function expectSinglePageReport(page, mode, titleText, graphRequired) {
   }), mode);
   const pdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
   if (process.env.CAPTURE_RENTAL_REPORT && mode === "rental") {
-    fs.writeFileSync(process.env.CAPTURE_RENTAL_REPORT + ".pdf", pdf);
+    fs.writeFileSync(artifactPath(process.env.CAPTURE_RENTAL_REPORT + ".pdf"), pdf);
   }
   if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
-    fs.writeFileSync(`screenshots/analysis-report-${mode}.pdf`, pdf);
+    fs.writeFileSync(artifactPath(`screenshots/analysis-report-${mode}.pdf`), pdf);
   }
   if (process.env.SAVE_OPERATION_PRINT && mode === "operation") {
-    fs.writeFileSync(process.env.SAVE_OPERATION_PRINT, pdf);
+    fs.writeFileSync(artifactPath(process.env.SAVE_OPERATION_PRINT), pdf);
   }
   const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
   await page.emulateMedia({ media: "screen" });
@@ -546,7 +547,7 @@ async function run() {
     if (width === 1280) {
        if (process.env.CAPTURE_PROPERTY_DESKTOP === "1") {
          await prepareCaptureFont(page);
-         await page.screenshot({ path: "/tmp/analysis-property-desktop.png", fullPage: true });
+         await page.screenshot({ path: artifactPath("/tmp/analysis-property-desktop.png"), fullPage: true });
        }
        const reportLayout = await page.evaluate(() => ({
          duplicatePhoto: getComputedStyle(document.querySelector("#detailCard .detail-photo")).display,
@@ -637,7 +638,7 @@ async function run() {
         && offer.market.color === "#eb6834" && offer.url.includes("p_purchase=3600"),
       `제시 매수가와 시장가격 점을 별도로 비교하지 못했습니다: ${JSON.stringify(offer)}`);
       if (process.env.CAPTURE_PROPERTY_DESKTOP === "1") {
-        await page.screenshot({ path: "/tmp/analysis-property-offer.png", fullPage: true });
+        await page.screenshot({ path: artifactPath("/tmp/analysis-property-offer.png"), fullPage: true });
       }
       await page.locator("#propertyLoanSlider").fill("30");
       const loan = await page.evaluate(() => ({
@@ -958,7 +959,7 @@ async function run() {
     "운영분석의 회색 비교점 또는 선택 건물의 큰 점멸 표시가 없습니다.");
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
       await prepareCaptureFont(page);
-      await page.screenshot({ path: "screenshots/analysis-screen-operation.png", fullPage: true });
+      await page.screenshot({ path: artifactPath("screenshots/analysis-screen-operation.png"), fullPage: true });
     }
     await expectSinglePageReport(page, "operation", "숙박운영분석", true);
     expect(await page.locator(".analysis-mode-bar").isVisible(),
@@ -1181,7 +1182,7 @@ async function run() {
       });
       rentalDesktopLayouts.push({ width, ...rentalColumns });
       if (process.env.CAPTURE_RENTAL_DESKTOP && width === 1280) {
-        await page.locator("#rentalAnalysis").screenshot({ path: process.env.CAPTURE_RENTAL_DESKTOP });
+        await page.locator("#rentalAnalysis").screenshot({ path: artifactPath(process.env.CAPTURE_RENTAL_DESKTOP) });
       }
     }
     await page.setViewportSize({ width: 320, height: 720 });
@@ -1190,7 +1191,7 @@ async function run() {
       `임대수익 조건·그래프와 우측 결과 열의 하단이 맞지 않습니다: ${JSON.stringify(rentalDesktopLayouts)}`);
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
       await prepareCaptureFont(page);
-      await page.screenshot({ path: "screenshots/analysis-screen-rental.png", fullPage: true });
+      await page.screenshot({ path: artifactPath("screenshots/analysis-screen-rental.png"), fullPage: true });
     }
     await expectSinglePageReport(page, "rental", "임대수익분석", false);
     await page.click("#propertyTab");
@@ -1401,12 +1402,12 @@ async function run() {
       "실거래 추이 카드의 개별 면적 선택이 공통 전용면적을 덮어썼습니다.");
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
       await prepareCaptureFont(page);
-      await page.screenshot({ path: "screenshots/analysis-screen-property.png", fullPage: true });
+      await page.screenshot({ path: artifactPath("screenshots/analysis-screen-property.png"), fullPage: true });
     }
     await page.evaluate(() => window.livingstayRenderAnalysisPrintReport());
     await page.emulateMedia({ media: "print" });
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
-      await page.locator("#printReport").screenshot({ path: "screenshots/analysis-report-property.png" });
+      await page.locator("#printReport").screenshot({ path: artifactPath("screenshots/analysis-report-property.png") });
     }
     const printReport = await page.evaluate(() => {
       const report = document.getElementById("printReport");
@@ -1429,7 +1430,7 @@ async function run() {
     });
     const printPdf = await page.pdf({ format: "A4", printBackground: true, displayHeaderFooter: false });
     if (process.env.SAVE_ANALYSIS_SCREENSHOTS === "1") {
-      fs.writeFileSync("screenshots/analysis-report-property.pdf", printPdf);
+      fs.writeFileSync(artifactPath("screenshots/analysis-report-property.pdf"), printPdf);
     }
     const printPageCount = (printPdf.toString("latin1").match(/\/Type\s*\/Page\b/g) || []).length;
     expect(printReport.display === "block" && printReport.mode === "property"

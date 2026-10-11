@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Public navigation and visual checks only: no accounts, mutations or API collection. */
 const { chromium } = require("playwright");
 const { execFileSync } = require("node:child_process");
@@ -10,7 +11,7 @@ async function main() {
     args: ["--no-sandbox"],
   });
   const origin = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  fs.mkdirSync("attached_assets/auction-list-return", { recursive: true });
+  fs.mkdirSync(artifactPath("attached_assets/auction-list-return"), { recursive: true });
   try {
     for (const width of [390, 1280]) {
       const page = await browser.newPage({ viewport: { width, height: 900 }, ignoreHTTPSErrors: true,
@@ -58,7 +59,7 @@ async function main() {
       assert.ok(await picture.isVisible());
       await page.locator("#bTabAuctions").click();
       await page.evaluate(() => document.fonts.ready);
-      await page.screenshot({ path: `attached_assets/auction-list-return/detail-${width}.png`, animations: "disabled" });
+      await page.screenshot({ path: artifactPath(`attached_assets/auction-list-return/detail-${width}.png`), animations: "disabled" });
       const assertRestored = async () => {
         await page.locator(".auction-row").first().waitFor();
         assert.equal(page.url(), original.url);

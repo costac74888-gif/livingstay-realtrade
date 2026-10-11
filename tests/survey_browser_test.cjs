@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Public pages use real HTTP. UI submissions use intercepted test responses;
    real SQL behaviour is covered by rollback-only test_survey.py. No auth bypass. */
 const {chromium} = require("playwright");
@@ -17,7 +18,7 @@ try:
 finally: c.close()`));
   const browser = await chromium.launch({executablePath:execFileSync("which",["chromium"],{encoding:"utf8"}).trim(),args:["--no-sandbox"]});
   const userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
-  fs.mkdirSync("attached_assets/auction-phase2", {recursive:true});
+  fs.mkdirSync(artifactPath("attached_assets/auction-phase2"), {recursive:true});
   let temporaryAdmin = null;
   try {
     const viewports=process.argv.includes("--admin-only")?[]:[["desktop",1440],["mobile",390]];
@@ -40,9 +41,9 @@ finally: c.close()`));
           .filter(({node,rect})=>rect.width>0&&rect.right>innerWidth+1&&getComputedStyle(node).position!=="absolute")
           .slice(0,12).map(({node,rect})=>({id:node.id,tag:node.tagName,className:node.className,right:rect.right,width:rect.width}))
       }));
-      if(overflow.scrollWidth>width+1)await page.screenshot({path:`attached_assets/auction-phase2/overflow-${label}.png`});
+      if(overflow.scrollWidth>width+1)await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/overflow-${label}.png`)});
       assert.ok(overflow.scrollWidth<=width+1,JSON.stringify(overflow));
-      await page.screenshot({path:`attached_assets/auction-phase2/detail-${label}.png`,fullPage:true});
+      await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/detail-${label}.png`),fullPage:true});
       await page.click(".survey-apply");
       await page.locator("#surveyRequestForm").waitFor();
       const sizes=await page.locator(".survey-report-item span").evaluateAll(nodes=>nodes.map(node=>({
@@ -58,8 +59,8 @@ finally: c.close()`));
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await page.evaluate(()=>document.fonts.ready);
       await page.locator(".survey-drawer-content").evaluate(node=>{node.scrollTop=0;});
-      await page.screenshot({path:`attached_assets/auction-phase2/form-${label}.png`,fullPage:true});
-      await page.locator(".survey-report-items").screenshot({path:`attached_assets/auction-phase2/scope-${label}.png`});
+      await page.screenshot({path:artifactPath(`attached_assets/auction-phase2/form-${label}.png`),fullPage:true});
+      await page.locator(".survey-report-items").screenshot({path:artifactPath(`attached_assets/auction-phase2/scope-${label}.png`)});
       let posted = null;
       await page.route(`**/api/auctions/${id}/survey-requests`, async route=>{
         posted=route.request().postDataJSON();
@@ -107,7 +108,7 @@ finally:c.close()`));
     await page.waitForURL(/\/admin$/);
     await page.locator(".action-center-counts").waitFor();
     assert.ok(await page.getByText(/신규 현황조사 신청 [\d,]+건/).count());
-    await page.screenshot({path:"attached_assets/auction-phase2/admin-summary-desktop.png",fullPage:true});
+    await page.screenshot({path:artifactPath("attached_assets/auction-phase2/admin-summary-desktop.png"),fullPage:true});
     const requestListResponse=page.waitForResponse(response=>response.url().includes("/api/admin/survey/requests?"));
     await page.click('[data-menu="admin-survey"]');
     const requestList=await (await requestListResponse).json();
@@ -115,7 +116,7 @@ finally:c.close()`));
     await page.waitForFunction(()=>!document.getElementById("asRequestResults")?.textContent.includes("불러오는 중"));
     if(requestList.items.length)await page.locator("#asContent .as-table").waitFor();
     else assert.ok((await page.locator("#asRequestResults").textContent()).includes("신청이 없습니다"));
-    await page.screenshot({path:"attached_assets/auction-phase2/admin-requests-desktop.png",fullPage:true});
+    await page.screenshot({path:artifactPath("attached_assets/auction-phase2/admin-requests-desktop.png"),fullPage:true});
     await page.locator('[data-as-tab="settings"]').waitFor();
     await page.click('[data-as-tab="settings"]');
     await page.locator("#as-base_fee").waitFor();
@@ -126,10 +127,10 @@ finally:c.close()`));
     await page.addStyleTag({url:"https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap"});
     await page.addStyleTag({content:"body,input,textarea,button{font-family:'Noto Sans KR',sans-serif!important}"});
     await page.evaluate(()=>document.fonts.ready);
-    await page.screenshot({path:"attached_assets/auction-phase2/admin-settings-desktop.png",fullPage:true});
+    await page.screenshot({path:artifactPath("attached_assets/auction-phase2/admin-settings-desktop.png"),fullPage:true});
     await page.setViewportSize({width:390,height:900});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-    await page.screenshot({path:"attached_assets/auction-phase2/admin-settings-mobile.png",fullPage:true});
+    await page.screenshot({path:artifactPath("attached_assets/auction-phase2/admin-settings-mobile.png"),fullPage:true});
     const put=page.waitForRequest(r=>r.url().endsWith("/api/admin/survey/settings") && r.method()==="PUT");
     await page.route("**/api/admin/survey/settings",async route=>{
       if(route.request().method()==="PUT") await route.fulfill({status:200,contentType:"application/json",body:'{"ok":true}'});

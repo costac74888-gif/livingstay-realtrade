@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Real board UI, synthetic saved evidence, network blocked on every viewport. */
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
@@ -95,7 +96,7 @@ print(json.dumps(build_board(meta,now=now,enabled={"rtms":True},relay_snapshot=s
       assert.ok((await page.evaluate(()=>window.intervals)).every(ms=>ms>=60000));
       assert.deepEqual(await page.evaluate(()=>window.calls),["/api/admin/datasync-board"]);
       assert.deepEqual(errors,[]);
-      await page.screenshot({path:`/tmp/datasync-advice-${width}.jpg`,type:"jpeg",quality:75});
+      await page.screenshot({path:artifactPath(`/tmp/datasync-advice-${width}.jpg`),type:"jpeg",quality:75});
       await context.close();
     }
     console.log("PASS phase 3 offline desktop/mobile: 24 rows, verdict colors, counts, local scope, 5-step manual guidance, row/keyboard navigation, >=36px advice button, targeted update, XSS, no settings form/probes");

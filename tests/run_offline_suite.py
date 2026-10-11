@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from offline_support.process_runner import run_check
 from offline_support.legacy_runtime import legacy_runtime
+from offline_support.source_preservation import new_run_directory, SourcePreservation
 from hs2_harness.isolated_browser import FIXTURE_CHECKS as BROWSER_CHECKS
 from hs2_harness.isolated_postgres import FIXTURE_CHECKS as DB_CHECKS
 from hs2_harness import core
@@ -98,6 +99,9 @@ def discover_checks():
 
 
 def execute(name, command, timeout, logfile):
+    artifact_dir = (logfile.parent / "captures" / name
+                    if logfile.parent.resolve().is_relative_to(ROOT / "generated-artifacts")
+                    else new_run_directory() / name)
     if name in PURE_UNIT_CHECKS:
         # App integration tests leave enrichment workers running. Pure parser
         # checks need a private process so those workers cannot consume mocks.
@@ -107,7 +111,8 @@ def execute(name, command, timeout, logfile):
     for key, (filename, _screen) in BROWSER_CHECKS.items():
         if name == Path(filename).name:
             from hs2_harness.isolated_browser import run_check as browser_check
-            result = browser_check(key, {"file": filename}, timeout)
+            result = browser_check(key, {"file": filename}, timeout,
+                                   artifact_dir=artifact_dir)
             shutil.copyfile(ROOT / result["log"], logfile)
             return result
     for key, filename in DB_CHECKS.items():
@@ -129,7 +134,7 @@ def execute(name, command, timeout, logfile):
             command = [*command, "--junitxml=" + str(logfile.with_suffix(".xml"))]
         with legacy_runtime(logfile.with_suffix(".fixture.log"),
                             browser=command[0] == "node") as env:
-            env["HOMENSTAY_OFFLINE_ARTIFACT_DIR"] = str(logfile.parent / "artifacts" / name)
+            env["HOMENSTAY_OFFLINE_ARTIFACT_DIR"] = str(artifact_dir)
             result = run_check(command, cwd=env["HOMENSTAY_LEGACY_WORKSPACE"]
                              if name in {"smoke_test.py", "api_test.py"} else ROOT,
                              env=env, timeout=timeout, logfile=logfile)
@@ -173,7 +178,8 @@ def main():
         raise SystemExit("Offline suite cancelled; cleaning up active check")
     signal.signal(signal.SIGTERM, cancel_suite)
     parser = argparse.ArgumentParser()
-    parser.add_argument("--results", type=Path, default=ROOT / ".local/suite-audit/after")
+    parser.add_argument("--results", type=Path, default=ROOT / "generated-artifacts/offline-suite",
+                        help="Parent inside generated-artifacts; each invocation creates a new run")
     parser.add_argument("--only", action="append", help="Exact check name; may be repeated")
     parser.add_argument("--timeout", type=float, default=300,
                         help="Deadline per check (seconds), never a pass on expiry")
@@ -185,13 +191,20 @@ def main():
         if unknown:
             parser.error(f"Unknown checks: {sorted(unknown)}")
         entries = [(name, cmd) for name, cmd in entries if name in args.only]
-    args.results.mkdir(parents=True, exist_ok=True)
+    args.results = new_run_directory(args.results)
+    print("SUITE_RUN_DIR: " + str(args.results), flush=True)
+    with SourcePreservation(args.results):
+        return execute_entries(entries, args)
+
+
+def execute_entries(entries, args):
     results = []
     for name, command in entries:
         print("RUN " + name, flush=True)
         logfile = args.results / (name.replace("/", "_") + ".log")
         result = execute(name, command, args.timeout, logfile)
         result.update(name=name, log=os.path.relpath(logfile, ROOT),
+                      capture_dir=os.path.relpath(args.results / "captures" / name, ROOT),
                       deadline_seconds=args.timeout,
                       failure_kind=failure_kind(result, logfile))
         results.append(result)

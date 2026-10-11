@@ -30,7 +30,7 @@ FIXTURE_CHECKS = {
 }
 
 
-def run_check(name,check,timeout):
+def run_check(name,check,timeout,artifact_dir=None):
     entry = FIXTURE_CHECKS.get(name)
     if not entry or check["file"] != entry[0]:raise core.GateError("Unreviewed browser capability")
     test_file, screen = entry
@@ -38,6 +38,8 @@ def run_check(name,check,timeout):
     start=time.monotonic();code=125
     with tempfile.TemporaryDirectory(prefix="hs2-browser-") as temp,log.open("w") as output, ExitStack() as stack:
         root=Path(temp);env=core.test_env(root);fixture=None;child=None
+        if artifact_dir is not None:
+            env["HOMENSTAY_OFFLINE_ARTIFACT_DIR"] = str(artifact_dir)
         env["HS2_FIXTURE_SCREEN"] = screen
         try:
             if screen in {"listings", "calendar", "supermap", "details", "bookings", "finance", "dashboard", "workspace", "admin","mobile"}:
@@ -66,6 +68,9 @@ def run_check(name,check,timeout):
             # Ordinary Node suite guard unchanged. Specialized guard permits ONLY
             # this parent's literal loopback and exact Chromium executable.
             env["NODE_OPTIONS"]="--require="+str(core.ROOT/"hs2_harness/isolated_guard/browser.cjs")
+            if screen == "admin":
+                env["NODE_OPTIONS"] += " --require=" + str(
+                    core.ROOT / "tests/offline_support/capture_preload.cjs")
             child=subprocess.Popen(["node",test_file],cwd=core.ROOT,env=env,stdout=output,
                                    stderr=subprocess.STDOUT,start_new_session=True)
             code=child.wait(timeout=timeout)

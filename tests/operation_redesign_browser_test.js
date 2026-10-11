@@ -1,9 +1,9 @@
+const { artifactDirectory } = require("./offline_support/capture_artifacts.cjs");
 const { chromium } = require("playwright");
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const screenshotDir = process.env.HOMENSTAY_OFFLINE_ARTIFACT_DIR ||
-  path.resolve(".local/suite-audit/operation-screenshots");
+const screenshotDir = artifactDirectory();
 
 const BASE_URL = process.env.BASE_URL || "http://127.0.0.1:5000";
 const BUILDING_ID = 101;

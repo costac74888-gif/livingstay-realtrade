@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Real HTTP/DOM verification. Does not bypass auth or submit memberships/favorites. */
 const { chromium } = require("playwright");
 const assert = require("node:assert/strict");
@@ -82,7 +83,7 @@ const fs = require("node:fs");
     assert.equal(await page.locator(".auction-map-marker-bottom").first().evaluate(node=>getComputedStyle(node).backgroundColor),
       "rgb(61, 89, 72)");
     console.log("PASS live Kakao map: auction marker layer at individual-marker zoom");
-    fs.mkdirSync("attached_assets/auction-integrated",{recursive:true});
+    fs.mkdirSync(artifactPath("attached_assets/auction-integrated"),{recursive:true});
     for(const [label,width] of [["desktop",1280],["mobile",390]]){
       await page.setViewportSize({width,height:900});
       if(width===390)await page.evaluate(()=>window.livingstaySetPanelToggle(false));
@@ -101,12 +102,12 @@ const fs = require("node:fs");
       assert.ok(a.y+a.height<b.y,"Box must not cover the independently clickable building point");
       assert.ok(["진행","예정"].includes((await box.locator(".auction-map-marker-status").textContent()).trim()));
       await page.evaluate(()=>document.fonts.ready);
-      await page.screenshot({path:`attached_assets/auction-integrated/map-${label}.png`});
+      await page.screenshot({path:artifactPath(`attached_assets/auction-integrated/map-${label}.png`)});
       await box.click();
       await page.waitForFunction(()=>document.getElementById("bTabAuctions")?.getAttribute("aria-selected")==="true");
       await page.locator(".auction-panel-general").waitFor();
       assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
-      await page.screenshot({path:`attached_assets/auction-integrated/panel-${label}.png`});
+      await page.screenshot({path:artifactPath(`attached_assets/auction-integrated/panel-${label}.png`)});
       await page.evaluate(()=>window.livingstaySetPanelToggle(false));
       // Mobile may show the restored list panel; hide it with its existing toggle.
       if(width===390)await page.evaluate(()=>window.livingstaySetPanelToggle(false));
@@ -151,7 +152,7 @@ const fs = require("node:fs");
     "Unmatched survey deep link changed: "+page.url());
   assert.equal(await page.locator(".b-detail-tab:visible").count(),3);
   assert.equal(await page.locator(".survey-analysis-link").count(),0);
-  await page.screenshot({path:"attached_assets/auction-integrated/unmatched-desktop.png"});
+  await page.screenshot({path:artifactPath("attached_assets/auction-integrated/unmatched-desktop.png")});
   await page.evaluate(id => window.openBuildingDetail(id), sample.master_building_id);
   await page.waitForSelector(".b-auction-active-badge", { timeout: 30000 });
   if (await page.locator("#bTabAuctions").isVisible()) {

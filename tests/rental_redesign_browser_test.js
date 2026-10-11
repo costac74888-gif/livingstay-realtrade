@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 const { chromium } = require("playwright");
 const { execFileSync } = require("child_process");
 const fs = require("fs");
@@ -483,15 +484,15 @@ async function run() {
     await waitForRental(page);
     await page.waitForFunction(() => Number(document.getElementById("rentalMarketPrice").value) === 5000);
 
-    fs.mkdirSync("screenshots", { recursive: true });
+    fs.mkdirSync(artifactPath("screenshots"), { recursive: true });
     await awaitScreenshotFonts(page);
-    await page.screenshot({ path: "screenshots/rental-desktop-1280.png", fullPage: true });
-    await page.locator("#rentalSliders").screenshot({ path: "screenshots/rental-slider-controls-1280.png" });
+    await page.screenshot({ path: artifactPath("screenshots/rental-desktop-1280.png"), fullPage: true });
+    await page.locator("#rentalSliders").screenshot({ path: artifactPath("screenshots/rental-slider-controls-1280.png") });
     await page.locator("#rentalPositioning").screenshot({
-      path: "screenshots/slider-rental-chart-1280.png",
+      path: artifactPath("screenshots/slider-rental-chart-1280.png"),
     });
     await page.locator("#rentalSensitivity").screenshot({
-      path: "screenshots/slider-rental-sensitivity-1280.png",
+      path: artifactPath("screenshots/slider-rental-sensitivity-1280.png"),
     });
 
     await setValueFromLabel(page, "rentalMonthlyRent", 30);
@@ -891,8 +892,8 @@ async function run() {
     expect(await page.evaluate(() => document.activeElement?.id !== "rentalLoanRate"),
       "모바일에서 슬라이더를 터치해도 숫자 입력칸 포커스가 남습니다.");
     await awaitScreenshotFonts(page);
-    await page.screenshot({ path: "screenshots/rental-mobile-360.png", fullPage: true });
-    await page.locator("#rentalSliders").screenshot({ path: "screenshots/rental-slider-controls-360.png" });
+    await page.screenshot({ path: artifactPath("screenshots/rental-mobile-360.png"), fullPage: true });
+    await page.locator("#rentalSliders").screenshot({ path: artifactPath("screenshots/rental-slider-controls-360.png") });
 
     const printReady = await page.evaluate(async () => {
       const map = document.querySelector("#rentalPositioning .positioning-map");

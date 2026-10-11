@@ -184,26 +184,6 @@ Module._load = function(name, ...args) {
     });
     async function routes(context) {
       guardAPI(context.request, ownedOrigin);
-      const artifactRoot = path.resolve(process.env.HOMENSTAY_OFFLINE_ARTIFACT_DIR
-        || path.join(__dirname, "../../..", ".local/suite-audit/browser-artifacts"));
-      function retainGeneratedOutput(page) {
-        for (const method of ["screenshot", "pdf"]) {
-          const original = page[method]?.bind(page);
-          if (!original) continue;
-          page[method] = options => {
-            const root = path.resolve(__dirname, "../../..", "screenshots");
-            const output = options?.path && path.resolve(options.path);
-            if (output && (output === root || output.startsWith(root + path.sep))) {
-              const destination = path.join(artifactRoot, path.relative(root, output));
-              fs.mkdirSync(path.dirname(destination), {recursive: true});
-              options = {...options, path: destination};
-            }
-            return original(options);
-          };
-        }
-      }
-      context.on("page", retainGeneratedOutput);
-      for (const page of context.pages()) retainGeneratedOutput(page);
       await context.route("**/*", route => {
         const url = new URL(route.request().url());
         if (url.hostname === "dapi.kakao.com" && url.pathname === "/v2/maps/sdk.js")

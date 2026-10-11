@@ -1,3 +1,4 @@
+const { artifactDirectory } = require("./offline_support/capture_artifacts.cjs");
 /* Public real-data navigation only; no writes, sign-ins, notifications or collection. */
 const { chromium } = require("playwright");
 const { execFileSync } = require("node:child_process");
@@ -10,7 +11,7 @@ async function main() {
     args: ["--no-sandbox"],
   });
   const origin = process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
-  const output = "attached_assets/auction-detail-navigation";
+  const output = artifactDirectory();
   fs.mkdirSync(output, { recursive: true });
   try {
     for (const width of [390, 1280]) {

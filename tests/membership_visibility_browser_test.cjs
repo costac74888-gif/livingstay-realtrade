@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Real public UI checks. Never signs in, purchases or submits survey requests. */
 const {chromium}=require("playwright");
 const {execFileSync}=require("node:child_process");
@@ -53,7 +54,7 @@ const assert=require("node:assert/strict");
       assert.equal(payload.membership_access.required,true);
       assert.ok(Array.isArray(payload.lodgings));
       await page.locator("#bApprovedRosterOperatingCard").scrollIntoViewIfNeeded();
-      await page.screenshot({path:`attached_assets/membership-preview-${width}.png`,animations:"disabled"});
+      await page.screenshot({path:artifactPath(`attached_assets/membership-preview-${width}.png`),animations:"disabled"});
       await page.locator("#bApprovedRosterOperatingBody a").click();
       await page.waitForURL("**/membership");
       await page.locator("#membershipApp [data-login]").waitFor();

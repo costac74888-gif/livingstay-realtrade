@@ -1,3 +1,4 @@
+const { artifactPath } = require("./offline_support/capture_artifacts.cjs");
 /* Public-only real HTTP/DOM checks; no accounts, notifications or API collection. */
 const { chromium } = require("playwright");
 const { execFileSync } = require("node:child_process");
@@ -85,8 +86,8 @@ async function main() {
         : document.documentElement.scrollWidth <= innerWidth + 1, width));
       assert.deepEqual(errors, []);
       await page.evaluate(()=>document.fonts.ready);
-      require("node:fs").mkdirSync("attached_assets/onbid-list-update",{recursive:true});
-      await page.screenshot({path:`attached_assets/onbid-list-update/list-${width}.png`});
+      require("node:fs").mkdirSync(artifactPath("attached_assets/onbid-list-update"),{recursive:true});
+      await page.screenshot({path:artifactPath(`attached_assets/onbid-list-update/list-${width}.png`)});
       console.log(`PASS ${width}px: Onbid-format rows, upper-right page size, officetel removed, sort/filter/reset/pagination, no overflow/JS errors`);
       if(width===390){
         await page.locator(".auction-property").first().click();

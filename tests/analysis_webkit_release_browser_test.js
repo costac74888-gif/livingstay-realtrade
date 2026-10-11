@@ -1,4 +1,5 @@
 "use strict";
+const { artifactDirectory } = require("./offline_support/capture_artifacts.cjs");
 
 // Safari-engine regression, NOT an iPhone/device certification. WebKit's
 // automation protocol exposes native tap only, not held/cancelled touch.
@@ -15,8 +16,7 @@ const { installApiMocks, valueFromLabel, rentalValueFromLabel } =
 const origin = process.env.OWNED_REGRESSION_ORIGIN || process.env.HOMENSTAY_OWNED_ORIGIN;
 assert.ok(origin && process.env.BASE_URL === origin, "Owned fixture required; no live fallback");
 assert.ok(process.env.NODE_OPTIONS?.includes("browser_guard.cjs"), "Mandatory transport guard required");
-const out = process.env.HOMENSTAY_OFFLINE_ARTIFACT_DIR ||
-  path.resolve(".local/suite-audit/webkit-release");
+const out = artifactDirectory();
 fs.mkdirSync(out, { recursive: true });
 
 async function value(page, input) {
