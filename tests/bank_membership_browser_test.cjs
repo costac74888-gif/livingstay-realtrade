@@ -7,7 +7,17 @@ const assert=require("node:assert/strict");
 const python=code=>execFileSync("python",["-c",code],{encoding:"utf8"}).trim();
 const base=process.env.TEST_BASE_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`;
 const agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
-const json=async r=>{assert.equal(r.status(),200);return r.json()};
+const browserJSON=async(page,route)=>{
+  const result=await page.evaluate(async relative=>{
+    const url=new URL(relative,location.origin);
+    if(url.origin!==location.origin||!url.pathname.startsWith("/api/"))
+      throw new Error("Owned same-origin API required");
+    const response=await fetch(url.href,{credentials:"same-origin",cache:"no-store"});
+    return {status:response.status,body:await response.json()};
+  },route);
+  assert.equal(result.status,200);
+  return result.body;
+};
 
 (async()=>{
   const fixtures=JSON.parse(python(`
@@ -57,7 +67,7 @@ finally:c.close()
       await page.fill("#authPassword",fixtures.members[index].password);
       await page.click("#authSubmit");
       await page.locator("#memberDepositor").waitFor();
-      const me=async()=>json(await page.request.get(base+"/api/membership/me"));
+      const me=async()=>browserJSON(page,"/api/membership/me");
       assert.equal((await me()).status,"inactive");
       await page.fill("#memberDepositor","멤버십 자동검증");
       await page.check('[name="agree_terms"]');
@@ -89,7 +99,7 @@ finally:c.close()
       await page.click("#bTabOperations");
       const requestButton=page.locator("[data-building-membership-check],[data-membership-building-check]");
       await requestButton.waitFor({state:"visible"});
-      const detail=await json(await page.request.get(base+`/api/building/${fixtures.building}`));
+      const detail=await browserJSON(page,`/api/building/${fixtures.building}`);
       assert.equal(detail.membership_access.required,false);
       if(detail.operating_records.length)assert.ok(await page.locator("#bApprovedRosterOperatingBody dl").count()>0);
       await requestButton.click();
@@ -114,7 +124,7 @@ finally:c.close()
       await page.goto(base+"/membership");
       await page.getByText("자동검증 보고서:",{exact:false}).waitFor();
       assert.equal(await page.locator(".member-result").filter({hasText:"미확인"}).count(),2);
-      const auctionList=await json(await page.request.get(base+"/api/auctions?page_size=10"));
+      const auctionList=await browserJSON(page,"/api/auctions?page_size=10");
       assert.ok(auctionList.items.length,"Live auction is needed to verify the paid information zone");
       await page.goto(base+`/?auction=${auctionList.items[0].id}&tab=auction`);
       await page.locator("#bTabAuctions").waitFor({state:"visible"});

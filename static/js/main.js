@@ -3453,7 +3453,6 @@ function financeEmptyHTML(){
 // ── 최근 본 건물 (localStorage, 비로그인 포함) ──────────────────────────────
 const HS_RECENT_KEY = "hs_recent_buildings";
 const HS_RECENT_MAX = 10;
-const HS_RECENT_VISIBLE_MAX = 5;
 
 function trackRecentBuilding(id, name, addr){
   try {
@@ -3470,6 +3469,7 @@ function trackRecentBuilding(id, name, addr){
 }
 
 function renderRecentChips(){
+  const HS_RECENT_VISIBLE_MAX = 5;
   const row = document.getElementById("recentRow");
   const container = document.getElementById("recentChips");
   if (!row || !container) return;
@@ -4273,7 +4273,7 @@ function renderDataLabLodging(data){
            return `<tr class="datalab-sub-row datalab-breakdown-row" data-lodging-breakdown-row="tourism" hidden><td class="datalab-sub-name">${escapeHtml(label)}</td><td>${dataLabNum(buildings)}</td><td>-</td><td>${dataLabNum(businesses)}</td><td>${dataLabNum(rooms)}</td><td>-</td></tr>`;
         }).join("")
       : "";
-    const subRows = row.type === "관광" ? "" : (row.sub_rows || []).map(sub => `
+    const subRows = row.type === "관광" ? tourismSubtypeRows : (row.sub_rows || []).map(sub => `
       <tr class="datalab-sub-row datalab-breakdown-row" data-lodging-breakdown-row="general" hidden>
         <td class="datalab-sub-name">${escapeHtml(sub.type)}</td>
         <td>${dataLabNum(sub.building_count)}</td>
@@ -4295,7 +4295,7 @@ function renderDataLabLodging(data){
         <td>${dataLabNum(row.room_count)}</td>
         <td title="${rateTitle(row)}">${row.report_rate == null ? "-" : `${row.report_rate}%`}</td>
       </tr>`;
-    return base + tourismSubtypeRows + campingSubRows + subRows;
+    return base + campingSubRows + subRows;
   }).join("");
   return `
     <div class="datalab-heading">
@@ -4568,6 +4568,7 @@ async function loadDataLab(key, option = "up", {
   background = false,
   forceRefresh = false,
 } = {}){
+  const DATA_LAB_LODGING_RANK_KEY = "lodging_rank";
   const content = document.getElementById("dataLabContent");
   if (!content) return;
   const wasLodgingRank = dataLabActiveKey === DATA_LAB_LODGING_RANK_KEY;

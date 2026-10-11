@@ -509,7 +509,9 @@
           // GA4: 회원가입 완료 — API 성공 직후, 로그인과 반드시 구분(mode 조건)
           if (mode === "signup" && typeof gtag === "function") gtag("event", "sign_up", { method: "email" });
           closeModal();
-          if (res.data.redirect) { window.location.href = res.data.redirect; }
+          // General-member modal login resumes the action on this page.
+          // Explicit business-role destinations still use their own dashboard.
+          if (res.data.redirect && res.data.redirect !== "/mypage") { window.location.href = res.data.redirect; }
           else {
             refreshMe();
             if (mode === "signup") { showSignupAlertNudge(); }
