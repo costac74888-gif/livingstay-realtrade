@@ -1,3 +1,4 @@
+- [토스 결제수단 유지](payment-provider-choice.md) — 토스로 확정됐으며 다른 공급자로 임의 변경하거나 모의 검사를 실제 토스 검증으로 표시하지 않는다.
 - [전역 rate limit & 봇 관측](global-rate-limit.md) — default 200/min(정적·health 제외, 개별 limit과 별개 카운터); access log 없어 봇 조사는 page_views 테이블(운영 DB)로만 가능.
 - [flask-limiter on Replit](flask-limiter-testing.md) — key rate limits on LEFTMOST X-Forwarded-For (edge strips spoofed XFF); ProxyFix(x_for=1) is wrong (→127.0.0.1, shared counter); memory:// is per-process; --reuse-port can leave orphan master; fixed-window bursts ~2x.
 - [livingstay data/schema quirks](livingstay-data-quirks.md) — master_buildings has sgg_text/umd_nm (NO si_do/sgg_nm); transactions.si_do dirty (서울 vs 서울특별시); umd_nm spacing differs; lodging_type 복합=LIKE '%·%' else exact.
