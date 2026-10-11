@@ -104,6 +104,36 @@ rows=response.get_json()['rows']
 assert not admin_stats_contract_errors(rows,required)
 reference=next(r for r in rows if r['type']=='공매')
 assert NEUTRAL_REFERENCE_FIELDS.keys()<=reference.keys()
+# Adding linked and unlinked auctions may change reference counts, but must
+# never change any lodging row, room/permit metric, or the lodging total.
+def lodging_snapshot(value):
+    return [{k:v for k,v in row.items() if k!='auction_building_count'}
+            for row in value if row['type']!='공매']
+before=lodging_snapshot(rows)
+from db import get_conn
+with get_conn() as conn,conn.cursor() as cur:
+    cur.execute('''SELECT b.id FROM master_buildings b
+        WHERE NOT EXISTS (SELECT 1 FROM auction_items a
+                          WHERE a.master_building_id=b.id)
+        ORDER BY b.id LIMIT 1''')
+    building=cur.fetchone()['id']
+    for item,linked in [('owned-contract-linked',building),
+                        ('owned-contract-unlinked',None)]:
+        cur.execute('''INSERT INTO auction_items
+            (source_item_id,pbct_cdtn_no,title,sale_kind,usage_name,
+             lodging_category,status,bid_start_at,bid_end_at,master_building_id)
+            VALUES(%s,'owned-contract-round','가상 계약 검증','압류재산',
+                   '생활숙박시설','생활숙박','bidding',
+                   NOW()-INTERVAL '1 day',NOW()+INTERVAL '7 days',%s)''',
+            (item,linked))
+after_response=client.get('/api/admin/buildings/full-stats',headers=headers)
+assert after_response.status_code==200
+after_rows=after_response.get_json()['rows']
+assert not admin_stats_contract_errors(after_rows,required)
+assert lodging_snapshot(after_rows)==before,'Auctions changed lodging totals'
+after_reference=next(r for r in after_rows if r['type']=='공매')
+assert after_reference['auction_item_count']==reference['auction_item_count']+2
+assert after_reference['auction_building_count']==reference['auction_building_count']+1
 for key,expected in NEUTRAL_REFERENCE_FIELDS.items():
     changed=copy.deepcopy(rows)
     target=next(r for r in changed if r['type']=='공매')
