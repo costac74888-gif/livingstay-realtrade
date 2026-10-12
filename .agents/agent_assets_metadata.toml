@@ -1228,3 +1228,31 @@ mtime_ms = 1791767686698
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/dcb3949e-6f2a-476b-90cb-b16f6f102b85/60ee7799-98fe-4f79-aa72-2605530d37ce"
 storage_version_token = "1791767724621503"
 content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "UgxrPWG38kIopKHW3fgAS"
+uri = "file://generated-artifacts/hs2-integrated-preview/homenstay-running-preview-comparison.xlsx"
+type = "table"
+title = "실제 프리뷰 비교표 — 246항목·492개 캡처"
+description = "시안 갤러리가 아닌 실행 중인 개발 프리뷰 캡처입니다. 페이지·별칭·탭·팝업·상태와 기능 연결 범위를 구분했습니다."
+logical_id = "8fb06624-1b38-41b9-8eb5-45449b0acf3e"
+content_hash = "sha256:2d88dfa6d6dd3ba66f2fcad0089554bbbeef074eefedcb9eec919942b1c71a87"
+size = 57736102
+mtime_ms = 1791772468122
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8fb06624-1b38-41b9-8eb5-45449b0acf3e/69b7d452-3577-4d0b-9bde-07026d23f01c"
+storage_version_token = "1791772532852499"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "PjfMb5hEUeRFGetARoYbe"
+uri = "file://generated-artifacts/hs2-integrated-preview/homenstay-running-preview-captures.zip"
+type = "unspecified"
+title = "실제 프리뷰 전체 캡처 ZIP"
+description = "원본 높이 JPG 492개, 확인용 index.html, 대응표 CSV/JSON 및 자동 기본 화면 검사 결과입니다. 실제 계정·결제 완료를 뜻하지 않습니다."
+logical_id = "8a93e817-f003-49ef-b483-d467a41a32e5"
+content_hash = "sha256:15967a372d4ad5ac5fb4f1f311d6a5f80f340f3d23814533d46aa07518884152"
+size = 57763051
+mtime_ms = 1791772471398
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8a93e817-f003-49ef-b483-d467a41a32e5/6df03bbc-994c-40d3-8f76-1e828a0b5c2d"
+storage_version_token = "1791772534635720"
+content_type = "application/octet-stream"

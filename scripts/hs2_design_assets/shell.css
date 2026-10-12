@@ -1,0 +1,68 @@
+@font-face{font-family:HSPreview;src:url(noto-kr-400.ttf) format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:HSPreview;src:url(noto-kr-700.ttf) format("truetype");font-weight:700;font-display:swap}
+body.hs-live{margin:0;background:#fff;color:#000;font:16px/1.65 HSPreview,"Noto Sans KR",sans-serif}
+.hs-live *, .hs-live *::before,.hs-live *::after{box-sizing:border-box}
+.hs-live [hidden]{display:none!important}
+.hs-live-header{width:100%;padding:20px 32px;border-bottom:1px solid #deded6;display:flex;flex-wrap:wrap;gap:18px 32px;align-items:center;background:white;position:relative;z-index:100}
+.hs-live-brand img{width:194px;height:auto;display:block}
+.hs-live-header nav{display:flex;flex-wrap:wrap;gap:12px 24px}
+.hs-live-header a,.hs-live-context a{font:700 16px/1.6 HSPreview,sans-serif;color:#000;text-decoration:none}
+.hs-live-section-nav{margin-left:auto;align-items:center}
+.hs-live-more{position:relative}.hs-live-more summary{cursor:pointer;font-weight:700}
+.hs-live-more>div{position:absolute;right:0;top:38px;width:min(560px,90vw);max-height:65vh;overflow:auto;border:1px solid #ddd;border-radius:14px;background:#fff;padding:18px;box-shadow:0 8px 32px #0002;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.hs-live-more a{padding:8px;background:#f6f6f1;overflow-wrap:anywhere}
+.hs-live-context{padding:12px 32px;display:flex;flex-wrap:wrap;gap:10px;border-bottom:1px solid #ddd}
+.hs-live-context a{padding:7px 12px;border:1px solid #ddd;border-radius:20px}
+.hs-live :is(main,section,article,aside,form,.shell,.panel,.detail-main-column,.booking-column,.content){min-width:0;max-width:100%}
+.hs-live :is(h1,h2,h3,p,a,label,strong,small,span,div,footer,input,select,textarea,button){color:#000}
+.hs-live :is(h1,h2,h3,p,a,label,strong,small,footer){overflow-wrap:anywhere}
+.hs-live :is(button,.primary,.primary-button,.search-button,.hs-btn){font-size:16px;min-height:44px;background:#edeedf;color:#000;border:1px solid #d8dccb;border-radius:12px}
+.hs-live :is(input,select,textarea){font:inherit;min-width:0;max-width:100%;border:1px solid #deded6;border-radius:10px;background:white;padding:10px}
+.hs-live :is(.private-label,.nav-back,.preview-demo-notice,.preview-connectivity-note){display:none!important}
+.hs-live .hs-suite{font-family:HSPreview,sans-serif}
+.hs-live .map-app{padding-top:0}
+.hs-live[data-map-mode="consumer"] .results-pane{flex:0 0 44%;width:44%;max-width:none}
+.hs-live[data-map-mode="consumer"] .map-pane{flex:1;min-width:0}
+.hs-live .result-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:18px}
+.hs-live .listing-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:18px}
+.hs-live .result-card{min-width:0;border:0;overflow:hidden;border-radius:16px}
+.hs-live .result-card :is(img,.card-image){aspect-ratio:1.32;object-fit:cover;width:100%}
+.hs-live :is(.hs-price,.card-price,.preview-basis-price){color:#596044}
+.hs-live :is(.listing-price,.detail-price){color:#596044!important}
+.hs-live .listing-card[data-kind="lodging"] .listing-price{color:#9b7618!important}
+.hs-live .preview-map-card{min-width:0}
+.hs-live .listing-card{display:block!important;width:100%;border:0!important;border-radius:18px;overflow:hidden;padding:0!important;background:#fff!important;text-align:left}
+.hs-live .listing-card img{width:100%;height:auto;aspect-ratio:1.3;object-fit:cover;display:block}
+.hs-live .listing-card-copy{display:block;padding:14px 0;min-width:0}
+.hs-live .listing-card-copy>*{display:block;text-align:left}
+.hs-live .listing-card-copy strong{font-size:20px}
+.hs-live .preview-map-card p{text-align:left}
+.hs-live :is(.hs-price.stay,.lodging-price){color:#9b7618}
+.hs-live .detail-main{max-width:1440px;padding:28px 40px;margin:auto}
+.hs-live .detail-layout{grid-template-columns:minmax(0,1fr) minmax(320px,.45fr);gap:32px}
+.hs-live :is(.preview-gallery,.demo-gallery){border-radius:18px;overflow:hidden}
+.hs-live :is(.table-wrap,.hs-table-wrap,.scroll){max-width:100%;overflow:auto}
+.hs-live .data-table-wrap{max-height:560px;max-width:100%;overflow:auto}
+.hs-live :is(#admin-records,#admin-registrations){max-height:760px;overflow:auto}
+.hs-live .record-meta{flex-wrap:wrap;gap:10px;min-width:0}
+.hs-live .record-meta>*{flex:1 1 140px;min-width:0;max-height:140px;overflow:auto;overflow-wrap:anywhere}
+.hs-live :is(button,.search-button){color:#000!important}
+.hs-live .data-table :is(pre,code){display:block;max-width:360px;max-height:180px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.hs-live table{border-collapse:collapse}
+.hs-live :is(th,td){font-size:16px;padding:12px}
+.hs-live .hs-gallery button:nth-child(4){grid-column:span 2}
+@media(max-width:700px){
+ .hs-live-header{padding:16px;gap:12px}.hs-live-brand img{width:170px}
+ .hs-live-header nav{gap:8px 14px}.hs-live-section-nav{margin-left:0;flex-basis:100%}
+ .hs-live-more>div{position:fixed;left:16px;right:16px;top:170px;width:auto;grid-template-columns:minmax(0,1fr)}
+ .hs-live-context{padding:12px 16px}
+ .hs-live[data-map-mode="consumer"] .results-pane{width:100%;flex-basis:auto}
+ .hs-live .result-list{grid-template-columns:minmax(0,1fr);padding:16px}
+ .hs-live .listing-list{grid-template-columns:minmax(0,1fr);padding:16px}
+ .hs-live .detail-main{padding:24px 16px}
+ .hs-live :is(.detail-layout,.grid,.columns,.hs-form-grid,.workspace-grid){grid-template-columns:minmax(0,1fr)}
+ .hs-live .search-primary-row{flex-wrap:wrap;display:flex}
+ .hs-live .search-primary-row>*{flex:1 1 140px;min-width:0}
+ .hs-live .query-field{flex-basis:100%}
+ .hs-live .hs-gallery button:nth-child(4){display:none}
+}

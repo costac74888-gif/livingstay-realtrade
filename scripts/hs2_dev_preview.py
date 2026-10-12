@@ -28,7 +28,7 @@ def serve(port):
                 "DATABASE_URL", "PROD_DATABASE_URL", "TOSS_TEST_CLIENT_KEY",
                 "TOSS_TEST_SECRET_KEY", "RESEND_API_KEY", "SOLAPI_API_KEY"))):
         raise SystemExit("Owned credential-free preview required")
-    from flask import redirect
+    from flask import redirect, request
     from hs2_admin.fixtures import create_fixture_app
     from hs2_workspace.fixtures import create_fixture_app as workspace_app
     from hs2_finance.fixture_http import seed_paid
@@ -58,6 +58,8 @@ def serve(port):
     install_map_modes(app)
     from scripts.hs2_legacy_capabilities import install as install_capabilities
     install_capabilities(app)
+    from scripts.hs2_design_shell import install as install_design
+    install_design(app)
 
     @app.get("/")
     def index():
@@ -98,8 +100,12 @@ def serve(port):
                 '</p></details></aside>'
             )
             import re
-            text = re.sub(r"(<body\b[^>]*>)", r"\1" + banner, text, count=1,
-                          flags=re.IGNORECASE)
+            # Inspection notice stays on inspection routes; ordinary pages
+            # identify synthetic/sandbox actions at the relevant action, not
+            # with a developer banner on every screen.
+            if request.path.startswith("/__development__/"):
+                text = re.sub(r"(<body\b[^>]*>)", r"\1" + banner, text, count=1,
+                              flags=re.IGNORECASE)
             response.set_data(text)
             response.headers.pop("ETag", None)
             response.headers.pop("Last-Modified", None)

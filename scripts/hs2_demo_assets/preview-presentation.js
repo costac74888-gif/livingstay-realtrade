@@ -15,7 +15,7 @@
     if (!window.HS2PreviewInk) {
       const overrides = new Map();
       let queued = false;
-      const excluded = "#mapCanvas,#preview-detail-map,#roadview,#roadviewMiniMap,script,style";
+      const excluded = "#mapCanvas,#preview-detail-map,#roadview,#roadviewMiniMap,script,style,[data-price],.hs-price,.listing-price,.detail-price,.preview-basis-price";
       const normalize = () => {
         queued = false;
         for (const [element, saved] of overrides) {
