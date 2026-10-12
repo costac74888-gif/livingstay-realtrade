@@ -29,12 +29,22 @@ def install(app):
             return Response(status=404)
         return send_from_directory(ASSETS, name)
 
-    @app.get("/__mockup/images/<group>/<name>")
+    @app.get("/hs2/design-images/<group>/<name>")
     def approved_image(group, name):
         if group not in {"hs2-unified", "hs2-complete"} or "/" in name:
             return Response(status=404)
         return send_from_directory(
             ROOT / "artifacts/mockup-sandbox/public/images" / group, name)
+
+    @app.get("/hs2/admin/preview-exports/<name>")
+    def preview_export(name):
+        if not app.preview_admin_authorized():
+            return Response("관리자 로그인 필요", status=403)
+        if name not in {"homenstay-running-preview-comparison.xlsx",
+                        "homenstay-running-preview-captures.zip"}:
+            return Response(status=404)
+        return send_from_directory(ROOT/"generated-artifacts/hs2-integrated-preview",
+                                   name, as_attachment=True)
 
     def page():
         screen = by_path[request.path]
@@ -134,11 +144,14 @@ def install(app):
         return (
             '<header class="hs-live-header"><a class="hs-live-brand" href="/hs2/consumer">'
             '<img src="/__development__/seongsu/map-assets/brand-logo.png" alt="HOME &amp; STAY"></a>'
+            '<button class="hs-live-menu-toggle" id="hs-mobile-menu-toggle" type="button" aria-expanded="false" '
+            'aria-controls="hs-main-menu" aria-label="메뉴 열기"><span></span><span></span><span></span></button>'
+            '<div class="hs-live-nav-panel" id="hs-main-menu">'
             '<nav aria-label="모드"><a href="/hs2/consumer">머물 곳 찾기</a>'
             f'<a href="/hs2/owner-map/">공간 운영</a>{admin}</nav>'
             '<nav class="hs-live-section-nav" aria-label="주요 메뉴">' + links +
             '<details class="hs-live-more"><summary>전체 메뉴</summary><div>' +
-            "".join(more) + '</div></details></nav></header>'
+            "".join(more) + '</div></details></nav></div></header>'
         )
 
     @app.after_request
@@ -172,8 +185,11 @@ def install(app):
             f'<a href="{html.escape(contextual(s["preview_path"]), quote=True)}">{html.escape(s["title"])}</a>'
             for s in related) + '</nav>' if related else ''
         boot = (f'<script type="application/json" id="hs-live-routes">{safe_map}</script>'
-                '<script defer src="/hs2/design-assets/shell.js"></script>')
-        styles = '<link rel="stylesheet" href="/hs2/design-assets/shell.css">'
+                '<script defer src="/hs2/design-assets/shell.js"></script>'
+                '<script defer src="/hs2/design-assets/responsive.js"></script>')
+        styles = ('<link rel="stylesheet" href="/hs2/design-assets/shell.css">'
+                  '<link rel="stylesheet" href="/hs2/design-assets/responsive.css">'
+                  '<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">')
         text = text.replace("</head>", styles + "</head>", 1)
         text = re.sub(r'(<body\b[^>]*>)', lambda m: m[1] + navigation(role, authorized) + context,
                       text, count=1, flags=re.I)

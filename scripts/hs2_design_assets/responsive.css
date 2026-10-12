@@ -1,0 +1,514 @@
+/* Focused responsive layer for the owned HOME & STAY preview. Native screens,
+   controllers, map provider surface and approved components remain untouched. */
+.hs-live {
+  --hs-r-olive: #596044;
+  --hs-r-olive-deep: #454c34;
+  --hs-r-olive-soft: #eef0e7;
+  --hs-r-olive-pale: #f7f8f3;
+  --hs-r-mustard: #80611f;
+  --hs-r-line: #d9dbd1;
+  --hs-r-ink: #171813;
+}
+.hs-live .hs-live-header {
+  min-height: 72px;
+  padding: 12px clamp(18px,3vw,46px);
+  flex-wrap: nowrap;
+  gap: clamp(18px,2.7vw,42px);
+  border-color: var(--hs-r-line);
+}
+.hs-live .hs-live-brand { flex: 0 0 auto; }
+.hs-live .hs-live-brand img { width: clamp(158px,14vw,194px); }
+.hs-live-nav-panel {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 24px;
+}
+.hs-live-nav-panel > nav {
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  gap: clamp(10px,1.5vw,24px);
+}
+.hs-live-nav-panel > nav:first-child { flex: 0 0 auto; }
+.hs-live-nav-panel .hs-live-section-nav { margin-left: auto; }
+.hs-live-nav-panel a { white-space: nowrap; }
+.hs-live .hs-live-more:not([open]) > div { display: none !important; }
+.hs-live .hs-live-more > div a { white-space: normal; overflow-wrap: anywhere; }
+.hs-live .photo-caption { white-space: normal !important; overflow-wrap: anywhere; }
+.hs-live figure.photo { margin: 0; }
+.hs-live .hs-modal-stage { position: relative; padding: 20px 12px; }
+.hs-live .hs-modal-stage .hs-modal {
+  position: relative !important; inset: auto !important;
+  width: 100% !important; max-width: 760px !important;
+  max-height: none !important; overflow: visible;
+}
+.hs-live .hs-modal-stage .hs-modal.wide { max-width: 1120px !important; }
+.hs-live .hs-modal-head > a { display: flex; align-items: center; justify-content: center; flex: 0 0 44px; min-height: 44px; }
+.hs-live-menu-toggle { display: none; }
+.hs-live-context {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.hs-live-context a { flex: 0 0 auto; }
+
+/* Consumer search: keep the first actions visible; advanced controls remain
+   reachable in their native disclosure rather than consuming the viewport. */
+.hs-live .map-app { min-width: 0; }
+.hs-live .mobile-filter-group {
+  display: block;
+  margin-top: 8px;
+}
+.hs-live .mobile-filter-group > summary {
+  width: fit-content;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 7px 13px;
+  border: 1px solid var(--hs-r-line);
+  border-radius: 7px;
+  background: var(--hs-r-olive-pale);
+  cursor: pointer;
+}
+.hs-live .mobile-filter-group[open] .search-filter-row {
+  display: grid !important;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  align-items: end;
+  gap: 12px;
+  padding: 14px 0 4px;
+}
+.hs-live .map-mobile-switch {
+  display: none;
+}
+.hs-live .map-pane, .hs-live .map-canvas { min-width: 0; }
+.hs-live .real-map-marker.listing-cluster {
+  max-width: 132px;
+  min-width: 0;
+  padding: 6px 8px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.2;
+}
+.hs-live .real-map-marker { max-width: min(180px,42vw); }
+.hs-live :is(.intro-aside,.detail-intro-aside,.hs-intro-aside,.hs-legacy-intro,.hs-booking-panel) {
+  color: #000 !important;
+  background: #f7f8f3 !important;
+  border-color: var(--hs-r-line) !important;
+}
+.hs-live :is(.intro-aside,.detail-intro-aside,.hs-intro-aside,.hs-legacy-intro,.hs-booking-panel) :is(p,span,strong,small,label,h1,h2,h3,a) {
+  color: #000 !important;
+}
+
+/* Detail, workspace and operational surfaces use fluid columns at tablet size. */
+.hs-live :is(.detail-layout,.workspace-grid,.owner-layout,.calendar-layout,.finance-layout) {
+  grid-template-columns: minmax(0,1fr) minmax(300px,.72fr);
+}
+.hs-live :is(.detail-main,.detail-shell,.page-shell,.workspace-shell,.preview-dashboard-main) {
+  min-width: 0;
+  max-width: 100%;
+}
+.hs-live :is(.modal,.modal-content,.dialog-content,.popup,.lightbox,.calendar-modal,
+  .booking-modal,.detail-modal,.hs-modal,.overlay-panel) {
+  max-height: min(90dvh,900px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.hs-live dialog { max-width: min(94vw,760px); max-height: 90dvh; overflow: auto; }
+.hs-live :is(.modal-close,.close-modal,[data-close],dialog button[aria-label*="닫기"]) {
+  min-width: 44px;
+  min-height: 44px;
+}
+.hs-live :is(.table-wrap,.hs-table-wrap,.data-table-wrap,.scroll) {
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.hs-live table { width: max-content; min-width: 100%; }
+.hs-live :is(.record-meta,.title-line,.section-heading,.header-right,.form-actions,.toolbar) {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.hs-live img, .hs-live video { max-width: 100%; }
+
+@media (max-width: 1100px) {
+  .hs-live .hs-live-header { gap: 18px; }
+  .hs-live-nav-panel { gap: 14px; }
+  .hs-live-nav-panel > nav { gap: 10px 14px; }
+  .hs-live-nav-panel a { white-space: normal; }
+  .hs-live .search-primary-row {
+    grid-template-columns: minmax(190px,1.3fr) repeat(2,minmax(130px,.8fr)) minmax(90px,.55fr) 96px;
+  }
+  .hs-live :is(.detail-layout,.workspace-grid,.owner-layout,.calendar-layout,.finance-layout) {
+    grid-template-columns: minmax(0,1fr) minmax(260px,.7fr);
+  }
+  .hs-live .result-list,.hs-live .listing-list {
+    grid-template-columns: repeat(2,minmax(0,1fr));
+  }
+}
+
+@media (min-width: 801px) and (max-width: 1000px) {
+  .hs-live .hs-live-header { position: relative; }
+  .hs-live .hs-live-menu-toggle {
+    display: flex;
+    flex: 0 0 46px;
+    width: 46px;
+    height: 44px;
+    margin-left: auto;
+    padding: 11px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 7px;
+    background: var(--hs-r-olive-pale);
+    cursor: pointer;
+  }
+  .hs-live .hs-live-menu-toggle span { width: 22px; height: 2px; background: var(--hs-r-ink); }
+  .hs-live .hs-live-nav-panel {
+    display: none;
+    position: absolute;
+    z-index: 1001;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    max-height: 75dvh;
+    padding: 16px 22px;
+    overflow: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    border-bottom: 1px solid var(--hs-r-line);
+    background: #fff;
+    box-shadow: 0 14px 24px rgba(39,43,29,.12);
+  }
+  .hs-live .hs-live-header.hs-menu-open .hs-live-nav-panel { display: flex; }
+  .hs-live .hs-live-nav-panel > nav {
+    display: grid;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    gap: 8px;
+  }
+  .hs-live .hs-live-nav-panel > nav a {
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 7px;
+    background: var(--hs-r-olive-pale);
+  }
+  .hs-live .hs-live-section-nav { margin: 0; }
+  .hs-live .hs-live-more { grid-column: 1 / -1; }
+  .hs-live .hs-live-more > div { position: static; width: 100%; max-height: 48dvh; margin-top: 6px; box-shadow: none; }
+}
+
+@media (max-width: 800px) {
+  .hs-live .hs-live-header {
+    z-index: 1000;
+    min-height: 60px;
+    padding: 8px 16px;
+    gap: 12px;
+  }
+  .hs-live .hs-live-brand img { width: 156px; }
+  .hs-live .hs-live-menu-toggle {
+    display: flex;
+    flex: 0 0 46px;
+    width: 46px;
+    height: 44px;
+    margin-left: auto;
+    padding: 11px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 7px;
+    background: var(--hs-r-olive-pale);
+    cursor: pointer;
+  }
+  .hs-live .hs-live-menu-toggle span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--hs-r-ink);
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .hs-live .hs-live-menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(7px) rotate(45deg); }
+  .hs-live .hs-live-menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+  .hs-live .hs-live-menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-7px) rotate(-45deg); }
+  .hs-live .hs-live-nav-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 1px);
+    left: 0;
+    right: 0;
+    max-height: calc(100dvh - 61px);
+    padding: 14px 16px max(18px,env(safe-area-inset-bottom));
+    overflow-y: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    border-bottom: 1px solid var(--hs-r-line);
+    background: #fff;
+    box-shadow: 0 14px 24px rgba(39,43,29,.12);
+  }
+  .hs-live .hs-live-header.hs-menu-open .hs-live-nav-panel { display: flex; }
+  .hs-live .hs-live-nav-panel > nav {
+    display: grid;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    width: 100%;
+    gap: 7px;
+  }
+  .hs-live .hs-live-nav-panel > nav:first-child { border-bottom: 1px solid var(--hs-r-line); padding-bottom: 10px; }
+  .hs-live .hs-live-nav-panel > nav a {
+    display: flex;
+    align-items: center;
+    min-height: 46px;
+    padding: 8px 10px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 7px;
+    background: var(--hs-r-olive-pale);
+    overflow-wrap: anywhere;
+  }
+  .hs-live .hs-live-section-nav { margin: 0; }
+  .hs-live .hs-live-more { grid-column: 1 / -1; }
+  .hs-live .hs-live-more summary {
+    display: flex;
+    align-items: center;
+    min-height: 46px;
+    padding: 8px 10px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 7px;
+    background: var(--hs-r-olive-soft);
+  }
+  .hs-live .hs-live-more > div {
+    position: static;
+    width: 100%;
+    max-height: 42dvh;
+    margin-top: 7px;
+    padding: 8px;
+    grid-template-columns: repeat(2,minmax(0,1fr));
+    box-shadow: none;
+  }
+  .hs-live .hs-live-context { padding: 8px 12px; }
+  .hs-live :is(.detail-layout,.workspace-grid,.owner-layout,.calendar-layout,.finance-layout,
+    .grid,.columns,.hs-form-grid) { grid-template-columns: minmax(0,1fr); }
+  .hs-live .detail-main { padding: 22px 18px; }
+  .hs-live .detail-layout { gap: 22px; }
+  .hs-live .detail-price,.hs-live .reservation-card { position: static; }
+  .hs-live .map-app {
+    display: grid;
+    grid-template-rows: auto minmax(0,1fr);
+    height: calc(100dvh - 106px);
+    min-height: 430px;
+    overflow: hidden;
+  }
+  .hs-live .search-dock { min-height: 0; padding: 9px 12px; }
+  .hs-live .search-primary-row {
+    display: grid;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+    align-items: end;
+    gap: 7px;
+  }
+  .hs-live .search-primary-row .query-field { grid-column: 1 / 3; }
+  .hs-live .search-primary-row .search-submit { grid-column: 3; }
+  .hs-live .search-primary-row .date-field,
+  .hs-live .search-primary-row .guest-field { min-width: 0; }
+  .hs-live .search-field :is(input,select) { width: 100%; min-height: 44px; padding: 6px; }
+  .hs-live .mobile-filter-group { margin-top: 6px; }
+  .hs-live .mobile-filter-group:not([open]) { display: block !important; }
+  .hs-live .mobile-filter-group:not([open]) .search-filter-row { display: none !important; }
+  .hs-live .mobile-filter-group[open] .search-filter-row { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  .hs-live .options-filter { grid-column: 1 / -1; }
+  .hs-live .option-checks { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+  .hs-live .map-workspace {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    padding-top: 62px;
+    overflow: hidden;
+  }
+  .hs-live .map-mobile-switch {
+    position: absolute;
+    z-index: 32;
+    top: 8px;
+    left: 50%;
+    display: flex;
+    transform: translateX(-50%);
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 9px;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(39,43,29,.14);
+  }
+  .hs-live .map-mobile-switch button {
+    min-width: 76px;
+    min-height: 40px;
+    padding: 6px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: #fff;
+  }
+  .hs-live .map-mobile-switch button[aria-pressed="true"] {
+    border-color: var(--hs-r-olive);
+    background: var(--hs-r-olive-soft);
+  }
+  .hs-live .map-workspace .map-canvas {
+    position: absolute;
+    z-index: 0;
+    inset: 62px 0 0;
+  }
+  .hs-live .results-pane {
+    position: relative !important;
+    z-index: 2;
+    inset: auto !important;
+    display: flex;
+    flex: 1 1 auto;
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    max-height: none !important;
+    min-height: 0;
+    flex-direction: column;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff;
+  }
+  .hs-live .results-top { flex: 0 0 auto; padding: 50px 14px 9px; }
+  .hs-live .results-heading h1 { margin: 0; }
+  .hs-live .results-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  .hs-live .listing-list {
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-content: start;
+    overflow: auto;
+    padding: 10px 12px max(18px,env(safe-area-inset-bottom));
+    overscroll-behavior: contain;
+  }
+  .hs-live .listing-card {
+    display: grid !important;
+    grid-template-columns: minmax(110px,36%) minmax(0,1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 9px !important;
+    border: 1px solid var(--hs-r-line) !important;
+    border-radius: 10px;
+    background: #fff !important;
+    text-align: left;
+  }
+  .hs-live .listing-card > img { width: 100%; height: 112px; aspect-ratio: 1.1; object-fit: cover; }
+  .hs-live .listing-card-copy { display: grid; min-width: 0; gap: 5px; padding: 0; }
+  .hs-live .listing-card-copy > * { min-width: 0; }
+  .hs-live .listing-title { font-size: 16px !important; }
+  .hs-live .listing-price { font-size: 19px !important; }
+  .hs-live .panel-toggle-floating { display: none !important; }
+  .hs-live .map-tool-rail {
+    position: absolute !important;
+    z-index: 5;
+    inset: auto 8px 8px !important;
+    display: flex;
+    max-width: calc(100% - 16px);
+    gap: 6px;
+    overflow-x: auto;
+    padding: 7px;
+    border: 1px solid var(--hs-r-line);
+    border-radius: 9px;
+    background: rgba(255,255,255,.97);
+    box-shadow: 0 2px 12px rgba(39,43,29,.12);
+  }
+  .hs-live .layer-tools { display: flex !important; flex: 0 0 auto; gap: 5px; }
+  .hs-live .layer-button,.hs-live .subway-tool { flex: 0 0 auto; min-height: 42px; padding: 6px 9px; }
+  .hs-live .map-workspace[data-mobile-view="list"] .map-canvas { visibility: hidden; pointer-events: none; }
+  .hs-live .map-workspace[data-mobile-view="list"] .map-tool-rail { display: none !important; }
+  .hs-live .map-workspace[data-mobile-view="map"] .results-pane { display: none !important; }
+  .hs-live .map-workspace[data-mobile-view="map"] .map-tool-rail { display: flex !important; }
+  .hs-live .map-workspace[data-mobile-view="map"] .map-canvas { visibility: visible; pointer-events: auto; }
+  .hs-live .selected-detail { overflow: auto; }
+  .hs-live .selected-detail:not([hidden]) { display: block; }
+  .hs-live :is(.table-wrap,.hs-table-wrap,.data-table-wrap) { width: 100%; }
+  .hs-live :is(.preview-sidebar,.sidebar) { max-height: none; }
+}
+
+@media (max-width: 520px) {
+  .hs-live .hs-live-header { min-height: 56px; padding: 7px 12px; }
+  .hs-live .hs-live-brand img { width: 142px; }
+  .hs-live .hs-live-nav-panel { max-height: calc(100dvh - 57px); }
+  .hs-live .hs-live-context { padding: 7px 10px; }
+  .hs-live .map-app { height: calc(100dvh - 100px); min-height: 390px; }
+  .hs-live .search-dock { padding: 8px 9px; }
+  .hs-live .field-label { line-height: 1.25; }
+  .hs-live .search-field :is(input,select) { font-size: 16px; }
+  .hs-live .listing-card { grid-template-columns: minmax(96px,34%) minmax(0,1fr); gap: 9px; padding: 7px !important; }
+  .hs-live .listing-card > img { height: 102px; }
+  .hs-live .listing-price { font-size: 18px !important; }
+  .hs-live .hs-live-more > div { grid-template-columns: minmax(0,1fr); }
+  .hs-live :is(.detail-main,.detail-shell,.preview-dashboard-main) { padding-right: 12px; padding-left: 12px; }
+  .hs-live .demo-gallery { grid-template-rows: minmax(185px,58vw) 64px !important; }
+  .hs-live :is(.calendar-grid,.calendar-week,.calendar-days) { min-width: 620px; }
+  .hs-live :is(.calendar-wrap,.calendar-scroll) { overflow-x: auto; }
+  .hs-live :is(.modal,.modal-content,.dialog-content,.popup,.lightbox,.calendar-modal,
+    .booking-modal,.detail-modal,.hs-modal,.overlay-panel) {
+    position: fixed;
+    inset: auto 8px 8px !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 16px);
+    border-radius: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hs-live .hs-live-menu-toggle span { transition: none; }
+}
+
+/* Native map styles load after the shell and define a narrow vertical rail.
+   Override both their specificity AND fixed child widths on phones. */
+@media (max-width: 800px) {
+  body.hs-live[data-hs2-demo] .map-workspace .map-tool-rail {
+    position: absolute !important;
+    inset: auto 8px 32px !important;
+    width: auto !important;
+    height: auto !important;
+    max-height: 110px !important;
+    flex-direction: row !important;
+    align-items: stretch;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+  body.hs-live[data-hs2-demo] .map-workspace[data-mobile-view="list"] .map-tool-rail { display: none !important; }
+  body.hs-live[data-hs2-demo] .map-workspace[data-mobile-view="map"] .map-tool-rail { display: flex !important; }
+  body.hs-live[data-hs2-demo] .map-tool-rail :is(.layer-tools,.map-toolbar) {
+    position: static !important;
+    display: flex !important;
+    flex-direction: row !important;
+    width: auto !important;
+    max-width: none !important;
+    flex: 0 0 auto;
+    align-items: stretch;
+  }
+  body.hs-live[data-hs2-demo] .map-tool-rail :is(.layer-button,.map-tool-btn,#subwayTool) {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 auto;
+    width: auto !important;
+    min-width: 84px !important;
+    min-height: 58px !important;
+    height: auto !important;
+    gap: 3px;
+    padding: 6px 9px !important;
+  }
+  body.hs-live[data-hs2-demo] .map-tool-rail .layer-mark { display: none; }
+  body.hs-live[data-hs2-demo] .map-workspace .listing-cluster {
+    width: max-content !important;
+    min-width: 96px !important;
+    max-width: 160px !important;
+    white-space: pre-line !important;
+    overflow-wrap: normal !important;
+  }
+}

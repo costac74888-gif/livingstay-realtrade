@@ -78,6 +78,17 @@ class DesignIntegrationTests(unittest.TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertEqual(self.client.get(r.headers["Location"]).status_code, 403)
 
+    def test_images_are_served_by_the_running_app_not_canvas_router(self):
+        response = self.client.get("/hs2/design-images/hs2-unified/interior-1.jpg")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/jpeg")
+        response.close()
+        self.assertEqual(self.client.get("/hs2/design-images/private/interior-1.jpg").status_code, 404)
+
+    def test_preview_exports_are_server_protected(self):
+        self.assertEqual(self.client.get(
+            "/hs2/admin/preview-exports/homenstay-running-preview-captures.zip").status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

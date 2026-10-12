@@ -21,8 +21,8 @@
       document.querySelectorAll('.hs-footer,.site-footer,body>footer').forEach(e => {
         if (!e.closest(provider)) e.style.color = '#000';
       });
-      for (const e of document.querySelectorAll('.hs-suite *,.hs-live main *,.map-app *')) {
-        if (!(e instanceof HTMLElement) || e.closest(provider)) continue;
+      for (const e of document.querySelectorAll('body.hs-live *')) {
+        if (!(e instanceof HTMLElement) || e.closest(provider) || e.matches('script,style,input[type=hidden]')) continue;
         const direct = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
         if ((direct || e.matches('input,select,textarea')) &&
             !e.closest('[data-price],.hs-price,.listing-price,.detail-price,.preview-basis-price')) {
@@ -37,11 +37,20 @@
         }
       }
     };
-    let queued = false;
+    let queued = false, timer;
+    const flush = () => {
+      if (!queued) return;
+      queued = false;
+      clearTimeout(timer);
+      apply();
+    };
     new MutationObserver(() => {
       if (queued) return;
       queued = true;
-      requestAnimationFrame(() => { queued = false; apply(); });
+      requestAnimationFrame(flush);
+      // Async native records must also receive the common typography when
+      // their tab is backgrounded (browsers may suspend animation frames).
+      timer = setTimeout(flush, 100);
     }).observe(document.body, {childList:true, subtree:true});
     apply();
     const params = new URLSearchParams(location.search);

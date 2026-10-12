@@ -104,6 +104,10 @@ def main():
         f"--alias:react-dom={ROOT/'artifacts/mockup-sandbox/node_modules/react-dom'}",
         f"--outfile={assets/'app.js'}",
     ],check=True,cwd=ROOT)
+    # The platform reserves /__mockup for the separately managed canvas
+    # service. Running app media must not depend on that service being up.
+    bundle = assets/"app.js"
+    bundle.write_text(bundle.read_text().replace("/__mockup/images/", "/hs2/design-images/"))
     print(json.dumps({"screens":len(screens),"native_items":sum(s["native"] for s in screens),
                       "aliases":sum(bool(s["alias_of"]) for s in screens)}))
 
