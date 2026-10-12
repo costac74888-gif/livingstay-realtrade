@@ -1256,3 +1256,31 @@ mtime_ms = 1791778359442
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/8a93e817-f003-49ef-b483-d467a41a32e5/8308f3d2-f162-45bc-8ca8-f37a8794b878"
 storage_version_token = "1791778392745244"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "1vHLB29h2yLNWe62NqRRP"
+uri = "file://generated-artifacts/hs2-rebuild/delivery/homenstay-rebuild-comparison.xlsx"
+type = "table"
+title = "HOME & STAY 재구축 비교 Excel — 미완료 범위 포함"
+description = "기존 492개 삽입 이미지를 보존하고 최신 246개 항목·네 가지 너비·공개 원본 URL과 관찰 한계·기능 연결 범위를 추가했습니다. 전체 완료 승인 자료는 아닙니다."
+logical_id = "9deaaf1d-3537-46f3-89f9-cae7b66f4897"
+content_hash = "sha256:19f67ddb36144cbe13a0e6eb81db1fea94cc133217a60b5be9a2e34454219d21"
+size = 60884826
+mtime_ms = 1791826175535
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/9deaaf1d-3537-46f3-89f9-cae7b66f4897/67c76382-7ea5-4965-9b06-f74bfe56dc90"
+storage_version_token = "1791826197547717"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+[[outputs]]
+id = "zRcZpdMfKawy6cW2MTnyi"
+uri = "file://generated-artifacts/hs2-rebuild/delivery/homenstay-rebuild-captures.zip"
+type = "unspecified"
+title = "HOME & STAY 최신 캡처·검수 ZIP"
+description = "현재 Preview 캡처 984장, 공개 원본 관찰, 예약·채팅·모의 결제 검사, 전체 회귀 163/164 및 미완료 상태를 포함합니다. 운영 DB 덤프는 포함하지 않습니다."
+logical_id = "07505886-902e-4f3d-a919-3804eb4bf7f6"
+content_hash = "sha256:a81c9de96f17a29cba534f4fd5a1a11257743c17674125d2193dafcae35e96cb"
+size = 38906857
+mtime_ms = 1791826180607
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/07505886-902e-4f3d-a919-3804eb4bf7f6/beebe831-8ccf-4f6d-903f-c7c78090cec7"
+storage_version_token = "1791826199143983"
+content_type = "application/octet-stream"

@@ -1,14 +1,38 @@
 /* Focused responsive layer for the owned HOME & STAY preview. Native screens,
    controllers, map provider surface and approved components remain untouched. */
 .hs-live {
-  --hs-r-olive: #596044;
-  --hs-r-olive-deep: #454c34;
-  --hs-r-olive-soft: #eef0e7;
-  --hs-r-olive-pale: #f7f8f3;
-  --hs-r-mustard: #80611f;
-  --hs-r-line: #d9dbd1;
-  --hs-r-ink: #171813;
+  --hs-r-olive: #245e9c;
+  --hs-r-olive-deep: #194a80;
+  --hs-r-olive-soft: #eaf2fb;
+  --hs-r-olive-pale: #f5f9fe;
+  --hs-r-mustard: #ff385c;
+  --hs-r-line: #d9e2eb;
+  --hs-r-ink: #182d43;
+  --hs-r-nightly: #ff385c;
 }
+/* Native response adapters insert their legacy palette after the shell CSS.
+   Override their inherited variables explicitly; preserve archived CSS files. */
+body.hs-live[data-hs2-demo] {
+ --preview-brand:#2563eb!important;--preview-brand-hover:#1d4ed8!important;
+ --preview-brand-soft:#eff6ff!important;--preview-brand-line:#bfdbfe!important;
+ --hs-olive:#2563eb!important;--hs-olive-deep:#1d4ed8!important;
+ --hs-olive-soft:#eff6ff!important;--hs-olive-pale:#f8fafc!important;
+ --hs-olive-line:#bfdbfe!important;--hs-mustard:#ff385c!important;
+ --hs-mustard-soft:#fff1f2!important;--map-olive:#2563eb!important;
+ --map-olive-soft:#eff6ff!important;--map-mustard:#ff385c!important;
+ --stay:#2563eb!important;--brand:#2563eb!important;--primary:#2563eb!important;
+ --accent:#ff385c!important;
+}
+/* Older native brand.css contains literal pale-olive button overrides.
+   These scoped rules win without rewriting the historical native stylesheet. */
+body.hs-live :is(.search-submit,.search-button,.primary-button,.primary-action,.detail-primary,.preview-register-link,.primary) {
+  background:#eff6ff!important;border-color:#bfdbfe!important;
+}
+body.hs-live :is(.search-submit,.search-button,.primary-button,.primary-action,.detail-primary,.preview-register-link,.primary):hover {
+  background:#dbeafe!important;
+}
+body.hs-live .listing-card[data-kind="lodging"] .listing-type { background:#fff1f2!important; }
+body.hs-live .listing-card[data-kind="non_lodging"] .listing-type { background:#eff6ff!important; }
 .hs-live .hs-live-header {
   min-height: 72px;
   padding: 12px clamp(18px,3vw,46px);
@@ -83,6 +107,48 @@
   display: none;
 }
 .hs-live .map-pane, .hs-live .map-canvas { min-width: 0; }
+.hs-live .listing-card[data-kind="lodging"] .listing-price,
+.hs-live .real-map-marker[data-kind="lodging"] { --marker-color: var(--hs-r-nightly); color: var(--hs-r-nightly); }
+.hs-live .listing-card[data-kind="lodging"] .listing-type {
+  color: var(--hs-r-nightly) !important;
+  border-color: #f0c9cd !important;
+  background: #fff0f1 !important;
+}
+.hs-live .listing-card[data-kind="lodging"] .listing-price { color: var(--hs-r-nightly) !important; }
+.hs-live .real-map-marker[data-kind="non_lodging"] { --marker-color: var(--hs-r-olive); }
+.hs-live .preview-photo-controls {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--hs-r-line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.96);
+}
+.hs-live .preview-photo-control {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: #f5f9fe;
+  color: #245e9c;
+  cursor: pointer;
+}
+.hs-live .preview-photo-control:hover,
+.hs-live .preview-photo-control[aria-pressed="true"] {
+  border-color: #b8cee4;
+  background: #eaf2fb;
+}
 .hs-live .real-map-marker.listing-cluster {
   max-width: 132px;
   min-width: 0;
@@ -95,7 +161,7 @@
 .hs-live .real-map-marker { max-width: min(180px,42vw); }
 .hs-live :is(.intro-aside,.detail-intro-aside,.hs-intro-aside,.hs-legacy-intro,.hs-booking-panel) {
   color: #000 !important;
-  background: #f7f8f3 !important;
+  background: #f5f9fe !important;
   border-color: var(--hs-r-line) !important;
 }
 .hs-live :is(.intro-aside,.detail-intro-aside,.hs-intro-aside,.hs-legacy-intro,.hs-booking-panel) :is(p,span,strong,small,label,h1,h2,h3,a) {
@@ -298,11 +364,11 @@
   .hs-live .map-app {
     display: grid;
     grid-template-rows: auto minmax(0,1fr);
-    height: calc(100dvh - 106px);
-    min-height: 430px;
-    overflow: hidden;
+    height: calc(100dvh - 104px);
+    min-height: 410px;
+    overflow: visible;
   }
-  .hs-live .search-dock { min-height: 0; padding: 9px 12px; }
+  .hs-live .search-dock { min-height: 0; padding: 8px 12px; }
   .hs-live .search-primary-row {
     display: grid;
     grid-template-columns: repeat(3,minmax(0,1fr));
@@ -324,13 +390,13 @@
     position: relative;
     display: flex;
     min-height: 0;
-    padding-top: 62px;
+    padding-top: 54px;
     overflow: hidden;
   }
   .hs-live .map-mobile-switch {
     position: absolute;
     z-index: 32;
-    top: 8px;
+    top: 7px;
     left: 50%;
     display: flex;
     transform: translateX(-50%);
@@ -356,7 +422,7 @@
   .hs-live .map-workspace .map-canvas {
     position: absolute;
     z-index: 0;
-    inset: 62px 0 0;
+    inset: 54px 0 0;
   }
   .hs-live .results-pane {
     position: relative !important;
@@ -375,36 +441,37 @@
     box-shadow: none !important;
     background: #fff;
   }
-  .hs-live .results-top { flex: 0 0 auto; padding: 50px 14px 9px; }
+  .hs-live .results-top { flex: 0 0 auto; padding: 48px 14px 9px; }
   .hs-live .results-heading h1 { margin: 0; }
   .hs-live .results-meta { display: flex; flex-wrap: wrap; gap: 6px 10px; }
   .hs-live .listing-list {
     display: grid !important;
-    grid-template-columns: minmax(0,1fr) !important;
-    gap: 12px;
+    grid-template-columns: repeat(2,minmax(264px,1fr)) !important;
+    grid-auto-rows: max-content;
+    gap: 14px 12px;
     flex: 1 1 auto;
     min-height: 0;
     align-content: start;
     overflow: auto;
-    padding: 10px 12px max(18px,env(safe-area-inset-bottom));
+    padding: 10px 12px max(24px,env(safe-area-inset-bottom));
     overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
   .hs-live .listing-card {
-    display: grid !important;
-    grid-template-columns: minmax(110px,36%) minmax(0,1fr);
-    align-items: center;
-    gap: 12px;
-    padding: 9px !important;
+    display: block !important;
+    min-width: 0;
+    padding: 0 !important;
     border: 1px solid var(--hs-r-line) !important;
-    border-radius: 10px;
+    border-radius: 8px;
     background: #fff !important;
     text-align: left;
   }
-  .hs-live .listing-card > img { width: 100%; height: 112px; aspect-ratio: 1.1; object-fit: cover; }
-  .hs-live .listing-card-copy { display: grid; min-width: 0; gap: 5px; padding: 0; }
+  .hs-live .listing-card > img { width: 100%; height: auto; aspect-ratio: 1.52; object-fit: cover; }
+  .hs-live .listing-card-copy { display: grid; min-width: 0; gap: 4px; padding: 9px 10px 11px; }
   .hs-live .listing-card-copy > * { min-width: 0; }
-  .hs-live .listing-title { font-size: 16px !important; }
-  .hs-live .listing-price { font-size: 19px !important; }
+  .hs-live .listing-title { font-size: 14px !important; }
+  .hs-live .listing-meta { font-size: 12px !important; }
+  .hs-live .listing-price { font-size: 16px !important; }
   .hs-live .panel-toggle-floating { display: none !important; }
   .hs-live .map-tool-rail {
     position: absolute !important;
@@ -438,13 +505,16 @@
   .hs-live .hs-live-brand img { width: 142px; }
   .hs-live .hs-live-nav-panel { max-height: calc(100dvh - 57px); }
   .hs-live .hs-live-context { padding: 7px 10px; }
-  .hs-live .map-app { height: calc(100dvh - 100px); min-height: 390px; }
+  .hs-live .map-app { height: auto; min-height: 0; }
+  .hs-live .map-workspace { height: min(62dvh, 590px); min-height: 390px; }
   .hs-live .search-dock { padding: 8px 9px; }
   .hs-live .field-label { line-height: 1.25; }
   .hs-live .search-field :is(input,select) { font-size: 16px; }
-  .hs-live .listing-card { grid-template-columns: minmax(96px,34%) minmax(0,1fr); gap: 9px; padding: 7px !important; }
-  .hs-live .listing-card > img { height: 102px; }
-  .hs-live .listing-price { font-size: 18px !important; }
+  .hs-live .listing-card { padding: 0 !important; }
+  .hs-live .listing-card-copy { padding: 8px 8px 10px; }
+  .hs-live .listing-price { font-size: 15px !important; }
+  .hs-live .preview-photo-controls { gap: 3px; padding: 2px; }
+  .hs-live .preview-photo-control { min-width: 32px; min-height: 32px; flex-basis: 32px; width: 32px; }
   .hs-live .hs-live-more > div { grid-template-columns: minmax(0,1fr); }
   .hs-live :is(.detail-main,.detail-shell,.preview-dashboard-main) { padding-right: 12px; padding-left: 12px; }
   .hs-live .demo-gallery { grid-template-rows: minmax(185px,58vw) 64px !important; }
@@ -510,5 +580,143 @@
     max-width: 160px !important;
     white-space: pre-line !important;
     overflow-wrap: normal !important;
+  }
+}
+
+/* Compact reference mobile search: preserved date/guest inputs are disclosed,
+   not removed; the native results list keeps its own scroll container. */
+@media(max-width:800px) {
+ .hs-live[data-map-mode="consumer"] .map-mode-nav { display:none; }
+ .hs-live[data-map-mode="consumer"] .search-primary-row { display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:8px; }
+ .hs-live[data-map-mode="consumer"] .search-primary-row .query-field { grid-column:1; }
+ .hs-live[data-map-mode="consumer"] .search-primary-row .search-submit { grid-column:2; }
+ .hs-live[data-map-mode="consumer"] .search-primary-row .query-field .field-label { display:none; }
+ .hs-live .mobile-period-fields { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px 0; }
+ .hs-live .mobile-period-fields[hidden] { display:none; }
+ .hs-live[data-map-mode="consumer"] .results-heading { padding:8px 12px; }
+ .hs-live[data-map-mode="consumer"] .results-heading .eyebrow { display:none; }
+ .hs-live[data-map-mode="consumer"] .results-heading h2 { font-size:18px!important; }
+ .hs-live .preview-photo-controls { display:flex;gap:8px; }
+ .hs-live .preview-photo-control { min-width:44px;min-height:44px;touch-action:manipulation; }
+}
+
+/* The listing/map switch is a consumer control, not an owner-map workflow.
+   Keep the original map provider surface intact while results scroll separately. */
+@media (min-width: 801px) {
+  .hs-live .map-app { min-height: 520px; }
+  .hs-live[data-map-mode="consumer"] .map-workspace { min-height: 360px; }
+  .hs-live[data-map-mode="consumer"] .results-pane {
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+  }
+  .hs-live[data-map-mode="consumer"] .listing-list {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+
+@media (max-width: 800px) {
+  .hs-live .map-workspace[data-mobile-view="list"] .map-canvas {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .hs-live .map-workspace[data-mobile-view="list"] .map-tool-rail { display: none !important; }
+  .hs-live .map-workspace[data-mobile-view="map"] .results-pane { display: none !important; }
+  .hs-live .map-workspace[data-mobile-view="map"] .map-canvas {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .hs-live .map-workspace[data-mobile-view="map"] .map-tool-rail { display: flex !important; }
+}
+
+/* The consumer gets the explicit map/list view. Keep the owner's native
+   floating result panel and full-map canvas instead of converting it into a
+   consumer results screen. */
+@media (max-width: 800px) {
+  .hs-live[data-map-mode="owner"] .map-app {
+    display: flex;
+    height: calc(100dvh - 104px);
+    min-height: 390px;
+    grid-template-rows: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .hs-live[data-map-mode="owner"] .search-dock {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 0;
+  }
+  .hs-live[data-map-mode="owner"] .map-workspace {
+    position: relative;
+    display: block;
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 180px;
+    padding-top: 0;
+    overflow: hidden;
+  }
+  .hs-live[data-map-mode="owner"] .map-workspace .map-canvas {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .hs-live[data-map-mode="owner"] .results-pane {
+    position: absolute !important;
+    z-index: 20;
+    inset: auto 55px max(10px,env(safe-area-inset-bottom)) 8px !important;
+    display: flex;
+    width: auto !important;
+    height: min(45dvh,390px) !important;
+    max-width: none !important;
+    max-height: calc(100% - 20px) !important;
+    flex-direction: column;
+    border: 1px solid var(--hs-r-line) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 18px rgba(25,45,70,.2) !important;
+  }
+  .hs-live[data-map-mode="owner"] .listing-list {
+    display: block !important;
+    min-width: 0;
+    overflow: auto;
+    padding: 8px;
+  }
+  .hs-live[data-map-mode="owner"] .listing-card {
+    display: grid !important;
+    grid-template-columns: minmax(88px,34%) minmax(0,1fr);
+    align-items: center;
+    gap: 9px;
+    padding: 8px 1px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--hs-r-line) !important;
+    border-radius: 0;
+    background: #fff !important;
+  }
+  .hs-live[data-map-mode="owner"] .listing-card > img {
+    width: 100%;
+    height: 88px;
+    aspect-ratio: auto;
+    object-fit: cover;
+  }
+  .hs-live[data-map-mode="owner"] .listing-card-copy { padding: 2px 1px; }
+  .hs-live[data-map-mode="owner"] .panel-toggle-floating {
+    display: block !important;
+    top: auto;
+    right: 62px;
+    bottom: calc(max(10px,env(safe-area-inset-bottom)) + min(45dvh,390px) - 43px);
+    left: auto;
+  }
+  .hs-live[data-map-mode="owner"] .map-workspace.results-collapsed .results-pane {
+    transform: translateY(calc(100% + 12px));
+  }
+  .hs-live[data-map-mode="owner"] .map-workspace.results-collapsed .panel-toggle-floating {
+    right: 7px;
+    bottom: max(10px,env(safe-area-inset-bottom));
+    width: 42px;
+    height: 38px;
   }
 }

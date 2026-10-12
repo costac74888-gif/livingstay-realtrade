@@ -35,3 +35,16 @@ action and leave the selected point blinking behind the reopened detail.
 **How to apply:** Keep explicit return-to-map highlighting separate from
 automatic centering. Browser checks must await layer-swap removal before exact
 marker counts: fading old and replacement overlays temporarily coexist.
+
+Controller selection and successful map centering do not prove a visible marker
+selection treatment. Verify visible SDK overlay content separately, and do not
+change intentional detail-open clearing just to satisfy a generic selected-class
+assertion.
+
+**Why:** Browser checks confirmed the selected ID and center change while a
+marker-class query still found no selected node; those observations alone did
+not establish the visible selection state.
+
+**How to apply:** Separate state, centering, visibility and explicit highlight
+semantics in browser evidence; report an inconclusive visual check rather than
+promoting a controller pass to a visual pass.

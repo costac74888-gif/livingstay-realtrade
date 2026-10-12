@@ -30,9 +30,30 @@
       window.matchMedia('(min-width: 801px)').addEventListener?.('change', () => closeMenu());
     }
 
+    const primary = document.querySelector('.search-primary-row');
+    const dateFields = primary ? Array.from(primary.querySelectorAll('.date-field,.guest-field')) : [];
+    const filterGroup = document.querySelector('.mobile-filter-group');
+    if (primary && filterGroup && dateFields.length) {
+      const positions = dateFields.map(field => {
+        const marker = document.createComment('native search field position');
+        field.before(marker); return {field,marker};
+      });
+      const dates = document.createElement('div');
+      dates.className = 'mobile-period-fields'; filterGroup.append(dates);
+      const media = matchMedia('(max-width:800px)');
+      const moveFields = () => {
+        positions.forEach(({field,marker}) => media.matches ? dates.append(field) : marker.after(field));
+        dates.hidden = !media.matches;
+      };
+      media.addEventListener('change', moveFields); moveFields();
+    }
+
     const workspace = document.querySelector('.map-workspace');
     const results = document.querySelector('#resultsPane');
-    if (!workspace || !results || workspace.querySelector('.map-mobile-switch')) return;
+    const ownerMode = document.body.dataset.mapMode === 'owner' ||
+      Boolean(document.querySelector('#ownerModeLink[aria-current="page"]')) ||
+      /owner|시설|운영/.test(document.title);
+    if (!workspace || !results || ownerMode || workspace.querySelector('.map-mobile-switch')) return;
     const switcher = document.createElement('div');
     switcher.className = 'map-mobile-switch';
     switcher.setAttribute('role', 'group');
@@ -50,9 +71,6 @@
     switcher.append(listButton, mapButton);
     workspace.prepend(switcher);
 
-    const ownerMode = document.body.dataset.mapMode === 'owner' ||
-      Boolean(document.querySelector('#ownerModeLink[aria-current="page"]')) ||
-      /owner|시설|운영/.test(document.title);
     const setView = view => {
       workspace.dataset.mobileView = view;
       listButton.setAttribute('aria-pressed', String(view === 'list'));
@@ -64,7 +82,7 @@
     };
     listButton.addEventListener('click', () => setView('list'));
     mapButton.addEventListener('click', () => setView('map'));
-    setView(ownerMode ? 'map' : 'list');
+    setView('list');
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

@@ -85,6 +85,13 @@ class DesignIntegrationTests(unittest.TestCase):
         response.close()
         self.assertEqual(self.client.get("/hs2/design-images/private/interior-1.jpg").status_code, 404)
 
+    def test_owner_navigation_preserves_operator_scope_and_old_urls(self):
+        for path in ("/hs2/bookings/", "/hs2/workspace/"):
+            response = self.client.get(path + "?view=owner&booking_id=owned-test")
+            self.assertEqual(response.status_code, 302)
+            self.assertIn("view=operator", response.headers["Location"])
+            self.assertIn("booking_id=owned-test", response.headers["Location"])
+
     def test_preview_exports_are_server_protected(self):
         self.assertEqual(self.client.get(
             "/hs2/admin/preview-exports/homenstay-running-preview-captures.zip").status_code, 403)

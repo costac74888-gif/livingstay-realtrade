@@ -6,7 +6,7 @@
   const byId = id => document.getElementById(id);
   const mode = document.body.dataset.mapMode === "owner" ? "owner" : "consumer";
   const names = { stay: "단기대여", sale: "매매", business: "영업권 양도", auction: "공매", facility: "숙박시설" };
-  const colors = { stay: "#e5ead6", sale: "#f2e8d9", business: "#eee5f0", auction: "#f4e2df", facility: "#f0f0e8" };
+  const colors = { stay: "#dbeafe", sale: "#eff6ff", business: "#ede9fe", auction: "#ffe4e6", facility: "#f1f5f9" };
   const permitted = mode === "owner" ? Object.keys(names) : ["stay"];
   const active = new Set(permitted);
   const originalFetch = window.fetch.bind(window);
@@ -283,6 +283,36 @@
         text("span", "listing-price", isDemo && row.layer === "stay" ? rateHeadline(row) : price(row)));
       const wrapper = isDemo && row.layer === "stay" ? text("div", "preview-map-card", "") : null;
       if (wrapper) wrapper.append(card);
+      if (wrapper && meta.photos?.length > 1) {
+        const photoControls = text("div", "preview-photo-controls", "");
+        let photoIndex = 0;
+        for (const [label, delta] of [["이전 사진", -1], ["다음 사진", 1]]) {
+          const control = text("button", "preview-photo-control", delta < 0 ? "‹" : "›");
+          control.type = "button"; control.setAttribute("aria-label", label);
+          control.addEventListener("click", event => {
+            event.stopPropagation();
+            photoIndex = (photoIndex + delta + meta.photos.length) % meta.photos.length;
+            const src = meta.photos[photoIndex];
+            if (src.startsWith("/__development__/seongsu/assets/") && !src.split("/").includes(".."))
+              image.src = src;
+            image.alt = `가상 공간 이미지 ${photoIndex + 1}/${meta.photos.length}`;
+          });
+          photoControls.append(control);
+        }
+        wrapper.append(photoControls);
+        let touchStart = null;
+        image.addEventListener("touchstart", event => {
+          touchStart = {x:event.changedTouches[0].clientX,y:event.changedTouches[0].clientY};
+        }, {passive:true});
+        image.addEventListener("touchend", event => {
+          if (!touchStart) return;
+          const dx = event.changedTouches[0].clientX - touchStart.x;
+          const dy = event.changedTouches[0].clientY - touchStart.y;
+          touchStart = null;
+          if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.4)
+            photoControls.children[dx < 0 ? 1 : 0].click();
+        }, {passive:true});
+      }
       if (isDemo && row.layer === "stay") {
         const view = presentation(row);
         if (view?.quote) wrapper.append(text("span", "preview-quote", view.quote.text));
@@ -343,6 +373,15 @@
       }
       const content = text("button", "real-map-marker", bubble);
       content.type = "button"; content.style.background = colors[row.layer];
+      content.dataset.kind = row.stay_kind || "";
+      content.dataset.publicId = row.public_id;
+      content.classList.toggle("is-selected", row.public_id === selected);
+      content.setAttribute("aria-pressed", String(row.public_id === selected));
+      if(row.layer==="stay") {
+        content.style.background=row.stay_kind==="lodging"?"#fff1f2":"#eff6ff";
+        content.style.color=row.stay_kind==="lodging"?"#ff385c":"#2563eb";
+        content.style.borderColor=content.style.color;
+      }
       if (row.layer === "stay") content.style.removeProperty("background");
       content.title = `${row.preview_demo.name} · ${names[row.layer]} · ${
         isDemo && row.layer === "stay" ? rateHeadline(row) : price(row)} · 가상 물건`;

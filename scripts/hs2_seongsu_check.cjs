@@ -65,10 +65,12 @@ async function main() {
     assert.equal(ownedFixtures.synthetic, true);
     assert.equal(ownedFixtures.actual_toss, false);
     const fixtureById = new Map(ownedFixtures.items.map(row => [row.public_id, row]));
-    assert.equal(catalog.items.length, 14);
+    assert.equal(catalog.items.length, 20);
+    assert.equal(catalog.items.filter(row => row.stay_kind === "lodging").length, 10);
+    assert.equal(catalog.items.filter(row => row.stay_kind === "non_lodging").length, 10);
     assert.equal(new Set(catalog.items.map(r => {
       const p = r.preview_demo.point; return `${p.lat},${p.lng}`;
-    })).size, 14);
+    })).size, 20);
     for (const row of catalog.items) {
       const m = row.preview_demo;
       assert.equal(m.synthetic, true);
@@ -80,21 +82,21 @@ async function main() {
           "available_from", "available_until"]) assert(!Object.hasOwn(m,key));
       assert(row.base_rates !== null);
     }
-    pass("14 populated Seongsu stays at 14 distinct fictional coordinates");
+    pass("20 populated stays: 10 nightly + 10 weekly/monthly, 20 fictional coordinates");
     const all = await api("/hs2/search/api/results?layers=stay,sale,business,auction");
-    assert.deepEqual(all.counts, { stay: 14, sale: 3, business: 3, auction: 3 });
-    assert.equal(all.markers.length, 23);
-    assert.equal(new Set(all.markers.map(m => `${m.point.lat},${m.point.lng}`)).size, 23);
+    assert.deepEqual(all.counts, { stay: 20, sale: 3, business: 3, auction: 3 });
+    assert.equal(all.markers.length, 29);
+    assert.equal(new Set(all.markers.map(m => `${m.point.lat},${m.point.lng}`)).size, 29);
     for (const layer of ["sale", "business", "auction"]) {
       const row = all.items.find(r => r.layer === layer);
       const detail = await api(`/hs2/search/api/detail/${layer}/${row.public_id}?layers=${layer}`);
       assert(detail.item.preview_demo.synthetic);
       assert.equal(detail.item.preview_demo.booking_supported, false);
     }
-    pass("Sale / business / auction separate synthetic detail paths and 23 markers");
+    pass("Sale / business / auction separate synthetic detail paths and 29 markers");
     const filtered = await api("/hs2/api/consumer/search?q=" + encodeURIComponent("성수동2가")
       + "&guests=4&min_area=35&options=wifi");
-    assert(filtered.items.length > 0 && filtered.items.length < 14);
+    assert(filtered.items.length > 0 && filtered.items.length < 20);
     assert(filtered.items.every(r => r.preview_demo.neighborhood === "성수동2가"
       && r.preview_demo.guests >= 4 && r.preview_demo.area_m2 >= 35));
     pass("Neighborhood / guests / area / amenities filters enforce source fields");
@@ -115,25 +117,28 @@ async function main() {
       undefined, undefined, 400);
     pass("Closed dates blocked; exact weekly/calendar-month prices; non-lodging 1 night rejected");
 
-    await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
-    for (const width of [1440, 390]) {
+    await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 20);
+    for (const width of [1440, 360, 390, 430]) {
       await page.setViewportSize({ width, height: 1000 });
       await navigate(origin + "/hs2/consumer?layers=stay");
-      await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 14);
+      await page.waitForFunction(() => document.querySelectorAll("#listingList .listing-card").length === 20);
       // Exercise actual lazy-image loading, including below-fold mobile cards.
       for (const image of await page.locator("#listingList img").all())
         await image.scrollIntoViewIfNeeded();
       await page.waitForFunction(() => [...document.querySelectorAll("#listingList img")].every(i => i.complete && i.naturalWidth > 0));
       await page.evaluate(() => { document.querySelector("#listingList").scrollTop = 0; window.scrollTo(0, 0); });
-      assert(await page.locator("#listingList img").count() >= 14);
+      assert(await page.locator("#listingList img").count() >= 20);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       assert.equal(await page.locator("#guests").isDisabled(), false);
       await page.screenshot({ path: path.join(output, `consumer-${width}.png`), fullPage: true });
       await navigate(origin + (width === 390 ? "/hs2/search/mobile/" : "/hs2/search/"));
       await page.waitForSelector(".listing-card", { state: "attached" });
-      if (width === 390) {
-        await page.locator("#panelToggle").click();
-        assert.equal(await page.locator("#panelToggle").getAttribute("aria-expanded"), "false");
+      if (width <= 430) {
+        await page.locator('.map-mobile-switch [data-mobile-view="map"]').click();
+        assert.equal(await page.locator(".map-workspace").getAttribute("data-mobile-view"), "map");
+        assert.equal(await page.locator("#resultsPane").isVisible(), false);
+        await page.locator('.map-mobile-switch [data-mobile-view="list"]').click();
+        assert.equal(await page.locator("#resultsPane").isVisible(), true);
       }
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.screenshot({ path: path.join(output, `map-${width}.png`), fullPage: true });

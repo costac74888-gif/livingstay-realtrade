@@ -58,6 +58,6 @@
   "readiness-batch-controls": {"file":"tests/test_readiness_batch_controls.py","kind":"python","role":"regression","reviewed_sha256":"94ef359713b1728495ab60a5a9c9daedb6d91041747c8f2296e68362eec1ddb0"},
   "contact-log-preservation": {"file":"tests/test_contact_log_preservation.py","kind":"python","role":"acceptance","reviewed_sha256":"c2e2183ef270085fc5c353a1175986522f90a0e74fd3bc7c5ab2239547d0a4be"},
   "preview-rates-public": {"file":"tests/test_hs2_preview_rates.py","kind":"python","role":"regression","reviewed_sha256":"90cf79b85ca2e2b091e10f45cb3651962d54e62f5a22066b8e7fd654e33c22be"},
-  "preview-rates-ui": {"file":"tests/hs2_preview_rates_test.cjs","kind":"node","role":"regression","reviewed_sha256":"1173252fdde558bdea6d06f28c43fbc6433d1c1c31bcef7931eeb1ffd0034421"},
+  "preview-rates-ui": {"file":"tests/hs2_preview_rates_test.cjs","kind":"node","role":"regression","reviewed_sha256":"52cf5d87af02e83b65d653a242bd7caab9d4a791ad8e4df146544e2ecfbb9755"},
   "preview-rates-db": {"file":"tests/test_hs2_preview_rates_db.py","kind":"python","role":"regression","isolation":"temporary-postgres","reviewed_sha256":"aea1de651f065dfa66312650bac3d0ed01974bc674d4d0086c64897259baeca0"}
 }

@@ -1393,7 +1393,7 @@
       "flow_parent": "O001",
       "native": true,
       "alias_of": null,
-      "preview_path": "/hs2/bookings/?view=owner",
+      "preview_path": "/hs2/bookings/?view=operator",
       "page_group": "/hs2/bookings/",
       "function_connection": "기존 API/원장 동작 보존"
     },
@@ -1439,7 +1439,7 @@
       "flow_parent": "O001",
       "native": true,
       "alias_of": null,
-      "preview_path": "/hs2/workspace/?view=owner",
+      "preview_path": "/hs2/workspace/?view=operator",
       "page_group": "/hs2/workspace/",
       "function_connection": "기존 API/원장 동작 보존"
     },
@@ -1462,7 +1462,7 @@
       "flow_parent": "O001",
       "native": true,
       "alias_of": null,
-      "preview_path": "/hs2/workspace/?view=owner#conversation",
+      "preview_path": "/hs2/workspace/?view=operator#conversation",
       "page_group": "/hs2/workspace/",
       "function_connection": "기존 API/원장 동작 보존"
     },
@@ -2829,7 +2829,7 @@
       "flow_parent": "O002",
       "native": true,
       "alias_of": "O023",
-      "preview_path": "/hs2/workspace/?view=owner",
+      "preview_path": "/hs2/workspace/?view=operator",
       "page_group": "/hs2/workspace/",
       "function_connection": "기존 API/원장 동작 보존 · 별칭"
     },

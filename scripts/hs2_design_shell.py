@@ -40,10 +40,15 @@ def install(app):
     def preview_export(name):
         if not app.preview_admin_authorized():
             return Response("관리자 로그인 필요", status=403)
-        if name not in {"homenstay-running-preview-comparison.xlsx",
-                        "homenstay-running-preview-captures.zip"}:
+        targets = {
+            "homenstay-running-preview-comparison.xlsx": "hs2-integrated-preview",
+            "homenstay-running-preview-captures.zip": "hs2-integrated-preview",
+            "homenstay-rebuild-comparison.xlsx": "hs2-rebuild/delivery",
+            "homenstay-rebuild-captures.zip": "hs2-rebuild/delivery",
+        }
+        if name not in targets:
             return Response(status=404)
-        return send_from_directory(ROOT/"generated-artifacts/hs2-integrated-preview",
+        return send_from_directory(ROOT/"generated-artifacts"/targets[name],
                                    name, as_attachment=True)
 
     def page():
@@ -98,6 +103,10 @@ def install(app):
     def semantic_navigation():
         # Original components' internal navigation resolves to normal semantic
         # URLs; arbitrary IDs never grant access or select an admin session.
+        if (request.method == "GET" and request.path in {"/hs2/bookings/", "/hs2/workspace/"}
+                and request.args.get("view") == "owner"):
+            values = request.args.to_dict(); values["view"] = "operator"
+            return redirect(request.path + "?" + urlencode(values))
         selected = request.args.get("screen")
         if request.method == "GET" and selected in by_id and request.path.startswith("/hs2/"):
             target = by_id[selected]["preview_path"]
@@ -123,8 +132,8 @@ def install(app):
                         ("이용 안내", "/hs2/help/")],
             "임대인": [("시설 지도", "/hs2/owner-map/"), ("매물 관리", "/hs2/listings/"),
                         ("공간 등록", "/hs2/registration/"), ("요금·달력", "/hs2/calendar/"),
-                        ("예약 관리", "/hs2/bookings/"), ("운영 현황", "/hs2/dashboard/"),
-                        ("대화·알림", "/hs2/workspace/?view=owner")],
+                         ("예약 관리", "/hs2/bookings/?view=operator"), ("운영 현황", "/hs2/dashboard/"),
+                         ("대화·알림", "/hs2/workspace/?view=operator")],
             "관리자": [("운영 관리", "/hs2/admin/"), ("등록 심사", "/hs2/listings/admin"),
                         ("예약·금융", "/hs2/finance/")],
         }
@@ -166,7 +175,7 @@ def install(app):
             "관리자" if request.path.startswith("/hs2/admin") or "/listings/admin" in request.path
             else "임대인" if request.path.startswith(("/hs2/owner", "/hs2/calendar", "/hs2/listings",
                                                        "/hs2/registration", "/hs2/dashboard"))
-            or request.args.get("view") == "owner" else "사용자")
+             or request.args.get("view") in {"owner", "operator"} else "사용자")
         context_query = {k:request.args[k] for k in
             ("public_id","booking_id","receipt_id","check_in","check_out","guests") if k in request.args}
         def contextual(path):

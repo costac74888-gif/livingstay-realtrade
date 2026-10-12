@@ -29,11 +29,13 @@
           e.style.setProperty('color', '#000', 'important');
           e.style.setProperty('transition-property', 'background-color,border-color,box-shadow,opacity,transform', 'important');
         }
-        if ((direct || e.matches('input,select,textarea')) && parseFloat(getComputedStyle(e).fontSize) < 16)
+        if (e.matches('input,select,textarea') && parseFloat(getComputedStyle(e).fontSize) < 16)
           e.style.setProperty('font-size', '16px', 'important');
         if (e.matches('.hs-price,.listing-price,.detail-price,.preview-basis-price')) {
           e.dataset.price = 'true';
-          e.style.setProperty('color', e.classList.contains('stay') || /원\s*\/\s*(일|박)/.test(e.textContent) ? '#9b7618' : '#596044', 'important');
+          e.style.setProperty('color', e.classList.contains('stay') ||
+            e.closest('[data-kind="lodging"]') || /원\s*\/\s*(일|박)/.test(e.textContent)
+            ? '#ff385c' : '#2563eb', 'important');
         }
       }
     };

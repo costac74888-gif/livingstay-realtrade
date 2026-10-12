@@ -149,6 +149,6 @@
 - [Git 상대 범위 검사](git-relative-scope-checks.md) — 자동 체크포인트로 HEAD 기준이 이동하므로 원래 기준 commit의 diff와 동결 보존 검사를 별도로 확인한다.
 - [운영 연결 객체 검사](production-wiring-inspection.md) — fixture 존재와 운영 실행 연결을 구분하고 객체 ID 재사용·요청 프록시·외부 패키지 탐색을 주의한다.
 - [검사 결과 안전 보관](test-artifact-retention.md) — 완료·소유권이 불명확한 결과와 최신 실패는 보존하고, 용량 한도를 맞추려고 보호를 해제하지 않는다.
-- [목업 디자인 기준](mockup-design-governance.md) — 제공 목업을 디자인 기준으로 유지하고 제품 구조 충돌만 최소 조정하며 기능 PASS와 디자인 검수를 분리한다.
+- [디자인 기준과 원본 관찰](mockup-design-governance.md) — 최신 공개 원본 벤치마킹·파랑/빨강 지시가 과거 올리브 승인보다 우선하며 기능 PASS와 디자인 일치를 분리한다.
 - [백그라운드 프레임 준비](background-frame-readiness.md) — 비활성 탭의 프레임 대기는 상한을 두고 DOM·글꼴·표시 스타일의 실제 준비를 확인한다.
 - [성수동 직접 테스트 Preview](seongsu-preview-policy.md) — 최소 12개 가상 매물로 체험을 유지하며 운영·실제 개인정보·실제 결제·일반 공개 계약과 분리한다.

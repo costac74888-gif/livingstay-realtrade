@@ -74,7 +74,7 @@ def serve(port):
             "payment_provider": "OwnedSandbox_mock", "actual_toss": False,
             "external_delivery": False, "production_entrypoint": False,
             "reset_on_restart": True,
-            "demo": "seongsu", "initial_synthetic_stays": 14,
+            "demo": "seongsu", "initial_synthetic_stays": 20,
             "synthetic_stays": sum(v.get("category") in {"lodging", "non_lodging"}
                                    for v in app.fixture_demo_catalog.values()),
             "map_provider": "existing_kakao_maps", "schematic_map": False,

@@ -13,6 +13,8 @@ NAMES = [
     "성수 브릭 스테이", "연무장 테라스룸", "뚝섬 선라이트",
     "성수 넓은 투룸", "서울숲 슬로우 스테이", "성수 워크앤리빙",
     "연무장 트윈 스테이", "뚝섬 한달살이",
+    "서울숲 데일리 스위트", "성수 주간 하우스", "뚝섬 데일리 스튜디오",
+    "연무장 월간 레지던스", "서울숲 데일리 테라스", "성수 월간 로프트",
 ]
 DISCLAIMER = "테스트용 가상 매물 · 실재 매물/영업신고/법적 운영 가능성 확인 아님"
 
@@ -34,7 +36,7 @@ def seed_seongsu(app):
     if len(rows) != 2:
         raise RuntimeError("Fresh two-row Preview foundation required")
     order = [row["id"] for row in sorted(rows, key=lambda r: r["payload"]["stay_kind"] != "lodging")]
-    # Existing fully tested foundations are retained; add 12 real fixture
+    # Existing fully tested foundations are retained; add 18 real fixture
     # registrations using the same review/calendar/booking repositories.
     photo = app.fixture_repo.upload(WHO, PNG, "image/png")["id"]
     for i in range(2, len(NAMES)):
@@ -42,10 +44,10 @@ def seed_seongsu(app):
         values = dict(
             title=f"[가상] 성수 {NAMES[i]}", space_label=f"가상 공간 {i+1:02}",
             stay_kind=kind, rooms=1 + i % 3, area_m2=str(22 + i * 4),
-            guests=2 + i % 5, nightly=(178000 if i == 2 else 0 if i == 12 else
+            guests=2 + i % 5, nightly=(178000 if i == 2 else
                                      70000 + i * 9000) if kind == "lodging" else None,
-            weekly=260000 + i * 30000 if kind == "non_lodging" and i != 13 else None,
-            monthly=900000 + i * 110000 if kind == "non_lodging" and i != 3 else None,
+            weekly=260000 + i * 30000 if kind == "non_lodging" else None,
+            monthly=900000 + i * 110000 if kind == "non_lodging" else None,
             min_stay=1 if kind == "lodging" else 7, photos=[photo],
             options=["wifi"] + (["kitchen", "washer"] if i % 3 else ["parking"]),
             instant=i % 2 == 0, discount=i % 4 == 0,
@@ -88,7 +90,7 @@ def seed_seongsu(app):
             description=f"성수동 체험용 가상 공간 {i+1:02}. {p['area_m2']}㎡, 최대 {p['guests']}명. "
                         "실제 주소·소유자·연락처와 무관한 테스트 데이터입니다. "
                         "요금은 임의 테스트 요금이며 숙박/임대의 법적 운영 가능성을 보장하지 않습니다.",
-            photos=[f"/__development__/seongsu/assets/interior-{1+i%4}.jpg"],
+            photos=[f"/__development__/seongsu/assets/interior-{1+(i+j)%4}.jpg" for j in range(4)],
             category=p["stay_kind"], neighborhood="성수동1가" if i < 7 else "성수동2가",
             area_m2=float(p["area_m2"]), rooms=p["rooms"], guests=p["guests"],
             amenities=list(p["options"]), nightly_krw=p["nightly"],
