@@ -1186,3 +1186,17 @@ mtime_ms = 1791759287103
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/4df11445-8579-4597-a4f1-52bf806c39b3/3ff13605-db26-4e96-937c-eaacc95d25a2"
 storage_version_token = "1791759319475639"
 content_type = "image/jpeg"
+
+[[outputs]]
+id = "basefSgCdKXJmqln68axd"
+uri = "file://generated-artifacts/design-reference/hs2-design-captures.html"
+type = "html"
+title = "HOME & STAY · 4화면 PC·모바일 캡처와 검토 요약"
+description = "사용자·상세·임대인·관리자 8개 화면의 실제 캡처. 참고·적용·미확인 사항과 검증 범위를 담은 독립 HTML입니다."
+logical_id = "833640c0-7d2c-4ed5-9931-a4938ba55619"
+content_hash = "sha256:ab64e02940652d026fdca1cd2963b4fd66e0f86032f4068b0d1fce1b6895a831"
+size = 3824927
+mtime_ms = 1791764503302
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/833640c0-7d2c-4ed5-9931-a4938ba55619/9de92ec5-6ca3-452e-a132-fdf0dbe7d1f7"
+storage_version_token = "1791764588465169"
+content_type = "text/html"
