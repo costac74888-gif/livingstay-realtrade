@@ -1200,3 +1200,31 @@ mtime_ms = 1791764503302
 storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/833640c0-7d2c-4ed5-9931-a4938ba55619/9de92ec5-6ca3-452e-a132-fdf0dbe7d1f7"
 storage_version_token = "1791764588465169"
 content_type = "text/html"
+
+[[outputs]]
+id = "nvxEiYvIDihdhmgwUbQ_t"
+uri = "file://generated-artifacts/hs2-full-design/homenstay-all-screens-design.zip"
+type = "unspecified"
+title = "HOME & STAY 전체 화면 디자인 검토 ZIP"
+description = "246개 화면·웹1440/모바일390 전체 캡처492장·정적 HTML·비교 index.html·원본/시안 경로·상태표·캡처 삽입 엑셀. 가상 데이터 디자인 검토용이며 기능 PASS가 아닙니다."
+logical_id = "3a5115ff-a830-4481-9d9b-196359386018"
+content_hash = "sha256:f8d0aff25ac5f3e96ef43df07941d33760adcfe27c5627b70a33f983be86b10f"
+size = 100532241
+mtime_ms = 1791767697654
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/3a5115ff-a830-4481-9d9b-196359386018/dd86c8a6-fbd3-4fac-9eed-56f32287720d"
+storage_version_token = "1791767722912041"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "Z2oVsPbj8gQz6FIioUaco"
+uri = "file://generated-artifacts/hs2-full-design/bundle/comparison.xlsx"
+type = "table"
+title = "HOME & STAY 화면별 캡처·판정 엑셀"
+description = "246개 화면별 웹·모바일 실제 캡처492장 삽입. 원본/시안 경로, 참고 근거, 수정 내용과 각각의 기본 디자인 검사 결과."
+logical_id = "dcb3949e-6f2a-476b-90cb-b16f6f102b85"
+content_hash = "sha256:84062dba970412b370a3cdf6e58ac74da25d8df856802c8084d6108410c49ed2"
+size = 43340452
+mtime_ms = 1791767686698
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:70fd0bb5-2053-4594-8b35-c2e46b4828c6/dcb3949e-6f2a-476b-90cb-b16f6f102b85/60ee7799-98fe-4f79-aa72-2605530d37ce"
+storage_version_token = "1791767724621503"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
